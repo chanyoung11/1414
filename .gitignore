@@ -5,3 +5,5 @@ node_modules/
 t_*.png
 tests/__pycache__/
 .gstack/
+.vercel
+.env*
