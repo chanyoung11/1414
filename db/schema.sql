@@ -33,3 +33,43 @@ create table if not exists members (
   primary key (user_id, team_id)
 );
 create index if not exists members_team_idx on members(team_id);
+
+-- ---------- 발행본 · 파일 · 메모 동기화 ----------
+create table if not exists services (
+  team_id    uuid not null references teams(id) on delete cascade,
+  id         text not null,                    -- 앱의 예배 id
+  doc        jsonb not null,                   -- 발행본 스냅샷 (items 안의 notes 없음)
+  version    int not null default 0,
+  name       text,
+  date       text,
+  updated_by uuid references users(id),
+  updated_at timestamptz not null default now(),
+  primary key (team_id, id)
+);
+
+create table if not exists blobs (
+  team_id    uuid not null references teams(id) on delete cascade,
+  id         text not null,                    -- 앱의 blob id
+  url        text not null,                    -- Vercel Blob URL
+  type       text,
+  size       int,
+  created_at timestamptz not null default now(),
+  primary key (team_id, id)
+);
+
+create table if not exists notes (
+  id          text primary key,
+  team_id     uuid not null references teams(id) on delete cascade,
+  service_id  text not null,
+  item_id     text not null,
+  marker_id   text,                            -- 섹션 메모
+  media_id    text,                            -- 타임라인 메모
+  t           real,
+  layer       text not null check (layer in ('leader','session','mine')),
+  session     text,
+  text        text not null,
+  author_id   uuid references users(id) on delete cascade,
+  author_name text,
+  created_at  timestamptz not null default now()
+);
+create index if not exists notes_svc_idx on notes(team_id, service_id);

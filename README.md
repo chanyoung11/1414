@@ -16,9 +16,12 @@ npm install
 docker run -d --name conti-pg -e POSTGRES_PASSWORD=pg -p 54329:5432 postgres:16-alpine
 export DATABASE_URL=postgres://postgres:pg@localhost:54329/postgres
 export AUTH_SECRET=$(openssl rand -base64 32)
+export BLOB_READ_WRITE_TOKEN=...   # vercel env pull .env.local 로 받기 (발행 파일 업로드용)
 npm run db:migrate
 npm run dev            # http://localhost:8766
 ```
+
+인도자가 발행하면 발행본·악보·녹음이 서버(Neon + Vercel Blob)에 올라가고 팀원 앱에 자동으로 내려옵니다. 메모도 서버에 저장됩니다.
 
 서버 없이 정적으로만 열면(`cd app && python3 -m http.server 8765`) 로그인 없이 기기 안에서만 동작하는 오프라인 모드가 됩니다.
 

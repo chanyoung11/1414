@@ -515,9 +515,9 @@ function homeHTML(){
     <div class="acts"><span class="pill">${esc(m.name||'이름 없음')} · ${esc(m.session)} · ${roleLabel(m.role)}</span>${on?`<button class="btn sm ghost" data-act="team">${ic('users')}${esc(S.team.name||'팀')}</button>`:''}<button class="icon ghost" data-act="settings" title="설정">${ic('gear')}</button></div></header>
    <main>
     <div class="metrics rise"><div class="metric"><div class="v">${S.services.length}</div><div class="l">전체 예배</div></div><div class="metric"><div class="v">${upcoming}</div><div class="l">다가오는 예배</div></div><div class="metric"><div class="v">${pubN}</div><div class="l">발행된 콘티</div></div></div>
-    <div class="sect-hd rise d1"><div><h2>예배 목록</h2><p>${on?`${esc(S.team.name)} 팀 · 콘티 파일 동기화는 다음 단계라 아직은 내보내기·가져오기로 공유해요`:'이 기기에만 저장돼요. 팀에 보내려면 내보내기 파일을 카톡으로 보내세요'}</p></div>
-     <div class="row">${lead?`<button class="btn sm pri" data-act="new-svc">${ic('plus')}새 예배</button>`:''}<button class="btn sm" data-act="import">${ic('import')}가져오기</button><button class="btn sm" data-act="export">${ic('export')}내보내기</button></div></div>
-    ${svcs.length?rows:`<div class="empty rise d1"><b>아직 예배가 없어요</b>${lead?'첫 콘티를 만들거나, 받은 파일을 가져오세요.':'인도자가 보낸 파일을 "가져오기"로 여세요.'}${lead?`<div><button class="btn pri" data-act="new-svc">${ic('plus')}새 예배 만들기</button></div>`:''}</div>`}
+    <div class="sect-hd rise d1"><div><h2>예배 목록</h2><p>${on?`${esc(S.team.name)} 팀 · 인도자가 발행하면 자동으로 내려와요`:'이 기기에만 저장돼요. 팀에 보내려면 내보내기 파일을 카톡으로 보내세요'}</p></div>
+     <div class="row">${lead?`<button class="btn sm pri" data-act="new-svc">${ic('plus')}새 예배</button>`:''}${on?`<button class="btn sm" data-act="sync" title="팀 서버에서 최신 발행본 받기">${ic('import')}새로고침</button>`:`<button class="btn sm" data-act="import">${ic('import')}가져오기</button>`}<button class="btn sm" data-act="export">${ic('export')}내보내기</button></div></div>
+    ${svcs.length?rows:`<div class="empty rise d1"><b>아직 예배가 없어요</b>${lead?'첫 콘티를 만들거나, 받은 파일을 가져오세요.':(on?'인도자가 발행하면 여기에 자동으로 나타나요.':'인도자가 보낸 파일을 "가져오기"로 여세요.')}${lead?`<div><button class="btn pri" data-act="new-svc">${ic('plus')}새 예배 만들기</button></div>`:''}</div>`}
     ${lead?`<div class="sect-hd rise d2" id="lib" style="margin-top:28px"><div><h2>라이브러리</h2><p>예배에 넣은 곡은 자동으로 저장돼요</p></div></div><div class="card rise d2">${S.library.length?S.library.map(s=>`<span class="chip">${ic('music')}${esc(s.title)} <span class="muted">${esc(keyStr(s))}</span></span>`).join(''):'<span class="hint">비어 있음</span>'}</div>`:''}
    </main></div></div>
   <nav class="bnav"><button class="on" data-act="home">${ic('home')}예배</button>${on?`<button data-act="team">${ic('users')}팀</button>`:''}<button data-act="settings">${ic('gear')}설정</button><button data-act="theme">${ic(themeIcon())}테마</button></nav>`;
@@ -708,11 +708,13 @@ function publishModal(svc){
  const txt=kakaoText(svc);
  modal(`<div class="row sb"><b style="font-size:17px">발행 — v${nextV}</b><span class="pill">${svc.items.length}곡</span></div>
   <div class="lbl">카톡에 붙여넣을 텍스트</div><textarea class="field mono" id="kk" rows="${Math.min(14,txt.split('\n').length+1)}">${esc(txt)}</textarea>
-  <div class="hint" style="margin-top:8px">발행하면 이 버전이 멤버가 보는 콘티가 됩니다. 멤버에게는 내보내기 파일을 카톡으로 보내세요 (서버 연동 전).</div>
-  <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" id="kkCopy">텍스트 복사</button><button class="btn" id="pubOnly">${ic('check')}발행만</button><button class="btn pri" id="pubOk">${ic('send')}발행 + 파일 내보내기</button></div>`);
+  <div class="hint" style="margin-top:8px">${online()?'발행하면 팀원 앱에 자동으로 내려갑니다. 카톡에는 위 텍스트(링크 포함)만 보내면 돼요.':'발행하면 이 버전이 멤버가 보는 콘티가 됩니다. 멤버에게는 내보내기 파일을 카톡으로 보내세요 (서버 연동 전).'}</div>
+  <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" id="kkCopy">텍스트 복사</button>${online()?`<button class="btn pri" id="pubOnly">${ic('send')}발행하고 팀에 공유</button>`:`<button class="btn" id="pubOnly">${ic('check')}발행만</button><button class="btn pri" id="pubOk">${ic('send')}발행 + 파일 내보내기</button>`}</div>`);
  $('#modal').onclick=async e=>{
   if(e.target.closest('#kkCopy')){try{await navigator.clipboard.writeText($('#kk').value);toast('복사됨')}catch{$('#kk').select();document.execCommand('copy');toast('복사됨')}}
-  const only=e.target.closest('#pubOnly'),withFile=e.target.closest('#pubOk');if(only||withFile){svc.published={version:nextV,at:Date.now(),name:svc.name,date:svc.date,notice:svc.notice,items:clone(svc.items).map(it=>({...it,notes:undefined}))};save();closeModal();toast('v'+nextV+' 발행');if(withFile)await exportJSON(svc.id);render()}
+  const only=e.target.closest('#pubOnly'),withFile=e.target.closest('#pubOk');if(only||withFile){svc.published={version:nextV,at:Date.now(),name:svc.name,date:svc.date,notice:svc.notice,items:clone(svc.items).map(it=>({...it,notes:undefined}))};save();closeModal();
+   if(online()){toast('팀 서버에 올리는 중…');try{await SYNC.pushPublish(svc);toast('v'+nextV+' 발행 · 팀에 공유됐어요')}catch(err){toast('발행은 됐지만 서버 업로드 실패: '+err.message)}}else toast('v'+nextV+' 발행');
+   if(withFile)await exportJSON(svc.id);render()}
  };
 }
 function settingsModal(){
@@ -782,7 +784,7 @@ const url=id=>urlCache.get(id)||'';
 const DEF_SESS=['드럼','베이스','건반','일렉','어쿠스틱','싱어','인도자'];
 const DEF_PHR=['Down','Full','쉬기','패드만','브레이크','하프타임','반복'];
 let S={v:1,team:{sessions:DEF_SESS.slice(),phrases:DEF_PHR.slice(),me:{name:'',session:'건반',role:'leader'}},services:[],library:[]};
-let saveT;function save(){clearTimeout(saveT);saveT=setTimeout(()=>IDB.put('kv','state',JSON.stringify(S)).catch(e=>console.error(e)),250)}
+let saveT;function save(){clearTimeout(saveT);saveT=setTimeout(()=>IDB.put('kv','state',JSON.stringify(S)).catch(e=>console.error(e)),250);if(typeof SYNC!=='undefined')SYNC.schedulePush()}
 const me=()=>S.team.me;
 const isLeader=()=>me().role==='leader';
 const svcById=id=>S.services.find(s=>s.id===id);
@@ -802,6 +804,49 @@ async function probeServer(){try{const r=await fetch('/api/health',{cache:'no-st
 function applyMembership(t){S.team.id=t.teamId;S.team.name=t.teamName;S.team.invite=t.invite||'';S.team.sessions=t.sessions.slice();S.team.phrases=t.phrases.slice();S.team.me={userId:t.me.userId,name:t.me.name,session:t.me.session,role:t.me.role};save()}
 function takeMe(m){NET.user=m.user;NET.teams=m.teams||[];const cur=NET.teams.find(x=>x.teamId===S.team.id)||m.team;if(cur)applyMembership(cur);else{S.team.id='';S.team.invite='';save()}}
 async function refreshMe(){try{takeMe(await api('/me'))}catch(e){if(e.status===401)NET.user=null}}
+
+/* ---------- 서버 동기화: 발행본 · 파일 · 메모 ---------- */
+const SYNC={t:null,pulledAt:{},
+ blobIds(items){const ids=[];(items||[]).forEach(it=>{(it.pieces||[]).forEach(p=>p.blob&&ids.push(p.blob));(it.media||[]).forEach(m=>m.type==='audio'&&m.blob&&ids.push(m.blob))});return [...new Set(ids)]},
+ // 팀의 발행본 목록을 받아 새 것·새 버전만 내려받음. 바뀐 게 있으면 true
+ async pullServices(){if(!online()||!S.team.id)return false;let list;try{list=(await api('/services?team='+S.team.id)).services}catch(e){return false}
+  let changed=false;
+  for(const r of list){const cur=svcById(r.id);const localV=cur&&cur.published?cur.published.version:0;
+   if(cur&&localV>=r.version)continue;
+   try{await SYNC.pullService(r.id);changed=true}catch(e){console.warn('pull',r.id,e.message)}}
+  if(changed)save();return changed},
+ async pullService(id){const d=await api('/services/'+id+'?team='+S.team.id);const doc=d.doc;await SYNC.fetchBlobs(d.blobs);
+  let cur=svcById(id);if(!cur){cur={id,name:doc.name,date:doc.date,notice:doc.notice||'',version:0,items:[],published:null};S.services.push(cur)}
+  const old=new Map(cur.items.map(it=>[it.id,it]));
+  cur.published={version:doc.version,at:new Date(d.updatedAt).getTime()||Date.now(),name:doc.name,date:doc.date,notice:doc.notice||'',items:clone(doc.items)};
+  if(!isLeader()||cur.version<=doc.version){ // 인도자 기기의 더 새로운 초안은 건드리지 않음
+   cur.name=doc.name;cur.date=doc.date;cur.notice=doc.notice||'';cur.version=doc.version;
+   cur.items=clone(doc.items).map(it=>{const o=old.get(it.id);it.notes=o?(o.notes||[]):[];it.media=(it.media||[]).map(m=>{const om=o&&(o.media||[]).find(x=>x.id===m.id);return {...m,notes:om?(om.notes||[]):[]}});return it})}
+  save();return cur},
+ async fetchBlobs(map){for(const id in (map||{})){if(await IDB.get('blobs',id))continue;try{const r=await fetch(map[id]);if(!r.ok)continue;const b=await r.blob();await IDB.put('blobs',id,b)}catch(e){console.warn('blob',id,e.message)}}},
+ // 발행(인도자): 새 파일 업로드 → 스냅샷 저장
+ async pushPublish(svc){if(!online()||!isLeader())return false;const pub=svc.published;const ids=SYNC.blobIds(pub.items);
+  let have={};if(ids.length){have=(await api('/blobs?team='+S.team.id+'&ids='+ids.join(','))).blobs}
+  for(const id of ids){if(have[id])continue;const b=await IDB.get('blobs',id);if(!b)throw new Error('이 기기에 없는 파일이 있어요');
+   const r=await fetch('/api/blobs/'+id+'?team='+S.team.id,{method:'POST',headers:{'x-conti':'1','content-type':b.type||'application/octet-stream'},body:b,credentials:'same-origin'});
+   if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.message||'파일 업로드 실패')}}
+  await api('/services/'+svc.id,{method:'PUT',body:{teamId:S.team.id,doc:{id:svc.id,name:pub.name,date:pub.date,notice:pub.notice,version:pub.version,items:pub.items}}});return true},
+ async deleteService(id){if(!online()||!isLeader())return;try{await api('/services/'+id+'?team='+S.team.id,{method:'DELETE'})}catch(e){toast(e.message)}},
+ // 메모: 로컬 ↔ 서버 차이만 올림 (실패하면 다음 저장 때 다시)
+ localNotes(svc){const out=[];svc.items.forEach(it=>{(it.notes||[]).forEach(n=>out.push({...n,itemId:it.id,markerId:n.marker||null,mediaId:null}));(it.media||[]).forEach(m=>(m.notes||[]).forEach(n=>out.push({...n,itemId:it.id,markerId:n.marker||null,mediaId:m.id})))});return out},
+ shadow(id){S.noteShadow=S.noteShadow||{};return S.noteShadow[id]||(S.noteShadow[id]=[])},
+ async pushNotes(svc){if(!online()||!svc||!S.team.id)return;const sh=SYNC.shadow(svc.id);const local=SYNC.localNotes(svc);const localIds=[...new Set(local.map(n=>n.id))];const shSet=new Set(sh);
+  const add=local.filter(n=>!shSet.has(n.id));const del=sh.filter(id=>!localIds.includes(id));if(!add.length&&!del.length)return;
+  try{if(add.length)await api('/notes',{method:'POST',body:{teamId:S.team.id,serviceId:svc.id,notes:add.map(n=>({id:n.id,itemId:n.itemId,markerId:n.markerId,mediaId:n.mediaId,t:n.t,layer:n.layer,session:n.session,text:n.text,at:n.at}))}});
+   if(del.length)await api('/notes',{method:'DELETE',body:{teamId:S.team.id,ids:del}});
+   S.noteShadow[svc.id]=localIds;save()}catch(e){console.warn('notes push',e.message)}},
+ async pullNotes(svc){if(!online()||!svc||!S.team.id)return;await SYNC.pushNotes(svc);let d;try{d=await api('/notes?team='+S.team.id+'&service='+svc.id)}catch(e){return}
+  const who=n=>n.layer==='leader'?'인도자':(n.authorId===d.me?(me().name||'나'):(n.authorName||'멤버'));const by={};d.notes.forEach(n=>{(by[n.itemId]||(by[n.itemId]=[])).push(n)});
+  svc.items.forEach(it=>{const list=by[it.id]||[];it.notes=list.filter(n=>!n.mediaId).map(n=>({id:n.id,marker:n.markerId,layer:n.layer,session:n.session,text:n.text,author:who(n),at:new Date(n.createdAt).getTime()}));
+   (it.media||[]).forEach(m=>{m.notes=list.filter(n=>n.mediaId===m.id).map(n=>({id:n.id,t:+n.t||0,marker:n.markerId||undefined,layer:n.layer,session:n.session,text:n.text,author:who(n)}))})});
+  S.noteShadow=S.noteShadow||{};S.noteShadow[svc.id]=d.notes.map(n=>n.id);SYNC.pulledAt[svc.id]=Date.now();save()},
+ schedulePush(){if(!online())return;clearTimeout(SYNC.t);SYNC.t=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&/^(edit|view|play)$/.test(r.name))SYNC.pushNotes(svc)},700)}
+};
 const GATE={mode:'login',err:'',user:'',sess:'',preview:null};
 function authShell(inner){return `<div class="auth"><aside class="auth-side"><span class="brand">콘티</span><div><p class="kick">찬양팀 콘티 · 연습 · 무대</p><blockquote>“콘티 한 장으로<br>팀 전체가 같은 곳을 봅니다.”</blockquote><p class="desc">곡 순서와 키, 송폼, 악보, 참고 영상을 한 화면에. 인도자가 발행하면 팀원은 자기 세션 메모와 함께 연습하고 무대에 섭니다.</p>
  <ul><li>${ic('send')}발행 한 번으로 카톡 공유 문구까지 자동 생성</li><li>${ic('marker')}악보 위 마커에 붙는 세션별 메모</li><li>${ic('moon')}네트워크 없이도 열리는 무대 모드</li></ul></div><p class="copy">© 2026 콘티</p></aside><div class="auth-main"><div class="auth-box">${inner}</div></div></div>`}
@@ -1010,10 +1055,16 @@ async function render(){
   if(!S.team.id){app.innerHTML=gateHTML();afterGate();return}
   if(r.name==='edit'&&!isLeader())return go('view/'+r.a);
  }
- if(r.name==='edit'){const svc=svcById(r.a);if(!svc)return go('home');await preload(svc);app.innerHTML=editorHTML(svc);afterEditor(svc);restoreScroll();return}
- if(r.name==='view'){const svc=svcById(r.a);if(!svc)return go('home');await preload(svc);app.innerHTML=viewerHTML(svc);return}
- if(r.name==='play'){const svc=svcById(r.a);if(!svc)return go('home');await preload(svc);app.innerHTML=playHTML(svc,+r.b||0);afterPlay(svc,+r.b||0);restoreScroll();return}
+ if(/^(edit|view|play)$/.test(r.name)){let svc=svcById(r.a);
+  if(!svc&&online()){app.innerHTML=`<div class="empty" style="margin:40px auto;max-width:420px"><b>콘티를 받는 중…</b>팀 서버에서 발행본을 내려받고 있어요.</div>`;try{svc=await SYNC.pullService(r.a)}catch(e){toast(e.message)}}
+  if(!svc)return go('home');
+  if(online()&&(!same||!SYNC.pulledAt[svc.id]))await SYNC.pullNotes(svc);
+  await preload(svc);
+  if(r.name==='edit'){app.innerHTML=editorHTML(svc);afterEditor(svc);restoreScroll();return}
+  if(r.name==='view'){app.innerHTML=viewerHTML(svc);return}
+  app.innerHTML=playHTML(svc,+r.b||0);afterPlay(svc,+r.b||0);restoreScroll();return}
  app.innerHTML=homeHTML();
+ if(online()&&!same)SYNC.pullServices().then(ch=>{if(ch&&route().name==='home')render()});
 }
 async function preload(svc){const ids=[];const items=(svc.published?svc.published.items:svc.items).concat(svc.items);items.forEach(it=>(it.pieces||[]).forEach(p=>ids.push(p.blob)));await Promise.all([...new Set(ids)].map(blobURL))}
 
@@ -1086,7 +1137,7 @@ function kakaoText(svc){
  const lines=[`[${svc.name||'예배'} 콘티 v${svc.version||1}]`];
  svc.items.forEach((it,i)=>{const k=keyStr(it);lines.push(`${i+1}. ${it.title||'(제목 없음)'}${k?' / '+k:''}`)});
  if(svc.notice)lines.push('',svc.notice.split('\n')[0]);
- lines.push('','👉 (앱에서 "'+(svc.name||'예배')+'" 열기 — 파일 가져오기)');
+ lines.push('',online()?'👉 '+location.origin+location.pathname+'#/view/'+svc.id:'👉 (앱에서 "'+(svc.name||'예배')+'" 열기 — 파일 가져오기)');
  if(svc.published){const d=diffSvc(svc.published,svc);if(d.length)lines.push('',`v${svc.version} 변경: `+d.join(', '))}
  return lines.join('\n');
 }
@@ -1200,7 +1251,8 @@ document.addEventListener('click',async e=>{
   case 'open-svc':if(!e.target.closest('button'))go(isLeader()?'edit/'+svc.id:'view/'+svc.id);break;
   case 'edit-svc':go('edit/'+svc.id);break;
   case 'view-svc':go('view/'+svc.id);break;
-  case 'del-svc':if(confirm('이 예배를 삭제할까요?')){S.services=S.services.filter(s=>s.id!==svc.id);save();render()}break;
+  case 'del-svc':if(confirm(online()&&isLeader()?'이 예배를 삭제할까요? 팀 서버의 발행본과 메모도 지워집니다.':'이 예배를 삭제할까요?')){S.services=S.services.filter(s=>s.id!==svc.id);save();SYNC.deleteService(svc.id);render()}break;
+  case 'sync':{toast('팀 서버와 맞추는 중…');SYNC.pullServices().then(ch=>{toast(ch?'새 콘티를 받았어요':'이미 최신이에요');render()});break}
   case 'import':{const inp=document.createElement('input');inp.type='file';inp.accept='.json,application/json';inp.onchange=()=>importJSON(inp.files[0]);inp.click();break}
   case 'export':exportJSON();break;
   case 'add-item':{const s=svcById(r.a);const it=newItem();s.items.push(it);SEL[s.id]={item:it.id,tool:'marker'};touch(s);save();render();setTimeout(()=>{const f=$('[data-f="item.title"]');f&&f.focus()},50);break}
@@ -1249,7 +1301,8 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
  NET.server=await probeServer();
  if(NET.server===true){try{takeMe(await api('/me'))}catch(e){if(e.status===401)NET.user=null;else NET.server=null}}
  if(!online()&&!me().name){setTimeout(()=>{render();settingsModal()},0)}else render();
- window.CONTI={S,save,render,parseForm,detectGaps,autoCut,IDB,NET};
+ if(online()&&S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()});
+ window.CONTI={S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC};
 })();
 })();
 </script>

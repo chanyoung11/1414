@@ -4,6 +4,7 @@
 import { q, one } from '../lib/db.js';
 import { sessionUserId, sessionCookie, clearSessionCookie, randomToken } from '../lib/session.js';
 import { hashPassword, verifyPassword, USERNAME_RE, PASSWORD_MIN } from '../lib/password.js';
+import { putBlob, delBlobs } from '../lib/blob.js';
 
 class HttpError extends Error { constructor(status, code, message) { super(message || code); this.status = status; this.code = code; } }
 const bad = (m) => new HttpError(400, 'bad_request', m);
@@ -18,6 +19,15 @@ async function readBody(req) {
     let s = ''; req.setEncoding('utf8');
     req.on('data', (c) => { s += c; if (s.length > 1e6) rej(bad('요청이 너무 커요')); });
     req.on('end', () => { try { res(s ? JSON.parse(s) : {}); } catch { rej(bad('JSON이 아니에요')); } });
+    req.on('error', rej);
+  });
+}
+async function readRaw(req, max = 80 * 1024 * 1024) {
+  if (req.body !== undefined && req.body !== null && Buffer.isBuffer(req.body)) return req.body;
+  return new Promise((res, rej) => {
+    const chunks = []; let n = 0;
+    req.on('data', (c) => { n += c.length; if (n > max) { rej(new HttpError(413, 'too_large', '파일이 너무 커요 (80MB 이하)')); req.destroy(); } else chunks.push(c); });
+    req.on('end', () => res(Buffer.concat(chunks)));
     req.on('error', rej);
   });
 }
@@ -194,6 +204,131 @@ on('POST', '/invite/:token/join', async ({ uid, params, body }) => {
   return viewOf(await membership(uid, t.id));
 });
 
+
+/* ---------- 발행본 · 파일 · 메모 동기화 ---------- */
+// 팀의 발행본 목록
+on('GET', '/services', async ({ uid, url }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(url.searchParams.get('team'), 64);
+  await requireMember(uid, teamId);
+  return { services: await q('select id, name, date, version, updated_at as "updatedAt" from services where team_id=$1 order by date desc', [teamId]) };
+});
+
+// 발행본 하나 + 참조 파일 URL
+on('GET', '/services/:id', async ({ uid, url, params }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(url.searchParams.get('team'), 64);
+  await requireMember(uid, teamId);
+  const row = await one('select doc, version, updated_at as "updatedAt" from services where team_id=$1 and id=$2', [teamId, params.id]);
+  if (!row) throw notFound('발행된 콘티가 없어요');
+  const ids = blobIdsOf(row.doc);
+  const blobs = ids.length ? await q('select id, url, type from blobs where team_id=$1 and id = any($2::text[])', [teamId, ids]) : [];
+  return { doc: row.doc, version: row.version, updatedAt: row.updatedAt, blobs: Object.fromEntries(blobs.map((b) => [b.id, b.url])) };
+});
+function blobIdsOf(doc) {
+  const ids = new Set();
+  for (const it of (doc && doc.items) || []) {
+    for (const p of it.pieces || []) if (p.blob) ids.add(p.blob);
+    for (const m of it.media || []) if (m.type === 'audio' && m.blob) ids.add(m.blob);
+  }
+  return [...ids];
+}
+
+// 발행 (인도자): 스냅샷 upsert
+on('PUT', '/services/:id', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  await requireMember(uid, teamId, 'leader');
+  const doc = body.doc;
+  if (!doc || !Array.isArray(doc.items)) throw bad('발행본이 비어 있어요');
+  const missing = blobIdsOf(doc);
+  const have = missing.length ? (await q('select id from blobs where team_id=$1 and id = any($2::text[])', [teamId, missing])).map((r) => r.id) : [];
+  const notUploaded = missing.filter((id) => !have.includes(id));
+  if (notUploaded.length) throw bad('아직 올라가지 않은 파일이 있어요: ' + notUploaded.length + '개');
+  await q(`insert into services(team_id, id, doc, version, name, date, updated_by, updated_at) values($1,$2,$3,$4,$5,$6,$7,now())
+           on conflict (team_id, id) do update set doc=excluded.doc, version=excluded.version, name=excluded.name, date=excluded.date, updated_by=excluded.updated_by, updated_at=now()`,
+    [teamId, params.id, JSON.stringify(doc), +doc.version || 0, str(doc.name, 120), str(doc.date, 20), uid]);
+  return { ok: true, version: +doc.version || 0 };
+});
+
+on('DELETE', '/services/:id', async ({ uid, url, params }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(url.searchParams.get('team'), 64);
+  await requireMember(uid, teamId, 'leader');
+  await q('delete from services where team_id=$1 and id=$2', [teamId, params.id]);
+  await q('delete from notes where team_id=$1 and service_id=$2', [teamId, params.id]);
+  return { ok: true };
+});
+
+// 파일: 어떤 id가 이미 있는지
+on('GET', '/blobs', async ({ uid, url }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(url.searchParams.get('team'), 64);
+  await requireMember(uid, teamId);
+  const ids = str(url.searchParams.get('ids'), 4000).split(',').filter(Boolean).slice(0, 200);
+  const rows = ids.length ? await q('select id, url from blobs where team_id=$1 and id = any($2::text[])', [teamId, ids]) : [];
+  return { blobs: Object.fromEntries(rows.map((r) => [r.id, r.url])) };
+});
+
+// 파일 올리기 (인도자): 본문이 파일 그 자체
+on('POST', '/blobs/:id', async ({ req, uid, url, params }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(url.searchParams.get('team'), 64);
+  await requireMember(uid, teamId, 'leader');
+  if (!/^[A-Za-z0-9_-]{4,40}$/.test(params.id)) throw bad('파일 id가 이상해요');
+  const existing = await one('select url from blobs where team_id=$1 and id=$2', [teamId, params.id]);
+  if (existing) return { url: existing.url, existed: true };
+  const buf = await readRaw(req);
+  if (!buf.length) throw bad('빈 파일이에요');
+  const type = str(req.headers['content-type'], 100) || 'application/octet-stream';
+  const ext = type.includes('jpeg') ? '.jpg' : type.includes('png') ? '.png' : type.includes('webp') ? '.webp' : type.startsWith('audio/') ? '.audio' : '';
+  const blobUrl = await putBlob(`teams/${teamId}/${params.id}${ext}`, buf, type);
+  await q('insert into blobs(team_id, id, url, type, size) values($1,$2,$3,$4,$5) on conflict (team_id, id) do nothing', [teamId, params.id, blobUrl, type, buf.length]);
+  return { url: blobUrl };
+});
+
+// 메모: 내가 볼 수 있는 것 = 인도자 메모 전부 + 내 세션 공유 메모 + 내 메모
+on('GET', '/notes', async ({ uid, url }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(url.searchParams.get('team'), 64), svcId = str(url.searchParams.get('service'), 64);
+  const m = await requireMember(uid, teamId);
+  const rows = await q(`select id, item_id as "itemId", marker_id as "markerId", media_id as "mediaId", t, layer, session, text, author_id as "authorId", author_name as "authorName", created_at as "createdAt"
+                        from notes where team_id=$1 and service_id=$2 and (layer='leader' or (layer='session' and session=$4) or author_id=$3) order by created_at asc`, [teamId, svcId, uid, m.session]);
+  return { notes: rows, me: uid };
+});
+
+on('POST', '/notes', async ({ uid, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64), svcId = str(body.serviceId, 64);
+  const m = await requireMember(uid, teamId);
+  const list = Array.isArray(body.notes) ? body.notes.slice(0, 200) : [];
+  let n = 0;
+  for (const x of list) {
+    const id = str(x.id, 40), itemId = str(x.itemId, 40), layer = str(x.layer, 10), text = str(x.text, 200);
+    if (!/^[A-Za-z0-9_-]{4,40}$/.test(id) || !itemId || !text) continue;
+    if (!['leader', 'session', 'mine'].includes(layer)) continue;
+    if (layer === 'leader' && m.role !== 'leader') continue;
+    const session = layer === 'session' ? m.session : layer === 'leader' ? (str(x.session, 40) || null) : null;
+    await q(`insert into notes(id, team_id, service_id, item_id, marker_id, media_id, t, layer, session, text, author_id, author_name, created_at)
+             values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) on conflict (id) do nothing`,
+      [id, teamId, svcId, itemId, str(x.markerId, 40) || null, str(x.mediaId, 40) || null, x.t == null ? null : +x.t, layer, session, text, uid, layer === 'leader' ? '인도자' : m.name, x.at ? new Date(+x.at) : new Date()]);
+    n++;
+  }
+  return { ok: true, saved: n };
+});
+
+on('DELETE', '/notes', async ({ uid, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  const m = await requireMember(uid, teamId);
+  const ids = (Array.isArray(body.ids) ? body.ids : []).map((x) => str(x, 40)).filter(Boolean).slice(0, 200);
+  if (!ids.length) return { ok: true, deleted: 0 };
+  const r = m.role === 'leader'
+    ? await q('delete from notes where team_id=$1 and id = any($2::text[]) returning id', [teamId, ids])
+    : await q('delete from notes where team_id=$1 and id = any($2::text[]) and author_id=$3 returning id', [teamId, ids, uid]);
+  return { ok: true, deleted: r.length };
+});
+
 /* ---------- 진입점 ---------- */
 export default async function handler(req, res) {
   try {
@@ -208,7 +343,7 @@ export default async function handler(req, res) {
     }
     if (method !== 'GET' && req.headers['x-conti'] !== '1') throw forbidden('앱에서만 호출할 수 있어요');
     const params = path.match(route.re).groups || {};
-    const body = method === 'GET' ? {} : await readBody(req);
+    const body = (method === 'GET' || /^\/blobs\//.test(path)) ? {} : await readBody(req);
     const uid = sessionUserId(req);
     const out = await route.fn({ req, uid, params, body, url });
     if (out && out.headers && 'data' in out) return send(res, 200, out.data, out.headers);
