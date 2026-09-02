@@ -364,10 +364,10 @@ html.dark .sheet{box-shadow:0 10px 40px rgba(0,0,0,.5);border-color:transparent}
 .avatar{width:30px;height:30px;border-radius:50%;background:var(--primary);color:var(--primary-fg);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:0 0 auto}
 
 /* ---------- 인증·팀 게이트 (항상 다크, 2단) ---------- */
-.auth{flex:1;min-height:0;display:flex;overflow:auto;
+.auth{flex:1;min-height:0;display:flex;overflow:hidden;
  --bg:#0A0A0A;--fg:#F0F0F0;--card:#141414;--secondary:#1F1F1F;--accent:#1F1F1F;--muted:#1C1C1C;--muted-fg:#888888;--faint-fg:#666;--border:#2A2A2A;--border-2:#383838;--input:#1A1A1A;--primary:#F0F0F0;--primary-fg:#0A0A0A;--ring:rgba(240,240,240,.08);--surface-border:rgba(255,255,255,.07);--destructive:#EF4444;--destructive-soft:rgba(239,68,68,.10);--shadow-card:0 1px 3px rgba(0,0,0,.3),0 4px 12px rgba(0,0,0,.2);
  background:var(--bg);color:var(--fg);color-scheme:dark}
-.auth-side{display:none;width:50%;flex:0 0 auto;flex-direction:column;justify-content:space-between;padding:48px;border-right:1px solid var(--border);background:#070707}
+.auth-side{display:none;width:44%;max-width:640px;flex:0 0 auto;flex-direction:column;justify-content:space-between;padding:40px 44px;border-right:1px solid var(--border);background:#070707;min-height:0;overflow:auto}
 .auth-side .brand{font-size:22px}
 .auth-side .kick{font-size:12px;font-weight:600;color:var(--muted-fg)}
 .auth-side blockquote{margin:16px 0 0;font-size:32px;font-weight:700;line-height:1.2;letter-spacing:-.03em}
@@ -376,8 +376,9 @@ html.dark .sheet{box-shadow:0 10px 40px rgba(0,0,0,.5);border-color:transparent}
 .auth-side li{display:flex;align-items:center;gap:12px;font-size:13.5px;color:rgba(240,240,240,.75)}
 .auth-side li svg.ic{width:16px;height:16px;color:var(--fg)}
 .auth-side .copy{font-size:12px;color:var(--muted-fg)}
-.auth-main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 16px}
-.auth-card{width:100%;max-width:400px;background:var(--card);border:1px solid var(--border);border-radius:var(--r-xl);padding:32px;box-shadow:var(--shadow-card)}
+.auth-main{flex:1;min-width:0;min-height:0;overflow:auto;display:flex;flex-direction:column;padding:24px 16px;-webkit-overflow-scrolling:touch}
+.auth-box{margin:auto;width:100%;max-width:400px;padding:16px 0}
+.auth-card{width:100%;background:var(--card);border:1px solid var(--border);border-radius:var(--r-xl);padding:32px;box-shadow:var(--shadow-card)}
 .auth-card+.auth-card{margin-top:14px}
 .auth-card .mlogo{text-align:center;margin-bottom:22px}
 .auth-card h1{margin:0;font-size:24px;font-weight:700;letter-spacing:-.03em}
@@ -393,7 +394,24 @@ html.dark .sheet{box-shadow:0 10px 40px rgba(0,0,0,.5);border-color:transparent}
 .auth .foot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:22px;padding-top:16px;border-top:1px solid var(--border)}
 @media (min-width:1024px){.auth-side{display:flex}.auth-card .mlogo{display:none}}
 @media (max-width:700px){.hd .date{display:none}.hd .acts .pill{max-width:150px;overflow:hidden;text-overflow:ellipsis;display:inline-block;line-height:20px}.hd .acts .btn{padding:0 9px}.sect-hd{flex-direction:column;align-items:stretch}.sect-hd .row{flex-wrap:wrap}.svcrow{flex-wrap:wrap}.svcrow .row{width:100%;justify-content:flex-end;padding-top:4px;border-top:1px solid var(--border);margin-top:4px}}
-@media (max-width:820px){.ws.split{grid-template-columns:minmax(0,1fr)!important;grid-template-rows:auto auto minmax(0,1fr)}.gutter{display:none}.stack{max-height:52vh}.shell{padding:10px 10px 92px}.hd{padding:0 14px}.metrics{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.metric{padding:10px 12px}.metric .v{font-size:19px}}
+/* ---------- 모바일: 고정 패널 대신 세로 스크롤 ---------- */
+@media (max-width:820px){
+ .ws,.ws.split{display:flex!important;flex-direction:column;gap:10px;padding:10px;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
+ .ws>*{flex:0 0 auto}
+ .stack{display:flex;flex-direction:column;gap:10px;max-height:none;min-height:0;flex:0 0 auto}
+ .gutter,.vgutter{display:none!important}
+ .panel{flex:0 0 auto;overflow:visible;min-height:0}
+ .pbody{overflow:visible;max-height:none!important;flex:0 0 auto}
+ .sheetwrap{overflow:visible;padding:10px;flex:0 0 auto}
+ .sheet{padding-left:40px;padding-bottom:40px}
+ .stage .ws{padding:0;gap:0}.stage .sheetwrap{padding:4px}
+ .media{flex:0 0 auto}.vid{max-height:none}
+ .top{padding:0 8px;gap:6px}
+ .nb.prev,.nb.next{display:none}.nb.cur{max-width:100%;font-size:14px}
+ .songnav{gap:6px}
+ .titlein.big{font-size:16px}
+ .shell{padding:10px 10px 92px}.hd{padding:0 14px}.metrics{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.metric{padding:10px 12px}.metric .v{font-size:19px}
+}
 </style>
 </head>
 <body>
@@ -772,7 +790,7 @@ function takeMe(m){NET.user=m.user;NET.teams=m.teams||[];const cur=NET.teams.fin
 async function refreshMe(){try{takeMe(await api('/me'))}catch(e){if(e.status===401)NET.user=null}}
 const GATE={mode:'login',err:'',user:'',sess:'',preview:null};
 function authShell(inner){return `<div class="auth"><aside class="auth-side"><span class="brand">콘티</span><div><p class="kick">찬양팀 콘티 · 연습 · 무대</p><blockquote>“콘티 한 장으로<br>팀 전체가 같은 곳을 봅니다.”</blockquote><p class="desc">곡 순서와 키, 송폼, 악보, 참고 영상을 한 화면에. 인도자가 발행하면 팀원은 자기 세션 메모와 함께 연습하고 무대에 섭니다.</p>
- <ul><li>${ic('send')}발행 한 번으로 카톡 공유 문구까지 자동 생성</li><li>${ic('marker')}악보 위 마커에 붙는 세션별 메모</li><li>${ic('moon')}네트워크 없이도 열리는 무대 모드</li></ul></div><p class="copy">© 2026 콘티</p></aside><div class="auth-main">${inner}</div></div>`}
+ <ul><li>${ic('send')}발행 한 번으로 카톡 공유 문구까지 자동 생성</li><li>${ic('marker')}악보 위 마커에 붙는 세션별 메모</li><li>${ic('moon')}네트워크 없이도 열리는 무대 모드</li></ul></div><p class="copy">© 2026 콘티</p></aside><div class="auth-main"><div class="auth-box">${inner}</div></div></div>`}
 function loginHTML(){const m=GATE.mode;return authShell(`<div class="auth-card"><div class="mlogo"><span class="brand">콘티</span></div><h1>${m==='login'?'로그인':'회원가입'}</h1><p class="sub">${m==='login'?'팀 계정으로 로그인해 콘티를 함께 봅니다.':'아이디와 비밀번호만 있으면 바로 시작할 수 있어요.'}</p>
  <div class="tabs"><button class="${m==='login'?'on':''}" data-act="lg-mode" data-m="login">로그인</button><button class="${m==='signup'?'on':''}" data-act="lg-mode" data-m="signup">회원가입</button></div>
  <div class="lbl">아이디</div><input class="field" id="lgUser" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="영문 소문자·숫자 3~20자" value="${esc(GATE.user)}">
@@ -1003,7 +1021,7 @@ function afterEditor(svc){
  // field bindings
  app.oninput=e=>{const f=e.target.dataset.f;if(!f)return;const it=curItem(svc);
   if(f==='svc.name')svc.name=e.target.value;else if(f==='svc.date')svc.date=e.target.value;else if(f==='svc.notice')svc.notice=e.target.value;
-  else if(it){const k=f.split('.')[1];it[k]=e.target.value;if(k==='form'){$('#formchips').innerHTML=chipsHTML(it.form,'t');autoGrow(e.target)}if(k==='title'||k==='key'||k==='mod'){const li=$$('.list-item').find(l=>l.dataset.id===it.id);if(li){li.children[1].textContent=it.title||'(제목 없음)';li.children[2].textContent=keyStr(it)}}syncLib(it)}
+  else if(it){const k=f.split('.')[1];it[k]=e.target.value;if(k==='form'){$('#formchips').innerHTML=chipsHTML(it.form,'t');autoGrow(e.target)}if(k==='title'){const tab=$$('.ptab .tab').find(t=>t.textContent==='곡 편집');const sub=tab&&tab.parentElement.querySelector('.sub');if(sub)sub.textContent=it.title||'(제목 없음)'}if(k==='title'||k==='key'||k==='mod'){const li=$$('.list-item').find(l=>l.dataset.id===it.id);if(li){const t=li.querySelector('.grow'),k=li.querySelector('.k');if(t)t.textContent=it.title||'(제목 없음)';if(k)k.textContent=keyStr(it)}}syncLib(it)}
   svc.version=Math.max(svc.version,(svc.published?svc.published.version:0));touch(svc);save()};
  app.onchange=async e=>{
   if(e.target.dataset.md){const it=curItem(svc);const md=it&&it.media.find(x=>x.id===e.target.dataset.id);if(!md)return;const v=e.target.value.trim();md[e.target.dataset.md]=v?parseT(v):0;if(md.end&&md.start&&md.end<=md.start){md.end=0;e.target.value='';toast('끝은 시작보다 뒤여야 해요')}touch(svc);save();syncLib(it);return}

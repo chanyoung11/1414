@@ -14,6 +14,7 @@ def run():
     pg.click('[data-act="add-item"]'); pg.wait_for_timeout(300)
     pg.fill('[data-f="item.title"]','우리 주 하나님'); pg.fill('[data-f="item.key"]','A'); pg.fill('[data-f="item.mod"]','')
     pg.fill('[data-f="item.form"]','1414 – AAB – Int(2(G D-A)) – AABB – (Key up)CDD(Brk)D – E반복 – E – F반복'); pg.wait_for_timeout(200)
+    assert pg.locator('.list-item .grow').first.inner_text().strip()=='우리 주 하나님', 'list row title not live-updated'; assert pg.locator('.list-item .num').first.inner_text().strip()=='1', 'num badge overwritten'
     print('chips:', pg.locator('#formchips .chip').count())
     pg.set_input_files('#pieceFile', ['docs/sample_sheet.jpg']); pg.wait_for_timeout(2500)
     st=pg.evaluate("()=>JSON.parse(JSON.stringify(window.CONTI.S))")
