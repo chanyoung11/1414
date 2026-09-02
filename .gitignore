@@ -1,0 +1,6 @@
+node_modules/
+.env
+.env.local
+.vercel/
+t_*.png
+tests/__pycache__/

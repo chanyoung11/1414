@@ -1,0 +1,219 @@
+// 콘티 API — 계정 · 팀 · 초대. Vercel 서버리스 함수 하나에 작은 라우터.
+// 로컬: npm run dev (scripts/dev.mjs가 이 핸들러를 /api/* 에 그대로 붙임)
+import { q, one } from '../lib/db.js';
+import { sessionUserId, sessionCookie, clearSessionCookie, randomToken } from '../lib/session.js';
+import { hashPassword, verifyPassword, USERNAME_RE, PASSWORD_MIN } from '../lib/password.js';
+
+class HttpError extends Error { constructor(status, code, message) { super(message || code); this.status = status; this.code = code; } }
+const bad = (m) => new HttpError(400, 'bad_request', m);
+const noAuth = () => new HttpError(401, 'unauthorized', '로그인이 필요해요');
+const forbidden = (m) => new HttpError(403, 'forbidden', m || '권한이 없어요');
+const notFound = (m) => new HttpError(404, 'not_found', m || '없어요');
+
+/* ---------- 요청/응답 도우미 ---------- */
+async function readBody(req) {
+  if (req.body !== undefined && req.body !== null) return typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body;
+  return new Promise((res, rej) => {
+    let s = ''; req.setEncoding('utf8');
+    req.on('data', (c) => { s += c; if (s.length > 1e6) rej(bad('요청이 너무 커요')); });
+    req.on('end', () => { try { res(s ? JSON.parse(s) : {}); } catch { rej(bad('JSON이 아니에요')); } });
+    req.on('error', rej);
+  });
+}
+function send(res, status, data, headers) {
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  for (const k in headers || {}) res.setHeader(k, headers[k]);
+  res.end(JSON.stringify(data));
+}
+const str = (v, max = 200) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+const strList = (v) => Array.isArray(v) ? v.map((s) => str(s, 40)).filter(Boolean).slice(0, 30) : null;
+
+/* ---------- 도메인 ---------- */
+const memberView = (t, m) => ({
+  teamId: t.id, teamName: t.name, sessions: t.sessions, phrases: t.phrases,
+  invite: m.role === 'leader' ? t.invite_token : undefined,
+  me: { userId: m.user_id, name: m.name, session: m.session, role: m.role },
+});
+async function membership(uid, teamId) {
+  return one(`select t.*, m.user_id, m.name as mname, m.session, m.role from members m join teams t on t.id=m.team_id
+              where m.user_id=$1 ${teamId ? 'and m.team_id=$2' : ''} order by m.created_at asc limit 1`, teamId ? [uid, teamId] : [uid]);
+}
+const viewOf = (row) => row && memberView(row, { user_id: row.user_id, name: row.mname, session: row.session, role: row.role });
+async function requireMember(uid, teamId, role) {
+  const m = await membership(uid, teamId);
+  if (!m) throw forbidden('이 팀의 멤버가 아니에요');
+  if (role === 'leader' && m.role !== 'leader') throw forbidden('인도자만 할 수 있어요');
+  return m;
+}
+async function meView(uid) {
+  const u = await one('select id, username, display_name from users where id=$1', [uid]);
+  if (!u) throw noAuth();
+  const rows = await q(`select t.*, m.user_id, m.name as mname, m.session, m.role from members m join teams t on t.id=m.team_id
+                        where m.user_id=$1 order by m.created_at asc`, [uid]);
+  return { user: { id: u.id, username: u.username, name: u.display_name }, team: rows[0] ? viewOf(rows[0]) : null, teams: rows.map(viewOf) };
+}
+function pickSession(team, s) {
+  const list = team.sessions || [];
+  return list.includes(s) ? s : (list[0] || '');
+}
+
+/* ---------- 라우트 ---------- */
+const routes = [];
+const on = (method, pattern, fn) => routes.push({ method, re: new RegExp('^' + pattern.replace(/:(\w+)/g, '(?<$1>[^/]+)') + '$'), fn });
+
+on('GET', '/health', async () => ({ ok: true, app: 'conti' }));
+
+on('POST', '/auth/signup', async ({ req, body }) => {
+  const username = str(body.username, 40).toLowerCase(), password = String(body.password || ''), name = str(body.name, 40);
+  if (!USERNAME_RE.test(username)) throw bad('아이디는 3~20자, 영문 소문자·숫자·. _ - 만 쓸 수 있어요');
+  if (password.length < PASSWORD_MIN) throw bad(`비밀번호는 ${PASSWORD_MIN}자 이상이에요`);
+  if (!name) throw bad('이름을 적어 주세요');
+  if (await one('select 1 from users where username=$1', [username])) throw new HttpError(409, 'taken', '이미 쓰는 아이디예요');
+  const u = await one('insert into users(username, password_hash, display_name, last_login_at) values($1,$2,$3,now()) returning id', [username, hashPassword(password), name]);
+  return { data: await meView(u.id), headers: { 'Set-Cookie': sessionCookie(req, u.id) } };
+});
+
+on('POST', '/auth/login', async ({ req, body }) => {
+  const username = str(body.username, 40).toLowerCase(), password = String(body.password || '');
+  const u = await one('select id, password_hash from users where username=$1', [username]);
+  if (!u || !verifyPassword(password, u.password_hash)) throw new HttpError(401, 'bad_login', '아이디 또는 비밀번호가 맞지 않아요');
+  await q('update users set last_login_at=now() where id=$1', [u.id]);
+  return { data: await meView(u.id), headers: { 'Set-Cookie': sessionCookie(req, u.id) } };
+});
+
+on('POST', '/auth/logout', async ({ req }) => ({ data: { ok: true }, headers: { 'Set-Cookie': clearSessionCookie(req) } }));
+
+on('POST', '/auth/password', async ({ uid, body }) => {
+  if (!uid) throw noAuth();
+  const cur = String(body.current || ''), next = String(body.next || '');
+  if (next.length < PASSWORD_MIN) throw bad(`비밀번호는 ${PASSWORD_MIN}자 이상이에요`);
+  const u = await one('select password_hash from users where id=$1', [uid]);
+  if (!verifyPassword(cur, u.password_hash)) throw new HttpError(401, 'bad_login', '현재 비밀번호가 맞지 않아요');
+  await q('update users set password_hash=$2 where id=$1', [uid, hashPassword(next)]);
+  return { ok: true };
+});
+
+on('GET', '/me', async ({ uid }) => { if (!uid) throw noAuth(); return meView(uid); });
+
+// 내 이름·세션(팀 안에서) 바꾸기
+on('PATCH', '/me', async ({ uid, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  const m = await requireMember(uid, teamId);
+  const name = str(body.name, 40) || m.mname, session = pickSession(m, str(body.session, 40) || m.session);
+  await q('update members set name=$3, session=$4 where user_id=$1 and team_id=$2', [uid, teamId, name, session]);
+  await q('update users set display_name=$2 where id=$1', [uid, name]);
+  return viewOf(await membership(uid, teamId));
+});
+
+on('POST', '/teams', async ({ uid, body }) => {
+  if (!uid) throw noAuth();
+  const name = str(body.name, 60), myName = str(body.myName, 40);
+  if (!name) throw bad('팀 이름을 적어 주세요');
+  if (!myName) throw bad('내 이름을 적어 주세요');
+  const t = await one('insert into teams(name, invite_token, created_by) values($1,$2,$3) returning *', [name, randomToken(12), uid]);
+  const session = pickSession(t, str(body.session, 40) || '인도자');
+  await q('insert into members(user_id, team_id, name, session, role) values($1,$2,$3,$4,$5)', [uid, t.id, myName, session, 'leader']);
+  return viewOf(await membership(uid, t.id));
+});
+
+on('GET', '/teams/:id', async ({ uid, params }) => {
+  if (!uid) throw noAuth();
+  const m = await requireMember(uid, params.id);
+  const members = await q('select user_id as "userId", name, session, role, created_at as "joinedAt" from members where team_id=$1 order by created_at asc', [params.id]);
+  return { ...viewOf(m), members };
+});
+
+on('PATCH', '/teams/:id', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  await requireMember(uid, params.id, 'leader');
+  const name = str(body.name, 60), sessions = strList(body.sessions), phrases = strList(body.phrases);
+  if (sessions && !sessions.length) throw bad('세션은 하나 이상 있어야 해요');
+  await q(`update teams set name=coalesce(nullif($2,''), name), sessions=coalesce($3::jsonb, sessions), phrases=coalesce($4::jsonb, phrases) where id=$1`,
+    [params.id, name, sessions ? JSON.stringify(sessions) : null, phrases ? JSON.stringify(phrases) : null]);
+  if (sessions) await q(`update members set session=$2 where team_id=$1 and not (session = any($3::text[]))`, [params.id, sessions[0], sessions]);
+  return viewOf(await membership(uid, params.id));
+});
+
+on('POST', '/teams/:id/invite/rotate', async ({ uid, params }) => {
+  if (!uid) throw noAuth();
+  await requireMember(uid, params.id, 'leader');
+  await q('update teams set invite_token=$2 where id=$1', [params.id, randomToken(12)]);
+  return viewOf(await membership(uid, params.id));
+});
+
+on('PATCH', '/teams/:id/members/:userId', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  await requireMember(uid, params.id, 'leader');
+  const role = str(body.role, 20);
+  if (!['leader', 'session_lead', 'member'].includes(role)) throw bad('역할이 이상해요');
+  if (params.userId === uid && role !== 'leader') {
+    const n = await one('select count(*)::int as n from members where team_id=$1 and role=$2', [params.id, 'leader']);
+    if (n.n <= 1) throw bad('인도자가 한 명뿐이라 역할을 내릴 수 없어요. 먼저 다른 사람을 인도자로 지정하세요');
+  }
+  const r = await q('update members set role=$3 where team_id=$1 and user_id=$2 returning user_id', [params.id, params.userId, role]);
+  if (!r.length) throw notFound('그 멤버가 없어요');
+  return { ok: true };
+});
+
+on('DELETE', '/teams/:id/members/:userId', async ({ uid, params }) => {
+  if (!uid) throw noAuth();
+  const m = await requireMember(uid, params.id);
+  const self = params.userId === uid;
+  if (!self && m.role !== 'leader') throw forbidden('인도자만 내보낼 수 있어요');
+  if (self && m.role === 'leader') {
+    const n = await one('select count(*)::int as n from members where team_id=$1 and role=$2', [params.id, 'leader']);
+    if (n.n <= 1) throw bad('인도자가 한 명뿐이라 나갈 수 없어요. 먼저 다른 사람을 인도자로 지정하세요');
+  }
+  await q('delete from members where team_id=$1 and user_id=$2', [params.id, params.userId]);
+  return { ok: true };
+});
+
+on('GET', '/invite/:token', async ({ uid, params }) => {
+  if (!uid) throw noAuth();
+  const t = await one('select id, name, sessions from teams where invite_token=$1', [params.token]);
+  if (!t) throw notFound('초대 링크가 만료됐거나 잘못됐어요');
+  const n = await one('select count(*)::int as n from members where team_id=$1', [t.id]);
+  const mine = await membership(uid, t.id);
+  return { teamName: t.name, sessions: t.sessions, count: n.n, alreadyMember: !!mine };
+});
+
+on('POST', '/invite/:token/join', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  const t = await one('select * from teams where invite_token=$1', [params.token]);
+  if (!t) throw notFound('초대 링크가 만료됐거나 잘못됐어요');
+  const name = str(body.name, 40);
+  if (!name) throw bad('이름을 적어 주세요');
+  const session = pickSession(t, str(body.session, 40));
+  await q(`insert into members(user_id, team_id, name, session, role) values($1,$2,$3,$4,'member')
+           on conflict (user_id, team_id) do update set name=excluded.name, session=excluded.session`, [uid, t.id, name, session]);
+  await q('update users set display_name=$2 where id=$1', [uid, name]);
+  return viewOf(await membership(uid, t.id));
+});
+
+/* ---------- 진입점 ---------- */
+export default async function handler(req, res) {
+  try {
+    const url = new URL(req.url, 'http://local');
+    const path = url.pathname.replace(/^\/api/, '').replace(/\/+$/, '') || '/';
+    const method = req.method.toUpperCase();
+    const route = routes.find((r) => r.method === method && r.re.test(path));
+    if (!route) {
+      if (routes.some((r) => r.re.test(path))) throw new HttpError(405, 'method_not_allowed', '허용되지 않는 방식이에요');
+      throw notFound('그런 API는 없어요');
+    }
+    if (method !== 'GET' && req.headers['x-conti'] !== '1') throw forbidden('앱에서만 호출할 수 있어요');
+    const params = path.match(route.re).groups || {};
+    const body = method === 'GET' ? {} : await readBody(req);
+    const uid = sessionUserId(req);
+    const out = await route.fn({ req, uid, params, body, url });
+    if (out && out.headers && 'data' in out) return send(res, 200, out.data, out.headers);
+    return send(res, 200, out);
+  } catch (e) {
+    if (e instanceof HttpError) return send(res, e.status, { error: e.code, message: e.message });
+    console.error(e);
+    return send(res, 500, { error: 'server', message: '서버 오류가 났어요' });
+  }
+}

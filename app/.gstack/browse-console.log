@@ -1,0 +1,9 @@
+[2026-09-02T17:09:29.124Z] [warning] seed SyntaxError: Unterminated string in JSON at position 157938 (line 1 column 157939)
+    at JSON.parse (<anonymous>)
+    at boot (http://localhost:8765/_demo.html:923:96)
+[2026-09-02T17:09:50.389Z] [warning] No available adapters.
+[2026-09-02T17:10:15.213Z] [warning] No available adapters.
+[2026-09-02T17:10:31.436Z] [warning] No available adapters.
+[2026-09-02T17:11:17.758Z] [warning] seed SyntaxError: Unterminated string in JSON at position 157938 (line 1 column 157939)
+    at JSON.parse (<anonymous>)
+    at boot (http://localhost:8765/_demo.html?x=1:923:96)
