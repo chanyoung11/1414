@@ -234,7 +234,8 @@ html.dark .songbar::placeholder{color:rgba(10,10,10,.5)}
 .gutter::before{content:"";position:absolute;top:0;bottom:0;left:-8px;right:-8px}
 .gutter::after{content:"";position:absolute;left:2px;top:50%;width:2px;height:36px;margin-top:-18px;border-radius:1px;background:var(--border-2)}
 .gutter:hover::after,.gutter.drag::after{background:var(--fg)}
-.panel{background:var(--card);border:1px solid var(--border);border-radius:var(--r-xl);display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden;box-shadow:var(--shadow-card)}
+.panel{background:var(--card);border:1px solid var(--border);border-radius:var(--r-xl);display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden;box-shadow:var(--shadow-card);position:relative}
+.panel.drop::after{content:"악보 사진을 여기에 놓으세요";position:absolute;inset:6px;border:2px dashed var(--fg);border-radius:var(--r-lg);background:var(--surface-medium);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;z-index:5;pointer-events:none}
 .ptab{display:flex;align-items:center;gap:8px;height:40px;padding:0 10px 0 14px;background:var(--card);border-bottom:1px solid var(--border);flex:0 0 auto;overflow-x:auto;scrollbar-width:none}
 .ptab::-webkit-scrollbar{display:none}
 .ptab .tab,.ptab .sub,.ptab .btn,.seg button,.ptab .chip{white-space:nowrap;flex:0 0 auto}
@@ -540,9 +541,9 @@ function editorHTML(svc){
     <div class="pbody">${it?itemEditorHTML(svc,it):'<div class="empty">위에서 곡을 선택하거나 추가하세요</div>'}</div></div>
   </div>
   <div class="gutter" title="드래그해서 폭 조절"></div>
-  <div class="panel">${ptab('악보',it?'':'',`<div class="seg"><button class="${sel.tool==='marker'?'on':''}" data-act="tool" data-t="marker">${ic('marker')}마커</button><button class="${sel.tool==='hl'?'on':''}" data-act="tool" data-t="hl">${ic('hl')}하이라이트</button><button class="${sel.tool==='memo'?'on':''}" data-act="tool" data-t="memo">${ic('note')}메모</button></div>${it?`<label class="btn sm" for="pieceFile">${ic('camera')}조각 추가</label><input id="pieceFile" type="file" accept="image/*" multiple style="display:none">`:''}`)}
+  <div class="panel" id="edsheet">${ptab('악보',it?'':'',`<div class="seg"><button class="${sel.tool==='marker'?'on':''}" data-act="tool" data-t="marker">${ic('marker')}마커</button><button class="${sel.tool==='hl'?'on':''}" data-act="tool" data-t="hl">${ic('hl')}하이라이트</button><button class="${sel.tool==='memo'?'on':''}" data-act="tool" data-t="memo">${ic('note')}메모</button></div>${it?`<label class="btn sm" for="pieceFile">${ic('camera')}조각 추가</label><input id="pieceFile" type="file" accept="image/*" multiple style="display:none">`:''}`)}
    <div class="sheetwrap" id="sheetwrap"><div class="sheet" id="sheet">${it?'':'<div class="empty">왼쪽에서 곡을 추가하세요</div>'}</div></div>
-   ${it&&it.pieces.length?`<div class="pfoot">${it.pieces.map((p,i)=>`<span class="chip t">조각 ${i+1}<button class="icon sm ghost" data-act="mv-piece" data-id="${p.id}" data-d="-1">${ic('left')}</button><button class="icon sm ghost" data-act="mv-piece" data-id="${p.id}" data-d="1">${ic('right')}</button><button class="icon sm ghost" data-act="del-piece" data-id="${p.id}">${ic('x')}</button></span>`).join('')}<span class="hint">${sel.tool==='marker'?'악보를 탭하면 마커 · 마커를 탭하면 절단선·삭제':sel.tool==='hl'?'드래그해서 노란 사각형 · 탭하면 삭제':'마커를 탭하면 인도자 메모'}</span></div>`:''}
+   ${it&&it.pieces.length?`<div class="pfoot">${it.pieces.map((p,i)=>`<span class="chip t">조각 ${i+1}<button class="icon sm ghost" data-act="mv-piece" data-id="${p.id}" data-d="-1">${ic('left')}</button><button class="icon sm ghost" data-act="mv-piece" data-id="${p.id}" data-d="1">${ic('right')}</button><button class="icon sm ghost" data-act="del-piece" data-id="${p.id}">${ic('x')}</button></span>`).join('')}<span class="hint">${sel.tool==='marker'?'악보를 탭하면 마커 · 마커를 탭하면 절단선·삭제 · 사진은 끌어다 놓거나 붙여넣기(⌘V)':sel.tool==='hl'?'드래그해서 노란 사각형 · 탭하면 삭제':'마커를 탭하면 인도자 메모'}</span></div>`:''}
   </div>
  </div>`;
 }
@@ -686,6 +687,19 @@ function openComposer(svc,it,o){ // o: {marker, leader, t, mediaId}
    save();closeModal();toast('메모 저장');
    if(route().name==='edit')render();else{redrawPlay();P.resumeIfPaused()}
   }
+ };
+}
+function noteMenu(svc,it,nid){
+ const n=(it.notes||[]).find(x=>x.id===nid);if(!n){toast('이 메모는 여기서 지울 수 없어요');return}
+ const m=markerOf(it,n.marker);const my=me();
+ const mine=n.layer!=='leader'&&n.author===(my.name||'나');const canDel=isLeader()||mine;
+ const who=n.layer==='leader'?'인도자 메모':n.layer==='session'?(n.session||'세션')+' 공유 메모':'내 메모';
+ modal(`<div class="row sb"><div class="row">${m?`<span class="mk">${esc(m.label)}</span>`:''}<b style="font-size:17px">${esc(who)}</b>${n.layer==='leader'&&n.session?`<span class="pill">${esc(n.session)}</span>`:''}</div><button class="icon sm ghost" data-close="1">${ic('x')}</button></div>
+  <p style="font-size:16px;margin:14px 0 4px;word-break:break-word">${esc(n.text)}</p><div class="hint">${esc(n.author||'')}${n.at?' · '+new Date(n.at).toLocaleDateString('ko-KR'):''}</div>
+  <div class="row" style="margin-top:18px;justify-content:space-between">${canDel?`<button class="btn danger" id="nmDel">${ic('trash')}메모 삭제</button>`:'<span class="hint">본인이 쓴 메모만 지울 수 있어요</span>'}<button class="btn" data-close="1">닫기</button></div>`,{center:true});
+ $('#modal').onclick=e=>{
+  if(e.target.closest('[data-close]')){closeModal();P.resumeIfPaused();return}
+  if(e.target.closest('#nmDel')){it.notes=it.notes.filter(x=>x.id!==nid);save();closeModal();toast('메모를 지웠어요');if(route().name==='edit'){touch(svc);render()}else{redrawPlay();P.resumeIfPaused()}}
  };
 }
 function publishModal(svc){
@@ -1015,6 +1029,9 @@ function initSongDrag(svc){const first=$('.list-item');if(!first)return;const li
  list.addEventListener('pointerup',done);list.addEventListener('pointercancel',done)}
 function autoGrow(t){if(!t||t.tagName!=='TEXTAREA')return;t.style.height='auto';t.style.height=(t.scrollHeight+2)+'px'}
 function drawEditorSheet(svc){const it=curItem(svc);const sh=$('#sheet');if(!it||!sh)return;const W=sh.clientWidth-56;sh.classList.toggle('hltool',SEL[svc.id].tool==='hl');const sw=$('#sheetwrap');const st=sw?sw.scrollTop:0;sh.innerHTML=sheetHTML(it,Math.max(200,W),{mode:'edit',tool:SEL[svc.id].tool});if(sw)sw.scrollTop=st}
+async function addPieces(svc,it,files){files=Array.from(files||[]).filter(f=>/^image\//.test(f.type));if(!it||!files.length){if(files&&!files.length)toast('이미지 파일만 넣을 수 있어요');return}toast('이미지 처리 중…');let fixes=[];for(const f of files){try{const r=await importImage(f);const id=uid();await IDB.put('blobs',id,r.blob);it.pieces.push({id,blob:id,w:r.w,h:r.h,gaps:r.gaps,markers:[],hls:[],name:''});const fx=[];if(Math.abs(r.fix.angle)>=0.3)fx.push('기울기 '+(r.fix.angle>0?'+':'')+r.fix.angle.toFixed(1)+'°');if(r.fix.photo)fx.push('명암');if(r.fix.trimmed)fx.push('여백');if(fx.length)fixes.push(fx.join('·'))}catch(err){console.error(err);toast('이미지를 읽지 못했어요')}}
+   if(fixes.length)setTimeout(()=>toast('자동 정리: '+fixes.join(' / ')+' · 줄 사이 여백 '+(it.pieces[it.pieces.length-1].gaps||[]).length+'곳 인식'),300);
+   touch(svc);save();syncLib(it);await preload(svc);render()}
 function afterEditor(svc){
  drawEditorSheet(svc);initGutter(()=>drawEditorSheet(svc));$$('textarea.songbar').forEach(autoGrow);initSongDrag(svc);
  const app=$('#app');
@@ -1025,11 +1042,16 @@ function afterEditor(svc){
   svc.version=Math.max(svc.version,(svc.published?svc.published.version:0));touch(svc);save()};
  app.onchange=async e=>{
   if(e.target.dataset.md){const it=curItem(svc);const md=it&&it.media.find(x=>x.id===e.target.dataset.id);if(!md)return;const v=e.target.value.trim();md[e.target.dataset.md]=v?parseT(v):0;if(md.end&&md.start&&md.end<=md.start){md.end=0;e.target.value='';toast('끝은 시작보다 뒤여야 해요')}touch(svc);save();syncLib(it);return}
-  if(e.target.id==='pieceFile'){const it=curItem(svc);if(!it)return;toast('이미지 처리 중…');let fixes=[];for(const f of e.target.files){try{const r=await importImage(f);const id=uid();await IDB.put('blobs',id,r.blob);it.pieces.push({id,blob:id,w:r.w,h:r.h,gaps:r.gaps,markers:[],hls:[],name:''});const fx=[];if(Math.abs(r.fix.angle)>=0.3)fx.push('기울기 '+(r.fix.angle>0?'+':'')+r.fix.angle.toFixed(1)+'°');if(r.fix.photo)fx.push('명암');if(r.fix.trimmed)fx.push('여백');if(fx.length)fixes.push(fx.join('·'))}catch(err){console.error(err);toast('이미지를 읽지 못했어요')}}
-   if(fixes.length)setTimeout(()=>toast('자동 정리: '+fixes.join(' / ')+' · 줄 사이 여백 '+(it.pieces[it.pieces.length-1].gaps||[]).length+'곳 인식'),300);
-   touch(svc);save();syncLib(it);await preload(svc);render();return}
+  if(e.target.id==='pieceFile'){await addPieces(svc,curItem(svc),e.target.files);return}
   if(e.target.id==='audFile'){const it=curItem(svc);const f=e.target.files[0];if(!it||!f)return;if(f.size>60*1024*1024){toast('60MB 이하만');return}const id=uid();await IDB.put('blobs',id,f);it.media.push({id,type:'audio',blob:id,name:f.name,notes:[]});touch(svc);save();render();return}
  };
+ // 악보 사진 드래그 앤 드롭 / 붙여넣기
+ const sp=$('#edsheet');if(sp){let dragN=0;
+  sp.ondragenter=e=>{if(![...e.dataTransfer.types].includes('Files'))return;e.preventDefault();dragN++;sp.classList.add('drop')};
+  sp.ondragover=e=>{if(![...e.dataTransfer.types].includes('Files'))return;e.preventDefault();e.dataTransfer.dropEffect='copy'};
+  sp.ondragleave=()=>{if(--dragN<=0){dragN=0;sp.classList.remove('drop')}};
+  sp.ondrop=async e=>{e.preventDefault();dragN=0;sp.classList.remove('drop');await addPieces(svc,curItem(svc),e.dataTransfer.files)}}
+ document.onpaste=async e=>{if(route().name!=='edit'||$('#modal').firstChild)return;const tag=(e.target.tagName||'').toLowerCase();if(tag==='input'||tag==='textarea')return;const files=[...(e.clipboardData&&e.clipboardData.files||[])].filter(f=>/^image\//.test(f.type));if(files.length){e.preventDefault();await addPieces(svc,curItem(svc),files)}};
  // sheet interactions
  const sh=$('#sheet');let drag=null;let cut=null;
  sh.addEventListener('pointerdown',e=>{const cl=e.target.closest('.cutline');if(!cl)return;const it=curItem(svc);const m=markerOf(it,cl.dataset.cut);const p=pieceOfMarker(it,m.id);const sl=cl.closest('.slice');const s=sl.clientWidth/p.w;cut={cl,m,p,s,sl,start:+sl.dataset.start,h:sl.clientHeight};cl.classList.add('drag');cl.setPointerCapture(e.pointerId);e.preventDefault();e.stopPropagation()},true);
@@ -1042,6 +1064,7 @@ function afterEditor(svc){
  sh.onclick=e=>{
   if(e.target.closest('.cutline'))return;
   const tool=SEL[svc.id].tool;const it=curItem(svc);if(!it)return;
+  const nc=e.target.closest('[data-note]');if(nc){noteMenu(svc,it,nc.dataset.note);return}
   const mkEl=e.target.closest('[data-marker]');
   if(mkEl){const mid=mkEl.dataset.marker;if(tool==='memo'){openComposer(svc,it,{marker:mid,leader:true});return}markerMenu(svc,it,mid);return}
   if(tool==='hl'){const hlEl=e.target.closest('.hl[data-hl]');if(hlEl&&confirm('하이라이트를 지울까요?')){it.pieces.forEach(p=>p.hls=p.hls.filter(h=>h.id!==hlEl.dataset.hl));touch(svc);save();drawEditorSheet(svc)}return}
@@ -1087,6 +1110,10 @@ window.addEventListener('message',e=>{if(!P.yt||e.source!==P.yt.contentWindow)re
  if(d.event==='onReady'||d.event==='initialDelivery'){P.ytReady=true}
  if(d.event==='infoDelivery'&&d.info){if(d.info.currentTime!=null){P.t=d.info.currentTime}if(d.info.duration)P.dur=d.info.duration;if(d.info.playerState!=null)P.playing=d.info.playerState===1;updateTL()}});
 let PL={svc:null,idx:0,mi:0,stage:false,f:{leader:true,session:true,mine:true},session:null};
+function navSong(d){const svc=PL.svc;if(!svc)return;const pub=pubOrDraft(svc);const i=PL.idx+d;if(i<0||i>=pub.items.length){toast(d<0?'첫 곡이에요':'마지막 곡이에요');return}go('play/'+svc.id+'/'+i)}
+let swX=null,swY=null;
+document.addEventListener('touchstart',e=>{if(route().name!=='play'||!PL.stage||$('#modal').firstChild||e.touches.length!==1){swX=null;return}swX=e.touches[0].clientX;swY=e.touches[0].clientY},{passive:true});
+document.addEventListener('touchend',e=>{if(swX==null)return;const t=e.changedTouches[0];const dx=t.clientX-swX,dy=t.clientY-swY;swX=null;if(Math.abs(dx)>70&&Math.abs(dy)<60&&Math.abs(dx)>Math.abs(dy)*1.5)navSong(dx<0?1:-1)},{passive:true});
 function setStage(on){PL.stage=on;$('#app').classList.toggle('stage',on);$$('[data-act="stage"].switch').forEach(s=>s.classList.toggle('on',on));
  const de=document.documentElement;try{if(on){const rq=de.requestFullscreen||de.webkitRequestFullscreen;rq&&rq.call(de).catch&&rq.call(de).catch(()=>{})}else{const fe=document.fullscreenElement||document.webkitFullscreenElement;if(fe){const ex=document.exitFullscreen||document.webkitExitFullscreen;ex&&ex.call(document)}}}catch(e){}
  setTimeout(redrawPlay,60)}
@@ -1100,6 +1127,7 @@ function afterPlay(svc,idx){
  redrawPlay();selectMedia(0);initGutter(redrawPlay);
  const sh=$('#sheet');
  sh.onclick=e=>{const pub=pubOrDraft(svc);const it=pub.items[PL.idx];const live=svc.items.find(x=>x.id===it.id)||it;
+  const nc=e.target.closest('[data-note]');if(nc){P.pauseForComposer();noteMenu(svc,live,nc.dataset.note);return}
   const more=e.target.closest('[data-act="more"]');if(more){more.closest('.strip').classList.add('open');return}
   const add=e.target.closest('[data-act="memo"]')||e.target.closest('[data-marker]');if(add){const mid=add.dataset.marker;if(!markerOf(live,mid)){toast('발행본에 없는 마커');return}P.pauseForComposer();const md=it.media[PL.mi];openComposer(svc,live,{marker:mid,leader:isLeader(),t:P.t,mediaId:md&&md.id});return}
  };
@@ -1155,7 +1183,8 @@ document.addEventListener('keydown',e=>{
  if(e.key==='Enter'&&e.target.dataset&&e.target.dataset.tl==='text'){e.preventDefault();const b=e.target.closest('.tlEdit').querySelector('[data-act="add-tnote"]');b&&b.click();return}
  if(e.key==='Enter'&&e.target.id==='cText'){e.preventDefault();const b=$('#cSave');b&&b.click();return}
  if(route().name!=='play'||$('#modal').firstChild)return;const tag=(e.target.tagName||'').toLowerCase();if(tag==='input'||tag==='textarea'||tag==='select')return;
- if(e.key===' '){e.preventDefault();P.toggle()}else if(e.key==='ArrowLeft'){P.seek(Math.max(0,P.t-5))}else if(e.key==='ArrowRight'){P.seek(P.t+5)}
+ if(e.key===' '){e.preventDefault();P.toggle()}else if(e.key==='ArrowLeft'){if(PL.stage){e.preventDefault();navSong(-1)}else P.seek(Math.max(0,P.t-5))}else if(e.key==='ArrowRight'){if(PL.stage){e.preventDefault();navSong(1)}else P.seek(P.t+5)}
+ else if(PL.stage&&(e.key==='PageDown'||e.key==='PageUp')){e.preventDefault();navSong(e.key==='PageDown'?1:-1)}
 });
 document.addEventListener('click',async e=>{
  const el=e.target.closest('[data-act]');if(!el||el.closest('#modal'))return;const act=el.dataset.act;const r=route();const svc=svcById(el.dataset.id||r.a);
