@@ -1,4 +1,5 @@
-// 콘티 API — 계정 · 팀 · 초대. Vercel 서버리스 함수 하나에 작은 라우터.
+// 콘티 API — 계정 · 팀 · 초대. Vercel 서버리스 함수 하나(api/index.js)에 작은 라우터.
+// vercel.json 의 rewrite 가 /api/* 를 /api?p=<경로> 로 보내고, 여기서 p(또는 원래 pathname)로 라우팅합니다.
 // 로컬: npm run dev (scripts/dev.mjs가 이 핸들러를 /api/* 에 그대로 붙임)
 import { q, one } from '../lib/db.js';
 import { sessionUserId, sessionCookie, clearSessionCookie, randomToken } from '../lib/session.js';
@@ -197,7 +198,8 @@ on('POST', '/invite/:token/join', async ({ uid, params, body }) => {
 export default async function handler(req, res) {
   try {
     const url = new URL(req.url, 'http://local');
-    const path = url.pathname.replace(/^\/api/, '').replace(/\/+$/, '') || '/';
+    const raw = url.searchParams.has('p') ? '/' + url.searchParams.get('p') : url.pathname.replace(/^\/api/, '');
+    const path = raw.replace(/\/+$/, '').replace(/^\/*/, '/') || '/';
     const method = req.method.toUpperCase();
     const route = routes.find((r) => r.method === method && r.re.test(path));
     if (!route) {

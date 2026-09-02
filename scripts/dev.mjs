@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const appDir = path.join(root, 'app');
-const { default: api } = await import(path.join(root, 'api', '[...path].js'));
+const { default: api } = await import(path.join(root, 'api', 'index.js'));
 const PORT = +(process.env.PORT || 8766);
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.css': 'text/css' };
 

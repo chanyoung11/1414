@@ -4,3 +4,4 @@ node_modules/
 .vercel/
 t_*.png
 tests/__pycache__/
+.gstack/

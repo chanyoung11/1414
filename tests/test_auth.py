@@ -29,12 +29,12 @@ def run():
         login_or_signup(pg, LEADER, 'signup')
         pg.wait_for_selector('#gtTeam', timeout=8000)                       # 팀 없음 → 팀 만들기 화면
         pg.fill('#gtTeam', 'LIKE 찬양팀'); pg.click('#gtSess .q:has-text("인도자")'); pg.click('[data-act="team-create"]')
-        pg.wait_for_selector('[data-act="team"]', timeout=8000)            # 홈: 팀 버튼
-        head = pg.locator('.top').inner_text()
+        pg.wait_for_selector('.hd [data-act="team"]', timeout=8000)            # 홈: 팀 버튼
+        head = pg.locator('.hd').inner_text()
         if '하은' not in head or '인도자' not in head: fail('홈 헤더에 이름/역할 없음: ' + head)
         pg.screenshot(path='t_auth_home.png')
         # 초대 링크
-        pg.click('[data-act="team"]'); pg.wait_for_selector('#tmLink', timeout=8000)
+        pg.click('.hd [data-act="team"]'); pg.wait_for_selector('#tmLink', timeout=8000)
         link = pg.locator('#tmLink').inner_text().strip()
         if '#/join/' not in link: fail('초대 링크 없음: ' + link)
         n_members = pg.locator('#tmList .mrow').count()
@@ -48,10 +48,10 @@ def run():
         pm.click('[data-act="lg-mode"][data-m="signup"]'); pm.wait_for_selector('#lgName')
         pm.fill('#lgName', MEMBER[2]); pm.fill('#lgUser', MEMBER[0]); pm.fill('#lgPass', MEMBER[1]); pm.click('[data-act="lg-submit"]')
         pm.wait_for_selector('#jnName', timeout=8000)                       # 로그인 후 초대 화면으로 이어짐
-        if 'LIKE 찬양팀' not in pm.locator('.gate').inner_text(): fail('초대 화면에 팀 이름 없음')
+        if 'LIKE 찬양팀' not in pm.locator('.auth').inner_text(): fail('초대 화면에 팀 이름 없음')
         pm.click('#gtSess .q:has-text("드럼")'); pm.click('[data-act="team-join"]')
-        pm.wait_for_selector('[data-act="team"]', timeout=8000)
-        head = pm.locator('.top').inner_text()
+        pm.wait_for_selector('.hd [data-act="team"]', timeout=8000)
+        head = pm.locator('.hd').inner_text()
         if '민수' not in head or '드럼' not in head or '멤버' not in head: fail('멤버 헤더 이상: ' + head)
         if pm.locator('[data-act="new-svc"]').count(): fail('멤버에게 새 예배 버튼이 보임')
         pm.screenshot(path='t_auth_member.png')
@@ -60,32 +60,32 @@ def run():
         pm.goto(URL + '#/edit/svc1'); pm.wait_for_timeout(600)
         if not pm.url.replace('#/', '#').endswith('#view/svc1'): fail('멤버 편집 가드 실패: ' + pm.url)
         # 멤버가 팀 모달을 열면 초대 링크는 없고 멤버 목록만
-        pm.goto(URL + '#/home'); pm.wait_for_selector('[data-act="team"]'); pm.click('[data-act="team"]'); pm.wait_for_selector('#tmList', timeout=8000)
+        pm.goto(URL + '#/home'); pm.wait_for_selector('.hd [data-act="team"]'); pm.click('.hd [data-act="team"]'); pm.wait_for_selector('#tmList', timeout=8000)
         if pm.locator('#tmLink').count(): fail('멤버에게 초대 링크가 보임')
         if pm.locator('#tmList .mrow').count() != n_members + 1: fail('멤버 수 불일치')
         pm.keyboard.press('Escape')
         # 설정: 이름·세션 변경이 서버에 반영
-        pm.click('[data-act="settings"]'); pm.wait_for_selector('#sName')
+        pm.click('.hd [data-act="settings"]'); pm.wait_for_selector('#sName')
         if pm.locator('#sRole').count(): fail('온라인 모드에서 역할 토글이 보임')
         pm.fill('#sName', '민수2'); pm.click('#sSess .q:has-text("베이스")'); pm.click('#sOk'); pm.wait_for_timeout(600)
-        pm.reload(); pm.wait_for_selector('.top', timeout=8000); pm.wait_for_timeout(500)
-        head = pm.locator('.top').inner_text()
+        pm.reload(); pm.wait_for_selector('.hd', timeout=8000); pm.wait_for_timeout(500)
+        head = pm.locator('.hd').inner_text()
         if '민수2' not in head or '베이스' not in head: fail('설정 변경이 서버에 반영되지 않음: ' + head)
         print('member ok')
 
         # ---- 인도자: 멤버 역할을 세션리더로 → 멤버 쪽 재로그인 시 반영 ----
-        pg.click('[data-act="team"]'); pg.wait_for_selector('#tmList select', timeout=8000)
+        pg.click('.hd [data-act="team"]'); pg.wait_for_selector('#tmList select', timeout=8000)
         sel = pg.locator('#tmList .mrow').filter(has_text='민수2').locator('select')
         sel.select_option('session_lead'); pg.wait_for_timeout(500); pg.keyboard.press('Escape')
-        pm.reload(); pm.wait_for_selector('.top', timeout=8000); pm.wait_for_timeout(500)
-        if '세션리더' not in pm.locator('.top').inner_text(): fail('역할 변경 미반영: ' + pm.locator('.top').inner_text())
+        pm.reload(); pm.wait_for_selector('.hd', timeout=8000); pm.wait_for_timeout(500)
+        if '세션리더' not in pm.locator('.hd').inner_text(): fail('역할 변경 미반영: ' + pm.locator('.hd').inner_text())
         print('role ok')
 
         # ---- 로그아웃 → 로그인 화면, 잘못된 비밀번호 → 오류 문구 ----
-        pm.click('[data-act="settings"]'); pm.wait_for_selector('#sLogout'); pm.click('#sLogout'); pm.wait_for_selector('#lgUser', timeout=8000)
+        pm.click('.hd [data-act="settings"]'); pm.wait_for_selector('#sLogout'); pm.click('#sLogout'); pm.wait_for_selector('#lgUser', timeout=8000)
         pm.fill('#lgUser', MEMBER[0]); pm.fill('#lgPass', 'wrong!'); pm.click('[data-act="lg-submit"]'); pm.wait_for_timeout(600)
         if '맞지 않아요' not in pm.locator('#lgErr').inner_text(): fail('잘못된 비밀번호 안내 없음')
-        login_or_signup(pm, MEMBER, 'login'); pm.wait_for_selector('[data-act="team"]', timeout=8000)
+        login_or_signup(pm, MEMBER, 'login'); pm.wait_for_selector('.hd [data-act="team"]', timeout=8000)
         print('logout/login ok')
 
         # ---- 세션 쿠키 없이 API 직접 호출 → 401 ----
