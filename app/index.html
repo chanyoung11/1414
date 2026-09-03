@@ -9,9 +9,16 @@
 <meta name="color-scheme" content="light dark">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<meta name="apple-mobile-web-app-title" content="콘티">
+<meta name="apple-mobile-web-app-title" content="1414">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<meta property="og:title" content="1414 — 찬양팀 콘티 · 연습 · 무대">
+<meta property="og:description" content="곡 순서·키·송폼·악보·참고 영상을 한 화면에. 인도자가 발행하면 팀원은 자기 세션 메모와 함께 연습하고 무대에 섭니다.">
+<meta property="og:image" content="https://lets1414.vercel.app/og.png">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
 
-<title>콘티 — 찬양팀 콘티 · 연습 · 무대</title>
+<title>1414 — 찬양팀 콘티 · 연습 · 무대</title>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="preconnect" href="https://api.fontshare.com" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
@@ -371,6 +378,13 @@ html.dark .msgbody{background:#1C1C1C}
 .slice.tool .chd.edit{pointer-events:auto;cursor:pointer}
 .chdbox{position:absolute;border:1.5px dashed #C0392B;border-radius:3px;pointer-events:auto;cursor:pointer;z-index:2;background:rgba(192,57,43,.06)}
 .chordbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 8px -32px;padding:6px 8px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--panel2);font-size:12px}
+.logo{display:block;flex:0 0 auto;color:var(--fg)}
+.side .head{gap:10px}
+.logostack{display:flex;flex-direction:column;align-items:flex-start;gap:14px}
+.logostack.sm{align-items:center;gap:10px;margin-bottom:22px}
+.auth-side .logostack{color:#F2F2F2}
+.stagelogo{display:inline-flex;align-items:center;padding:0 12px 0 0;margin-left:0;color:inherit;flex:0 0 auto}
+.stagelogo .logo{color:inherit}
 .avatar{width:30px;height:30px;border-radius:50%;background:var(--primary);color:var(--primary-fg);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:0 0 auto}
 
 /* ---------- 인증·팀 게이트 (항상 다크, 2단) ---------- */
@@ -517,7 +531,7 @@ function homeHTML(){
   return `<div class="svcrow ${past?'past':''} rise d${Math.min(i,3)}" data-act="open-svc" data-id="${s.id}"><div class="date"><b>${esc(d.md)}</b><span>${esc(d.w)}</span></div><div class="grow"><div class="t">${esc(s.name||'(이름 없음)')}</div><div class="s"><span>${s.items.length}곡</span>${st}</div></div>
    <div class="row">${lead?`<button class="btn sm" data-act="edit-svc" data-id="${s.id}">${ic('pen')}편집</button>`:''}<button class="btn sm ${lead?'':'pri'}" data-act="view-svc" data-id="${s.id}">${ic('eye')}콘티</button>${lead?`<button class="icon sm ghost" data-act="del-svc" data-id="${s.id}" title="삭제">${ic('trash')}</button>`:''}</div></div>`}).join('');
  return `<div class="shell">
-  <aside class="side"><div class="box"><div class="head"><span class="brand">콘티</span><span class="pill">${on?esc(S.team.name||'팀'):'기기 전용'}</span></div><nav>${nav}</nav>
+  <aside class="side"><div class="box"><div class="head">${logoLockup(26)}<span class="pill">${on?esc(S.team.name||'팀'):'기기 전용'}</span></div><nav>${nav}</nav>
    <div class="foot"><span class="who"><b>${esc(m.name||'이름 없음')}</b><span>${esc(m.session)} · ${roleLabel(m.role)}</span></span></div></div></aside>
   <div class="main">
    <header class="hd"><div class="ttl"><h1>예배</h1><span class="date">${fmtToday()}</span></div>
@@ -634,7 +648,7 @@ function playHTML(svc,idx){
     </div></div>
   </div>
   <div class="gutter" title="드래그해서 폭 조절"></div>
-  <div class="panel" id="sheetpanel">${ptab('악보',`${it.pieces.length}조각`,`<span class="hint">마커 탭 = 메모</span>`)}<div class="stagebar"><button class="sbtn" data-act="pn" data-d="-1" ${prev?'':'disabled'}>${ic('left')}</button><span class="stagetitle">${idx+1}. ${esc(it.title||'')}${k?' / '+esc(k):''}</span><button class="sbtn" data-act="pn" data-d="1" ${next?'':'disabled'}>${ic('right')}</button><span class="stageform">${esc(it.form||'')}</span>${it.songNote?`<span class="stagenote">${esc(it.songNote)}</span>`:''}<span class="grow"></span><button class="sbtn" data-act="stage" title="무대 모드 끝내기">${ic('x')}</button></div><div class="sheetwrap" id="sheetwrap"><div class="sheet" id="sheet"></div></div></div>
+  <div class="panel" id="sheetpanel">${ptab('악보',`${it.pieces.length}조각`,`<span class="hint">마커 탭 = 메모</span>`)}<div class="stagebar"><span class="stagelogo">${logoSymbol(20)}</span><button class="sbtn" data-act="pn" data-d="-1" ${prev?'':'disabled'}>${ic('left')}</button><span class="stagetitle">${idx+1}. ${esc(it.title||'')}${k?' / '+esc(k):''}</span><button class="sbtn" data-act="pn" data-d="1" ${next?'':'disabled'}>${ic('right')}</button><span class="stageform">${esc(it.form||'')}</span>${it.songNote?`<span class="stagenote">${esc(it.songNote)}</span>`:''}<span class="grow"></span><button class="sbtn" data-act="stage" title="무대 모드 끝내기">${ic('x')}</button></div><div class="sheetwrap" id="sheetwrap"><div class="sheet" id="sheet"></div></div></div>
  </div>`;
 }
 
@@ -878,9 +892,9 @@ const SYNC={t:null,pulledAt:{},
  schedulePush(){if(!online())return;clearTimeout(SYNC.t);SYNC.t=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&/^(edit|view|play)$/.test(r.name))SYNC.pushNotes(svc)},700)}
 };
 const GATE={mode:'login',err:'',user:'',sess:'',preview:null};
-function authShell(inner){return `<div class="auth"><aside class="auth-side"><span class="brand">콘티</span><div><p class="kick">찬양팀 콘티 · 연습 · 무대</p><blockquote>“콘티 한 장으로<br>팀 전체가 같은 곳을 봅니다.”</blockquote><p class="desc">곡 순서와 키, 송폼, 악보, 참고 영상을 한 화면에. 인도자가 발행하면 팀원은 자기 세션 메모와 함께 연습하고 무대에 섭니다.</p>
- <ul><li>${ic('send')}발행 한 번으로 카톡 공유 문구까지 자동 생성</li><li>${ic('marker')}악보 위 마커에 붙는 세션별 메모</li><li>${ic('moon')}네트워크 없이도 열리는 무대 모드</li></ul></div><p class="copy">© 2026 콘티</p></aside><div class="auth-main"><div class="auth-box">${inner}</div></div></div>`}
-function loginHTML(){const m=GATE.mode;return authShell(`<div class="auth-card"><div class="mlogo"><span class="brand">콘티</span></div><h1>${m==='login'?'로그인':'회원가입'}</h1><p class="sub">${m==='login'?'팀 계정으로 로그인해 콘티를 함께 봅니다.':'아이디와 비밀번호만 있으면 바로 시작할 수 있어요.'}</p>
+function authShell(inner){return `<div class="auth"><aside class="auth-side"><div class="logostack">${logoSymbol(56)}${logoWordmark(47,'')}</div><div><p class="kick">찬양팀 콘티 · 연습 · 무대 — 1414</p><blockquote>“콘티 한 장으로<br>팀 전체가 같은 곳을 봅니다.”</blockquote><p class="desc">곡 순서와 키, 송폼, 악보, 참고 영상을 한 화면에. 인도자가 발행하면 팀원은 자기 세션 메모와 함께 연습하고 무대에 섭니다.</p>
+ <ul><li>${ic('send')}발행 한 번으로 카톡 공유 문구까지 자동 생성</li><li>${ic('marker')}악보 위 마커에 붙는 세션별 메모</li><li>${ic('moon')}네트워크 없이도 열리는 무대 모드</li></ul></div><p class="copy">© 2026 1414 · lets1414.com</p></aside><div class="auth-main"><div class="auth-box">${inner}</div></div></div>`}
+function loginHTML(){const m=GATE.mode;return authShell(`<div class="auth-card"><div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div><h1>${m==='login'?'로그인':'회원가입'}</h1><p class="sub">${m==='login'?'팀 계정으로 로그인해 콘티를 함께 봅니다.':'아이디와 비밀번호만 있으면 바로 시작할 수 있어요.'}</p>
  <div class="tabs"><button class="${m==='login'?'on':''}" data-act="lg-mode" data-m="login">로그인</button><button class="${m==='signup'?'on':''}" data-act="lg-mode" data-m="signup">회원가입</button></div>
  <div class="lbl">아이디</div><input class="field" id="lgUser" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="영문 소문자·숫자 3~20자" value="${esc(GATE.user)}">
  <div class="lbl">비밀번호</div><input class="field" id="lgPass" type="password" autocomplete="${m==='login'?'current-password':'new-password'}" placeholder="6자 이상">
@@ -888,7 +902,7 @@ function loginHTML(){const m=GATE.mode;return authShell(`<div class="auth-card">
  <div class="err" id="lgErr" role="alert">${esc(GATE.err)}</div>
  <button class="btn pri wide" data-act="lg-submit">${m==='login'?'로그인':'가입하고 시작'}</button>
  ${route().name==='join'?`<p class="fine">초대 링크로 오셨네요. 로그인하면 팀 가입으로 이어집니다.</p>`:''}</div>`)}
-function gateHTML(){const u=NET.user||{};return authShell(`<div class="auth-card"><div class="mlogo"><span class="brand">콘티</span></div><h1>${esc(u.name||u.username)}님, 반가워요</h1><p class="sub">아직 팀이 없어요. 초대 링크로 들어가거나 새 팀을 만드세요.</p>
+function gateHTML(){const u=NET.user||{};return authShell(`<div class="auth-card"><div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div><h1>${esc(u.name||u.username)}님, 반가워요</h1><p class="sub">아직 팀이 없어요. 초대 링크로 들어가거나 새 팀을 만드세요.</p>
  <div class="lbl">초대 링크로 가입</div><div class="row"><input class="field" id="gtLink" placeholder="인도자가 보낸 링크 또는 코드"><button class="btn" data-act="join-go">열기</button></div><div class="err" id="gtErr"></div></div>
  <div class="auth-card"><h2>팀 만들기</h2><p class="sub">인도자가 팀을 만들고 초대 링크를 카톡에 붙여요.</p>
  <div class="lbl">팀 이름</div><input class="field" id="gtTeam" placeholder="LIKE 찬양팀">
@@ -896,7 +910,7 @@ function gateHTML(){const u=NET.user||{};return authShell(`<div class="auth-card
  <div class="lbl">내 세션</div><div id="gtSess">${DEF_SESS.map(x=>`<button class="q ${x===(GATE.sess||'인도자')?'on':''}" data-s="${esc(x)}">${esc(x)}</button>`).join('')}</div>
  <div class="err" id="gtErr2"></div><button class="btn pri wide" data-act="team-create">${ic('plus')}팀 만들고 인도자로 시작</button>
  <div class="foot"><span class="hint">${esc(u.username||'')}</span><button class="btn sm ghost" data-act="logout">${ic('logout')}로그아웃</button></div></div>`)}
-function joinHTML(tok){const p=GATE.preview,u=NET.user||{};return authShell(`<div class="auth-card"><div class="mlogo"><span class="brand">콘티</span></div>
+function joinHTML(tok){const p=GATE.preview,u=NET.user||{};return authShell(`<div class="auth-card"><div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div>
  ${!p?`<h1>초대 확인 중…</h1><p class="sub">잠시만요.</p>`:p.error?`<h1>초대를 열 수 없어요</h1><p class="sub">${esc(p.error)}</p><button class="btn wide" style="margin-top:18px" data-act="go-home">처음으로</button>`:
  `<p class="kicker">팀 초대</p><h1 style="margin-top:6px">${esc(p.teamName)}</h1><p class="sub">멤버 ${p.count}명 · 이름과 세션만 고르면 바로 들어가요.</p>
   <div class="lbl">내 이름</div><input class="field" id="jnName" value="${esc(u.name||'')}">
@@ -933,7 +947,7 @@ async function teamModal(){
  $('#modal').onclick=async e=>{try{
   if(e.target.closest('#tmClose')){closeModal();render();return}
   if(e.target.closest('#tmCopy')){await copyText(link);toast('링크를 복사했어요');return}
-  if(e.target.closest('#tmKakao')){await copyText(`[${t.teamName}] 콘티 앱 초대\n아래 링크를 열어 가입하면 콘티를 같이 볼 수 있어요.\n${link}`);toast('카톡 문구를 복사했어요');return}
+  if(e.target.closest('#tmKakao')){await copyText(`[${t.teamName}] 1414 초대\n아래 링크를 열어 가입하면 콘티를 같이 볼 수 있어요.\n${link}`);toast('카톡 문구를 복사했어요');return}
   if(e.target.closest('#tmRotate')){if(!confirm('기존 링크는 못 쓰게 됩니다. 재발급할까요?'))return;applyMembership(await api('/teams/'+S.team.id+'/invite/rotate',{method:'POST'}));teamModal();return}
   const k=e.target.closest('[data-kick]');if(k){if(!confirm('이 멤버를 내보낼까요?'))return;await api('/teams/'+S.team.id+'/members/'+k.dataset.kick,{method:'DELETE'});teamModal();return}
   const sw=e.target.closest('[data-switch]');if(sw){applyMembership(await api('/teams/'+sw.dataset.switch));closeModal();render();return}
@@ -1068,6 +1082,14 @@ function chordEditModal(svc,it,p,cid,pos){const c=cid?(p.chords||[]).find(x=>x.i
   if(e.target.closest('#chDel')){p.chords=p.chords.filter(x=>x.id!==cid);finish();return}
   if(e.target.closest('#chOk')){const t=normAcc(inp.value);if(!isChordText(t)){toast('코드로 읽히지 않아요');inp.focus();return}
    if(c){c.text=t;c.fixed=true}else{const h=Math.round(p.w*0.018);p.chords=p.chords||[];p.chords.push({id:uid(),text:t,x:Math.round(pos.x),y:Math.round(pos.y-h/2),w:Math.round(h*0.62*t.length),h,conf:100,fixed:true})}finish()}}}
+
+/* ---------- 1414 로고 (design_handoff_1414_logo 지오메트리, 색은 currentColor) ---------- */
+const LG1='<polygon points="0,4 4,0 4,4"/><rect x="4" y="0" width="4" height="20"/>';
+const LG4='<rect x="7" y="0" width="4" height="20"/><rect x="0" y="12" width="11" height="4"/><polygon points="7,0 11,0 4,12 0,12"/>';
+const LGWM=`<g>${LG1}</g><g transform="translate(11,0)">${LG4}</g><g transform="translate(25,0)">${LG1}</g><g transform="translate(36,0)">${LG4}</g>`;
+const logoWordmark=(h,cls)=>`<svg class="logo wm ${cls||''}" viewBox="0 0 47 20" style="height:${h}px" fill="currentColor" role="img" aria-label="1414">${LGWM}</svg>`;
+const logoSymbol=(h,cls)=>`<svg class="logo sym ${cls||''}" viewBox="0 0 48 48" style="height:${h}px" role="img" aria-label="1414"><path d="M34.5,5.81 A21,21 0 1 0 44.28,18.56" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><g transform="translate(14.65,15.5) scale(0.85)" fill="currentColor"><g>${LG1}</g><g transform="translate(11,0)">${LG4}</g></g></svg>`;
+const logoLockup=(h,cls)=>`<svg class="logo lockup ${cls||''}" viewBox="0 0 83 28" style="height:${h}px" role="img" aria-label="1414"><path d="M20.12,4.05 A12.25,12.25 0 1 0 25.83,10.82" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/><g transform="translate(8.55,9.8) scale(0.496)" fill="currentColor"><g>${LG1}</g><g transform="translate(11,0)">${LG4}</g></g><g transform="translate(36,4)" fill="currentColor">${LGWM}</g></svg>`;
 /* ---------- media helpers ---------- */
 function ytId(u){if(!u)return null;const m=u.match(/(?:youtu\.be\/|v=|\/embed\/|\/shorts\/|\/live\/)([A-Za-z0-9_-]{6,})/);return m?m[1]:null}
 const mdSess=md=>Array.isArray(md&&md.sessions)?md.sessions.filter(Boolean):[];

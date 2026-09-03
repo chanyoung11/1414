@@ -1,12 +1,12 @@
 {
-  "name": "콘티 — 찬양팀 인계 도구",
-  "short_name": "콘티",
+  "name": "1414 — 찬양팀 콘티",
+  "short_name": "1414",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#131412",
-  "theme_color": "#131412",
+  "background_color": "#111213",
+  "theme_color": "#111213",
   "icons": [
     { "src": "icon-180.png", "sizes": "180x180", "type": "image/png" },
     { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }

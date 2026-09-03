@@ -1,7 +1,7 @@
 /* 콘티 service worker — 오프라인 지원.
    index.html: 네트워크 우선(새 버전 자동 반영), 실패 시 캐시.  나머지 같은 도메인 파일: 캐시 우선.  /api/ 는 절대 캐시하지 않음. */
-const CACHE = 'conti-shell-v2';
-const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-512.png'];
+const CACHE = 'conti-shell-v3';
+const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-512.png', './favicon-32.png', './favicon-16.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', e => {
