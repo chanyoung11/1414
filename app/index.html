@@ -156,6 +156,7 @@ html.dark .songbar::placeholder{color:rgba(10,10,10,.5)}
 .card{background:var(--card);border:1px solid var(--border);border-radius:var(--r-xl);padding:14px 16px;margin-bottom:10px;box-shadow:var(--shadow-card)}
 .row{display:flex;align-items:center;gap:8px}
 .row.sb{justify-content:space-between}
+.row.small{flex-wrap:wrap;row-gap:6px}.row.small>.hint{white-space:nowrap}
 .grow{flex:1;min-width:0}
 .muted{color:var(--muted-fg)}
 .small{font-size:13px}
@@ -377,6 +378,7 @@ html.dark .msgbody{background:#1C1C1C}
 .chd{position:absolute;color:#C0392B;font-weight:700;font-family:"Pretendard Variable","Pretendard",Arial,sans-serif;white-space:nowrap;pointer-events:none;z-index:2;text-shadow:0 0 2px #fff,0 0 2px #fff}
 .slice.tool .chd.edit{pointer-events:auto;cursor:pointer}
 .chdbox{position:absolute;border:1.5px dashed #C0392B;border-radius:3px;pointer-events:auto;cursor:pointer;z-index:2;background:rgba(192,57,43,.06)}
+.chordbar.slim{padding:2px 8px;background:transparent;border-style:dashed;justify-content:flex-end}
 .chordbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 8px -32px;padding:6px 8px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--panel2);font-size:12px}
 .logo{display:block;flex:0 0 auto;color:var(--fg)}
 .side .head{gap:10px}
@@ -456,6 +458,7 @@ const today=()=>new Date().toISOString().slice(0,10);
 const THEME={get(){try{return localStorage.getItem('conti-theme')||'system'}catch(e){return 'system'}},set(v){try{localStorage.setItem('conti-theme',v)}catch(e){}THEME.apply()},
  apply(){const v=THEME.get();const dark=v==='dark'||(v==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',dark);const mt=document.querySelector('meta[name=theme-color]');if(mt)mt.content=dark?'#0A0A0A':'#FAFAFA'},
  cycle(){const n={system:'dark',dark:'light',light:'system'}[THEME.get()];THEME.set(n);toast({system:'시스템 설정을 따라요',dark:'다크 모드',light:'라이트 모드'}[n]);render()}};
+window.addEventListener('pagehide',()=>{if(typeof SYNC!=='undefined')SYNC.flush()});document.addEventListener('visibilitychange',()=>{if(document.hidden&&typeof SYNC!=='undefined')SYNC.flush()});
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{if(THEME.get()==='system')THEME.apply()});
 const themeIcon=()=>({system:'monitor',dark:'moon',light:'sun'})[THEME.get()];const themeLabel=()=>({system:'시스템',dark:'다크',light:'라이트'})[THEME.get()];
 const fmtToday=()=>{const d=new Date();return `${d.getMonth()+1}월 ${d.getDate()}일 ${'일월화수목금토'[d.getDay()]}요일`};
@@ -532,10 +535,10 @@ function homeHTML(){
    <div class="row">${lead?`<button class="btn sm" data-act="edit-svc" data-id="${s.id}">${ic('pen')}편집</button>`:''}<button class="btn sm ${lead?'':'pri'}" data-act="view-svc" data-id="${s.id}">${ic('eye')}콘티</button>${lead?`<button class="icon sm ghost" data-act="del-svc" data-id="${s.id}" title="삭제">${ic('trash')}</button>`:''}</div></div>`}).join('');
  return `<div class="shell">
   <aside class="side"><div class="box"><div class="head">${logoLockup(26)}<span class="pill">${on?esc(S.team.name||'팀'):'기기 전용'}</span></div><nav>${nav}</nav>
-   <div class="foot"><span class="who"><b>${esc(m.name||'이름 없음')}</b><span>${esc(m.session)} · ${roleLabel(m.role)}</span></span></div></div></aside>
+   <div class="foot"><span class="who"><b>${esc(m.name||'이름 없음')}</b><span>${[m.session,roleLabel(m.role)].filter((x,i,a)=>x&&a.indexOf(x)===i).map(esc).join(' · ')}</span></span></div></div></aside>
   <div class="main">
    <header class="hd"><div class="ttl"><h1>예배</h1><span class="date">${fmtToday()}</span></div>
-    <div class="acts"><span class="pill">${esc(m.name||'이름 없음')} · ${esc(m.session)} · ${roleLabel(m.role)}</span>${on?`<button class="btn sm ghost" data-act="team">${ic('users')}${esc(S.team.name||'팀')}</button>`:''}<button class="icon ghost" data-act="settings" title="설정">${ic('gear')}</button></div></header>
+    <div class="acts"><span class="pill">${whoStr(m)}</span>${on?`<button class="btn sm ghost" data-act="team">${ic('users')}${esc(S.team.name||'팀')}</button>`:''}<button class="icon ghost" data-act="settings" title="설정">${ic('gear')}</button></div></header>
    <main>
     <div class="metrics rise"><div class="metric"><div class="v">${S.services.length}</div><div class="l">전체 예배</div></div><div class="metric"><div class="v">${upcoming}</div><div class="l">다가오는 예배</div></div><div class="metric"><div class="v">${pubN}</div><div class="l">발행된 콘티</div></div></div>
     <div class="sect-hd rise d1"><div><h2>예배 목록</h2><p>${on?`${esc(S.team.name)} 팀 · 인도자가 발행하면 자동으로 내려와요`:'이 기기에만 저장돼요. 팀에 보내려면 내보내기 파일을 카톡으로 보내세요'}</p></div>
@@ -600,7 +603,7 @@ function itemEditorHTML(svc,it){const sel=SEL[svc.id]||(SEL[svc.id]={});
 function viewerHTML(svc){
  const pub=pubOrDraft(svc);const my=me();const sess=VF.session||my.session;
  const ctx={mode:'play',session:sess,f:{leader:true,session:true,mine:true,chords:true}};
- return `<div class="top"><button class="icon ghost" data-act="home">${ic('back')}</button><h1>${esc(pub.name||'예배')}<span class="pill ${pub.draft?'':'amber'}">${pub.draft?'미발행 초안':'v'+pub.version}</span></h1>
+ return `<div class="top"><button class="icon ghost" data-act="home">${ic('back')}</button><h1>${esc(pub.name||'예배')}<span class="pill ${pub.draft?'':'amber'}">${pub.draft?(svc.published?`초안 미리보기 · 발행본 v${svc.published.version}${svc.version>svc.published.version?'과 다름':'과 같음'}`:'미발행 초안'):'v'+pub.version}</span></h1>
   ${pub.message?`<button class="icon ghost ${msgUnread(svc)?'dot':''}" data-act="msg" data-id="${svc.id}" title="인도자의 글">${ic('note')}</button>`:''}<button class="btn" data-act="play" data-id="${svc.id}" data-i="0">${ic('play')}연습</button><button class="btn pri" data-act="play" data-id="${svc.id}" data-i="0" data-stage="1">${ic('moon')}무대</button></div>
   <div class="ws" style="grid-template-columns:minmax(0,1fr)">
    <div class="panel">${ptab('콘티',pub.items.length+'곡',`<span class="hint" style="margin-right:6px">세션</span><div class="seg">${S.team.sessions.filter(s=>s!=='인도자').map(s=>`<button class="${s===sess?'on':''}" data-act="vsess" data-s="${esc(s)}">${esc(s)}</button>`).join('')}</div>`)}
@@ -643,7 +646,7 @@ function playHTML(svc,idx){
      ${it.songNote?`<div class="muted small">${esc(it.songNote)}</div>`:''}
      <div class="filters" style="display:flex;flex-direction:column;gap:8px">
       <div class="row" style="flex-wrap:wrap;gap:6px"><span class="hint" style="width:32px">보기</span><div class="seg">${S.team.sessions.filter(s=>s!=='인도자').map(s=>`<button class="${s===sess?'on':''}" data-act="psess" data-s="${esc(s)}">${esc(s)}</button>`).join('')}</div></div>
-      <div class="row" style="flex-wrap:wrap;gap:6px"><span class="hint" style="width:32px">메모</span><button class="chip ${PL.f.leader?'on':''}" data-act="pf" data-k="leader">인도자</button><button class="chip ${PL.f.session?'on':''}" data-act="pf" data-k="session">${esc(sess)}</button><button class="chip ${PL.f.chords!==false?'on':''}" data-act="pf" data-k="chords" title="연주 키로 옮긴 코드를 빨간 글씨로">전조 코드</button><button class="chip ${PL.f.mine?'on':''}" data-act="pf" data-k="mine">내 것</button></div>
+      <div class="row" style="flex-wrap:wrap;gap:6px"><span class="hint" style="width:32px">메모</span><button class="chip ${PL.f.leader?'on':''}" data-act="pf" data-k="leader">인도자</button>${sess!=='인도자'?`<button class="chip ${PL.f.session?'on':''}" data-act="pf" data-k="session">${esc(sess)}</button>`:''}<button class="chip ${PL.f.chords!==false?'on':''}" data-act="pf" data-k="chords" title="연주 키로 옮긴 코드를 빨간 글씨로">전조 코드</button><button class="chip ${PL.f.mine?'on':''}" data-act="pf" data-k="mine">내 것</button></div>
      </div>
     </div></div>
   </div>
@@ -756,7 +759,7 @@ function publishModal(svc){
  $('#modal').onclick=async e=>{
   if(e.target.closest('#kkCopy')){try{await navigator.clipboard.writeText($('#kk').value);toast('복사됨')}catch{$('#kk').select();document.execCommand('copy');toast('복사됨')}}
   const only=e.target.closest('#pubOnly'),withFile=e.target.closest('#pubOk');if(only||withFile){const msg=(svc.message||'').trim();const prevMsg=svc.published?(svc.published.message||''):'';if(msg!==prevMsg)svc.messageRev=(svc.messageRev||0)+1;
-   svc.published={version:nextV,at:Date.now(),name:svc.name,date:svc.date,notice:svc.notice,message:msg,messageRev:svc.messageRev||0,author:me().name||'인도자',items:clone(svc.items).map(it=>({...it,notes:undefined}))};save();closeModal();
+   svc.published={version:nextV,at:Date.now(),name:svc.name,date:svc.date,notice:svc.notice,message:msg,messageRev:svc.messageRev||0,author:me().name||'인도자',items:clone(svc.items).map(it=>({...it,notes:undefined}))};S.readRev=S.readRev||{};S.readRev[svc.id]=svc.messageRev||0;save();closeModal();
    if(online()){toast('팀 서버에 올리는 중…');try{await SYNC.pushPublish(svc);toast('v'+nextV+' 발행 · 팀에 공유됐어요')}catch(err){toast('발행은 됐지만 서버 업로드 실패: '+err.message)}}else toast('v'+nextV+' 발행');
    if(withFile)await exportJSON(svc.id);render()}
  };
@@ -841,7 +844,8 @@ const NET={server:null,user:null,teams:[]};   // server: true=있음, false=없�
 const online=()=>NET.server===true;
 const RL={leader:'인도자',session_lead:'세션리더',member:'멤버'};
 const roleLabel=r=>RL[r]||'멤버';
-async function api(path,o){const opt={method:(o&&o.method)||'GET',headers:{'x-conti':'1'},credentials:'same-origin',cache:'no-store'};if(o&&o.body){opt.headers['content-type']='application/json';opt.body=JSON.stringify(o.body)}
+const whoStr=m=>[m.name||'이름 없음',m.session,roleLabel(m.role)].filter((x,i,a)=>x&&a.indexOf(x)===i).map(esc).join(' · ');
+async function api(path,o){const opt={method:(o&&o.method)||'GET',headers:{'x-conti':'1'},credentials:'same-origin',cache:'no-store'};if(o&&o.keepalive)opt.keepalive=true;if(o&&o.body){opt.headers['content-type']='application/json';opt.body=JSON.stringify(o.body)}
  const r=await fetch('/api'+path,opt);let j=null;try{j=await r.json()}catch(e){}
  if(!r.ok){const err=new Error((j&&j.message)||('오류 '+r.status));err.status=r.status;err.code=j&&j.error;throw err}return j}
 async function probeServer(){try{const r=await fetch('/api/health',{cache:'no-store'});if(!r.ok)return false;const j=await r.json();return !!(j&&j.app==='conti')}catch(e){return null}}
@@ -871,7 +875,8 @@ const SYNC={t:null,pulledAt:{},
  // 발행(인도자): 새 파일 업로드 → 스냅샷 저장
  async pushPublish(svc){if(!online()||!isLeader())return false;const pub=svc.published;const ids=SYNC.blobIds(pub.items);
   let have={};if(ids.length){have=(await api('/blobs?team='+S.team.id+'&ids='+ids.join(','))).blobs}
-  for(const id of ids){if(have[id])continue;const b=await IDB.get('blobs',id);if(!b)throw new Error('이 기기에 없는 파일이 있어요');
+  const todo=ids.filter(id=>!have[id]);let k=0;
+  for(const id of todo){k++;toast(`파일 올리는 중 ${k}/${todo.length}…`);const b=await IDB.get('blobs',id);if(!b)throw new Error('이 기기에 없는 파일이 있어요');
    const r=await fetch('/api/blobs/'+id+'?team='+S.team.id,{method:'POST',headers:{'x-conti':'1','content-type':b.type||'application/octet-stream'},body:b,credentials:'same-origin'});
    if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.message||'파일 업로드 실패')}}
   await api('/services/'+svc.id,{method:'PUT',body:{teamId:S.team.id,doc:{id:svc.id,name:pub.name,date:pub.date,notice:pub.notice,message:pub.message||'',messageRev:pub.messageRev||0,author:pub.author||'',version:pub.version,items:pub.items}}});return true},
@@ -879,16 +884,17 @@ const SYNC={t:null,pulledAt:{},
  // 메모: 로컬 ↔ 서버 차이만 올림 (실패하면 다음 저장 때 다시)
  localNotes(svc){const out=[];svc.items.forEach(it=>{(it.notes||[]).forEach(n=>out.push({...n,itemId:it.id,markerId:n.marker||null,mediaId:null}));(it.media||[]).forEach(m=>(m.notes||[]).forEach(n=>out.push({...n,itemId:it.id,markerId:n.marker||null,mediaId:m.id})))});return out},
  shadow(id){S.noteShadow=S.noteShadow||{};return S.noteShadow[id]||(S.noteShadow[id]=[])},
- async pushNotes(svc){if(!online()||!svc||!S.team.id)return;const sh=SYNC.shadow(svc.id);const local=SYNC.localNotes(svc);const localIds=[...new Set(local.map(n=>n.id))];const shSet=new Set(sh);
+ async pushNotes(svc,keep){if(!online()||!svc||!S.team.id)return;const sh=SYNC.shadow(svc.id);const local=SYNC.localNotes(svc);const localIds=[...new Set(local.map(n=>n.id))];const shSet=new Set(sh);
   const add=local.filter(n=>!shSet.has(n.id));const del=sh.filter(id=>!localIds.includes(id));if(!add.length&&!del.length)return;
-  try{if(add.length)await api('/notes',{method:'POST',body:{teamId:S.team.id,serviceId:svc.id,notes:add.map(n=>({id:n.id,itemId:n.itemId,markerId:n.markerId,mediaId:n.mediaId,t:n.t,layer:n.layer,session:n.session,text:n.text,at:n.at}))}});
-   if(del.length)await api('/notes',{method:'DELETE',body:{teamId:S.team.id,ids:del}});
+  try{if(add.length)await api('/notes',{method:'POST',keepalive:!!keep,body:{teamId:S.team.id,serviceId:svc.id,notes:add.map(n=>({id:n.id,itemId:n.itemId,markerId:n.markerId,mediaId:n.mediaId,t:n.t,layer:n.layer,session:n.session,text:n.text,at:n.at}))}});
+   if(del.length)await api('/notes',{method:'DELETE',keepalive:!!keep,body:{teamId:S.team.id,ids:del}});
    S.noteShadow[svc.id]=localIds;save()}catch(e){console.warn('notes push',e.message)}},
  async pullNotes(svc){if(!online()||!svc||!S.team.id)return;await SYNC.pushNotes(svc);let d;try{d=await api('/notes?team='+S.team.id+'&service='+svc.id)}catch(e){return}
   const who=n=>n.layer==='leader'?'인도자':(n.authorId===d.me?(me().name||'나'):(n.authorName||'멤버'));const by={};d.notes.forEach(n=>{(by[n.itemId]||(by[n.itemId]=[])).push(n)});
   svc.items.forEach(it=>{const list=by[it.id]||[];it.notes=list.filter(n=>!n.mediaId).map(n=>({id:n.id,marker:n.markerId,layer:n.layer,session:n.session,text:n.text,author:who(n),at:new Date(n.createdAt).getTime()}));
    (it.media||[]).forEach(m=>{m.notes=list.filter(n=>n.mediaId===m.id).map(n=>({id:n.id,t:+n.t||0,marker:n.markerId||undefined,layer:n.layer,session:n.session,text:n.text,author:who(n)}))})});
   S.noteShadow=S.noteShadow||{};S.noteShadow[svc.id]=d.notes.map(n=>n.id);SYNC.pulledAt[svc.id]=Date.now();save()},
+ flush(){const r=route();const svc=svcById(r.a);if(online()&&svc&&/^(edit|view|play)$/.test(r.name)){clearTimeout(SYNC.t);SYNC.pushNotes(svc,true)}},
  schedulePush(){if(!online())return;clearTimeout(SYNC.t);SYNC.t=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&/^(edit|view|play)$/.test(r.name))SYNC.pushNotes(svc)},700)}
 };
 const GATE={mode:'login',err:'',user:'',sess:'',preview:null};
@@ -941,7 +947,7 @@ async function teamModal(){
  ${lead?`<div class="lbl">초대 링크 <span class="hint">카톡에 붙여넣으면 멤버가 이 링크로 가입해요</span></div><div class="linkbox" id="tmLink">${esc(link)}</div>
  <div class="row" style="margin-top:8px"><button class="btn sm pri" id="tmCopy">${ic('export')}링크 복사</button><button class="btn sm" id="tmKakao">카톡 문구 복사</button><span class="grow"></span><button class="btn sm ghost" id="tmRotate">링크 재발급</button></div>`:''}
  <div class="lbl">멤버</div><div id="tmList">${t.members.map(m=>`<div class="mrow"><span class="grow"><b>${esc(m.name)}</b> <span class="muted">${esc(m.session)}</span>${m.userId===me().userId?' <span class="pill">나</span>':''}</span>
-  ${lead?`<select data-u="${m.userId}">${Object.keys(RL).map(k=>`<option value="${k}" ${k===m.role?'selected':''}>${RL[k]}</option>`).join('')}</select>${m.userId!==me().userId?`<button class="icon sm ghost" data-kick="${m.userId}" title="내보내기">${ic('trash')}</button>`:''}`:`<span class="pill">${roleLabel(m.role)}</span>`}</div>`).join('')}</div>
+  ${lead?`<select data-u="${m.userId}">${Object.keys(RL).map(k=>`<option value="${k}" ${k===m.role?'selected':''}>${RL[k]}</option>`).join('')}</select>${m.userId!==me().userId?`<button class="icon sm ghost" data-reset="${m.userId}" title="비밀번호 초기화">${ic('gear')}</button><button class="icon sm ghost" data-kick="${m.userId}" title="내보내기">${ic('trash')}</button>`:''}`:`<span class="pill">${roleLabel(m.role)}</span>`}</div>`).join('')}</div>
  ${NET.teams.length>1?`<div class="lbl">다른 팀</div><div>${NET.teams.filter(x=>x.teamId!==S.team.id).map(x=>`<button class="btn sm" data-switch="${x.teamId}">${esc(x.teamName)}로 전환</button>`).join(' ')}</div>`:''}
  <div class="row" style="margin-top:18px;justify-content:space-between"><button class="btn ghost danger" id="tmLeave">팀 나가기</button><button class="btn" id="tmClose">닫기</button></div>`,{center:true});
  $('#modal').onclick=async e=>{try{
@@ -949,6 +955,9 @@ async function teamModal(){
   if(e.target.closest('#tmCopy')){await copyText(link);toast('링크를 복사했어요');return}
   if(e.target.closest('#tmKakao')){await copyText(`[${t.teamName}] 1414 초대\n아래 링크를 열어 가입하면 콘티를 같이 볼 수 있어요.\n${link}`);toast('카톡 문구를 복사했어요');return}
   if(e.target.closest('#tmRotate')){if(!confirm('기존 링크는 못 쓰게 됩니다. 재발급할까요?'))return;applyMembership(await api('/teams/'+S.team.id+'/invite/rotate',{method:'POST'}));teamModal();return}
+  const rs=e.target.closest('[data-reset]');if(rs){const mem=t.members.find(x=>x.userId===rs.dataset.reset);if(!confirm(`${mem?mem.name:'이 멤버'}의 비밀번호를 초기화할까요? 임시 비밀번호가 한 번만 표시됩니다.`))return;const r=await api('/teams/'+S.team.id+'/members/'+rs.dataset.reset+'/reset',{method:'POST'});
+   modal(`<b style="font-size:17px">임시 비밀번호</b><div class="hint" style="margin-top:4px">${esc(mem?mem.name:'')}에게 전달하세요. 로그인 후 설정에서 바꾸면 됩니다.</div><div class="linkbox" style="margin-top:12px;font-size:18px;letter-spacing:.06em">${esc(r.password)}</div><div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" id="pwCopy">복사</button><button class="btn pri" id="pwClose">닫기</button></div>`,{center:true});
+   $('#modal').onclick=async ev=>{if(ev.target.closest('#pwCopy')){await copyText(r.password);toast('복사했어요')}if(ev.target.closest('#pwClose')){closeModal();teamModal()}};return}
   const k=e.target.closest('[data-kick]');if(k){if(!confirm('이 멤버를 내보낼까요?'))return;await api('/teams/'+S.team.id+'/members/'+k.dataset.kick,{method:'DELETE'});teamModal();return}
   const sw=e.target.closest('[data-switch]');if(sw){applyMembership(await api('/teams/'+sw.dataset.switch));closeModal();render();return}
   if(e.target.closest('#tmLeave')){if(!confirm('팀에서 나갈까요?'))return;await api('/teams/'+S.team.id+'/members/'+me().userId,{method:'DELETE'});S.team.id='';S.team.invite='';save();await refreshMe();closeModal();render();return}
@@ -1122,7 +1131,7 @@ function sheetHTML(item,W,ctx){
   html+=`<div class="piece" data-piece="${p.id}">`;
   if(pieces.length>1)html+=`<div class="phead"><span class="ln"></span>조각 ${pi+1}${p.name?' · '+esc(p.name):''}<span class="ln"></span></div>`;
   const off=chordOffset(item,p);const nCh=(p.chords||[]).length;const showRed=off!==0&&(ctx.f?ctx.f.chords!==false:true);const chordTool=ctx.mode==='edit'&&ctx.tool==='chord';
-  if(ctx.mode==='edit')html+=`<div class="chordbar">${p.ocr==='pending'?'<span class="hint">코드 인식 중…</span>':''}${(nCh||p.sheetKey)?`<button class="btn sm" data-act="sheet-key" data-id="${p.id}">악보 키 ${esc(p.sheetKey||'?')}${p.keyConfirmed?'':' <span class="muted">(추정)</span>'}</button><span class="hint">→ 연주 키 ${esc(item.key||'?')}</span><span class="pill">${off>0?'+':''}${off}</span><button class="icon sm ghost" data-act="chord-off" data-id="${p.id}" data-d="-1" title="반음 내림">${ic('down')}</button><button class="icon sm ghost" data-act="chord-off" data-id="${p.id}" data-d="1" title="반음 올림">${ic('up')}</button><span class="hint">${nCh}개 코드${off?' · 전조 코드 병기':' · 같은 키'}</span>`:''}${p.ocr==='none'?'<span class="hint">인식 엔진 미연결 — "코드" 도구로 직접 추가</span>':''}${p.ocr==='error'?`<span class="hint" style="color:var(--destructive)">인식 실패: ${esc(p.ocrErr||'')}</span>`:''}<span class="grow"></span>${p.ocr!=='pending'?`<button class="btn sm ghost" data-act="ocr" data-id="${p.id}">${ic('marker')}${nCh?'다시 인식':'코드 인식'}</button>`:''}</div>`;
+  if(ctx.mode==='edit')html+=`<div class="chordbar ${(nCh||p.sheetKey||p.ocr==='pending')?'':'slim'}">${p.ocr==='pending'?'<span class="hint">코드 인식 중…</span>':''}${(nCh||p.sheetKey)?`<button class="btn sm" data-act="sheet-key" data-id="${p.id}">악보 키 ${esc(p.sheetKey||'?')}${p.keyConfirmed?'':' <span class="muted">(추정)</span>'}</button><span class="hint">→ 연주 키 ${esc(item.key||'?')}</span><span class="pill">${off>0?'+':''}${off}</span><button class="icon sm ghost" data-act="chord-off" data-id="${p.id}" data-d="-1" title="반음 내림">${ic('down')}</button><button class="icon sm ghost" data-act="chord-off" data-id="${p.id}" data-d="1" title="반음 올림">${ic('up')}</button><span class="hint">${nCh}개 코드${off?' · 전조 코드 병기':' · 같은 키'}</span>`:''}${p.ocr==='none'?'<span class="hint">인식 엔진 미연결 — "코드" 도구로 직접 추가</span>':''}${p.ocr==='error'?`<span class="hint" style="color:var(--destructive)">인식 실패: ${esc(p.ocrErr||'')}</span>`:''}<span class="grow"></span>${p.ocr!=='pending'?`<button class="btn sm ghost" data-act="ocr" data-id="${p.id}">${ic('marker')}${nCh?'다시 인식':'코드 인식'}</button>`:''}</div>`;
   for(let i=0;i<bounds.length-1;i++){
    const a=bounds[i],b=bounds[i+1];
    if(i>0){const m=stripMarkers[i-1];html+=stripHTML(m,notesBy[m.id],mods,ctx)}
@@ -1163,6 +1172,7 @@ async function render(){
   if(!S.team.id){app.innerHTML=gateHTML();afterGate();return}
   if(r.name==='edit'&&!isLeader())return go('view/'+r.a);
  }
+ if(r.name!=='view')VF.draft=false;
  if(/^(edit|view|play)$/.test(r.name)){let svc=svcById(r.a);
   if(!svc&&online()){app.innerHTML=`<div class="empty" style="margin:40px auto;max-width:420px"><b>콘티를 받는 중…</b>팀 서버에서 발행본을 내려받고 있어요.</div>`;try{svc=await SYNC.pullService(r.a)}catch(e){toast(e.message)}}
   if(!svc)return go('home');
@@ -1256,8 +1266,9 @@ function kakaoText(svc){
 }
 function diffSvc(prev,cur){const out=[];const pm=new Map(prev.items.map(i=>[i.id,i]));cur.items.forEach((it,i)=>{const p=pm.get(it.id);if(!p){out.push(`${i+1}번 추가`);return}if((p.mod||'')!==(it.mod||'')||p.key!==it.key)out.push(`${i+1}번 키 변경`);if(p.form!==it.form)out.push(`${i+1}번 송폼 수정`);if((p.media||[]).length!==(it.media||[]).length)out.push(`${i+1}번 미디어 변경`)});prev.items.forEach(p=>{if(!cur.items.find(i=>i.id===p.id))out.push(`"${p.title}" 삭제`)});return out}
 /* ---------- VIEWER ---------- */
-function pubOrDraft(svc){return svc.published?{...svc.published,draft:false}:{name:svc.name,date:svc.date,notice:svc.notice,items:svc.items,version:0,draft:true}}
-let VF={session:null};
+const draftOf=svc=>({name:svc.name,date:svc.date,notice:svc.notice,message:svc.message||'',messageRev:svc.messageRev||0,author:me().name||'인도자',items:svc.items,version:svc.version||0,draft:true});
+function pubOrDraft(svc){if(VF.draft&&isLeader()&&route().name==='view')return draftOf(svc);return svc.published?{...svc.published,draft:false}:draftOf(svc)}
+let VF={session:null,draft:false};
 /* ---------- PRACTICE / STAGE ---------- */
 const P={audio:null,yt:null,ytReady:false,t:0,dur:0,start:0,end:0,playing:false,pausedByComposer:false,timer:null,
  stop(){if(P.audio){P.audio.pause();P.audio=null}P.yt=null;P.ytReady=false;P.playing=false;P.t=0;P.dur=0;P.start=0;P.end=0;clearInterval(P.timer);P.timer=null},
@@ -1364,7 +1375,7 @@ document.addEventListener('click',async e=>{
   case 'new-svc':{const s=newService();S.services.push(s);save();go('edit/'+s.id);break}
   case 'open-svc':if(!e.target.closest('button'))go(isLeader()?'edit/'+svc.id:'view/'+svc.id);break;
   case 'edit-svc':go('edit/'+svc.id);break;
-  case 'view-svc':go('view/'+svc.id);break;
+  case 'view-svc':VF.draft=(r.name==='edit');go('view/'+svc.id);break;
   case 'del-svc':if(confirm(online()&&isLeader()?'이 예배를 삭제할까요? 팀 서버의 발행본과 메모도 지워집니다.':'이 예배를 삭제할까요?')){S.services=S.services.filter(s=>s.id!==svc.id);save();SYNC.deleteService(svc.id);render()}break;
   case 'sync':{toast('팀 서버와 맞추는 중…');SYNC.pullServices().then(ch=>{toast(ch?'새 콘티를 받았어요':'이미 최신이에요');render()});break}
   case 'import':{const inp=document.createElement('input');inp.type='file';inp.accept='.json,application/json';inp.onchange=()=>importJSON(inp.files[0]);inp.click();break}

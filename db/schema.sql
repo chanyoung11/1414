@@ -73,3 +73,10 @@ create table if not exists notes (
   created_at  timestamptz not null default now()
 );
 create index if not exists notes_svc_idx on notes(team_id, service_id);
+
+-- 로그인 시도 제한
+create table if not exists login_attempts (
+  username text primary key,
+  n        int not null default 0,
+  last     timestamptz not null default now()
+);

@@ -89,8 +89,16 @@ on('POST', '/auth/signup', async ({ req, body }) => {
 
 on('POST', '/auth/login', async ({ req, body }) => {
   const username = str(body.username, 40).toLowerCase(), password = String(body.password || '');
+  try {
+    const la = await one('select n, last from login_attempts where username=$1', [username]);
+    if (la && la.n >= 8 && Date.now() - new Date(la.last).getTime() < 15 * 60 * 1000) throw new HttpError(429, 'locked', '로그인 시도가 너무 많아요. 15분 뒤에 다시 해 주세요');
+  } catch (e) { if (e instanceof HttpError) throw e; }
   const u = await one('select id, password_hash from users where username=$1', [username]);
-  if (!u || !verifyPassword(password, u.password_hash)) throw new HttpError(401, 'bad_login', '아이디 또는 비밀번호가 맞지 않아요');
+  if (!u || !verifyPassword(password, u.password_hash)) {
+    try { await q(`insert into login_attempts(username, n, last) values($1, 1, now()) on conflict (username) do update set n = case when login_attempts.last < now() - interval '15 minutes' then 1 else login_attempts.n + 1 end, last = now()`, [username]); } catch (e) {}
+    throw new HttpError(401, 'bad_login', '아이디 또는 비밀번호가 맞지 않아요');
+  }
+  try { await q('delete from login_attempts where username=$1', [username]); } catch (e) {}
   await q('update users set last_login_at=now() where id=$1', [u.id]);
   return { data: await meView(u.id), headers: { 'Set-Cookie': sessionCookie(req, u.id) } };
 });
@@ -168,6 +176,19 @@ on('PATCH', '/teams/:id/members/:userId', async ({ uid, params, body }) => {
   const r = await q('update members set role=$3 where team_id=$1 and user_id=$2 returning user_id', [params.id, params.userId, role]);
   if (!r.length) throw notFound('그 멤버가 없어요');
   return { ok: true };
+});
+
+on('POST', '/teams/:id/members/:userId/reset', async ({ uid, params }) => {
+  if (!uid) throw noAuth();
+  await requireMember(uid, params.id, 'leader');
+  if (params.userId === uid) throw bad('내 비밀번호는 설정에서 바꿔 주세요');
+  const target = await one('select user_id from members where team_id=$1 and user_id=$2', [params.id, params.userId]);
+  if (!target) throw notFound('그 멤버가 없어요');
+  const alphabet = 'abcdefghjkmnpqrstuvwxyz23456789';
+  const bytes = randomToken(12); let pw = '';
+  for (let i = 0; i < 8; i++) pw += alphabet[bytes.charCodeAt(i) % alphabet.length];
+  await q('update users set password_hash=$2 where id=$1', [params.userId, hashPassword(pw)]);
+  return { password: pw };
 });
 
 on('DELETE', '/teams/:id/members/:userId', async ({ uid, params }) => {
@@ -256,9 +277,23 @@ on('DELETE', '/services/:id', async ({ uid, url, params }) => {
   if (!uid) throw noAuth();
   const teamId = str(url.searchParams.get('team'), 64);
   await requireMember(uid, teamId, 'leader');
+  const row = await one('select doc from services where team_id=$1 and id=$2', [teamId, params.id]);
   await q('delete from services where team_id=$1 and id=$2', [teamId, params.id]);
   await q('delete from notes where team_id=$1 and service_id=$2', [teamId, params.id]);
-  return { ok: true };
+  let freed = 0;
+  if (row) {
+    const mine = blobIdsOf(row.doc);
+    if (mine.length) {
+      const others = await q('select doc from services where team_id=$1', [teamId]);
+      const used = new Set(); others.forEach((o) => blobIdsOf(o.doc).forEach((id) => used.add(id)));
+      const orphan = mine.filter((id) => !used.has(id));
+      if (orphan.length) {
+        const rows = await q('delete from blobs where team_id=$1 and id = any($2::text[]) returning url', [teamId, orphan]);
+        await delBlobs(rows.map((r) => r.url)); freed = rows.length;
+      }
+    }
+  }
+  return { ok: true, freedFiles: freed };
 });
 
 // 파일: 어떤 id가 이미 있는지
