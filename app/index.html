@@ -1261,7 +1261,23 @@ function initSongDrag(svc){const first=$('.list-item');if(!first)return;const li
  list.addEventListener('pointerup',done);list.addEventListener('pointercancel',done)}
 function autoGrow(t){if(!t||t.tagName!=='TEXTAREA')return;t.style.height='auto';t.style.height=(t.scrollHeight+2)+'px'}
 function drawEditorSheet(svc){const it=curItem(svc);const sh=$('#sheet');if(!it||!sh)return;const W=sh.clientWidth-56;sh.classList.toggle('hltool',SEL[svc.id].tool==='hl');const sw=$('#sheetwrap');const st=sw?sw.scrollTop:0;sh.innerHTML=sheetHTML(it,Math.max(200,W),{mode:'edit',tool:SEL[svc.id].tool});if(sw)sw.scrollTop=st}
-async function addPieces(svc,it,files){files=Array.from(files||[]).filter(f=>/^image\//.test(f.type));if(!it||!files.length){if(files&&!files.length)toast('이미지 파일만 넣을 수 있어요');return}toast('이미지 처리 중…');let fixes=[];for(const f of files){try{const r=await importImage(f);const id=uid();await IDB.put('blobs',id,r.blob);it.pieces.push({id,blob:id,w:r.w,h:r.h,gaps:r.gaps,markers:[],hls:[],name:'',chords:[],sheetKey:'',keyConfirmed:false,offset:null});const np=it.pieces[it.pieces.length-1];if(online()&&isLeader())setTimeout(()=>recognizeChords(svc,it,np),100);const fx=[];if(Math.abs(r.fix.angle)>=0.3)fx.push('기울기 '+(r.fix.angle>0?'+':'')+r.fix.angle.toFixed(1)+'°');if(r.fix.photo)fx.push('명암');if(r.fix.trimmed)fx.push('여백');if(fx.length)fixes.push(fx.join('·'))}catch(err){console.error(err);toast('이미지를 읽지 못했어요')}}
+// 두 장 나란히 스캔 감지: 가운데(폭 30~70%) 세로 흰 골이 있고 양쪽 모두 오선이 2개 이상이면 좌·우로 나눔
+async function splitPages(blob){try{const img=await loadImg(URL.createObjectURL(blob));const cv=document.createElement('canvas');cv.width=img.naturalWidth;cv.height=img.naturalHeight;cv.getContext('2d').drawImage(img,0,0);
+ const {g,W,H}=grayOf(cv,600);const hist=new Uint32Array(256);for(let i=0;i<g.length;i++)hist[g[i]]++;let bg=255,mx=0;for(let v=120;v<256;v++)if(hist[v]>mx){mx=hist[v];bg=v}const thr=bg-Math.max(40,bg*0.25);
+ const col=new Float32Array(W);for(let x=0;x<W;x++){let n=0;for(let y=0;y<H;y++)if(g[y*W+x]<thr)n++;col[x]=n/H}
+ let best=null,x=Math.floor(W*0.3);const xe=Math.floor(W*0.7);while(x<xe){if(col[x]<0.003){const s0=x;while(x<xe&&col[x]<0.003)x++;if(!best||x-s0>best.len)best={s:s0,e:x,len:x-s0}}else x++}
+ if(!best||best.len<W*0.02)return null;const cut=Math.round((best.s+best.e)/2*cv.width/W);
+ const crop=(a,b)=>{const c=document.createElement('canvas');c.width=b-a;c.height=cv.height;c.getContext('2d').drawImage(cv,a,0,b-a,cv.height,0,0,b-a,cv.height);return c};
+ const L=crop(0,cut),R=crop(cut,cv.width);if(detectSystems(L).length<2||detectSystems(R).length<2)return null;
+ const toBlob=c=>new Promise(res=>c.toBlob(res,'image/jpeg',0.92));return [await toBlob(L),await toBlob(R)]}catch(e){console.warn('splitPages',e);return null}}
+async function addPieces(svc,it,files){files=Array.from(files||[]).filter(f=>/^image\//.test(f.type));if(!it||!files.length){if(files&&!files.length)toast('이미지 파일만 넣을 수 있어요');return}toast('이미지 처리 중…');let fixes=[];let split=0;
+ const pushPiece=async(target,r)=>{const id=uid();await IDB.put('blobs',id,r.blob);target.pieces.push({id,blob:id,w:r.w,h:r.h,gaps:r.gaps,markers:[],hls:[],name:'',chords:[],sheetKey:'',keyConfirmed:false,offset:null});const np=target.pieces[target.pieces.length-1];if(online()&&isLeader())setTimeout(()=>recognizeChords(svc,target,np),100);
+  const fx=[];if(Math.abs(r.fix.angle)>=0.3)fx.push('기울기 '+(r.fix.angle>0?'+':'')+r.fix.angle.toFixed(1)+'°');if(r.fix.photo)fx.push('명암');if(r.fix.trimmed)fx.push('여백');if(fx.length)fixes.push(fx.join('·'))};
+ for(const f of files){try{const r=await importImage(f);const parts=await splitPages(r.blob);
+  if(parts){const rA=await importImage(new File([parts[0]],'left.jpg',{type:'image/jpeg'}));await pushPiece(it,rA);
+   const it2=newItem();const idx=svc.items.indexOf(it);svc.items.splice(idx+1,0,it2);const rB=await importImage(new File([parts[1]],'right.jpg',{type:'image/jpeg'}));await pushPiece(it2,rB);split++}
+  else await pushPiece(it,r)}catch(err){console.error(err);toast('이미지를 읽지 못했어요')}}
+ if(split)setTimeout(()=>toast(`두 곡이 나란히 있어 ${split}장을 좌·우로 나눠 다음 곡으로 추가했어요`),1200);
    if(fixes.length)setTimeout(()=>toast('자동 정리: '+fixes.join(' / ')+' · 줄 사이 여백 '+(it.pieces[it.pieces.length-1].gaps||[]).length+'곳 인식'),300);
    touch(svc);save();syncLib(it);await preload(svc);render()}
 function afterEditor(svc){
