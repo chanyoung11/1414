@@ -4,7 +4,7 @@
 import { q, one } from '../lib/db.js';
 import { sessionUserId, sessionCookie, clearSessionCookie, randomToken } from '../lib/session.js';
 import { hashPassword, verifyPassword, USERNAME_RE, PASSWORD_MIN } from '../lib/password.js';
-import { putBlob, delBlobs } from '../lib/blob.js';
+import { putBlob, delBlobs, readUrls } from '../lib/blob.js';
 import { ocrBands, visionConfigured } from '../lib/vision.js';
 
 class HttpError extends Error { constructor(status, code, message) { super(message || code); this.status = status; this.code = code; } }
@@ -46,13 +46,13 @@ const strList = (v) => Array.isArray(v) ? v.map((s) => str(s, 40)).filter(Boolea
 const memberView = (t, m) => ({
   teamId: t.id, teamName: t.name, sessions: t.sessions, phrases: t.phrases,
   invite: m.role === 'leader' ? t.invite_token : undefined,
-  me: { userId: m.user_id, name: m.name, session: m.session, role: m.role },
+  me: { userId: m.user_id, name: m.name, session: m.session, role: m.role, capo: +m.capo || 0 },
 });
 async function membership(uid, teamId) {
-  return one(`select t.*, m.user_id, m.name as mname, m.session, m.role from members m join teams t on t.id=m.team_id
+  return one(`select t.*, m.user_id, m.name as mname, m.session, m.role, m.capo from members m join teams t on t.id=m.team_id
               where m.user_id=$1 ${teamId ? 'and m.team_id=$2' : ''} order by m.created_at asc limit 1`, teamId ? [uid, teamId] : [uid]);
 }
-const viewOf = (row) => row && memberView(row, { user_id: row.user_id, name: row.mname, session: row.session, role: row.role });
+const viewOf = (row) => row && memberView(row, { user_id: row.user_id, name: row.mname, session: row.session, role: row.role, capo: row.capo });
 async function requireMember(uid, teamId, role) {
   const m = await membership(uid, teamId);
   if (!m) throw forbidden('이 팀의 멤버가 아니에요');
@@ -62,7 +62,7 @@ async function requireMember(uid, teamId, role) {
 async function meView(uid) {
   const u = await one('select id, username, display_name from users where id=$1', [uid]);
   if (!u) throw noAuth();
-  const rows = await q(`select t.*, m.user_id, m.name as mname, m.session, m.role from members m join teams t on t.id=m.team_id
+  const rows = await q(`select t.*, m.user_id, m.name as mname, m.session, m.role, m.capo from members m join teams t on t.id=m.team_id
                         where m.user_id=$1 order by m.created_at asc`, [uid]);
   return { user: { id: u.id, username: u.username, name: u.display_name }, team: rows[0] ? viewOf(rows[0]) : null, teams: rows.map(viewOf) };
 }
@@ -115,7 +115,25 @@ on('POST', '/auth/password', async ({ uid, body }) => {
   return { ok: true };
 });
 
-on('GET', '/me', async ({ uid }) => { if (!uid) throw noAuth(); return meView(uid); });
+on('GET', '/me', async ({ uid }) => { if (!uid) throw noAuth(); const r = await meView(uid); const u = await one('select recovery_hash is not null as has from users where id=$1', [uid]); r.user.hasRecovery = !!(u && u.has); return r; });
+
+// 복구 코드 발급 (로그인 상태). 코드는 한 번만 보여주고 해시만 저장
+on('POST', '/auth/recovery', async ({ uid }) => {
+  if (!uid) throw noAuth();
+  const alphabet = 'abcdefghjkmnpqrstuvwxyz23456789'; const raw = randomToken(18); let code = '';
+  for (let i = 0; i < 12; i++) { code += alphabet[raw.charCodeAt(i) % alphabet.length]; if (i === 3 || i === 7) code += '-'; }
+  await q('update users set recovery_hash=$2 where id=$1', [uid, hashPassword(code)]);
+  return { code };
+});
+// 복구 코드로 비밀번호 재설정 → 로그인. 코드는 폐기
+on('POST', '/auth/recover', async ({ req, body }) => {
+  const username = str(body.username, 40).toLowerCase(), code = str(body.code, 20).toLowerCase().replace(/\s/g, ''), next = String(body.next || '');
+  if (next.length < PASSWORD_MIN) throw bad(`비밀번호는 ${PASSWORD_MIN}자 이상이에요`);
+  const u = await one('select id, recovery_hash from users where username=$1', [username]);
+  if (!u || !u.recovery_hash || !verifyPassword(code, u.recovery_hash)) throw new HttpError(401, 'bad_recovery', '아이디 또는 복구 코드가 맞지 않아요');
+  await q('update users set password_hash=$2, recovery_hash=null, last_login_at=now() where id=$1', [u.id, hashPassword(next)]);
+  return { data: await meView(u.id), headers: { 'Set-Cookie': sessionCookie(req, u.id) } };
+});
 
 // 내 이름·세션(팀 안에서) 바꾸기
 on('PATCH', '/me', async ({ uid, body }) => {
@@ -123,7 +141,8 @@ on('PATCH', '/me', async ({ uid, body }) => {
   const teamId = str(body.teamId, 64);
   const m = await requireMember(uid, teamId);
   const name = str(body.name, 40) || m.mname, session = pickSession(m, str(body.session, 40) || m.session);
-  await q('update members set name=$3, session=$4 where user_id=$1 and team_id=$2', [uid, teamId, name, session]);
+  const capo = body.capo == null ? (+m.capo || 0) : Math.max(0, Math.min(9, Math.round(+body.capo) || 0));
+  await q('update members set name=$3, session=$4, capo=$5 where user_id=$1 and team_id=$2', [uid, teamId, name, session, capo]);
   await q('update users set display_name=$2 where id=$1', [uid, name]);
   return viewOf(await membership(uid, teamId));
 });
@@ -233,7 +252,9 @@ on('GET', '/services', async ({ uid, url }) => {
   if (!uid) throw noAuth();
   const teamId = str(url.searchParams.get('team'), 64);
   await requireMember(uid, teamId);
-  return { services: await q('select id, name, date, version, updated_at as "updatedAt" from services where team_id=$1 order by date desc', [teamId]) };
+  const m = await membership(uid, teamId);
+  const drafts = m && m.role === 'leader' ? await q('select id, updated_at as "updatedAt" from drafts where team_id=$1', [teamId]) : [];
+  return { services: await q('select id, name, date, version, updated_at as "updatedAt" from services where team_id=$1 order by date desc', [teamId]), drafts };
 });
 
 // 발행본 하나 + 참조 파일 URL
@@ -241,11 +262,14 @@ on('GET', '/services/:id', async ({ uid, url, params }) => {
   if (!uid) throw noAuth();
   const teamId = str(url.searchParams.get('team'), 64);
   await requireMember(uid, teamId);
-  const row = await one('select doc, version, updated_at as "updatedAt" from services where team_id=$1 and id=$2', [teamId, params.id]);
-  if (!row) throw notFound('발행된 콘티가 없어요');
+  const wantDraft = url.searchParams.get('draft') === '1';
+  const row = wantDraft
+    ? await one('select doc, 0 as version, updated_at as "updatedAt" from drafts where team_id=$1 and id=$2', [teamId, params.id])
+    : await one('select doc, version, updated_at as "updatedAt" from services where team_id=$1 and id=$2', [teamId, params.id]);
+  if (!row) throw notFound(wantDraft ? '초안이 없어요' : '발행된 콘티가 없어요');
   const ids = blobIdsOf(row.doc);
-  const blobs = ids.length ? await q('select id, url, type from blobs where team_id=$1 and id = any($2::text[])', [teamId, ids]) : [];
-  return { doc: row.doc, version: row.version, updatedAt: row.updatedAt, blobs: Object.fromEntries(blobs.map((b) => [b.id, b.url])) };
+  const blobs = ids.length ? await q('select id, url, pathname from blobs where team_id=$1 and id = any($2::text[])', [teamId, ids]) : [];
+  return { doc: row.doc, version: row.version, updatedAt: row.updatedAt, blobs: await readUrls(blobs) };
 });
 function blobIdsOf(doc) {
   const ids = new Set();
@@ -267,10 +291,33 @@ on('PUT', '/services/:id', async ({ uid, params, body }) => {
   const have = missing.length ? (await q('select id from blobs where team_id=$1 and id = any($2::text[])', [teamId, missing])).map((r) => r.id) : [];
   const notUploaded = missing.filter((id) => !have.includes(id));
   if (notUploaded.length) throw bad('아직 올라가지 않은 파일이 있어요: ' + notUploaded.length + '개');
+  const cur = await one('select version from services where team_id=$1 and id=$2', [teamId, params.id]);
+  if (cur && cur.version >= (+doc.version || 0)) throw new HttpError(409, 'version_conflict', `다른 기기에서 v${cur.version}이 이미 발행됐어요. 새로고침으로 받은 뒤 다시 발행하세요`);
   await q(`insert into services(team_id, id, doc, version, name, date, updated_by, updated_at) values($1,$2,$3,$4,$5,$6,$7,now())
            on conflict (team_id, id) do update set doc=excluded.doc, version=excluded.version, name=excluded.name, date=excluded.date, updated_by=excluded.updated_by, updated_at=now()`,
     [teamId, params.id, JSON.stringify(doc), +doc.version || 0, str(doc.name, 120), str(doc.date, 20), uid]);
   return { ok: true, version: +doc.version || 0 };
+});
+
+on('GET', '/services/:id/draft', async ({ uid, url, params }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(url.searchParams.get('team'), 64);
+  await requireMember(uid, teamId, 'leader');
+  const row = await one('select doc, updated_at as "updatedAt" from drafts where team_id=$1 and id=$2', [teamId, params.id]);
+  if (!row) return { doc: null };
+  const ids = blobIdsOf(row.doc);
+  const blobs = ids.length ? await q('select id, url, pathname from blobs where team_id=$1 and id = any($2::text[])', [teamId, ids]) : [];
+  return { doc: row.doc, updatedAt: row.updatedAt, blobs: await readUrls(blobs) };
+});
+on('PUT', '/services/:id/draft', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  await requireMember(uid, teamId, 'leader');
+  const doc = body.doc;
+  if (!doc || !Array.isArray(doc.items)) throw bad('초안이 비어 있어요');
+  await q(`insert into drafts(team_id, id, doc, updated_by, updated_at) values($1,$2,$3,$4,now())
+           on conflict (team_id, id) do update set doc=excluded.doc, updated_by=excluded.updated_by, updated_at=now()`, [teamId, params.id, JSON.stringify(doc), uid]);
+  return { ok: true };
 });
 
 on('DELETE', '/services/:id', async ({ uid, url, params }) => {
@@ -279,12 +326,13 @@ on('DELETE', '/services/:id', async ({ uid, url, params }) => {
   await requireMember(uid, teamId, 'leader');
   const row = await one('select doc from services where team_id=$1 and id=$2', [teamId, params.id]);
   await q('delete from services where team_id=$1 and id=$2', [teamId, params.id]);
+  await q('delete from drafts where team_id=$1 and id=$2', [teamId, params.id]);
   await q('delete from notes where team_id=$1 and service_id=$2', [teamId, params.id]);
   let freed = 0;
   if (row) {
     const mine = blobIdsOf(row.doc);
     if (mine.length) {
-      const others = await q('select doc from services where team_id=$1', [teamId]);
+      const others = (await q('select doc from services where team_id=$1', [teamId])).concat(await q('select doc from drafts where team_id=$1', [teamId]));
       const used = new Set(); others.forEach((o) => blobIdsOf(o.doc).forEach((id) => used.add(id)));
       const orphan = mine.filter((id) => !used.has(id));
       if (orphan.length) {
@@ -318,9 +366,9 @@ on('POST', '/blobs/:id', async ({ req, uid, url, params }) => {
   if (!buf.length) throw bad('빈 파일이에요');
   const type = str(req.headers['content-type'], 100) || 'application/octet-stream';
   const ext = type.includes('jpeg') ? '.jpg' : type.includes('png') ? '.png' : type.includes('webp') ? '.webp' : type.startsWith('audio/') ? '.audio' : '';
-  const blobUrl = await putBlob(`teams/${teamId}/${params.id}${ext}`, buf, type);
-  await q('insert into blobs(team_id, id, url, type, size) values($1,$2,$3,$4,$5) on conflict (team_id, id) do nothing', [teamId, params.id, blobUrl, type, buf.length]);
-  return { url: blobUrl };
+  const up = await putBlob(`teams/${teamId}/${params.id}${ext}`, buf, type);
+  await q('insert into blobs(team_id, id, url, pathname, type, size) values($1,$2,$3,$4,$5,$6) on conflict (team_id, id) do nothing', [teamId, params.id, up.url, up.pathname, type, buf.length]);
+  return { url: up.url };
 });
 
 // 메모: 내가 볼 수 있는 것 = 인도자 메모 전부 + 내 세션 공유 메모 + 내 메모

@@ -80,3 +80,21 @@ create table if not exists login_attempts (
   n        int not null default 0,
   last     timestamptz not null default now()
 );
+
+-- 기타 카포 (멤버별 표시용)
+alter table members add column if not exists capo int not null default 0;
+
+-- 비밀번호 복구 코드 (해시만 저장)
+alter table users add column if not exists recovery_hash text;
+
+-- 초안 (인도자 기기 간 이어서 편집)
+create table if not exists drafts (
+  team_id    uuid not null references teams(id) on delete cascade,
+  id         text not null,
+  doc        jsonb not null,
+  updated_by uuid references users(id),
+  updated_at timestamptz not null default now(),
+  primary key (team_id, id)
+);
+-- 비공개 Blob: 서명 URL 발급용 경로
+alter table blobs add column if not exists pathname text;

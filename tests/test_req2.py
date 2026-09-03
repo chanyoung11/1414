@@ -98,7 +98,7 @@ def run():
         # ---- 글을 고쳐 재발행 → 드럼 멤버에 빨간 점 + 다시 한 번 ----
         pg.goto(URL + '#/edit/' + svc_id); pg.wait_for_selector('[data-f="svc.message"]'); pg.fill('[data-f="svc.message"]', '글을 고쳤습니다. 다시 읽어 주세요.'); pg.wait_for_timeout(300)
         pg.click('[data-act="publish"]'); pg.wait_for_selector('#pubOnly'); pg.click('#pubOnly'); pg.wait_for_timeout(4000)
-        pm.goto(URL + '#/home'); pm.wait_for_selector('[data-act="sync"]'); pm.click('[data-act="sync"]'); pm.wait_for_timeout(3000)
+        pm.goto(URL + '#/home'); pm.wait_for_selector('.hd'); pm.evaluate("CONTI.SYNC.pullServices().then(()=>CONTI.render())"); pm.wait_for_timeout(3000)
         pm.goto(URL + '#/view/' + svc_id); pm.wait_for_selector('#msgOk', timeout=15000)
         if '고쳤습니다' not in pm.locator('#msgBody').inner_text(): fail('새 글이 아님')
         print('message rev ok; errors:', errs)

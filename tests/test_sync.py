@@ -68,7 +68,7 @@ def run():
         # ---- 인도자 v2 발행 → 멤버 새로고침으로 반영 ----
         pg.goto(URL + '#/edit/' + svc_id); pg.wait_for_selector('[data-f="item.title"]'); pg.fill('[data-f="item.title"]', '우리 주 하나님 (v2)'); pg.wait_for_timeout(400)
         pg.click('[data-act="publish"]'); pg.wait_for_selector('#pubOnly'); pg.click('#pubOnly'); pg.wait_for_timeout(4000)
-        pm.goto(URL + '#/home'); pm.wait_for_selector('[data-act="sync"]'); pm.click('[data-act="sync"]'); pm.wait_for_timeout(3000)
+        pm.goto(URL + '#/home'); pm.wait_for_selector('.hd'); pm.evaluate("CONTI.SYNC.pullServices().then(()=>CONTI.render())"); pm.wait_for_timeout(3000)
         if 'v2' not in pm.locator('.svcrow').first.inner_text(): fail('멤버가 v2를 못 받음: ' + pm.locator('.svcrow').first.inner_text())
         pm.goto(URL + '#/view/' + svc_id); pm.wait_for_timeout(1500)
         if '(v2)' not in pm.locator('#app').inner_text(): fail('멤버 보기에 v2 제목 없음')

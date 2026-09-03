@@ -222,6 +222,7 @@ html.dark .songbar::placeholder{color:rgba(10,10,10,.5)}
 .empty{padding:36px 20px;text-align:center;color:var(--muted-fg);border:1px dashed var(--border);border-radius:var(--r-xl);background:var(--muted)}
 .empty b{display:block;color:var(--fg);font-size:15px;margin-bottom:4px;letter-spacing:-.02em}
 .empty .btn{margin-top:14px}
+.more-only{display:none}
 .metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:16px}
 .metric{padding:14px 16px;border:1px solid var(--surface-border);border-radius:var(--r-xl);background:var(--secondary)}
 .metric .v{font-family:"Satoshi","Pretendard Variable",sans-serif;font-size:24px;font-weight:700;letter-spacing:-.03em;line-height:1.1;font-variant-numeric:tabular-nums}
@@ -377,6 +378,7 @@ html.dark .sheet{box-shadow:0 10px 40px rgba(0,0,0,.5);border-color:transparent}
 html.dark .msgbody{background:#1C1C1C}
 .chd{position:absolute;color:#C0392B;font-weight:700;font-family:"Pretendard Variable","Pretendard",Arial,sans-serif;white-space:nowrap;pointer-events:none;z-index:2;text-shadow:0 0 2px #fff,0 0 2px #fff}
 .slice.tool .chd.edit{pointer-events:auto;cursor:pointer}
+.mkabs .ksb{position:absolute;left:-6px;top:-9px;background:#C0392B;color:#fff;font-size:9px;font-weight:700;border-radius:999px;padding:0 4px;line-height:14px}
 .chdbox{position:absolute;border:1.5px dashed #C0392B;border-radius:3px;pointer-events:auto;cursor:pointer;z-index:2;background:rgba(192,57,43,.06)}
 .chordbar.slim{padding:2px 8px;background:transparent;border-style:dashed;justify-content:flex-end}
 .chordbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 8px -32px;padding:6px 8px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--panel2);font-size:12px}
@@ -419,7 +421,7 @@ html.dark .msgbody{background:#1C1C1C}
 .auth .fine{font-size:12.5px;color:var(--muted-fg);margin-top:16px;line-height:1.7}
 .auth .foot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:22px;padding-top:16px;border-top:1px solid var(--border)}
 @media (min-width:1024px){.auth-side{display:flex}.auth-card .mlogo{display:none}}
-@media (max-width:700px){.hd .date{display:none}.hd .acts .pill{max-width:150px;overflow:hidden;text-overflow:ellipsis;display:inline-block;line-height:20px}.hd .acts .btn{padding:0 9px}.sect-hd{flex-direction:column;align-items:stretch}.sect-hd .row{flex-wrap:wrap}.svcrow{flex-wrap:wrap}.svcrow .row{width:100%;justify-content:flex-end;padding-top:4px;border-top:1px solid var(--border);margin-top:4px}}
+@media (max-width:700px){.more-hide{display:none!important}.more-only{display:inline-flex}.hd .date{display:none}.hd .acts .pill{max-width:150px;overflow:hidden;text-overflow:ellipsis;display:inline-block;line-height:20px}.hd .acts .btn{padding:0 9px}.sect-hd{flex-direction:column;align-items:stretch}.sect-hd .row{flex-wrap:wrap}.svcrow{flex-wrap:wrap}.svcrow .row{width:100%;justify-content:flex-end;padding-top:4px;border-top:1px solid var(--border);margin-top:4px}}
 /* ---------- 모바일: 고정 패널 대신 세로 스크롤 ---------- */
 @media (max-width:820px){
  .ws,.ws.split{display:flex!important;flex-direction:column;gap:10px;padding:10px;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
@@ -542,7 +544,7 @@ function homeHTML(){
    <main>
     <div class="metrics rise"><div class="metric"><div class="v">${S.services.length}</div><div class="l">전체 예배</div></div><div class="metric"><div class="v">${upcoming}</div><div class="l">다가오는 예배</div></div><div class="metric"><div class="v">${pubN}</div><div class="l">발행된 콘티</div></div></div>
     <div class="sect-hd rise d1"><div><h2>예배 목록</h2><p>${on?`${esc(S.team.name)} 팀 · 인도자가 발행하면 자동으로 내려와요`:'이 기기에만 저장돼요. 팀에 보내려면 내보내기 파일을 카톡으로 보내세요'}</p></div>
-     <div class="row">${lead?`<button class="btn sm pri" data-act="new-svc">${ic('plus')}새 예배</button>`:''}${on?`<button class="btn sm" data-act="sync" title="팀 서버에서 최신 발행본 받기">${ic('import')}새로고침</button>`:''}${(!on||lead)?`<button class="btn sm" data-act="import">${ic('import')}가져오기</button>`:''}<button class="btn sm" data-act="export">${ic('export')}내보내기</button></div></div>
+     <div class="row">${lead?`<button class="btn sm pri" data-act="new-svc">${ic('plus')}새 예배</button>`:''}<span class="row more-hide">${on?`<button class="btn sm" data-act="sync" title="팀 서버에서 최신 발행본 받기">${ic('import')}새로고침</button>`:''}${(!on||lead)?`<button class="btn sm" data-act="import">${ic('import')}가져오기</button>`:''}<button class="btn sm" data-act="export">${ic('export')}내보내기</button></span><button class="icon more-only" data-act="home-more" title="더 보기">${ic('list')}</button></div></div>
     ${svcs.length?rows:`<div class="empty rise d1"><b>아직 예배가 없어요</b>${lead?'첫 콘티를 만들거나, 받은 파일을 가져오세요.':(on?'인도자가 발행하면 여기에 자동으로 나타나요.':'인도자가 보낸 파일을 "가져오기"로 여세요.')}${lead?`<div><button class="btn pri" data-act="new-svc">${ic('plus')}새 예배 만들기</button></div>`:''}</div>`}
     ${lead?`<div class="sect-hd rise d2" id="lib" style="margin-top:28px"><div><h2>라이브러리</h2><p>예배에 넣은 곡은 자동으로 저장돼요</p></div></div><div class="card rise d2">${S.library.length?S.library.map(s=>`<span class="chip">${ic('music')}${esc(s.title)} <span class="muted">${esc(keyStr(s))}</span></span>`).join(''):'<span class="hint">비어 있음</span>'}</div>`:''}
    </main></div></div>
@@ -677,8 +679,11 @@ function markerMenu(svc,it,mid){
  modal(`<div class="row sb"><div class="row"><span class="mk">${esc(m.label)}</span><b style="font-size:17px">마커 ${esc(m.label)}</b></div><span class="pill">${m.cut==null?'절단선 없음 · 배지 모드':'절단선 y='+m.cut}</span></div>
   <div class="lbl">절단선</div><div class="row" style="flex-wrap:wrap"><button class="btn sm" data-c="auto">자동</button><button class="btn sm" data-c="-40">${ic('up')}40</button><button class="btn sm" data-c="-10">${ic('up')}10</button><button class="btn sm" data-c="10">${ic('down')}10</button><button class="btn sm" data-c="40">${ic('down')}40</button><button class="btn sm outline" data-c="none">없음</button></div>
   <div class="hint" style="margin-top:8px">메모 띠가 끼워질 자리. 마커 바로 위 줄 사이 여백에 있어야 합니다.</div>
+  <div class="lbl">여기부터 전조 <span class="hint">곡 안에서 키가 바뀌는 지점. 이 마커 아래(그리고 다음 조각)의 코드에 반음 단위로 더해요</span></div>
+  <div class="row" style="flex-wrap:wrap"><button class="btn sm ${m.keyShift==null?'pri':''}" data-ks="none">없음</button>${[-2,-1,1,2,3].map(v=>`<button class="btn sm ${m.keyShift===v?'pri':''}" data-ks="${v}">${v>0?'+':''}${v}</button>`).join('')}<button class="icon sm ghost" data-ks="-" title="반음 내림">${ic('down')}</button><button class="icon sm ghost" data-ks="+" title="반음 올림">${ic('up')}</button>${m.keyShift!=null?`<span class="pill">현재 ${m.keyShift>0?'+':''}${m.keyShift}</span>`:''}</div>
   <div class="row" style="margin-top:18px;gap:8px"><button class="btn" id="mmMemo">${ic('note')}인도자 메모</button><button class="btn" id="mmLabel">${ic('pen')}라벨 바꾸기</button><span class="grow"></span><button class="btn ghost danger" id="mmDel">${ic('trash')}삭제</button></div>`,{center:true});
  $('#modal').onclick=e=>{
+  const kb=e.target.closest('[data-ks]');if(kb){const v=kb.dataset.ks;if(v==='none')m.keyShift=null;else if(v==='+'||v==='-')m.keyShift=(m.keyShift||0)+(v==='+'?1:-1);else m.keyShift=+v;if(m.keyShift===0)m.keyShift=null;touch(svc);save();closeModal();drawEditorSheet(svc);markerMenu(svc,it,mid);return}
   const cb=e.target.closest('[data-c]');const c=cb&&cb.dataset.c;if(c){if(c==='auto')m.cut=autoCut(p,m.y);else if(c==='none')m.cut=null;else m.cut=Math.max(0,Math.min(p.h-1,(m.cut==null?m.y-20:m.cut)+ +c));touch(svc);save();closeModal();drawEditorSheet(svc);return}
   const b=e.target.closest('button');const id=b&&b.id;
   if(id==='mmDel'){p.markers=p.markers.filter(x=>x.id!==mid);it.notes=it.notes.filter(n=>n.marker!==mid);touch(svc);save();closeModal();render();return}
@@ -758,9 +763,9 @@ function publishModal(svc){
   <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" id="kkCopy">텍스트 복사</button>${online()?`<button class="btn pri" id="pubOnly">${ic('send')}발행하고 팀에 공유</button>`:`<button class="btn" id="pubOnly">${ic('check')}발행만</button><button class="btn pri" id="pubOk">${ic('send')}발행 + 파일 내보내기</button>`}</div>`);
  $('#modal').onclick=async e=>{
   if(e.target.closest('#kkCopy')){try{await navigator.clipboard.writeText($('#kk').value);toast('복사됨')}catch{$('#kk').select();document.execCommand('copy');toast('복사됨')}}
-  const only=e.target.closest('#pubOnly'),withFile=e.target.closest('#pubOk');if(only||withFile){const msg=(svc.message||'').trim();const prevMsg=svc.published?(svc.published.message||''):'';if(msg!==prevMsg)svc.messageRev=(svc.messageRev||0)+1;
+  const only=e.target.closest('#pubOnly'),withFile=e.target.closest('#pubOk');if(only||withFile){const prevPub=svc.published,prevVer=svc.version,prevRev=svc.messageRev;const msg=(svc.message||'').trim();const prevMsg=svc.published?(svc.published.message||''):'';if(msg!==prevMsg)svc.messageRev=(svc.messageRev||0)+1;
    svc.published={version:nextV,at:Date.now(),name:svc.name,date:svc.date,notice:svc.notice,message:msg,messageRev:svc.messageRev||0,author:me().name||'인도자',items:clone(svc.items).map(it=>({...it,notes:undefined}))};S.readRev=S.readRev||{};S.readRev[svc.id]=svc.messageRev||0;save();closeModal();
-   if(online()){toast('팀 서버에 올리는 중…');try{await SYNC.pushPublish(svc);toast('v'+nextV+' 발행 · 팀에 공유됐어요')}catch(err){toast('발행은 됐지만 서버 업로드 실패: '+err.message)}}else toast('v'+nextV+' 발행');
+   if(online()){toast('팀 서버에 올리는 중…');try{await SYNC.pushPublish(svc);toast('v'+nextV+' 발행 · 팀에 공유됐어요')}catch(err){if(err.code==='version_conflict'){svc.published=prevPub;svc.version=prevVer;svc.messageRev=prevRev;save();alert(err.message);try{await SYNC.pullService(svc.id)}catch(e2){}}else toast('발행은 됐지만 서버 업로드 실패: '+err.message)}}else toast('v'+nextV+' 발행');
    if(withFile)await exportJSON(svc.id);render()}
  };
 }
@@ -773,7 +778,9 @@ function settingsModal(){
   ${on?'':`<div class="lbl">역할</div><div id="sRole"><button class="q ${m.role==='leader'?'on':''}" data-r="leader">인도자 (콘티 제작)</button><button class="q ${m.role!=='leader'?'on':''}" data-r="member">멤버</button></div>`}
   ${!on||lead?`<div class="lbl">팀 세션 목록 <span class="hint">쉼표로</span></div><input class="field" id="sList" value="${esc(S.team.sessions.join(', '))}">
   <div class="lbl">상용구 <span class="hint">메모 작성창에 칩으로</span></div><input class="field" id="sPhr" value="${esc(S.team.phrases.join(', '))}">`:''}
+  <div class="lbl">기타 카포 <span class="hint">0이면 없음. 내 화면의 빨간 코드가 카포만큼 더 내려가요</span></div><div class="row"><input class="field mono" id="sCapo" type="number" min="0" max="9" value="${+m.capo||0}" style="width:90px;text-align:center"><span class="hint">프렛</span></div>
   ${on?`<div class="lbl">비밀번호 바꾸기 <span class="hint">비워 두면 그대로</span></div><div class="row"><input class="field" id="sPw0" type="password" autocomplete="current-password" placeholder="현재 비밀번호"><input class="field" id="sPw1" type="password" autocomplete="new-password" placeholder="새 비밀번호 6자 이상"></div>`:''}
+  ${on?`<div class="lbl">복구 코드 <span class="hint">비밀번호를 잊었을 때 쓰는 12자. 한 번만 보여주니 안전한 곳에 적어 두세요</span></div><div class="row"><span class="hint" id="sRcState">${NET.user&&NET.user.hasRecovery?'발급됨':'아직 없음'}</span><button class="btn sm" id="sRc">${NET.user&&NET.user.hasRecovery?'새로 발급':'발급'}</button></div>`:''}
   <div class="err" id="sErr"></div>
   <div class="row" style="margin-top:12px;justify-content:space-between"><span class="row"><button class="btn ghost danger" id="sReset">${on?'이 기기 데이터 지우기':'전체 초기화'}</button>${on?`<button class="btn ghost" id="sLogout">로그아웃</button>`:''}</span><button class="btn pri" id="sOk">${ic('check')}저장</button></div>`,{center:true});
  let sess=m.session,role=m.role;
@@ -784,10 +791,13 @@ function settingsModal(){
    if(on){try{
      if($('#sPw1')&&$('#sPw1').value){await api('/auth/password',{method:'POST',body:{current:$('#sPw0').value,next:$('#sPw1').value}})}
      if(lead&&$('#sList')){applyMembership(await api('/teams/'+S.team.id,{method:'PATCH',body:{sessions:split($('#sList')),phrases:split($('#sPhr'))}}))}
-     applyMembership(await api('/me',{method:'PATCH',body:{teamId:S.team.id,name,session:sess}}));
+     applyMembership(await api('/me',{method:'PATCH',body:{teamId:S.team.id,name,session:sess,capo:+($('#sCapo')||{value:0}).value||0}}));
     }catch(err){$('#sErr').textContent=err.message;return}}
-   else{m.name=name;m.session=sess;m.role=role;S.team.sessions=split($('#sList'));S.team.phrases=split($('#sPhr'));if(!S.team.sessions.includes(m.session))m.session=S.team.sessions[0]||''}
+   else{m.name=name;m.session=sess;m.role=role;m.capo=+($('#sCapo')||{value:0}).value||0;S.team.sessions=split($('#sList'));S.team.phrases=split($('#sPhr'));if(!S.team.sessions.includes(m.session))m.session=S.team.sessions[0]||''}
    save();closeModal();render()}
+  if(e.target.closest('#sRc')){try{const r=await api('/auth/recovery',{method:'POST'});if(NET.user)NET.user.hasRecovery=true;closeModal();
+    modal(`<b style="font-size:17px">복구 코드</b><div class="hint" style="margin-top:4px">이 화면을 닫으면 다시 볼 수 없어요. 메모장이나 비밀번호 앱에 저장해 두세요. 비밀번호를 잊으면 로그인 화면의 "비밀번호를 잊었어요"에서 씁니다.</div><div class="linkbox" style="margin-top:12px;font-size:20px;letter-spacing:.08em;text-align:center">${esc(r.code)}</div><div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" id="rcCopy">복사</button><button class="btn pri" id="rcClose">저장했어요</button></div>`,{center:true});
+    $('#modal').onclick=async ev=>{if(ev.target.closest('#rcCopy')){await copyText(r.code);toast('복사했어요')}if(ev.target.closest('#rcClose')){closeModal()}}}catch(err){$('#sErr').textContent=err.message}return}
   if(e.target.closest('#sLogout')){closeModal();doGate('logout')}
   if(e.target.closest('#sReset')){if(confirm(on?'이 기기에 저장된 콘티·악보·메모를 지웁니다. 계정은 그대로예요. 계속할까요?':'모든 데이터를 지웁니다. 계속할까요?')){indexedDB.deleteDatabase('conti-v1');location.reload()}}
  };
@@ -849,7 +859,7 @@ async function api(path,o){const opt={method:(o&&o.method)||'GET',headers:{'x-co
  const r=await fetch('/api'+path,opt);let j=null;try{j=await r.json()}catch(e){}
  if(!r.ok){const err=new Error((j&&j.message)||('오류 '+r.status));err.status=r.status;err.code=j&&j.error;throw err}return j}
 async function probeServer(){try{const r=await fetch('/api/health',{cache:'no-store'});if(!r.ok)return false;const j=await r.json();return !!(j&&j.app==='conti')}catch(e){return null}}
-function applyMembership(t){S.team.id=t.teamId;S.team.name=t.teamName;S.team.invite=t.invite||'';S.team.sessions=t.sessions.slice();S.team.phrases=t.phrases.slice();S.team.me={userId:t.me.userId,name:t.me.name,session:t.me.session,role:t.me.role};save()}
+function applyMembership(t){S.team.id=t.teamId;S.team.name=t.teamName;S.team.invite=t.invite||'';S.team.sessions=t.sessions.slice();S.team.phrases=t.phrases.slice();S.team.me={userId:t.me.userId,name:t.me.name,session:t.me.session,role:t.me.role,capo:+t.me.capo||0};save()}
 function takeMe(m){NET.user=m.user;NET.teams=m.teams||[];const cur=NET.teams.find(x=>x.teamId===S.team.id)||m.team;if(cur)applyMembership(cur);else{S.team.id='';S.team.invite='';save()}}
 async function refreshMe(){try{takeMe(await api('/me'))}catch(e){if(e.status===401)NET.user=null}}
 
@@ -857,8 +867,9 @@ async function refreshMe(){try{takeMe(await api('/me'))}catch(e){if(e.status===4
 const SYNC={t:null,pulledAt:{},
  blobIds(items){const ids=[];(items||[]).forEach(it=>{(it.pieces||[]).forEach(p=>p.blob&&ids.push(p.blob));(it.media||[]).forEach(m=>m.type==='audio'&&m.blob&&ids.push(m.blob))});return [...new Set(ids)]},
  // 팀의 발행본 목록을 받아 새 것·새 버전만 내려받음. 바뀐 게 있으면 true
- async pullServices(){if(!online()||!S.team.id)return false;let list;try{list=(await api('/services?team='+S.team.id)).services}catch(e){return false}
+ async pullServices(){if(!online()||!S.team.id)return false;let list,drafts=[];try{const r=await api('/services?team='+S.team.id);list=r.services;drafts=r.drafts||[]}catch(e){return false}
   let changed=false;
+  if(isLeader())for(const d of drafts){if(svcById(d.id))continue;try{const dd=await api('/services/'+d.id+'?team='+S.team.id+'&draft=1');if(dd&&dd.doc){await SYNC.fetchBlobs(dd.blobs);const cur={id:d.id,name:'',date:today(),notice:'',version:0,items:[],published:null};S.services.push(cur);SYNC.applyDraft(cur,dd.doc);changed=true}}catch(e){console.warn('draft',d.id,e.message)}}
   for(const r of list){const cur=svcById(r.id);const localV=cur&&cur.published?cur.published.version:0;
    if(cur&&localV>=r.version)continue;
    try{await SYNC.pullService(r.id);changed=true}catch(e){console.warn('pull',r.id,e.message)}}
@@ -872,13 +883,23 @@ const SYNC={t:null,pulledAt:{},
    cur.items=clone(doc.items).map(it=>{const o=old.get(it.id);it.notes=o?(o.notes||[]):[];it.media=(it.media||[]).map(m=>{const om=o&&(o.media||[]).find(x=>x.id===m.id);return {...m,notes:om?(om.notes||[]):[]}});return it})}
   save();return cur},
  async fetchBlobs(map){for(const id in (map||{})){if(await IDB.get('blobs',id))continue;try{const r=await fetch(map[id]);if(!r.ok)continue;const b=await r.blob();await IDB.put('blobs',id,b)}catch(e){console.warn('blob',id,e.message)}}},
- // 발행(인도자): 새 파일 업로드 → 스냅샷 저장
- async pushPublish(svc){if(!online()||!isLeader())return false;const pub=svc.published;const ids=SYNC.blobIds(pub.items);
-  let have={};if(ids.length){have=(await api('/blobs?team='+S.team.id+'&ids='+ids.join(','))).blobs}
+ async ensureBlobs(items,quiet){const ids=SYNC.blobIds(items);let have={};if(ids.length){have=(await api('/blobs?team='+S.team.id+'&ids='+ids.join(','))).blobs}
   const todo=ids.filter(id=>!have[id]);let k=0;
-  for(const id of todo){k++;toast(`파일 올리는 중 ${k}/${todo.length}…`);const b=await IDB.get('blobs',id);if(!b)throw new Error('이 기기에 없는 파일이 있어요');
+  for(const id of todo){k++;if(!quiet)toast(`파일 올리는 중 ${k}/${todo.length}…`);const b=await IDB.get('blobs',id);if(!b)throw new Error('이 기기에 없는 파일이 있어요');
    const r=await fetch('/api/blobs/'+id+'?team='+S.team.id,{method:'POST',headers:{'x-conti':'1','content-type':b.type||'application/octet-stream'},body:b,credentials:'same-origin'});
-   if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.message||'파일 업로드 실패')}}
+   if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.message||'파일 업로드 실패')}}},
+ // 초안(인도자): 기기 간 이어서 편집
+ draftDoc(svc){return {id:svc.id,name:svc.name,date:svc.date,notice:svc.notice||'',message:svc.message||'',messageRev:svc.messageRev||0,version:svc.version||0,editedAt:svc.editedAt||0,items:clone(svc.items).map(it=>({...it,notes:undefined,media:(it.media||[]).map(m=>({...m,notes:undefined}))}))}},
+ async pushDraft(svc){if(!online()||!isLeader()||!svc||!svc.editedAt)return;if(svc.draftPushedAt===svc.editedAt)return;try{await SYNC.ensureBlobs(svc.items,true);await api('/services/'+svc.id+'/draft',{method:'PUT',body:{teamId:S.team.id,doc:SYNC.draftDoc(svc)}});svc.draftPushedAt=svc.editedAt;save()}catch(e){console.warn('draft push',e.message)}},
+ applyDraft(svc,doc){const old=new Map(svc.items.map(it=>[it.id,it]));svc.name=doc.name;svc.date=doc.date;svc.notice=doc.notice||'';svc.message=doc.message||'';svc.messageRev=doc.messageRev||0;svc.version=Math.max(svc.version||0,doc.version||0);svc.editedAt=doc.editedAt||Date.now();svc.draftPushedAt=svc.editedAt;
+  svc.items=clone(doc.items).map(it=>{const o=old.get(it.id);it.notes=o?(o.notes||[]):[];it.media=(it.media||[]).map(m=>{const om=o&&(o.media||[]).find(x=>x.id===m.id);return {...m,notes:om?(om.notes||[]):[]}});return it});save()},
+ async pullDraft(svc){if(!online()||!isLeader()||!svc)return false;let d;try{d=await api('/services/'+svc.id+'/draft?team='+S.team.id)}catch(e){return false}
+  if(!d||!d.doc)return false;const remote=+d.doc.editedAt||0;if(remote<=(svc.editedAt||0)+500)return false;
+  const when=new Date(remote).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'numeric',minute:'2-digit'});
+  if(!confirm(`다른 기기에서 ${when}에 저장한 초안이 더 새로워요. 가져올까요?\n(취소하면 이 기기의 초안을 유지하고, 다음 저장 때 서버에 덮어씁니다)`)){svc.editedAt=Date.now();save();return false}
+  await SYNC.fetchBlobs(d.blobs);SYNC.applyDraft(svc,d.doc);toast('다른 기기의 초안을 가져왔어요');return true},
+ // 발행(인도자): 새 파일 업로드 → 스냅샷 저장
+ async pushPublish(svc){if(!online()||!isLeader())return false;const pub=svc.published;await SYNC.ensureBlobs(pub.items);
   await api('/services/'+svc.id,{method:'PUT',body:{teamId:S.team.id,doc:{id:svc.id,name:pub.name,date:pub.date,notice:pub.notice,message:pub.message||'',messageRev:pub.messageRev||0,author:pub.author||'',version:pub.version,items:pub.items}}});return true},
  async deleteService(id){if(!online()||!isLeader())return;try{await api('/services/'+id+'?team='+S.team.id,{method:'DELETE'})}catch(e){toast(e.message)}},
  // 메모: 로컬 ↔ 서버 차이만 올림 (실패하면 다음 저장 때 다시)
@@ -894,20 +915,27 @@ const SYNC={t:null,pulledAt:{},
   svc.items.forEach(it=>{const list=by[it.id]||[];it.notes=list.filter(n=>!n.mediaId).map(n=>({id:n.id,marker:n.markerId,layer:n.layer,session:n.session,text:n.text,author:who(n),at:new Date(n.createdAt).getTime()}));
    (it.media||[]).forEach(m=>{m.notes=list.filter(n=>n.mediaId===m.id).map(n=>({id:n.id,t:+n.t||0,marker:n.markerId||undefined,layer:n.layer,session:n.session,text:n.text,author:who(n)}))})});
   S.noteShadow=S.noteShadow||{};S.noteShadow[svc.id]=d.notes.map(n=>n.id);SYNC.pulledAt[svc.id]=Date.now();save()},
- flush(){const r=route();const svc=svcById(r.a);if(online()&&svc&&/^(edit|view|play)$/.test(r.name)){clearTimeout(SYNC.t);SYNC.pushNotes(svc,true)}},
- schedulePush(){if(!online())return;clearTimeout(SYNC.t);SYNC.t=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&/^(edit|view|play)$/.test(r.name))SYNC.pushNotes(svc)},700)}
+ flush(){const r=route();const svc=svcById(r.a);if(online()&&svc&&/^(edit|view|play)$/.test(r.name)){clearTimeout(SYNC.t);SYNC.pushNotes(svc,true);if(r.name==='edit'&&isLeader()){clearTimeout(SYNC.td);SYNC.pushDraft(svc)}}},
+ schedulePush(){if(!online())return;clearTimeout(SYNC.t);SYNC.t=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&/^(edit|view|play)$/.test(r.name))SYNC.pushNotes(svc)},700);clearTimeout(SYNC.td);SYNC.td=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&r.name==='edit'&&isLeader())SYNC.pushDraft(svc)},2500)}
 };
 const GATE={mode:'login',err:'',user:'',sess:'',preview:null};
 function authShell(inner){return `<div class="auth"><aside class="auth-side"><div class="logostack">${logoSymbol(56)}${logoWordmark(47,'')}</div><div><p class="kick">찬양팀 콘티 · 연습 · 무대 — 1414</p><blockquote>“콘티 한 장으로<br>팀 전체가 같은 곳을 봅니다.”</blockquote><p class="desc">곡 순서와 키, 송폼, 악보, 참고 영상을 한 화면에. 인도자가 발행하면 팀원은 자기 세션 메모와 함께 연습하고 무대에 섭니다.</p>
  <ul><li>${ic('send')}발행 한 번으로 카톡 공유 문구까지 자동 생성</li><li>${ic('marker')}악보 위 마커에 붙는 세션별 메모</li><li>${ic('moon')}네트워크 없이도 열리는 무대 모드</li></ul></div><p class="copy">© 2026 1414 · lets1414.com</p></aside><div class="auth-main"><div class="auth-box">${inner}</div></div></div>`}
-function loginHTML(){const m=GATE.mode;return authShell(`<div class="auth-card"><div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div><h1>${m==='login'?'로그인':'회원가입'}</h1><p class="sub">${m==='login'?'팀 계정으로 로그인해 콘티를 함께 봅니다.':'아이디와 비밀번호만 있으면 바로 시작할 수 있어요.'}</p>
+function recoverHTML(){return authShell(`<div class="auth-card"><div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div><h1>비밀번호 재설정</h1><p class="sub">설정에서 발급받아 둔 복구 코드로 새 비밀번호를 정합니다. 코드가 없으면 인도자에게 초기화를 부탁하세요.</p>
+ <div class="lbl">아이디</div><input class="field" id="lgUser" autocomplete="username" autocapitalize="none" spellcheck="false" value="${esc(GATE.user)}">
+ <div class="lbl">복구 코드</div><input class="field mono" id="rcCode" autocapitalize="none" spellcheck="false" placeholder="xxxx-xxxx-xxxx">
+ <div class="lbl">새 비밀번호</div><input class="field" id="lgPass" type="password" autocomplete="new-password" placeholder="6자 이상">
+ <div class="err" id="lgErr" role="alert">${esc(GATE.err)}</div>
+ <button class="btn pri wide" data-act="rc-submit">${ic('check')}비밀번호 바꾸고 로그인</button>
+ <p class="fine"><a href="#" data-act="lg-mode" data-m="login">로그인으로 돌아가기</a></p></div>`)}
+function loginHTML(){const m=GATE.mode;if(m==='recover')return recoverHTML();return authShell(`<div class="auth-card"><div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div><h1>${m==='login'?'로그인':'회원가입'}</h1><p class="sub">${m==='login'?'팀 계정으로 로그인해 콘티를 함께 봅니다.':'아이디와 비밀번호만 있으면 바로 시작할 수 있어요.'}</p>
  <div class="tabs"><button class="${m==='login'?'on':''}" data-act="lg-mode" data-m="login">로그인</button><button class="${m==='signup'?'on':''}" data-act="lg-mode" data-m="signup">회원가입</button></div>
  <div class="lbl">아이디</div><input class="field" id="lgUser" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="영문 소문자·숫자 3~20자" value="${esc(GATE.user)}">
  <div class="lbl">비밀번호</div><input class="field" id="lgPass" type="password" autocomplete="${m==='login'?'current-password':'new-password'}" placeholder="6자 이상">
  ${m==='signup'?`<div class="lbl">이름 <span class="hint">팀원에게 보이는 이름</span></div><input class="field" id="lgName" placeholder="하은">`:''}
  <div class="err" id="lgErr" role="alert">${esc(GATE.err)}</div>
  <button class="btn pri wide" data-act="lg-submit">${m==='login'?'로그인':'가입하고 시작'}</button>
- ${route().name==='join'?`<p class="fine">초대 링크로 오셨네요. 로그인하면 팀 가입으로 이어집니다.</p>`:''}</div>`)}
+ ${route().name==='join'?`<p class="fine">초대 링크로 오셨네요. 로그인하면 팀 가입으로 이어집니다.</p>`:''}${m==='login'?`<p class="fine"><a href="#" data-act="lg-mode" data-m="recover">비밀번호를 잊었어요</a></p>`:''}</div>`)}
 function gateHTML(){const u=NET.user||{};return authShell(`<div class="auth-card"><div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div><h1>${esc(u.name||u.username)}님, 반가워요</h1><p class="sub">아직 팀이 없어요. 초대 링크로 들어가거나 새 팀을 만드세요.</p>
  <div class="lbl">초대 링크로 가입</div><div class="row"><input class="field" id="gtLink" placeholder="인도자가 보낸 링크 또는 코드"><button class="btn" data-act="join-go">열기</button></div><div class="err" id="gtErr"></div></div>
  <div class="auth-card"><h2>팀 만들기</h2><p class="sub">인도자가 팀을 만들고 초대 링크를 카톡에 붙여요.</p>
@@ -929,9 +957,10 @@ async function afterGate(){const gs=$('#gtSess');if(gs)gs.onclick=e=>{const b=e.
 async function doGate(act,el){
  try{
   if(act==='lg-mode'){GATE.mode=el.dataset.m;GATE.err='';GATE.user=($('#lgUser')||{value:''}).value;render();return}
+  if(act==='rc-submit'){const username=$('#lgUser').value.trim(),code=$('#rcCode').value.trim(),next=$('#lgPass').value;GATE.user=username;const m=await api('/auth/recover',{method:'POST',body:{username,code,next}});GATE.err='';GATE.mode='login';takeMe(m);toast('비밀번호를 바꿨어요. 설정에서 복구 코드를 새로 발급해 두세요');render();return}
   if(act==='lg-submit'){const username=$('#lgUser').value.trim(),password=$('#lgPass').value;GATE.user=username;
    const m=GATE.mode==='login'?await api('/auth/login',{method:'POST',body:{username,password}}):await api('/auth/signup',{method:'POST',body:{username,password,name:$('#lgName').value.trim()}});
-   GATE.err='';GATE.preview=null;takeMe(m);render();return}
+   GATE.err='';GATE.preview=null;takeMe(m);render();if(S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()});return}
   if(act==='logout'){try{await api('/auth/logout',{method:'POST'})}catch(e){}NET.user=null;NET.teams=[];S.team.id='';S.team.invite='';save();GATE.preview=null;if(route().name!=='home')go('home');render();return}
   if(act==='join-go'){const v=$('#gtLink').value.trim();const tok=(v.match(/join\/([A-Za-z0-9_-]+)/)||[])[1]||v;if(!tok){$('#gtErr').textContent='링크나 코드를 붙여넣어 주세요';return}GATE.preview=null;go('join/'+tok);return}
   if(act==='team-create'){const t=await api('/teams',{method:'POST',body:{name:$('#gtTeam').value.trim(),myName:$('#gtName').value.trim(),session:GATE.sess||'인도자'}});applyMembership(t);NET.teams.push(t);toast('팀을 만들었어요');go('home');render();return}
@@ -1057,13 +1086,17 @@ const isChordText=t=>{t=normAcc(t);const c=parseChord(t);return !!c&&!/^[A-G]\d{
 function keySemi(k){const m=normAcc(k).match(/^([A-G])(#|b)?/);if(!m)return null;const v=NOTE_SEMI[m[1]+(m[2]||'')];return v==null?null:v}
 function spell(semi,key){const k=normAcc(key).replace(/\s/g,'');const flat=FLAT_KEYS.includes(k)||FLAT_KEYS.includes(k.replace(/m(in)?$/,''))||/^[A-G]b/.test(k);return (flat?FLAT_NAMES:SHARP_NAMES)[((semi%12)+12)%12]}
 function transposeChord(text,semis,key){const c=parseChord(text);if(!c)return text;const r=NOTE_SEMI[c.root];if(r==null)return text;let out=spell(r+semis,key)+c.suffix;if(c.bass){const b=NOTE_SEMI[c.bass];out+='/'+(b==null?c.bass:spell(b+semis,key))}return out}
+function shiftAt(item,pi,y){let best=null;(item.pieces||[]).forEach((p,i)=>{if(i>pi)return;(p.markers||[]).forEach(m=>{if(m.keyShift==null)return;if(i<pi||m.y<=y){if(!best||i>best.i||(i===best.i&&m.y>best.y))best={i,y:m.y,v:m.keyShift}}})});return best?best.v:0}
 function chordOffset(item,piece){if(!piece)return 0;if(piece.offset!=null)return piece.offset;const a=keySemi(item.key),b=keySemi(piece.sheetKey);if(a==null||b==null)return 0;let d=a-b;while(d>6)d-=12;while(d<-6)d+=12;return d}
 function estimateKey(chords){const roots=(chords||[]).map(c=>parseChord(c.text)).filter(Boolean).map(c=>c.root);if(!roots.length)return '';const cnt={};roots.forEach(r=>cnt[r]=(cnt[r]||0)+1);const top=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a]);const last=roots[roots.length-1];return top.slice(0,2).includes(last)?last:top[0]}
 // 오선 위치: 폭의 40% 이상 이어지는 어두운 행 → 선 → 4줄 이상 묶음이 시스템
-function detectSystems(canvas){const W=Math.min(900,canvas.width);const {g,H}=grayOf(canvas,W);const hist=new Uint32Array(256);for(let i=0;i<g.length;i++)hist[g[i]]++;let bg=255,mx=0;for(let v=120;v<256;v++)if(hist[v]>mx){mx=hist[v];bg=v}const thr=bg-Math.max(60,bg*0.35);
- const rows=[];for(let y=0;y<H;y++){let run=0,best=0;for(let x=0;x<W;x++){if(g[y*W+x]<thr){run++;if(run>best)best=run}else run=0}if(best>=W*0.4)rows.push(y)}
+function detectSystems(canvas){const W=Math.min(1600,canvas.width);const {g,H}=grayOf(canvas,W);const hist=new Uint32Array(256);for(let i=0;i<g.length;i++)hist[g[i]]++;let bg=255,mx=0;for(let v=120;v<256;v++)if(hist[v]>mx){mx=hist[v];bg=v}const thr=bg-Math.max(40,bg*0.25);
+ // 행마다 가장 긴 어두운 구간(2px 이하 끊김 허용). 폭의 22% 이상이면 오선 후보 (두 장 나란히 스캔한 악보도 잡힘)
+ const rows=[];for(let y=0;y<H;y++){let run=0,best=0,gap=0;for(let x=0;x<W;x++){if(g[y*W+x]<thr){run+=gap+1;gap=0;if(run>best)best=run}else{gap++;if(gap>2){run=0;gap=0}}}if(best>=W*0.22)rows.push(y)}
  const lines=[];rows.forEach(y=>{const L=lines[lines.length-1];if(L&&y-L.e<=2)L.e=y;else lines.push({s:y,e:y})});
- const sys=[];lines.forEach(l=>{const S0=sys[sys.length-1];if(S0&&l.s-S0.bottom<=H*0.025){S0.bottom=l.e;S0.n++}else sys.push({top:l.s,bottom:l.e,n:1})});
+ // 선 간격 = 인접 선 거리의 중앙값 기준으로 시스템 묶기 (H 비율 대신 실제 간격 사용)
+ const dists=[];for(let i=1;i<lines.length;i++)dists.push(lines[i].s-lines[i-1].e);dists.sort((a,b)=>a-b);const med=dists.length?dists[Math.floor(dists.length/2)]:H*0.01;const tol=Math.max(med*2.2,H*0.012);
+ const sys=[];lines.forEach(l=>{const S0=sys[sys.length-1];if(S0&&l.s-S0.bottom<=tol){S0.bottom=l.e;S0.n++}else sys.push({top:l.s,bottom:l.e,n:1})});
  const k=canvas.height/H;return sys.filter(x=>x.n>=4).map(x=>({top:Math.round(x.top*k),bottom:Math.round(x.bottom*k)}))}
 async function recognizeChords(svc,it,piece){if(!online()||!isLeader()||!piece)return;piece.ocr='pending';piece.ocrErr='';save();if(route().name==='edit')drawEditorSheet(svc);
  try{const blob=await IDB.get('blobs',piece.blob);if(!blob)throw new Error('이 기기에 악보 파일이 없어요');const img=await loadImg(URL.createObjectURL(blob));
@@ -1130,7 +1163,7 @@ function sheetHTML(item,W,ctx){
   const bounds=[0,...stripMarkers.map(m=>m.cut),p.h];
   html+=`<div class="piece" data-piece="${p.id}">`;
   if(pieces.length>1)html+=`<div class="phead"><span class="ln"></span>조각 ${pi+1}${p.name?' · '+esc(p.name):''}<span class="ln"></span></div>`;
-  const off=chordOffset(item,p);const nCh=(p.chords||[]).length;const showRed=off!==0&&(ctx.f?ctx.f.chords!==false:true);const chordTool=ctx.mode==='edit'&&ctx.tool==='chord';
+  const capo=ctx.mode==='edit'?0:(+me().capo||0);const off=chordOffset(item,p)-capo;const nCh=(p.chords||[]).length;const showRed=off!==0&&(ctx.f?ctx.f.chords!==false:true);const chordTool=ctx.mode==='edit'&&ctx.tool==='chord';
   if(ctx.mode==='edit')html+=`<div class="chordbar ${(nCh||p.sheetKey||p.ocr==='pending')?'':'slim'}">${p.ocr==='pending'?'<span class="hint">코드 인식 중…</span>':''}${(nCh||p.sheetKey)?`<button class="btn sm" data-act="sheet-key" data-id="${p.id}">악보 키 ${esc(p.sheetKey||'?')}${p.keyConfirmed?'':' <span class="muted">(추정)</span>'}</button><span class="hint">→ 연주 키 ${esc(item.key||'?')}</span><span class="pill">${off>0?'+':''}${off}</span><button class="icon sm ghost" data-act="chord-off" data-id="${p.id}" data-d="-1" title="반음 내림">${ic('down')}</button><button class="icon sm ghost" data-act="chord-off" data-id="${p.id}" data-d="1" title="반음 올림">${ic('up')}</button><span class="hint">${nCh}개 코드${off?' · 전조 코드 병기':' · 같은 키'}</span>`:''}${p.ocr==='none'?'<span class="hint">인식 엔진 미연결 — "코드" 도구로 직접 추가</span>':''}${p.ocr==='error'?`<span class="hint" style="color:var(--destructive)">인식 실패: ${esc(p.ocrErr||'')}</span>`:''}<span class="grow"></span>${p.ocr!=='pending'?`<button class="btn sm ghost" data-act="ocr" data-id="${p.id}">${ic('marker')}${nCh?'다시 인식':'코드 인식'}</button>`:''}</div>`;
   for(let i=0;i<bounds.length-1;i++){
    const a=bounds[i],b=bounds[i+1];
@@ -1140,12 +1173,13 @@ function sheetHTML(item,W,ctx){
    (p.hls||[]).forEach(h=>{if(h.y>=a&&h.y<b)html+=`<div class="hl" data-hl="${h.id}" style="left:${h.x*s}px;top:${(h.y-a)*s}px;width:${h.w*s}px;height:${Math.min(h.h,b-h.y)*s}px"></div>`});
    (p.chords||[]).forEach(c=>{if(c.y<a||c.y>=b)return;const fs=Math.max(9,Math.min(24,c.h*s*0.92));
     if(chordTool)html+=`<span class="chdbox" data-chord="${c.id}" style="left:${c.x*s-2}px;top:${(c.y-a)*s-2}px;width:${c.w*s+4}px;height:${c.h*s+4}px"></span>`;
-    if(showRed||chordTool)html+=`<span class="chd ${chordTool?'edit':''}" data-chord="${c.id}" style="left:${(c.x+c.w)*s+4}px;top:${(c.y-a)*s}px;font-size:${fs}px;line-height:${Math.max(c.h*s,fs)}px">${esc(off?transposeChord(c.text,off,item.key):c.text)}</span>`});
+    const offC=off+shiftAt(item,pi,c.y);if(!(offC!==0&&(ctx.f?ctx.f.chords!==false:true))&&!chordTool)return;
+    if(showRed||chordTool||offC)html+=`<span class="chd ${chordTool?'edit':''}" data-chord="${c.id}" style="left:${(c.x+c.w)*s+4}px;top:${(c.y-a)*s}px;font-size:${fs}px;line-height:${Math.max(c.h*s,fs)}px">${esc(offC?transposeChord(c.text,offC,item.key):c.text)}</span>`});
    (p.markers||[]).forEach(m=>{
     const inStrip=stripMarkers.includes(m);
     if(ctx.mode==='edit'&&m.cut!=null&&m.cut>a&&m.cut<b&&!inStrip)html+=`<div class="cutline" data-cut="${m.id}" style="top:${(m.cut-a)*s}px"><i></i><b>${esc(m.label)}</b></div>`;
     if(inStrip)return;
-    if(m.y>=a&&m.y<b){const cnt=notesBy[m.id].length;html+=`<span class="mkabs mk ${ctx.tool==='memo'?'now':''}" data-marker="${m.id}" style="left:${m.x*s}px;top:${(m.y-a)*s}px">${esc(m.label)}${cnt&&m.cut==null?`<span class="badge">${cnt}</span>`:''}</span>`}
+    if(m.y>=a&&m.y<b){const cnt=notesBy[m.id].length;html+=`<span class="mkabs mk ${ctx.tool==='memo'?'now':''}" data-marker="${m.id}" style="left:${m.x*s}px;top:${(m.y-a)*s}px">${esc(m.label)}${cnt&&m.cut==null?`<span class="badge">${cnt}</span>`:''}${m.keyShift!=null&&ctx.mode==='edit'?`<span class="ksb">${m.keyShift>0?'+':''}${m.keyShift}</span>`:''}</span>`}
    });
    html+=`</div>`;
   }
@@ -1178,7 +1212,7 @@ async function render(){
   if(!svc)return go('home');
   if(online()&&(!same||!SYNC.pulledAt[svc.id]))await SYNC.pullNotes(svc);
   await preload(svc);
-  if(r.name==='edit'){app.innerHTML=editorHTML(svc);afterEditor(svc);restoreScroll();return}
+  if(r.name==='edit'){if(online()&&!same&&isLeader()){try{await SYNC.pullDraft(svc)}catch(e){}}app.innerHTML=editorHTML(svc);afterEditor(svc);restoreScroll();return}
   if(r.name==='view'){app.innerHTML=viewerHTML(svc);if(!same&&msgUnread(svc))setTimeout(()=>messageSheet(svc,true),150);return}
   app.innerHTML=playHTML(svc,+r.b||0);afterPlay(svc,+r.b||0);restoreScroll();return}
  app.innerHTML=homeHTML();
@@ -1251,7 +1285,7 @@ function afterEditor(svc){
  sh.addEventListener('pointerup',e=>{if(SEL[svc.id].tool!=='hl')return;const it=curItem(svc);const sl=e.target.closest('.slice');if(!sl)return;const p=it.pieces.find(x=>x.id===sl.dataset.piece);const s=sl.clientWidth/p.w;const r=sl.getBoundingClientRect();const x=(e.clientX-r.left)/s,y=+sl.dataset.start+(e.clientY-r.top)/s;const hit=p.hls.find(h=>x>=h.x&&x<=h.x+h.w&&y>=h.y&&y<=h.y+h.h);if(hit&&!e.movedFlag){/* handled by menu */}});
  window.onresize=()=>{if(route().name==='edit')drawEditorSheet(svc)};
 }
-function touch(svc){if(svc.published&&svc.version<=svc.published.version)svc.version=svc.published.version+1}
+function touch(svc){if(svc.published&&svc.version<=svc.published.version)svc.version=svc.published.version+1;svc.editedAt=Date.now()}
 function syncLib(it){if(!it.title)return;let s=S.library.find(x=>x.id===it.libId);const snap={id:it.libId||uid(),title:it.title,key:it.key,mod:it.mod||'',form:it.form,pieces:clone(it.pieces),media:clone(it.media).map(m=>({...m,notes:[]})),songNote:it.songNote};it.libId=snap.id;if(s)Object.assign(s,snap);else S.library.push(snap)}
 /* ---------- composer ---------- */
 /* ---------- publish ---------- */
@@ -1350,7 +1384,7 @@ function closeModal(){$('#modal').innerHTML='';$('#modal').onclick=null;$('#moda
 /* ---------- global click handling ---------- */
 document.addEventListener('keydown',e=>{
  if(e.key==='Escape'&&$('#modal').firstChild){closeModal();P.resumeIfPaused();return}
- if(e.key==='Enter'&&/^(lgUser|lgPass|lgName)$/.test(e.target.id||'')){e.preventDefault();const b=$('[data-act="lg-submit"]');b&&b.click();return}
+ if(e.key==='Enter'&&/^(lgUser|lgPass|lgName|rcCode)$/.test(e.target.id||'')){e.preventDefault();const b=$('[data-act="lg-submit"]')||$('[data-act="rc-submit"]');b&&b.click();return}
  if(e.key==='Enter'&&e.target.id==='gtLink'){e.preventDefault();const b=$('[data-act="join-go"]');b&&b.click();return}
  if(e.target.id==='gtTeam'||e.target.id==='gtName'){if(e.key==='Enter'){e.preventDefault();const b=$('[data-act="team-create"]');b&&b.click()}return}
  if(e.key==='Enter'&&e.target.id==='jnName'){e.preventDefault();const b=$('[data-act="team-join"]');b&&b.click();return}
@@ -1369,9 +1403,11 @@ document.addEventListener('click',async e=>{
   case 'team':teamModal();break;
   case 'msg':messageSheet(svcById(el.dataset.id||r.a),false);break;
   case 'theme':THEME.cycle();break;
+  case 'home-more':{const on=online(),lead=isLeader();modal(`<b style="font-size:17px">더 보기</b><div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">${on?`<button class="btn" data-m="sync">${ic('import')}팀 서버에서 새로고침</button>`:''}${(!on||lead)?`<button class="btn" data-m="import">${ic('import')}파일 가져오기</button>`:''}<button class="btn" data-m="export">${ic('export')}파일 내보내기</button></div>`,{center:true});
+   $('#modal').onclick=ev=>{const b=ev.target.closest('[data-m]');if(!b)return;closeModal();const proxy=document.querySelector(`.more-hide [data-act="${b.dataset.m}"]`);if(proxy)proxy.click()};break}
   case 'nav-lib':{const l=$('#lib');l&&l.scrollIntoView({behavior:'smooth',block:'start'});break}
   case 'go-home':go('home');break;
-  case 'lg-mode':case 'lg-submit':case 'logout':case 'join-go':case 'team-create':case 'team-join':doGate(act,el);break;
+  case 'lg-mode':case 'lg-submit':case 'rc-submit':case 'logout':case 'join-go':case 'team-create':case 'team-join':e.preventDefault();doGate(act,el);break;
   case 'new-svc':{const s=newService();S.services.push(s);save();go('edit/'+s.id);break}
   case 'open-svc':if(!e.target.closest('button'))go(isLeader()?'edit/'+svc.id:'view/'+svc.id);break;
   case 'edit-svc':go('edit/'+svc.id);break;
@@ -1431,7 +1467,7 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
  if(NET.server===true){try{takeMe(await api('/me'))}catch(e){if(e.status===401)NET.user=null;else NET.server=null}}
  if(!online()&&!me().name){setTimeout(()=>{render();settingsModal()},0)}else render();
  if(online()&&S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()});
- window.CONTI={S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord};
+ window.CONTI={S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg};
 })();
 })();
 </script>
