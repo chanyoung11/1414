@@ -5,6 +5,7 @@ import { q, one } from '../lib/db.js';
 import { sessionUserId, sessionCookie, clearSessionCookie, randomToken } from '../lib/session.js';
 import { hashPassword, verifyPassword, USERNAME_RE, PASSWORD_MIN } from '../lib/password.js';
 import { putBlob, delBlobs } from '../lib/blob.js';
+import { ocrBands, visionConfigured } from '../lib/vision.js';
 
 class HttpError extends Error { constructor(status, code, message) { super(message || code); this.status = status; this.code = code; } }
 const bad = (m) => new HttpError(400, 'bad_request', m);
@@ -327,6 +328,20 @@ on('DELETE', '/notes', async ({ uid, body }) => {
     ? await q('delete from notes where team_id=$1 and id = any($2::text[]) returning id', [teamId, ids])
     : await q('delete from notes where team_id=$1 and id = any($2::text[]) and author_id=$3 returning id', [teamId, ids, uid]);
   return { ok: true, deleted: r.length };
+});
+
+// 코드 OCR (인도자): 클라이언트가 자른 코드 띠 이미지들을 Vision 에 넘김
+on('GET', '/ocr', async ({ uid }) => { if (!uid) throw noAuth(); return { available: visionConfigured(), mock: process.env.GOOGLE_VISION_KEY === 'mock' }; });
+on('POST', '/ocr', async ({ uid, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  await requireMember(uid, teamId, 'leader');
+  if (!visionConfigured()) throw new HttpError(503, 'no_ocr', '코드 인식 엔진이 아직 연결되지 않았어요 (GOOGLE_VISION_KEY)');
+  const images = (Array.isArray(body.images) ? body.images : []).slice(0, 16).map((im) => ({ b64: String(im.b64 || ''), mime: str(im.mime, 40), w: +im.w || 0, h: +im.h || 0 })).filter((im) => im.b64.length > 100);
+  if (!images.length) throw bad('이미지가 없어요');
+  if (images.reduce((n, im) => n + im.b64.length, 0) > 12 * 1024 * 1024) throw new HttpError(413, 'too_large', '이미지가 너무 커요');
+  const results = await ocrBands(images);
+  return { results };
 });
 
 /* ---------- 진입점 ---------- */

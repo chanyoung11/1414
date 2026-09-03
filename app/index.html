@@ -362,6 +362,15 @@ html.dark .sheet{box-shadow:0 10px 40px rgba(0,0,0,.5);border-color:transparent}
 .mrow:last-child{border-bottom:0}
 .mrow select{background:var(--secondary);border:1px solid var(--border);border-radius:var(--r-md);padding:6px 8px;color:var(--fg);font-size:12.5px}
 .linkbox{background:var(--secondary);border:1px solid var(--border);border-radius:var(--r-md);padding:9px 12px;font-family:"Geist Mono",ui-monospace,Menlo,monospace;font-size:12px;word-break:break-all;user-select:all}
+.icon{position:relative}.icon.dot::after{content:"";position:absolute;top:5px;right:5px;width:7px;height:7px;border-radius:50%;background:var(--destructive);border:2px solid var(--card)}
+.hint svg.ic{display:inline-block;width:14px;height:14px;vertical-align:-3px}
+.msgbody{margin-top:14px;padding:14px 16px;border-radius:var(--r-lg);background:var(--secondary);border:1px solid var(--surface-border);font-size:14px;line-height:1.65;white-space:pre-wrap;word-break:break-word}
+.msgbody.clamp{display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden}
+html.dark .msgbody{background:#1C1C1C}
+.chd{position:absolute;color:#C0392B;font-weight:700;font-family:"Pretendard Variable","Pretendard",Arial,sans-serif;white-space:nowrap;pointer-events:none;z-index:2;text-shadow:0 0 2px #fff,0 0 2px #fff}
+.slice.tool .chd.edit{pointer-events:auto;cursor:pointer}
+.chdbox{position:absolute;border:1.5px dashed #C0392B;border-radius:3px;pointer-events:auto;cursor:pointer;z-index:2;background:rgba(192,57,43,.06)}
+.chordbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 8px -32px;padding:6px 8px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--panel2);font-size:12px}
 .avatar{width:30px;height:30px;border-radius:50%;background:var(--primary);color:var(--primary-fg);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:0 0 auto}
 
 /* ---------- 인증·팀 게이트 (항상 다크, 2단) ---------- */
@@ -516,7 +525,7 @@ function homeHTML(){
    <main>
     <div class="metrics rise"><div class="metric"><div class="v">${S.services.length}</div><div class="l">전체 예배</div></div><div class="metric"><div class="v">${upcoming}</div><div class="l">다가오는 예배</div></div><div class="metric"><div class="v">${pubN}</div><div class="l">발행된 콘티</div></div></div>
     <div class="sect-hd rise d1"><div><h2>예배 목록</h2><p>${on?`${esc(S.team.name)} 팀 · 인도자가 발행하면 자동으로 내려와요`:'이 기기에만 저장돼요. 팀에 보내려면 내보내기 파일을 카톡으로 보내세요'}</p></div>
-     <div class="row">${lead?`<button class="btn sm pri" data-act="new-svc">${ic('plus')}새 예배</button>`:''}${on?`<button class="btn sm" data-act="sync" title="팀 서버에서 최신 발행본 받기">${ic('import')}새로고침</button>`:`<button class="btn sm" data-act="import">${ic('import')}가져오기</button>`}<button class="btn sm" data-act="export">${ic('export')}내보내기</button></div></div>
+     <div class="row">${lead?`<button class="btn sm pri" data-act="new-svc">${ic('plus')}새 예배</button>`:''}${on?`<button class="btn sm" data-act="sync" title="팀 서버에서 최신 발행본 받기">${ic('import')}새로고침</button>`:''}${(!on||lead)?`<button class="btn sm" data-act="import">${ic('import')}가져오기</button>`:''}<button class="btn sm" data-act="export">${ic('export')}내보내기</button></div></div>
     ${svcs.length?rows:`<div class="empty rise d1"><b>아직 예배가 없어요</b>${lead?'첫 콘티를 만들거나, 받은 파일을 가져오세요.':(on?'인도자가 발행하면 여기에 자동으로 나타나요.':'인도자가 보낸 파일을 "가져오기"로 여세요.')}${lead?`<div><button class="btn pri" data-act="new-svc">${ic('plus')}새 예배 만들기</button></div>`:''}</div>`}
     ${lead?`<div class="sect-hd rise d2" id="lib" style="margin-top:28px"><div><h2>라이브러리</h2><p>예배에 넣은 곡은 자동으로 저장돼요</p></div></div><div class="card rise d2">${S.library.length?S.library.map(s=>`<span class="chip">${ic('music')}${esc(s.title)} <span class="muted">${esc(keyStr(s))}</span></span>`).join(''):'<span class="hint">비어 있음</span>'}</div>`:''}
    </main></div></div>
@@ -534,6 +543,7 @@ function editorHTML(svc){
    <div class="panel">${ptab('예배','날짜 · 공지 · 곡 순서',`<button class="btn sm" data-act="add-lib">${ic('music')}라이브러리</button><button class="btn sm pri" data-act="add-item">${ic('plus')}새 곡</button>`)}
     <div class="pbody">
      <div class="row" style="gap:10px"><input class="field" type="date" data-f="svc.date" value="${esc(svc.date)}" style="width:150px"><textarea class="field grow" data-f="svc.notice" rows="1" placeholder="전체 공지 — 연습 일정, 편성, 집합 장소">${esc(svc.notice)}</textarea></div>
+   <div class="lbl" style="margin-top:10px">인도자의 글 <span class="hint">예배에 담은 마음, 콘티 흐름. 멤버가 처음 열 때 한 번 보여요</span></div><textarea class="field msgin" data-f="svc.message" placeholder="이번 예배에 담은 마음, 콘티 흐름을 적어요. 멤버가 처음 열 때 한 번 보여요." style="min-height:72px">${esc(svc.message||'')}</textarea>
      <div style="margin-top:10px">${svc.items.map((x,i)=>`<div class="list-item ${x.id===sel.item?'sel':''}" data-act="sel-item" data-id="${x.id}"><span class="grip" title="끌어서 순서 바꾸기">${ic('list')}</span><span class="num">${i+1}</span><span class="grow" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600">${esc(x.title||'(제목 없음)')}</span><span class="k">${esc(keyStr(x))}</span><button class="icon sm ghost" data-act="mv-item" data-id="${x.id}" data-d="-1" title="위로">${ic('up')}</button><button class="icon sm ghost" data-act="mv-item" data-id="${x.id}" data-d="1" title="아래로">${ic('down')}</button></div>`).join('')||'<div class="empty" style="padding:14px">곡을 추가하세요</div>'}</div>
     </div></div>
    <div class="vgutter" title="드래그해서 높이 조절"></div>
@@ -541,13 +551,13 @@ function editorHTML(svc){
     <div class="pbody">${it?itemEditorHTML(svc,it):'<div class="empty">위에서 곡을 선택하거나 추가하세요</div>'}</div></div>
   </div>
   <div class="gutter" title="드래그해서 폭 조절"></div>
-  <div class="panel" id="edsheet">${ptab('악보',it?'':'',`<div class="seg"><button class="${sel.tool==='marker'?'on':''}" data-act="tool" data-t="marker">${ic('marker')}마커</button><button class="${sel.tool==='hl'?'on':''}" data-act="tool" data-t="hl">${ic('hl')}하이라이트</button><button class="${sel.tool==='memo'?'on':''}" data-act="tool" data-t="memo">${ic('note')}메모</button></div>${it?`<label class="btn sm" for="pieceFile">${ic('camera')}조각 추가</label><input id="pieceFile" type="file" accept="image/*" multiple style="display:none">`:''}`)}
+  <div class="panel" id="edsheet">${ptab('악보',it?'':'',`<div class="seg"><button class="${sel.tool==='marker'?'on':''}" data-act="tool" data-t="marker">${ic('marker')}마커</button><button class="${sel.tool==='hl'?'on':''}" data-act="tool" data-t="hl">${ic('hl')}하이라이트</button><button class="${sel.tool==='chord'?'on':''}" data-act="tool" data-t="chord">${ic('music')}코드</button><button class="${sel.tool==='memo'?'on':''}" data-act="tool" data-t="memo">${ic('note')}메모</button></div>${it?`<label class="btn sm" for="pieceFile">${ic('camera')}조각 추가</label><input id="pieceFile" type="file" accept="image/*" multiple style="display:none">`:''}`)}
    <div class="sheetwrap" id="sheetwrap"><div class="sheet" id="sheet">${it?'':'<div class="empty">왼쪽에서 곡을 추가하세요</div>'}</div></div>
-   ${it&&it.pieces.length?`<div class="pfoot">${it.pieces.map((p,i)=>`<span class="chip t">조각 ${i+1}<button class="icon sm ghost" data-act="mv-piece" data-id="${p.id}" data-d="-1">${ic('left')}</button><button class="icon sm ghost" data-act="mv-piece" data-id="${p.id}" data-d="1">${ic('right')}</button><button class="icon sm ghost" data-act="del-piece" data-id="${p.id}">${ic('x')}</button></span>`).join('')}<span class="hint">${sel.tool==='marker'?'악보를 탭하면 마커 · 마커를 탭하면 절단선·삭제 · 사진은 끌어다 놓거나 붙여넣기(⌘V)':sel.tool==='hl'?'드래그해서 노란 사각형 · 탭하면 삭제':'마커를 탭하면 인도자 메모'}</span></div>`:''}
+   ${it&&it.pieces.length?`<div class="pfoot">${it.pieces.map((p,i)=>`<span class="chip t">조각 ${i+1}<button class="icon sm ghost" data-act="mv-piece" data-id="${p.id}" data-d="-1">${ic('left')}</button><button class="icon sm ghost" data-act="mv-piece" data-id="${p.id}" data-d="1">${ic('right')}</button><button class="icon sm ghost" data-act="del-piece" data-id="${p.id}">${ic('x')}</button></span>`).join('')}<span class="hint">${sel.tool==='marker'?'악보를 탭하면 마커 · 마커를 탭하면 절단선·삭제 · 사진은 끌어다 놓거나 붙여넣기(⌘V)':sel.tool==='hl'?'드래그해서 노란 사각형 · 탭하면 삭제':sel.tool==='chord'?'코드를 탭하면 고치기·삭제 · 빈 곳을 탭하면 코드 추가 · 빨간 글씨가 연주 키로 옮긴 코드':'마커를 탭하면 인도자 메모'}</span></div>`:''}
   </div>
  </div>`;
 }
-function itemEditorHTML(svc,it){
+function itemEditorHTML(svc,it){const sel=SEL[svc.id]||(SEL[svc.id]={});
  return `<div>
   <div class="row" style="gap:10px"><label class="titlewrap grow"><input class="titlein big" data-f="item.title" placeholder="곡 제목" value="${esc(it.title)}"><span class="penic">${ic('pen')}</span></label><button class="icon sm ghost" data-act="del-item" data-id="${it.id}" title="콘티에서 빼기">${ic('trash')}</button></div>
   <div class="row" style="margin-top:10px;gap:8px"><input class="pillin" data-f="item.key" placeholder="키" value="${esc(it.key)}"><span class="muted">–</span><input class="pillin" data-f="item.mod" placeholder="전조" value="${esc(it.mod||'')}"><span class="hint">곡 안에서 전조하면 전조 키에 (예: G – A)</span></div>
@@ -555,13 +565,14 @@ function itemEditorHTML(svc,it){
   <div class="fbox"><textarea class="songbar" data-f="item.form" rows="1" placeholder="멘트 – A1 – (Full)Int(4) – A1B – Int(2) – (Down)A3B – Outro(4)">${esc(it.form)}</textarea>
   <div id="formchips" style="margin-top:8px;min-height:22px">${chipsHTML(it.form,'t')}</div></div>
   <div class="lbl">미디어 <span class="hint">유튜브 링크 또는 녹음 파일</span></div>
-  ${it.media.map(md=>`<div style="padding:8px 0 4px;border-bottom:1px solid var(--line2)"><div class="row"><span class="icon sm ${md.type==='youtube'?'ytc':'micc'}">${ic(md.type==='youtube'?'yt':'mic')}</span><span class="grow small" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(md.name||md.url)}</span>${md.type==='youtube'?`<a class="btn sm ghost" href="https://youtu.be/${ytId(md.url)}" target="_blank" rel="noopener">${ic('open')}열기</a>`:''}<button class="icon sm ghost" data-act="del-media" data-id="${md.id}">${ic('x')}</button></div>
+  ${it.media.map(md=>`<div style="padding:8px 0 4px;border-bottom:1px solid var(--line2)"><div class="row"><span class="icon sm ${md.type==='youtube'?'ytc':'micc'}">${ic(md.type==='youtube'?'yt':'mic')}</span><span class="grow small" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(md.name||md.url)}</span><button class="tag ${mdSess(md).length?'':'me'}" data-act="md-target" data-id="${md.id}" title="대상 세션 바꾸기">${esc(mdTag(md))}</button>${md.type==='youtube'?`<a class="btn sm ghost" href="https://youtu.be/${ytId(md.url)}" target="_blank" rel="noopener">${ic('open')}열기</a>`:''}<button class="icon sm ghost" data-act="del-media" data-id="${md.id}">${ic('x')}</button></div>
    ${md.type==='youtube'?`<div class="row small" style="margin:6px 0 0 8px;gap:6px"><span class="hint">구간</span><input class="field mono" data-md="start" data-id="${md.id}" value="${md.start?fmtT(md.start):''}" placeholder="시작 0:00" style="width:88px;text-align:center"><span class="hint">–</span><input class="field mono" data-md="end" data-id="${md.id}" value="${md.end?fmtT(md.end):''}" placeholder="끝" style="width:88px;text-align:center"><span class="hint">풀 예배 영상에서 이 곡만 잘라 쓸 때</span></div>`:''}
    <div class="tlEdit" data-media="${md.id}" style="margin:4px 0 0 8px">
     ${md.notes.slice().sort((a,b)=>a.t-b.t).map(n=>`<div class="row small" style="padding:3px 0"><span class="mono" style="color:var(--amber);min-width:42px;font-weight:600">${fmtT(n.t)}</span><span class="tag">${esc(n.session||'전체')}</span><span class="grow" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(n.text)}</span><button class="icon sm ghost" data-act="del-tnote" data-mid="${md.id}" data-id="${n.id}">${ic('x')}</button></div>`).join('')}
     <div class="row" style="gap:6px;margin-top:4px"><input class="field mono" data-tl="t" placeholder="1:23" style="width:72px;text-align:center"><select class="field" data-tl="s" style="width:auto;padding-right:8px"><option value="">전체</option>${S.team.sessions.filter(s=>s!=='인도자').map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join('')}</select><input class="field grow" data-tl="text" placeholder="드럼 여기 필 그대로"><button class="btn sm" data-act="add-tnote" data-mid="${md.id}">${ic('plus')}</button></div>
    </div></div>`).join('')}
   <div class="row" style="margin-top:6px"><input class="field grow" id="ytUrl" placeholder="https://youtu.be/… 붙여넣기"><button class="btn sm" data-act="add-yt"><span class="ytc" style="display:inline-flex">${ic('yt')}</span>추가</button><label class="btn sm" for="audFile">${ic('mic')}녹음</label><input id="audFile" type="file" accept="audio/*,video/*" style="display:none"></div>
+  <div class="row" id="mdTarget" style="margin-top:6px;flex-wrap:wrap;gap:0"><span class="hint" style="margin-right:6px">대상</span><button class="q ${(sel.mdTarget||[]).length?'':'on'}" data-mdt="">전체</button>${S.team.sessions.filter(x=>x!=='인도자').map(x=>`<button class="q ${(sel.mdTarget||[]).includes(x)?'on':''}" data-mdt="${esc(x)}">${esc(x)}</button>`).join('')}<span class="hint" style="margin-left:4px">특정 세션만 보게 하려면 골라요</span></div>
   <div class="hint" style="margin:6px 0 10px">타임라인 메모: 유튜브 앱에서 보면서 시각을 적어 넣거나, 연습 화면에서 재생하며 "여기에 메모"로 찍어요. 멤버가 탭하면 그 시각으로 열립니다.</div>
   <div class="hr"></div>
   <div class="lbl">곡 메모 <span class="hint">섹션에 안 붙는 한 줄</span></div>
@@ -574,9 +585,9 @@ function itemEditorHTML(svc,it){
 /* ---------- VIEWER ---------- */
 function viewerHTML(svc){
  const pub=pubOrDraft(svc);const my=me();const sess=VF.session||my.session;
- const ctx={mode:'play',session:sess,f:{leader:true,session:true,mine:true}};
+ const ctx={mode:'play',session:sess,f:{leader:true,session:true,mine:true,chords:true}};
  return `<div class="top"><button class="icon ghost" data-act="home">${ic('back')}</button><h1>${esc(pub.name||'예배')}<span class="pill ${pub.draft?'':'amber'}">${pub.draft?'미발행 초안':'v'+pub.version}</span></h1>
-  <button class="btn" data-act="play" data-id="${svc.id}" data-i="0">${ic('play')}연습</button><button class="btn pri" data-act="play" data-id="${svc.id}" data-i="0" data-stage="1">${ic('moon')}무대</button></div>
+  ${pub.message?`<button class="icon ghost ${msgUnread(svc)?'dot':''}" data-act="msg" data-id="${svc.id}" title="인도자의 글">${ic('note')}</button>`:''}<button class="btn" data-act="play" data-id="${svc.id}" data-i="0">${ic('play')}연습</button><button class="btn pri" data-act="play" data-id="${svc.id}" data-i="0" data-stage="1">${ic('moon')}무대</button></div>
   <div class="ws" style="grid-template-columns:minmax(0,1fr)">
    <div class="panel">${ptab('콘티',pub.items.length+'곡',`<span class="hint" style="margin-right:6px">세션</span><div class="seg">${S.team.sessions.filter(s=>s!=='인도자').map(s=>`<button class="${s===sess?'on':''}" data-act="vsess" data-s="${esc(s)}">${esc(s)}</button>`).join('')}</div>`)}
    <div class="pbody"><div style="max-width:900px;margin:0 auto">
@@ -585,7 +596,7 @@ function viewerHTML(svc){
     return `<div class="card"><div class="row sb"><div class="row"><span class="num">${i+1}</span><b style="font-size:17px;letter-spacing:-.01em">${esc(it.title||'(제목 없음)')}</b></div><span class="pill key">${esc(k||'-')}</span></div>
     ${it.form?`<div class="songbar" style="margin-top:10px">${esc(it.form)}</div>`:''}
     <div class="row" style="align-items:flex-start;gap:14px;margin-top:12px">${it.pieces[0]?`<div class="thumb" style="background-image:url('${url(it.pieces[0].blob)}')"></div>`:''}
-     <div class="grow small">${it.media.map(md=>`<div class="row" style="margin-bottom:4px"><span class="icon sm ${md.type==='youtube'?'ytc':'micc'}">${ic(md.type==='youtube'?'yt':'mic')}</span><span class="grow muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(md.name||md.url)}${md.type==='youtube'&&(md.start||md.end)?` <span class="pill">${fmtT(md.start||0)}–${md.end?fmtT(md.end):'끝'}</span>`:''}</span>${md.type==='youtube'?`<a class="btn sm ghost" href="https://youtu.be/${ytId(md.url)}?t=${md.start||0}" target="_blank" rel="noopener">${ic('open')}열기</a>`:''}</div>
+     <div class="grow small">${visMedia(it,sess).map(md=>`<div class="row" style="margin-bottom:4px"><span class="icon sm ${md.type==='youtube'?'ytc':'micc'}">${ic(md.type==='youtube'?'yt':'mic')}</span>${mdSess(md).length?`<span class="tag">${esc(mdTag(md))}</span>`:''}<span class="grow muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(md.name||md.url)}${md.type==='youtube'&&(md.start||md.end)?` <span class="pill">${fmtT(md.start||0)}–${md.end?fmtT(md.end):'끝'}</span>`:''}</span>${md.type==='youtube'?`<a class="btn sm ghost" href="https://youtu.be/${ytId(md.url)}?t=${md.start||0}" target="_blank" rel="noopener">${ic('open')}열기</a>`:''}</div>
       ${(live.media.find(x=>x.id===md.id)||md).notes.filter(n=>noteVisible(n,ctx)).sort((a,b)=>a.t-b.t).map(n=>`<div class="tl" ${md.type==='youtube'?`data-act="ytopen" data-url="https://youtu.be/${ytId(md.url)}?t=${Math.round(n.t)}"`:''}><span class="t">${fmtT(n.t)}</span>${n.session?`<span class="tag">${esc(n.session)}</span>`:n.layer==='leader'?'<span class="tag">전체</span>':'<span class="tag me">나</span>'}<span>${esc(n.text)}</span></div>`).join('')}`).join('')||'<span class="hint">미디어 없음</span>'}</div></div>
     ${notes.length||it.songNote?`<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)">${it.songNote?`<div class="muted small" style="margin-bottom:6px">${esc(it.songNote)}</div>`:''}<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">${notes.map(n=>`<span class="row" style="gap:4px"><span class="mk" style="width:24px;height:24px;font-size:11px">${esc((markerOf(live,n.marker)||{}).label||'?')}</span>${noteChip(n)}</span>`).join('')}</div></div>`:''}
     <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn sm" data-act="play" data-id="${svc.id}" data-i="${i}">${ic('play')}이 곡 연습</button></div></div>`}).join('')}
@@ -596,16 +607,16 @@ function viewerHTML(svc){
 /* ---------- PRACTICE / STAGE ---------- */
 function playHTML(svc,idx){
  const pub=pubOrDraft(svc);const it=pub.items[idx]||pub.items[0];PL={...PL,svc,idx,mi:0};if(!it)return `<div class="top"><button class="icon ghost" data-act="home">${ic('back')}</button><h1>곡이 없습니다</h1></div>`;
- const my=me();const sess=PL.session||my.session;const k=keyStr(it);const prev=pub.items[idx-1],next=pub.items[idx+1];
+ const my=me();const sess=PL.session||my.session;const k=keyStr(it);const prev=pub.items[idx-1],next=pub.items[idx+1];PL.ml=visMedia(it,sess);
  return `<div class="top"><button class="icon ghost" data-act="back-view" data-id="${svc.id}">${ic('back')}</button>
   <div class="songnav grow"><span class="nb prev" ${prev?'data-act="pn" data-d="-1"':''}>${prev?esc(prev.title||'(제목 없음)'):''}</span><button class="icon sm" data-act="pn" data-d="-1" ${prev?'':'disabled'} title="이전 곡">${ic('left')}</button><span class="nb cur"><span class="num">${idx+1}</span>${esc(it.title||'(제목 없음)')}<span class="pill key">${esc(k||'-')}</span></span><button class="icon sm" data-act="pn" data-d="1" ${next?'':'disabled'} title="다음 곡">${ic('right')}</button><span class="nb next" ${next?'data-act="pn" data-d="1"':''}>${next?esc(next.title||'(제목 없음)'):''}</span></div>
-  <button class="switch ${PL.stage?'on':''}" data-act="stage"><i></i>무대 모드</button></div>
+  ${pub.message?`<button class="icon ghost ${msgUnread(svc)?'dot':''}" data-act="msg" data-id="${svc.id}" title="인도자의 글">${ic('note')}</button>`:''}<button class="switch ${PL.stage?'on':''}" data-act="stage"><i></i>무대 모드</button></div>
  <div class="ws split" id="ws">
   <div class="stack" id="stack">
-   <div class="panel media">${ptab('미디어','',it.media.length?it.media.map((md,i)=>`<button class="chip t ${i===0?'on':''}" data-act="msel" data-i="${i}"><span class="${md.type==='youtube'?'ytc':'micc'}" style="display:inline-flex">${ic(md.type==='youtube'?'yt':'mic')}</span>${esc((md.name||md.url||'').replace(/^https?:\/\//,'').slice(0,20))}</button>`).join(''):'<span class="hint">미디어 없음</span>')}
+   <div class="panel media">${ptab('미디어','',PL.ml.length?PL.ml.map((md,i)=>`<button class="chip t ${i===0?'on':''}" data-act="msel" data-i="${i}" title="${esc(mdTag(md))}"><span class="${md.type==='youtube'?'ytc':'micc'}" style="display:inline-flex">${ic(md.type==='youtube'?'yt':'mic')}</span>${mdSess(md).length?`<span class="tag" style="margin-right:2px">${esc(mdTag(md))}</span>`:''}${esc((md.name||md.url||'').replace(/^https?:\/\//,'').slice(0,20))}</button>`).join(''):'<span class="hint">미디어 없음</span>')}
     <div class="pbody" style="display:flex;flex-direction:column;gap:10px">
      <div id="mediaBox"></div>
-     <div id="ctrls" style="${it.media.length?'':'display:none'}">
+     <div id="ctrls" style="${PL.ml.length?'':'display:none'}">
       <div class="transport"><button class="tbtn" data-act="skip" data-d="-5">${ic('back5')}</button><button class="tbtn pri" id="playBtn" data-act="ptoggle">${ic('play')}</button><button class="tbtn" data-act="skip" data-d="5">${ic('fwd5')}</button></div>
       <div class="row" style="margin-top:6px"><span class="mono muted" id="tCur">0:00</span><div class="prog" id="prog"><div class="fill" id="fill" style="width:0"></div></div><span class="mono muted" id="tDur">0:00</span><button class="btn sm" data-act="tnote">${ic('note')}여기에 메모</button></div>
      </div>
@@ -618,7 +629,7 @@ function playHTML(svc,idx){
      ${it.songNote?`<div class="muted small">${esc(it.songNote)}</div>`:''}
      <div class="filters" style="display:flex;flex-direction:column;gap:8px">
       <div class="row" style="flex-wrap:wrap;gap:6px"><span class="hint" style="width:32px">보기</span><div class="seg">${S.team.sessions.filter(s=>s!=='인도자').map(s=>`<button class="${s===sess?'on':''}" data-act="psess" data-s="${esc(s)}">${esc(s)}</button>`).join('')}</div></div>
-      <div class="row" style="flex-wrap:wrap;gap:6px"><span class="hint" style="width:32px">메모</span><button class="chip ${PL.f.leader?'on':''}" data-act="pf" data-k="leader">인도자</button><button class="chip ${PL.f.session?'on':''}" data-act="pf" data-k="session">${esc(sess)}</button><button class="chip ${PL.f.mine?'on':''}" data-act="pf" data-k="mine">내 것</button></div>
+      <div class="row" style="flex-wrap:wrap;gap:6px"><span class="hint" style="width:32px">메모</span><button class="chip ${PL.f.leader?'on':''}" data-act="pf" data-k="leader">인도자</button><button class="chip ${PL.f.session?'on':''}" data-act="pf" data-k="session">${esc(sess)}</button><button class="chip ${PL.f.chords!==false?'on':''}" data-act="pf" data-k="chords" title="연주 키로 옮긴 코드를 빨간 글씨로">전조 코드</button><button class="chip ${PL.f.mine?'on':''}" data-act="pf" data-k="mine">내 것</button></div>
      </div>
     </div></div>
   </div>
@@ -689,6 +700,24 @@ function openComposer(svc,it,o){ // o: {marker, leader, t, mediaId}
   }
  };
 }
+const msgUnread=svc=>{const pub=svc.published;if(!pub||!pub.message)return false;S.readRev=S.readRev||{};return (S.readRev[svc.id]||0)<(pub.messageRev||0)};
+function messageSheet(svc,first){const pub=svc.published;if(!pub||!pub.message)return;
+ const done=()=>{S.readRev=S.readRev||{};S.readRev[svc.id]=pub.messageRev||0;save();$$('[data-act="msg"]').forEach(b=>b.classList.remove('dot'))};
+ const long=pub.message.split('\n').length>5||pub.message.length>260;
+ modal(`<div class="row" style="gap:10px"><span class="icon sm">${ic('note')}</span><div class="grow"><b style="font-size:17px;letter-spacing:-.03em">인도자의 글</b><div class="hint">${esc(pub.author||'인도자')} · ${esc(pub.name||'예배')} · v${pub.version}</div></div><button class="icon sm ghost" data-close="1">${ic('x')}</button></div>
+  <div class="msgbody ${long?'clamp':''}" id="msgBody">${esc(pub.message)}</div>${long?`<button class="btn sm ghost" id="msgMore" style="margin-top:6px">더 보기</button>`:''}
+  <div class="row sb" style="margin-top:18px">${first?`<span class="hint">다시 보려면 상단 ${ic('note')} 아이콘</span>`:'<span></span>'}<button class="btn pri" id="msgOk">${ic('check')}읽었어요</button></div>`);
+ $('#modal').onclick=e=>{if(e.target.closest('#msgMore')){$('#msgBody').classList.remove('clamp');$('#msgMore').remove();return}
+  if(e.target.closest('#msgOk')||e.target.closest('[data-close]')||e.target.classList.contains('ov')){done();closeModal()}};
+}
+function mediaTargetModal(svc,it,md){let t=mdSess(md).slice();
+ modal(`<b style="font-size:17px">이 미디어를 누가 보나요</b><div class="hint" style="margin-top:4px">${esc(md.name||md.url)}</div>
+  <div style="margin-top:14px" id="mtSel"><button class="q ${t.length?'':'on'}" data-mdt="">전체</button>${S.team.sessions.filter(x=>x!=='인도자').map(x=>`<button class="q ${t.includes(x)?'on':''}" data-mdt="${esc(x)}">${esc(x)}</button>`).join('')}</div>
+  <div class="hint">고른 세션에게만 보이고, 여기에 붙은 타임라인 메모도 같이 숨겨져요.</div>
+  <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" data-close="1">취소</button><button class="btn pri" id="mtOk">${ic('check')}저장</button></div>`,{center:true});
+ $('#modal').onclick=e=>{const b=e.target.closest('[data-mdt]');if(b){const v=b.dataset.mdt;t=!v?[]:(t.includes(v)?t.filter(x=>x!==v):t.concat(v));$$('#mtSel [data-mdt]').forEach(x=>x.classList.toggle('on',x.dataset.mdt?t.includes(x.dataset.mdt):!t.length));return}
+  if(e.target.closest('[data-close]')){closeModal();return}
+  if(e.target.closest('#mtOk')){md.sessions=t.slice();touch(svc);save();syncLib(it);closeModal();render()}}}
 function noteMenu(svc,it,nid){
  const n=(it.notes||[]).find(x=>x.id===nid);if(!n){toast('이 메모는 여기서 지울 수 없어요');return}
  const m=markerOf(it,n.marker);const my=me();
@@ -712,7 +741,8 @@ function publishModal(svc){
   <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" id="kkCopy">텍스트 복사</button>${online()?`<button class="btn pri" id="pubOnly">${ic('send')}발행하고 팀에 공유</button>`:`<button class="btn" id="pubOnly">${ic('check')}발행만</button><button class="btn pri" id="pubOk">${ic('send')}발행 + 파일 내보내기</button>`}</div>`);
  $('#modal').onclick=async e=>{
   if(e.target.closest('#kkCopy')){try{await navigator.clipboard.writeText($('#kk').value);toast('복사됨')}catch{$('#kk').select();document.execCommand('copy');toast('복사됨')}}
-  const only=e.target.closest('#pubOnly'),withFile=e.target.closest('#pubOk');if(only||withFile){svc.published={version:nextV,at:Date.now(),name:svc.name,date:svc.date,notice:svc.notice,items:clone(svc.items).map(it=>({...it,notes:undefined}))};save();closeModal();
+  const only=e.target.closest('#pubOnly'),withFile=e.target.closest('#pubOk');if(only||withFile){const msg=(svc.message||'').trim();const prevMsg=svc.published?(svc.published.message||''):'';if(msg!==prevMsg)svc.messageRev=(svc.messageRev||0)+1;
+   svc.published={version:nextV,at:Date.now(),name:svc.name,date:svc.date,notice:svc.notice,message:msg,messageRev:svc.messageRev||0,author:me().name||'인도자',items:clone(svc.items).map(it=>({...it,notes:undefined}))};save();closeModal();
    if(online()){toast('팀 서버에 올리는 중…');try{await SYNC.pushPublish(svc);toast('v'+nextV+' 발행 · 팀에 공유됐어요')}catch(err){toast('발행은 됐지만 서버 업로드 실패: '+err.message)}}else toast('v'+nextV+' 발행');
    if(withFile)await exportJSON(svc.id);render()}
  };
@@ -759,7 +789,7 @@ function libraryPicker(svc){
 function selectMedia(i){
  const svc=PL.svc;const pub=pubOrDraft(svc);const it=pub.items[PL.idx];if(!it)return;PL.mi=i;P.stop();
  $$('[data-act="msel"]').forEach(b=>b.classList.toggle('on',+b.dataset.i===i));
- const box=$('#mediaBox');const md=it.media[i];if(!md){box.innerHTML='';return}
+ const box=$('#mediaBox');const md=(PL.ml||[])[i];if(!md){box.innerHTML='';return}
  if(md.type==='youtube'){const id=ytId(md.url);const st=ytStart(md.url);const st0=md.start!=null?md.start:st;const en=md.end||0;P.start=st0;P.end=en;const org=/^https?:/.test(location.origin)?'&origin='+encodeURIComponent(location.origin):'';box.innerHTML=`<div class="vid"><iframe id="yt" src="https://www.youtube.com/embed/${id}?enablejsapi=1&playsinline=1&start=${st0}${en?'&end='+en:''}&rel=0${org}" referrerpolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div><div class="row" style="margin-top:8px;justify-content:space-between"><span class="hint" id="ytHint">재생하며 "여기에 메모" — 메모를 탭하면 그 시각으로 이동</span><a class="btn sm" id="ytfb" href="https://youtu.be/${id}?t=${st0}" target="_blank" rel="noopener">${ic('open')}유튜브에서 열기</a></div>`;P.t=st0;
   P.yt=$('#yt');P.yt.onload=()=>{try{P.yt.contentWindow.postMessage(JSON.stringify({event:'listening',id:1,channel:'widget'}),'*')}catch(e){}};P.timer=setInterval(()=>{if(P.yt)ytCmd('getCurrentTime')},700);
   setTimeout(()=>{if(!P.ytReady){const h=$('#ytHint');if(h)h.textContent='이 환경에선 임베드가 안 돼요(오류 153). 메모를 탭하면 유튜브 앱이 그 시각에서 열리고, "여기에 메모"는 시각을 직접 적어요.'}},2500);
@@ -818,9 +848,9 @@ const SYNC={t:null,pulledAt:{},
  async pullService(id){const d=await api('/services/'+id+'?team='+S.team.id);const doc=d.doc;await SYNC.fetchBlobs(d.blobs);
   let cur=svcById(id);if(!cur){cur={id,name:doc.name,date:doc.date,notice:doc.notice||'',version:0,items:[],published:null};S.services.push(cur)}
   const old=new Map(cur.items.map(it=>[it.id,it]));
-  cur.published={version:doc.version,at:new Date(d.updatedAt).getTime()||Date.now(),name:doc.name,date:doc.date,notice:doc.notice||'',items:clone(doc.items)};
+  cur.published={version:doc.version,at:new Date(d.updatedAt).getTime()||Date.now(),name:doc.name,date:doc.date,notice:doc.notice||'',message:doc.message||'',messageRev:doc.messageRev||0,author:doc.author||'',items:clone(doc.items)};
   if(!isLeader()||cur.version<=doc.version){ // 인도자 기기의 더 새로운 초안은 건드리지 않음
-   cur.name=doc.name;cur.date=doc.date;cur.notice=doc.notice||'';cur.version=doc.version;
+   cur.name=doc.name;cur.date=doc.date;cur.notice=doc.notice||'';cur.message=doc.message||'';cur.messageRev=doc.messageRev||0;cur.version=doc.version;
    cur.items=clone(doc.items).map(it=>{const o=old.get(it.id);it.notes=o?(o.notes||[]):[];it.media=(it.media||[]).map(m=>{const om=o&&(o.media||[]).find(x=>x.id===m.id);return {...m,notes:om?(om.notes||[]):[]}});return it})}
   save();return cur},
  async fetchBlobs(map){for(const id in (map||{})){if(await IDB.get('blobs',id))continue;try{const r=await fetch(map[id]);if(!r.ok)continue;const b=await r.blob();await IDB.put('blobs',id,b)}catch(e){console.warn('blob',id,e.message)}}},
@@ -830,7 +860,7 @@ const SYNC={t:null,pulledAt:{},
   for(const id of ids){if(have[id])continue;const b=await IDB.get('blobs',id);if(!b)throw new Error('이 기기에 없는 파일이 있어요');
    const r=await fetch('/api/blobs/'+id+'?team='+S.team.id,{method:'POST',headers:{'x-conti':'1','content-type':b.type||'application/octet-stream'},body:b,credentials:'same-origin'});
    if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.message||'파일 업로드 실패')}}
-  await api('/services/'+svc.id,{method:'PUT',body:{teamId:S.team.id,doc:{id:svc.id,name:pub.name,date:pub.date,notice:pub.notice,version:pub.version,items:pub.items}}});return true},
+  await api('/services/'+svc.id,{method:'PUT',body:{teamId:S.team.id,doc:{id:svc.id,name:pub.name,date:pub.date,notice:pub.notice,message:pub.message||'',messageRev:pub.messageRev||0,author:pub.author||'',version:pub.version,items:pub.items}}});return true},
  async deleteService(id){if(!online()||!isLeader())return;try{await api('/services/'+id+'?team='+S.team.id,{method:'DELETE'})}catch(e){toast(e.message)}},
  // 메모: 로컬 ↔ 서버 차이만 올림 (실패하면 다음 저장 때 다시)
  localNotes(svc){const out=[];svc.items.forEach(it=>{(it.notes||[]).forEach(n=>out.push({...n,itemId:it.id,markerId:n.marker||null,mediaId:null}));(it.media||[]).forEach(m=>(m.notes||[]).forEach(n=>out.push({...n,itemId:it.id,markerId:n.marker||null,mediaId:m.id})))});return out},
@@ -991,8 +1021,59 @@ function detectGaps(canvas){
 }
 function autoCut(piece,y){let best=null;for(const q of (piece.gaps||[])){if(q.e<=y+4&&(best===null||q.e>best.e))best=q}if(!best)return null;return Math.round((best.s+best.e)/2)}
 
+
+/* ---------- 코드 인식 · 전조 병기 ---------- */
+const NOTE_SEMI={C:0,'C#':1,Db:1,D:2,'D#':3,Eb:3,E:4,Fb:4,'E#':5,F:5,'F#':6,Gb:6,G:7,'G#':8,Ab:8,A:9,'A#':10,Bb:10,B:11,Cb:11,'B#':0};
+const SHARP_NAMES=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'],FLAT_NAMES=['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
+const FLAT_KEYS=['F','Bb','Eb','Ab','Db','Gb','Cb','Dm','Gm','Cm','Fm','Bbm','Ebm','Abm'];
+const KEYS12=['C','Db','D','Eb','E','F','F#','G','Ab','A','Bb','B'];
+const normAcc=t=>String(t||'').replace(/♯/g,'#').replace(/♭/g,'b').replace(/[，,．.:;]+$/,'').trim();
+const CHORD_RE=/^([A-G])(#|b)?((?:maj|min|dim|aug|sus|add|m|M|\+|°|º|o|ø|-|\d|\(|\))*)(?:\/([A-G])(#|b)?)?$/;
+function parseChord(t){const m=normAcc(t).match(CHORD_RE);if(!m)return null;return {root:m[1]+(m[2]||''),suffix:m[3]||'',bass:m[4]?m[4]+(m[5]||''):null}}
+const isChordText=t=>{t=normAcc(t);const c=parseChord(t);return !!c&&!/^[A-G]\d{2,}$/.test(t)&&t.length<=12};
+function keySemi(k){const m=normAcc(k).match(/^([A-G])(#|b)?/);if(!m)return null;const v=NOTE_SEMI[m[1]+(m[2]||'')];return v==null?null:v}
+function spell(semi,key){const k=normAcc(key).replace(/\s/g,'');const flat=FLAT_KEYS.includes(k)||FLAT_KEYS.includes(k.replace(/m(in)?$/,''))||/^[A-G]b/.test(k);return (flat?FLAT_NAMES:SHARP_NAMES)[((semi%12)+12)%12]}
+function transposeChord(text,semis,key){const c=parseChord(text);if(!c)return text;const r=NOTE_SEMI[c.root];if(r==null)return text;let out=spell(r+semis,key)+c.suffix;if(c.bass){const b=NOTE_SEMI[c.bass];out+='/'+(b==null?c.bass:spell(b+semis,key))}return out}
+function chordOffset(item,piece){if(!piece)return 0;if(piece.offset!=null)return piece.offset;const a=keySemi(item.key),b=keySemi(piece.sheetKey);if(a==null||b==null)return 0;let d=a-b;while(d>6)d-=12;while(d<-6)d+=12;return d}
+function estimateKey(chords){const roots=(chords||[]).map(c=>parseChord(c.text)).filter(Boolean).map(c=>c.root);if(!roots.length)return '';const cnt={};roots.forEach(r=>cnt[r]=(cnt[r]||0)+1);const top=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a]);const last=roots[roots.length-1];return top.slice(0,2).includes(last)?last:top[0]}
+// 오선 위치: 폭의 40% 이상 이어지는 어두운 행 → 선 → 4줄 이상 묶음이 시스템
+function detectSystems(canvas){const W=Math.min(900,canvas.width);const {g,H}=grayOf(canvas,W);const hist=new Uint32Array(256);for(let i=0;i<g.length;i++)hist[g[i]]++;let bg=255,mx=0;for(let v=120;v<256;v++)if(hist[v]>mx){mx=hist[v];bg=v}const thr=bg-Math.max(60,bg*0.35);
+ const rows=[];for(let y=0;y<H;y++){let run=0,best=0;for(let x=0;x<W;x++){if(g[y*W+x]<thr){run++;if(run>best)best=run}else run=0}if(best>=W*0.4)rows.push(y)}
+ const lines=[];rows.forEach(y=>{const L=lines[lines.length-1];if(L&&y-L.e<=2)L.e=y;else lines.push({s:y,e:y})});
+ const sys=[];lines.forEach(l=>{const S0=sys[sys.length-1];if(S0&&l.s-S0.bottom<=H*0.025){S0.bottom=l.e;S0.n++}else sys.push({top:l.s,bottom:l.e,n:1})});
+ const k=canvas.height/H;return sys.filter(x=>x.n>=4).map(x=>({top:Math.round(x.top*k),bottom:Math.round(x.bottom*k)}))}
+async function recognizeChords(svc,it,piece){if(!online()||!isLeader()||!piece)return;piece.ocr='pending';piece.ocrErr='';save();if(route().name==='edit')drawEditorSheet(svc);
+ try{const blob=await IDB.get('blobs',piece.blob);if(!blob)throw new Error('이 기기에 악보 파일이 없어요');const img=await loadImg(URL.createObjectURL(blob));
+  const cv=document.createElement('canvas');cv.width=img.naturalWidth;cv.height=img.naturalHeight;cv.getContext('2d').drawImage(img,0,0);
+  const sys=detectSystems(cv);if(!sys.length)throw new Error('오선을 찾지 못했어요');
+  const H=cv.height,W=cv.width;const bands=[];sys.forEach((s0,i)=>{const prevB=i?sys[i-1].bottom:0;const top=Math.max(prevB+Math.round(H*0.008),s0.top-Math.round(H*0.055));const bot=s0.top-1;if(bot-top>=8)bands.push({top,bot})});
+  if(!bands.length)throw new Error('코드 띠를 찾지 못했어요');
+  const scale=W<1600?2:1;const images=bands.slice(0,16).map(b=>{const c=document.createElement('canvas');c.width=W*scale;c.height=(b.bot-b.top)*scale;c.getContext('2d').drawImage(cv,0,b.top,W,b.bot-b.top,0,0,c.width,c.height);return {b64:c.toDataURL('image/jpeg',0.85).split(',')[1],mime:'image/jpeg',w:c.width,h:c.height,top:b.top}});
+  const r=await api('/ocr',{method:'POST',body:{teamId:S.team.id,images:images.map(({b64,mime,w,h})=>({b64,mime,w,h}))}});
+  const kx=piece.w/W;const found=[];
+  (r.results||[]).forEach((res,i)=>{(res.tokens||[]).forEach(t=>{const text=normAcc(t.text);if((t.conf||0)<30||!isChordText(text))return;found.push({id:uid(),text,x:Math.round(t.x/scale*kx),y:Math.round((images[i].top+t.y/scale)*kx),w:Math.round(t.w/scale*kx),h:Math.round(t.h/scale*kx),conf:t.conf,fixed:false})})});
+  piece.chords=(piece.chords||[]).filter(c=>c.fixed).concat(found);if(!piece.keyConfirmed)piece.sheetKey=estimateKey(piece.chords)||piece.sheetKey||'';piece.ocr='done';
+  toast(found.length?`코드 ${found.length}개 인식 · 악보 키 ${piece.sheetKey||'?'} (추정)`:'코드를 찾지 못했어요');
+ }catch(e){piece.ocr=e.code==='no_ocr'?'none':'error';piece.ocrErr=e.message||'';if(piece.ocr==='error')toast('코드 인식 실패: '+piece.ocrErr)}
+ touch(svc);save();syncLib(it);if(route().name==='edit')render()}
+function keyPickerModal(cur,cb){modal(`<b style="font-size:17px">악보에 인쇄된 키</b><div class="hint" style="margin-top:4px">코드 근음이 이 키 기준으로 적혀 있어요. 연주 키와의 차이만큼 코드를 옮깁니다.</div><div style="margin-top:14px">${KEYS12.map(k=>`<button class="q ${k===cur?'on':''}" data-k="${k}">${k}</button>`).join('')}<button class="q ${!cur?'on':''}" data-k="">모름</button></div>`,{center:true});
+ $('#modal').onclick=e=>{const b=e.target.closest('[data-k]');if(!b)return;closeModal();cb(b.dataset.k)}}
+function chordEditModal(svc,it,p,cid,pos){const c=cid?(p.chords||[]).find(x=>x.id===cid):null;
+ modal(`<b style="font-size:17px">${c?'코드 고치기':'코드 추가'}</b><div class="hint" style="margin-top:4px">악보에 인쇄된 그대로 적어요 (예: A/C#, Bm7, D(sus4))</div>
+  <input class="field mono" id="chText" value="${esc(c?c.text:'')}" placeholder="G/B" style="margin-top:12px;font-size:16px" autocapitalize="characters">
+  <div class="row" style="margin-top:16px;justify-content:space-between">${c?`<button class="btn danger" id="chDel">${ic('trash')}삭제</button>`:'<span></span>'}<span class="row"><button class="btn" data-close="1">취소</button><button class="btn pri" id="chOk">${ic('check')}저장</button></span></div>`,{center:true});
+ const inp=$('#chText');setTimeout(()=>inp.focus(),50);
+ const finish=()=>{touch(svc);save();syncLib(it);closeModal();drawEditorSheet(svc)};
+ $('#modal').onclick=e=>{if(e.target.closest('[data-close]')){closeModal();return}
+  if(e.target.closest('#chDel')){p.chords=p.chords.filter(x=>x.id!==cid);finish();return}
+  if(e.target.closest('#chOk')){const t=normAcc(inp.value);if(!isChordText(t)){toast('코드로 읽히지 않아요');inp.focus();return}
+   if(c){c.text=t;c.fixed=true}else{const h=Math.round(p.w*0.018);p.chords=p.chords||[];p.chords.push({id:uid(),text:t,x:Math.round(pos.x),y:Math.round(pos.y-h/2),w:Math.round(h*0.62*t.length),h,conf:100,fixed:true})}finish()}}}
 /* ---------- media helpers ---------- */
 function ytId(u){if(!u)return null;const m=u.match(/(?:youtu\.be\/|v=|\/embed\/|\/shorts\/|\/live\/)([A-Za-z0-9_-]{6,})/);return m?m[1]:null}
+const mdSess=md=>Array.isArray(md&&md.sessions)?md.sessions.filter(Boolean):[];
+const mdVisible=(md,session)=>{const x=mdSess(md);return !x.length||x.includes(session)};
+function visMedia(it,session){return (it.media||[]).filter(m=>mdVisible(m,session)).sort((a,b)=>(mdSess(b).length?1:0)-(mdSess(a).length?1:0))} // 세션 전용 먼저
+const mdTag=md=>{const x=mdSess(md);return x.length?x.join('·'):'전체'};
 function ytStart(u){const m=(u||'').match(/[?&#]t=(\d+)/);return m?+m[1]:0}
 
 /* ---------- notes ---------- */
@@ -1018,12 +1099,17 @@ function sheetHTML(item,W,ctx){
   const bounds=[0,...stripMarkers.map(m=>m.cut),p.h];
   html+=`<div class="piece" data-piece="${p.id}">`;
   if(pieces.length>1)html+=`<div class="phead"><span class="ln"></span>조각 ${pi+1}${p.name?' · '+esc(p.name):''}<span class="ln"></span></div>`;
+  const off=chordOffset(item,p);const nCh=(p.chords||[]).length;const showRed=off!==0&&(ctx.f?ctx.f.chords!==false:true);const chordTool=ctx.mode==='edit'&&ctx.tool==='chord';
+  if(ctx.mode==='edit')html+=`<div class="chordbar">${p.ocr==='pending'?'<span class="hint">코드 인식 중…</span>':''}${(nCh||p.sheetKey)?`<button class="btn sm" data-act="sheet-key" data-id="${p.id}">악보 키 ${esc(p.sheetKey||'?')}${p.keyConfirmed?'':' <span class="muted">(추정)</span>'}</button><span class="hint">→ 연주 키 ${esc(item.key||'?')}</span><span class="pill">${off>0?'+':''}${off}</span><button class="icon sm ghost" data-act="chord-off" data-id="${p.id}" data-d="-1" title="반음 내림">${ic('down')}</button><button class="icon sm ghost" data-act="chord-off" data-id="${p.id}" data-d="1" title="반음 올림">${ic('up')}</button><span class="hint">${nCh}개 코드${off?' · 전조 코드 병기':' · 같은 키'}</span>`:''}${p.ocr==='none'?'<span class="hint">인식 엔진 미연결 — "코드" 도구로 직접 추가</span>':''}${p.ocr==='error'?`<span class="hint" style="color:var(--destructive)">인식 실패: ${esc(p.ocrErr||'')}</span>`:''}<span class="grow"></span>${p.ocr!=='pending'?`<button class="btn sm ghost" data-act="ocr" data-id="${p.id}">${ic('marker')}${nCh?'다시 인식':'코드 인식'}</button>`:''}</div>`;
   for(let i=0;i<bounds.length-1;i++){
    const a=bounds[i],b=bounds[i+1];
    if(i>0){const m=stripMarkers[i-1];html+=stripHTML(m,notesBy[m.id],mods,ctx)}
    if(b-a<=0)continue;
    html+=`<div class="slice ${ctx.tool?'tool':''}" data-piece="${p.id}" data-start="${a}" style="height:${(b-a)*s}px;background-image:url('${url(p.blob)}');background-size:${W}px auto;background-position:0 ${-a*s}px">`;
    (p.hls||[]).forEach(h=>{if(h.y>=a&&h.y<b)html+=`<div class="hl" data-hl="${h.id}" style="left:${h.x*s}px;top:${(h.y-a)*s}px;width:${h.w*s}px;height:${Math.min(h.h,b-h.y)*s}px"></div>`});
+   (p.chords||[]).forEach(c=>{if(c.y<a||c.y>=b)return;const fs=Math.max(9,Math.min(24,c.h*s*0.92));
+    if(chordTool)html+=`<span class="chdbox" data-chord="${c.id}" style="left:${c.x*s-2}px;top:${(c.y-a)*s-2}px;width:${c.w*s+4}px;height:${c.h*s+4}px"></span>`;
+    if(showRed||chordTool)html+=`<span class="chd ${chordTool?'edit':''}" data-chord="${c.id}" style="left:${(c.x+c.w)*s+4}px;top:${(c.y-a)*s}px;font-size:${fs}px;line-height:${Math.max(c.h*s,fs)}px">${esc(off?transposeChord(c.text,off,item.key):c.text)}</span>`});
    (p.markers||[]).forEach(m=>{
     const inStrip=stripMarkers.includes(m);
     if(ctx.mode==='edit'&&m.cut!=null&&m.cut>a&&m.cut<b&&!inStrip)html+=`<div class="cutline" data-cut="${m.id}" style="top:${(m.cut-a)*s}px"><i></i><b>${esc(m.label)}</b></div>`;
@@ -1061,7 +1147,7 @@ async function render(){
   if(online()&&(!same||!SYNC.pulledAt[svc.id]))await SYNC.pullNotes(svc);
   await preload(svc);
   if(r.name==='edit'){app.innerHTML=editorHTML(svc);afterEditor(svc);restoreScroll();return}
-  if(r.name==='view'){app.innerHTML=viewerHTML(svc);return}
+  if(r.name==='view'){app.innerHTML=viewerHTML(svc);if(!same&&msgUnread(svc))setTimeout(()=>messageSheet(svc,true),150);return}
   app.innerHTML=playHTML(svc,+r.b||0);afterPlay(svc,+r.b||0);restoreScroll();return}
  app.innerHTML=homeHTML();
  if(online()&&!same)SYNC.pullServices().then(ch=>{if(ch&&route().name==='home')render()});
@@ -1080,22 +1166,23 @@ function initSongDrag(svc){const first=$('.list-item');if(!first)return;const li
  list.addEventListener('pointerup',done);list.addEventListener('pointercancel',done)}
 function autoGrow(t){if(!t||t.tagName!=='TEXTAREA')return;t.style.height='auto';t.style.height=(t.scrollHeight+2)+'px'}
 function drawEditorSheet(svc){const it=curItem(svc);const sh=$('#sheet');if(!it||!sh)return;const W=sh.clientWidth-56;sh.classList.toggle('hltool',SEL[svc.id].tool==='hl');const sw=$('#sheetwrap');const st=sw?sw.scrollTop:0;sh.innerHTML=sheetHTML(it,Math.max(200,W),{mode:'edit',tool:SEL[svc.id].tool});if(sw)sw.scrollTop=st}
-async function addPieces(svc,it,files){files=Array.from(files||[]).filter(f=>/^image\//.test(f.type));if(!it||!files.length){if(files&&!files.length)toast('이미지 파일만 넣을 수 있어요');return}toast('이미지 처리 중…');let fixes=[];for(const f of files){try{const r=await importImage(f);const id=uid();await IDB.put('blobs',id,r.blob);it.pieces.push({id,blob:id,w:r.w,h:r.h,gaps:r.gaps,markers:[],hls:[],name:''});const fx=[];if(Math.abs(r.fix.angle)>=0.3)fx.push('기울기 '+(r.fix.angle>0?'+':'')+r.fix.angle.toFixed(1)+'°');if(r.fix.photo)fx.push('명암');if(r.fix.trimmed)fx.push('여백');if(fx.length)fixes.push(fx.join('·'))}catch(err){console.error(err);toast('이미지를 읽지 못했어요')}}
+async function addPieces(svc,it,files){files=Array.from(files||[]).filter(f=>/^image\//.test(f.type));if(!it||!files.length){if(files&&!files.length)toast('이미지 파일만 넣을 수 있어요');return}toast('이미지 처리 중…');let fixes=[];for(const f of files){try{const r=await importImage(f);const id=uid();await IDB.put('blobs',id,r.blob);it.pieces.push({id,blob:id,w:r.w,h:r.h,gaps:r.gaps,markers:[],hls:[],name:'',chords:[],sheetKey:'',keyConfirmed:false,offset:null});const np=it.pieces[it.pieces.length-1];if(online()&&isLeader())setTimeout(()=>recognizeChords(svc,it,np),100);const fx=[];if(Math.abs(r.fix.angle)>=0.3)fx.push('기울기 '+(r.fix.angle>0?'+':'')+r.fix.angle.toFixed(1)+'°');if(r.fix.photo)fx.push('명암');if(r.fix.trimmed)fx.push('여백');if(fx.length)fixes.push(fx.join('·'))}catch(err){console.error(err);toast('이미지를 읽지 못했어요')}}
    if(fixes.length)setTimeout(()=>toast('자동 정리: '+fixes.join(' / ')+' · 줄 사이 여백 '+(it.pieces[it.pieces.length-1].gaps||[]).length+'곳 인식'),300);
    touch(svc);save();syncLib(it);await preload(svc);render()}
 function afterEditor(svc){
- drawEditorSheet(svc);initGutter(()=>drawEditorSheet(svc));$$('textarea.songbar').forEach(autoGrow);initSongDrag(svc);
+ drawEditorSheet(svc);initGutter(()=>drawEditorSheet(svc));$$('textarea.songbar,textarea.msgin').forEach(autoGrow);initSongDrag(svc);
  const app=$('#app');
  // field bindings
  app.oninput=e=>{const f=e.target.dataset.f;if(!f)return;const it=curItem(svc);
-  if(f==='svc.name')svc.name=e.target.value;else if(f==='svc.date')svc.date=e.target.value;else if(f==='svc.notice')svc.notice=e.target.value;
-  else if(it){const k=f.split('.')[1];it[k]=e.target.value;if(k==='form'){$('#formchips').innerHTML=chipsHTML(it.form,'t');autoGrow(e.target)}if(k==='title'){const tab=$$('.ptab .tab').find(t=>t.textContent==='곡 편집');const sub=tab&&tab.parentElement.querySelector('.sub');if(sub)sub.textContent=it.title||'(제목 없음)'}if(k==='title'||k==='key'||k==='mod'){const li=$$('.list-item').find(l=>l.dataset.id===it.id);if(li){const t=li.querySelector('.grow'),k=li.querySelector('.k');if(t)t.textContent=it.title||'(제목 없음)';if(k)k.textContent=keyStr(it)}}syncLib(it)}
+  if(f==='svc.name')svc.name=e.target.value;else if(f==='svc.date')svc.date=e.target.value;else if(f==='svc.notice')svc.notice=e.target.value;else if(f==='svc.message'){svc.message=e.target.value;autoGrow(e.target)}
+  else if(it){const k=f.split('.')[1];it[k]=e.target.value;if(k==='form'){$('#formchips').innerHTML=chipsHTML(it.form,'t');autoGrow(e.target)}if(k==='title'){const tab=$$('.ptab .tab').find(t=>t.textContent==='곡 편집');const sub=tab&&tab.parentElement.querySelector('.sub');if(sub)sub.textContent=it.title||'(제목 없음)'}if(k==='key')drawEditorSheet(svc);if(k==='title'||k==='key'||k==='mod'){const li=$$('.list-item').find(l=>l.dataset.id===it.id);if(li){const t=li.querySelector('.grow'),k=li.querySelector('.k');if(t)t.textContent=it.title||'(제목 없음)';if(k)k.textContent=keyStr(it)}}syncLib(it)}
   svc.version=Math.max(svc.version,(svc.published?svc.published.version:0));touch(svc);save()};
  app.onchange=async e=>{
   if(e.target.dataset.md){const it=curItem(svc);const md=it&&it.media.find(x=>x.id===e.target.dataset.id);if(!md)return;const v=e.target.value.trim();md[e.target.dataset.md]=v?parseT(v):0;if(md.end&&md.start&&md.end<=md.start){md.end=0;e.target.value='';toast('끝은 시작보다 뒤여야 해요')}touch(svc);save();syncLib(it);return}
   if(e.target.id==='pieceFile'){await addPieces(svc,curItem(svc),e.target.files);return}
-  if(e.target.id==='audFile'){const it=curItem(svc);const f=e.target.files[0];if(!it||!f)return;if(f.size>60*1024*1024){toast('60MB 이하만');return}const id=uid();await IDB.put('blobs',id,f);it.media.push({id,type:'audio',blob:id,name:f.name,notes:[]});touch(svc);save();render();return}
+  if(e.target.id==='audFile'){const it=curItem(svc);const f=e.target.files[0];if(!it||!f)return;if(f.size>60*1024*1024){toast('60MB 이하만');return}const id=uid();await IDB.put('blobs',id,f);it.media.push({id,type:'audio',blob:id,name:f.name,notes:[],sessions:((SEL[svc.id]||{}).mdTarget||[]).slice()});touch(svc);save();render();return}
  };
+ const mt=$('#mdTarget');if(mt)mt.onclick=e=>{const b=e.target.closest('[data-mdt]');if(!b)return;const sel=SEL[svc.id];let t=sel.mdTarget||[];const v=b.dataset.mdt;if(!v)t=[];else t=t.includes(v)?t.filter(x=>x!==v):t.concat(v);sel.mdTarget=t;$$('[data-mdt]',mt).forEach(x=>x.classList.toggle('on',x.dataset.mdt?t.includes(x.dataset.mdt):!t.length))};
  // 악보 사진 드래그 앤 드롭 / 붙여넣기
  const sp=$('#edsheet');if(sp){let dragN=0;
   sp.ondragenter=e=>{if(![...e.dataTransfer.types].includes('Files'))return;e.preventDefault();dragN++;sp.classList.add('drop')};
@@ -1118,6 +1205,9 @@ function afterEditor(svc){
   const nc=e.target.closest('[data-note]');if(nc){noteMenu(svc,it,nc.dataset.note);return}
   const mkEl=e.target.closest('[data-marker]');
   if(mkEl){const mid=mkEl.dataset.marker;if(tool==='memo'){openComposer(svc,it,{marker:mid,leader:true});return}markerMenu(svc,it,mid);return}
+  if(tool==='chord'){const ce=e.target.closest('[data-chord]');const sl=e.target.closest('.slice');if(!sl)return;const p=it.pieces.find(x=>x.id===sl.dataset.piece);if(!p)return;
+   if(ce){chordEditModal(svc,it,p,ce.dataset.chord);return}
+   const s=sl.clientWidth/p.w;const r=sl.getBoundingClientRect();chordEditModal(svc,it,p,null,{x:(e.clientX-r.left)/s,y:+sl.dataset.start+(e.clientY-r.top)/s});return}
   if(tool==='hl'){const hlEl=e.target.closest('.hl[data-hl]');if(hlEl&&confirm('하이라이트를 지울까요?')){it.pieces.forEach(p=>p.hls=p.hls.filter(h=>h.id!==hlEl.dataset.hl));touch(svc);save();drawEditorSheet(svc)}return}
   if(tool!=='marker')return;
   const sl=e.target.closest('.slice');if(!sl)return;
@@ -1137,6 +1227,7 @@ function kakaoText(svc){
  const lines=[`[${svc.name||'예배'} 콘티 v${svc.version||1}]`];
  svc.items.forEach((it,i)=>{const k=keyStr(it);lines.push(`${i+1}. ${it.title||'(제목 없음)'}${k?' / '+k:''}`)});
  if(svc.notice)lines.push('',svc.notice.split('\n')[0]);
+ const msg=(svc.message||'').trim();if(msg){const paras=msg.split(/\n\s*\n/);lines.push('',paras[0].trim()+(paras.length>1?' …':''),'(앱에서 전문 보기)')}
  lines.push('',online()?'👉 '+location.origin+location.pathname+'#/view/'+svc.id:'👉 (앱에서 "'+(svc.name||'예배')+'" 열기 — 파일 가져오기)');
  if(svc.published){const d=diffSvc(svc.published,svc);if(d.length)lines.push('',`v${svc.version} 변경: `+d.join(', '))}
  return lines.join('\n');
@@ -1160,7 +1251,7 @@ function ytCmd(func,args){if(!P.yt)return;try{P.yt.contentWindow.postMessage(JSO
 window.addEventListener('message',e=>{if(!P.yt||e.source!==P.yt.contentWindow)return;let d;try{d=typeof e.data==='string'?JSON.parse(e.data):e.data}catch{return}
  if(d.event==='onReady'||d.event==='initialDelivery'){P.ytReady=true}
  if(d.event==='infoDelivery'&&d.info){if(d.info.currentTime!=null){P.t=d.info.currentTime}if(d.info.duration)P.dur=d.info.duration;if(d.info.playerState!=null)P.playing=d.info.playerState===1;updateTL()}});
-let PL={svc:null,idx:0,mi:0,stage:false,f:{leader:true,session:true,mine:true},session:null};
+let PL={svc:null,idx:0,mi:0,stage:false,f:{leader:true,session:true,mine:true,chords:true},session:null};
 function navSong(d){const svc=PL.svc;if(!svc)return;const pub=pubOrDraft(svc);const i=PL.idx+d;if(i<0||i>=pub.items.length){toast(d<0?'첫 곡이에요':'마지막 곡이에요');return}go('play/'+svc.id+'/'+i)}
 let swX=null,swY=null;
 document.addEventListener('touchstart',e=>{if(route().name!=='play'||!PL.stage||$('#modal').firstChild||e.touches.length!==1){swX=null;return}swX=e.touches[0].clientX;swY=e.touches[0].clientY},{passive:true});
@@ -1180,12 +1271,12 @@ function afterPlay(svc,idx){
  sh.onclick=e=>{const pub=pubOrDraft(svc);const it=pub.items[PL.idx];const live=svc.items.find(x=>x.id===it.id)||it;
   const nc=e.target.closest('[data-note]');if(nc){P.pauseForComposer();noteMenu(svc,live,nc.dataset.note);return}
   const more=e.target.closest('[data-act="more"]');if(more){more.closest('.strip').classList.add('open');return}
-  const add=e.target.closest('[data-act="memo"]')||e.target.closest('[data-marker]');if(add){const mid=add.dataset.marker;if(!markerOf(live,mid)){toast('발행본에 없는 마커');return}P.pauseForComposer();const md=it.media[PL.mi];openComposer(svc,live,{marker:mid,leader:isLeader(),t:P.t,mediaId:md&&md.id});return}
+  const add=e.target.closest('[data-act="memo"]')||e.target.closest('[data-marker]');if(add){const mid=add.dataset.marker;if(!markerOf(live,mid)){toast('발행본에 없는 마커');return}P.pauseForComposer();const md=(PL.ml||[])[PL.mi];openComposer(svc,live,{marker:mid,leader:isLeader(),t:P.t,mediaId:md&&md.id});return}
  };
  window.onresize=()=>{if(route().name==='play')redrawPlay()};
 }
 function updateTL(){
- const svc=PL.svc;if(!svc||route().name!=='play')return;const it=pubOrDraft(svc).items[PL.idx];if(!it)return;const live=svc.items.find(x=>x.id===it.id)||it;const md=it.media[PL.mi];const pb=$('#playBtn');if(pb)pb.innerHTML=P.playing?ic('pause'):ic('play');
+ const svc=PL.svc;if(!svc||route().name!=='play')return;const it=pubOrDraft(svc).items[PL.idx];if(!it)return;const live=svc.items.find(x=>x.id===it.id)||it;const md=(PL.ml||[])[PL.mi];const pb=$('#playBtn');if(pb)pb.innerHTML=P.playing?ic('pause'):ic('play');
  const [s0,s1]=P.range();const tc=$('#tCur'),td=$('#tDur'),fill=$('#fill');if(tc)tc.textContent=fmtT(P.t);if(td)td.textContent=fmtT(P.end||P.dur);if(fill)fill.style.width=((P.end||P.dur)?Math.min(100,Math.max(0,(P.t-s0)/(s1-s0)*100)):0)+'%';
  const list=$('#tlist');if(!list||!md)return;const lmd=(live.media||[]).find(x=>x.id===md.id)||md;const notes=(lmd.notes||[]).filter(n=>noteVisible(n,playCtx())).sort((a,b)=>a.t-b.t);
  const prog=$('#prog');if(prog){$$('.tick',prog).forEach(t=>t.remove());if(P.end||P.dur)notes.forEach(n=>{if(n.t<s0||n.t>s1)return;const d=document.createElement('div');d.className='tick';d.style.left=(Math.max(0,Math.min(1,(n.t-s0)/(s1-s0)))*100)+'%';prog.appendChild(d)})}
@@ -1243,6 +1334,7 @@ document.addEventListener('click',async e=>{
   case 'home':go('home');break;
   case 'settings':settingsModal();break;
   case 'team':teamModal();break;
+  case 'msg':messageSheet(svcById(el.dataset.id||r.a),false);break;
   case 'theme':THEME.cycle();break;
   case 'nav-lib':{const l=$('#lib');l&&l.scrollIntoView({behavior:'smooth',block:'start'});break}
   case 'go-home':go('home');break;
@@ -1263,7 +1355,11 @@ document.addEventListener('click',async e=>{
   case 'tool':{const s=svcById(r.a);SEL[s.id].tool=el.dataset.t;render();break}
   case 'mv-piece':{const s=svcById(r.a);const it=curItem(s);const i=it.pieces.findIndex(p=>p.id===el.dataset.id);const j=i+ +el.dataset.d;if(j<0||j>=it.pieces.length)break;[it.pieces[i],it.pieces[j]]=[it.pieces[j],it.pieces[i]];touch(s);save();syncLib(it);render();break}
   case 'del-piece':{const s=svcById(r.a);const it=curItem(s);if(!confirm('조각을 삭제할까요? 마커와 메모도 지워집니다.'))break;const p=it.pieces.find(x=>x.id===el.dataset.id);const mids=new Set(p.markers.map(m=>m.id));it.notes=it.notes.filter(n=>!mids.has(n.marker));it.pieces=it.pieces.filter(x=>x.id!==p.id);touch(s);save();syncLib(it);render();break}
-  case 'add-yt':{const s=svcById(r.a);const it=curItem(s);const u=$('#ytUrl').value.trim();if(!ytId(u)){toast('유튜브 링크가 아니에요');break}it.media.push({id:uid(),type:'youtube',url:u,name:'',start:ytStart(u)||0,end:0,notes:[]});touch(s);save();syncLib(it);render();break}
+  case 'add-yt':{const s=svcById(r.a);const it=curItem(s);const u=$('#ytUrl').value.trim();if(!ytId(u)){toast('유튜브 링크가 아니에요');break}it.media.push({id:uid(),type:'youtube',url:u,name:'',start:ytStart(u)||0,end:0,notes:[],sessions:((SEL[s.id]||{}).mdTarget||[]).slice()});touch(s);save();syncLib(it);render();break}
+  case 'ocr':{const s=svcById(r.a);const it=curItem(s);const p=it&&it.pieces.find(x=>x.id===el.dataset.id);if(!p)break;if(!online()){toast('서버에 연결돼 있을 때만 인식할 수 있어요');break}recognizeChords(s,it,p);break}
+  case 'sheet-key':{const s=svcById(r.a);const it=curItem(s);const p=it&&it.pieces.find(x=>x.id===el.dataset.id);if(!p)break;keyPickerModal(p.sheetKey||'',k=>{p.sheetKey=k;p.keyConfirmed=!!k;p.offset=null;touch(s);save();syncLib(it);drawEditorSheet(s)});break}
+  case 'chord-off':{const s=svcById(r.a);const it=curItem(s);const p=it&&it.pieces.find(x=>x.id===el.dataset.id);if(!p)break;p.offset=chordOffset(it,p)+ +el.dataset.d;if(p.offset>6)p.offset-=12;if(p.offset<-6)p.offset+=12;touch(s);save();syncLib(it);drawEditorSheet(s);break}
+  case 'md-target':{const s=svcById(r.a);const it=curItem(s);const md=it&&it.media.find(m=>m.id===el.dataset.id);if(!md)break;mediaTargetModal(s,it,md);break}
   case 'del-media':{const s=svcById(r.a);const it=curItem(s);it.media=it.media.filter(m=>m.id!==el.dataset.id);touch(s);save();syncLib(it);render();break}
   case 'del-note':{const s=svcById(r.a);const it=curItem(s);if(!confirm('이 메모를 지울까요?'))break;it.notes=it.notes.filter(n=>n.id!==el.dataset.id);save();render();break}
   case 'add-tnote':{const s=svcById(r.a);const it=curItem(s);const md=it.media.find(x=>x.id===el.dataset.mid);const box=el.closest('.tlEdit');const t=parseT(box.querySelector('[data-tl="t"]').value);const text=box.querySelector('[data-tl="text"]').value.trim();const sess=box.querySelector('[data-tl="s"]').value;if(!text){box.querySelector('[data-tl="text"]').focus();break}md.notes.push({id:uid(),layer:'leader',session:sess||null,text,author:'인도자',t,at:Date.now()});touch(s);save();syncLib(it);render();break}
@@ -1277,8 +1373,8 @@ document.addEventListener('click',async e=>{
   case 'msel':selectMedia(+el.dataset.i);break;
   case 'ptoggle':P.toggle();break;
   case 'skip':P.seek(Math.max(0,P.t+ +el.dataset.d));break;
-  case 'seek':{const t=+el.dataset.t;const md=pubOrDraft(PL.svc).items[PL.idx].media[PL.mi];if(md&&md.type==='youtube'&&!P.ytReady){window.open(`https://youtu.be/${ytId(md.url)}?t=${Math.round(t)}`,'_blank','noopener');break}P.seek(t);if(!P.playing)P.play();break}
-  case 'tnote':{const s=PL.svc;const pub=pubOrDraft(s);const it=pub.items[PL.idx];const live=s.items.find(x=>x.id===it.id)||it;const md=it.media[PL.mi];if(!md){toast('미디어가 없어요');break}const lmd=live.media.find(x=>x.id===md.id);if(!lmd){toast('발행본에 없는 미디어');break}P.pauseForComposer();openComposer(s,live,{leader:isLeader(),t:P.t,mediaId:lmd.id});break}
+  case 'seek':{const t=+el.dataset.t;const md=(PL.ml||[])[PL.mi];if(md&&md.type==='youtube'&&!P.ytReady){window.open(`https://youtu.be/${ytId(md.url)}?t=${Math.round(t)}`,'_blank','noopener');break}P.seek(t);if(!P.playing)P.play();break}
+  case 'tnote':{const s=PL.svc;const pub=pubOrDraft(s);const it=pub.items[PL.idx];const live=s.items.find(x=>x.id===it.id)||it;const md=(PL.ml||[])[PL.mi];if(!md){toast('미디어가 없어요');break}const lmd=live.media.find(x=>x.id===md.id);if(!lmd){toast('발행본에 없는 미디어');break}P.pauseForComposer();openComposer(s,live,{leader:isLeader(),t:P.t,mediaId:lmd.id});break}
   case 'psess':PL.session=el.dataset.s;render();break;
   case 'pf':PL.f[el.dataset.k]=!PL.f[el.dataset.k];$$('[data-act="pf"]').forEach(b=>b.classList.toggle('on',PL.f[b.dataset.k]));redrawPlay();break;
   case 'stage':setStage(!PL.stage);break;
