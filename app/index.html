@@ -1090,28 +1090,54 @@ function shiftAt(item,pi,y){let best=null;(item.pieces||[]).forEach((p,i)=>{if(i
 function chordOffset(item,piece){if(!piece)return 0;if(piece.offset!=null)return piece.offset;const a=keySemi(item.key),b=keySemi(piece.sheetKey);if(a==null||b==null)return 0;let d=a-b;while(d>6)d-=12;while(d<-6)d+=12;return d}
 function estimateKey(chords){const roots=(chords||[]).map(c=>parseChord(c.text)).filter(Boolean).map(c=>c.root);if(!roots.length)return '';const cnt={};roots.forEach(r=>cnt[r]=(cnt[r]||0)+1);const top=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a]);const last=roots[roots.length-1];return top.slice(0,2).includes(last)?last:top[0]}
 // 오선 위치: 폭의 40% 이상 이어지는 어두운 행 → 선 → 4줄 이상 묶음이 시스템
-function detectSystems(canvas){const W=Math.min(1600,canvas.width);const {g,H}=grayOf(canvas,W);const hist=new Uint32Array(256);for(let i=0;i<g.length;i++)hist[g[i]]++;let bg=255,mx=0;for(let v=120;v<256;v++)if(hist[v]>mx){mx=hist[v];bg=v}const thr=bg-Math.max(40,bg*0.25);
- // 행마다 가장 긴 어두운 구간(2px 이하 끊김 허용). 폭의 22% 이상이면 오선 후보 (두 장 나란히 스캔한 악보도 잡힘)
- const rows=[];for(let y=0;y<H;y++){let run=0,best=0,gap=0;for(let x=0;x<W;x++){if(g[y*W+x]<thr){run+=gap+1;gap=0;if(run>best)best=run}else{gap++;if(gap>2){run=0;gap=0}}}if(best>=W*0.22)rows.push(y)}
- const lines=[];rows.forEach(y=>{const L=lines[lines.length-1];if(L&&y-L.e<=2)L.e=y;else lines.push({s:y,e:y})});
- // 선 간격 = 인접 선 거리의 중앙값 기준으로 시스템 묶기 (H 비율 대신 실제 간격 사용)
- const dists=[];for(let i=1;i<lines.length;i++)dists.push(lines[i].s-lines[i-1].e);dists.sort((a,b)=>a-b);const med=dists.length?dists[Math.floor(dists.length/2)]:H*0.01;const tol=Math.max(med*2.2,H*0.012);
- const sys=[];lines.forEach(l=>{const S0=sys[sys.length-1];if(S0&&l.s-S0.bottom<=tol){S0.bottom=l.e;S0.n++}else sys.push({top:l.s,bottom:l.e,n:1})});
- const k=canvas.height/H;return sys.filter(x=>x.n>=4).map(x=>({top:Math.round(x.top*k),bottom:Math.round(x.bottom*k)}))}
+// 오선 검출: 얇은 세로 런(선 두께)만 남긴 마스크를 8개 세로 띠로 나눠 행별 덮임률로 선을 찾고, 등간격 4줄 이상을 시스템으로.
+// 띠 단위라 기울기·두 장 나란히 스캔·부분 오선도 잡히고, 시스템마다 가로 범위(x0~x1)를 돌려준다.
+function detectSystems(canvas){const W=Math.min(1600,canvas.width);const H=Math.round(canvas.height*W/canvas.width);const c=document.createElement('canvas');c.width=W;c.height=H;const x2=c.getContext('2d');x2.drawImage(canvas,0,0,W,H);const d=x2.getImageData(0,0,W,H).data;const g=new Uint8Array(W*H);const hist=new Uint32Array(256);for(let i=0,p=0;i<d.length;i+=4,p++){g[p]=(d[i]*299+d[i+1]*587+d[i+2]*114)/1000|0;hist[g[p]]++}
+ let bg=255,mx=0;for(let v=120;v<256;v++)if(hist[v]>mx){mx=hist[v];bg=v}const thr=bg-Math.max(30,bg*0.2);
+ const maxT=Math.max(3,Math.round(H/300));const thin=new Uint8Array(W*H);
+ for(let x=0;x<W;x++){let y=0;while(y<H){if(g[y*W+x]<thr){const s0=y;while(y<H&&g[y*W+x]<thr)y++;if(y-s0<=maxT)for(let k=s0;k<y;k++)thin[k*W+x]=1}else y++}}
+ const nS=8,sw=Math.floor(W/nS);const found=[];
+ for(let si=0;si<nS;si++){const x0=si*sw,x1=si===nS-1?W:x0+sw;const rows=[];
+  for(let y=0;y<H;y++){let n=0;for(let x=x0;x<x1;x++)if(thin[y*W+x])n++;if(n>=(x1-x0)*0.3)rows.push(y)}
+  const lines=[];rows.forEach(y=>{const L=lines[lines.length-1];if(L&&y-L.e<=1)L.e=y;else lines.push({s:y,e:y})});
+  if(lines.length<4)continue;const dist=[];for(let i=1;i<lines.length;i++)dist.push(lines[i].s-lines[i-1].e);dist.sort((a,b)=>a-b);const med=dist[Math.floor(dist.length/2)];const tol=Math.max(med*1.8,4);
+  let grp=[];const flush=()=>{if(grp.length>=4)found.push({top:grp[0].s,bottom:grp[grp.length-1].e,sp:med,x0,x1,si});grp=[]};
+  lines.forEach(l=>{if(grp.length&&l.s-grp[grp.length-1].e>tol)flush();grp.push(l)});flush()}
+ found.sort((a,b)=>a.si-b.si||a.top-b.top);const out=[];
+ found.forEach(f=>{const o=out.find(o=>o.siEnd===f.si-1&&Math.abs(o.top-f.top)<=Math.max(o.sp,f.sp)*1.2+2&&Math.abs(o.bottom-f.bottom)<=Math.max(o.sp,f.sp)*1.2+2);
+  if(o){o.top=Math.min(o.top,f.top);o.bottom=Math.max(o.bottom,f.bottom);o.x1=f.x1;o.siEnd=f.si;o.sp=Math.max(o.sp,f.sp)}else out.push({top:f.top,bottom:f.bottom,x0:f.x0,x1:f.x1,sp:f.sp,siEnd:f.si})});
+ const k=canvas.height/H;return out.filter(o=>o.x1-o.x0>=sw*2).sort((a,b)=>a.top-b.top||a.x0-b.x0).map(o=>({top:Math.round(o.top*k),bottom:Math.round(o.bottom*k),x0:Math.round(Math.max(0,o.x0-sw)*k),x1:Math.round(Math.min(W,o.x1+sw)*k)}))}
 async function recognizeChords(svc,it,piece){if(!online()||!isLeader()||!piece)return;piece.ocr='pending';piece.ocrErr='';save();if(route().name==='edit')drawEditorSheet(svc);
  try{const blob=await IDB.get('blobs',piece.blob);if(!blob)throw new Error('이 기기에 악보 파일이 없어요');const img=await loadImg(URL.createObjectURL(blob));
   const cv=document.createElement('canvas');cv.width=img.naturalWidth;cv.height=img.naturalHeight;cv.getContext('2d').drawImage(img,0,0);
-  const sys=detectSystems(cv);if(!sys.length)throw new Error('오선을 찾지 못했어요');
-  const H=cv.height,W=cv.width;const bands=[];sys.forEach((s0,i)=>{const prevB=i?sys[i-1].bottom:0;const top=Math.max(prevB+Math.round(H*0.008),s0.top-Math.round(H*0.055));const bot=s0.top-1;if(bot-top>=8)bands.push({top,bot})});
-  if(!bands.length)throw new Error('코드 띠를 찾지 못했어요');
-  const scale=W<1600?2:1;const images=bands.slice(0,16).map(b=>{const c=document.createElement('canvas');c.width=W*scale;c.height=(b.bot-b.top)*scale;c.getContext('2d').drawImage(cv,0,b.top,W,b.bot-b.top,0,0,c.width,c.height);return {b64:c.toDataURL('image/jpeg',0.85).split(',')[1],mime:'image/jpeg',w:c.width,h:c.height,top:b.top}});
-  const r=await api('/ocr',{method:'POST',body:{teamId:S.team.id,images:images.map(({b64,mime,w,h})=>({b64,mime,w,h}))}});
+  let sys=[];try{sys=detectSystems(cv)}catch(e){console.warn('detectSystems',e)}let mode=sys.length?'bands':'tiles';
+  const H=cv.height,W=cv.width;const bands=[];
+  sys.forEach((s0,i)=>{const above=sys.filter((o,j)=>j<i&&o.x1>s0.x0&&o.x0<s0.x1);const prevB=above.length?Math.max(...above.map(o=>o.bottom)):0;const top=Math.max(prevB+Math.round(H*0.008),s0.top-Math.round(H*0.055));const bot=s0.top-1;if(bot-top>=8)bands.push({top,bot,x0:s0.x0,x1:s0.x1})});
+  if(!bands.length){mode='tiles'}
+  if(mode==='tiles'){bands.length=0;const th=Math.round(H/7),ov=Math.round(th*0.15);for(let y=0;y<H;y+=th-ov)bands.push({top:y,bot:Math.min(H,y+th),x0:0,x1:W})}
+  // 제목 띠: 첫 시스템 위(없으면 위 18%)
+  const titleBot=sys.length?Math.max(40,Math.min(...sys.map(o=>o.top))-2):Math.round(H*0.18);
+  const scale=W<1600?2:1;const mk=(b,kind)=>{const bw=b.x1-b.x0;const c=document.createElement('canvas');c.width=bw*scale;c.height=(b.bot-b.top)*scale;c.getContext('2d').drawImage(cv,b.x0,b.top,bw,b.bot-b.top,0,0,c.width,c.height);return {b64:c.toDataURL('image/jpeg',0.85).split(',')[1],mime:'image/jpeg',w:c.width,h:c.height,top:b.top,left:b.x0,kind}};
+  const titleImg=titleBot>12?mk({top:0,bot:titleBot,x0:0,x1:W},'title'):null;
+  const images=bands.slice(0,32).map(b=>{const bw=b.x1-b.x0;const c=document.createElement('canvas');c.width=bw*scale;c.height=(b.bot-b.top)*scale;c.getContext('2d').drawImage(cv,b.x0,b.top,bw,b.bot-b.top,0,0,c.width,c.height);return {b64:c.toDataURL('image/jpeg',0.85).split(',')[1],mime:'image/jpeg',w:c.width,h:c.height,top:b.top,left:b.x0}});
+  const all=images.concat(titleImg?[titleImg]:[]);const results=[];for(let k0=0;k0<all.length;k0+=16){const part=all.slice(k0,k0+16);const r=await api('/ocr',{method:'POST',body:{teamId:S.team.id,images:part.map(({b64,mime,w,h,kind})=>({b64,mime,w,h,kind}))}});results.push(...(r.results||[]))}
+  const titleRes=titleImg?results.pop():null;
   const kx=piece.w/W;const found=[];
-  (r.results||[]).forEach((res,i)=>{(res.tokens||[]).forEach(t=>{const text=normAcc(t.text);if((t.conf||0)<30||!isChordText(text))return;found.push({id:uid(),text,x:Math.round(t.x/scale*kx),y:Math.round((images[i].top+t.y/scale)*kx),w:Math.round(t.w/scale*kx),h:Math.round(t.h/scale*kx),conf:t.conf,fixed:false})})});
-  piece.chords=(piece.chords||[]).filter(c=>c.fixed).concat(found);if(!piece.keyConfirmed)piece.sheetKey=estimateKey(piece.chords)||piece.sheetKey||'';piece.ocr='done';
-  toast(found.length?`코드 ${found.length}개 인식 · 악보 키 ${piece.sheetKey||'?'} (추정)`:'코드를 찾지 못했어요');
+  results.forEach((res,i)=>{(res.tokens||[]).forEach(t=>{const text=normAcc(t.text);if((t.conf||0)<30||!isChordText(text))return;found.push({id:uid(),text,x:Math.round((images[i].left+t.x/scale)*kx),y:Math.round((images[i].top+t.y/scale)*kx),w:Math.round(t.w/scale*kx),h:Math.round(t.h/scale*kx),conf:t.conf,fixed:false})})});
+  // 겹치는 타일에서 같은 코드가 두 번 잡힌 것 제거
+  const uniq=[];found.sort((a,b)=>a.y-b.y||a.x-b.x).forEach(c=>{if(!uniq.some(u=>u.text===c.text&&Math.abs(u.x-c.x)<c.h&&Math.abs(u.y-c.y)<c.h))uniq.push(c)});
+  piece.chords=(piece.chords||[]).filter(c=>c.fixed).concat(uniq);if(!piece.keyConfirmed)piece.sheetKey=estimateKey(piece.chords)||piece.sheetKey||'';piece.ocr='done';piece.ocrMode=mode;
+  // 자동 채우기: 제목 · 연주 키 (비어 있을 때만)
+  const filled=[];const title=titleRes?guessTitle(titleRes.tokens||[]):'';
+  if(title&&!(it.title||'').trim()){it.title=title;filled.push('제목')}
+  if(piece.sheetKey&&!(it.key||'').trim()){it.key=piece.sheetKey;filled.push('키 '+piece.sheetKey)}
+  toast((uniq.length?`코드 ${uniq.length}개 인식 · 악보 키 ${piece.sheetKey||'?'} (추정)`:'코드를 찾지 못했어요')+(mode==='tiles'?' · 오선 없이 전체 읽기':'')+(filled.length?` · ${filled.join('·')} 채움`:''));
  }catch(e){piece.ocr=e.code==='no_ocr'?'none':'error';piece.ocrErr=e.message||'';if(piece.ocr==='error')toast('코드 인식 실패: '+piece.ocrErr)}
  touch(svc);save();syncLib(it);if(route().name==='edit')render()}
+// 제목 추정: 상단 띠의 토큰을 줄로 묶고, 글자 높이가 가장 큰 줄(메타 정보 제외)
+function guessTitle(tokens){const skip=/작사|작곡|채보|편곡|Words|Music|Arranged|Lyrics|^\W*=\s*\d+|♩|^\d+$/;const lines=[];tokens.slice().sort((a,b)=>a.y-b.y||a.x-b.x).forEach(t=>{const L=lines.find(l=>Math.abs(l.y-t.y)<Math.max(l.h,t.h)*0.6);if(L){L.toks.push(t);L.h=Math.max(L.h,t.h)}else lines.push({y:t.y,h:t.h,toks:[t]})});
+ const cands=lines.map(l=>({text:l.toks.sort((a,b)=>a.x-b.x).map(t=>t.text).join(' ').replace(/\s+/g,' ').trim(),h:l.h,x:Math.min(...l.toks.map(t=>t.x))})).filter(l=>l.text.length>=2&&!skip.test(l.text)&&!isChordText(l.text));
+ if(!cands.length)return '';const maxH=Math.max(...cands.map(c=>c.h));const big=cands.filter(c=>c.h>=maxH*0.8).sort((a,b)=>a.x-b.x);return big[0].text.slice(0,60)}
 function keyPickerModal(cur,cb){modal(`<b style="font-size:17px">악보에 인쇄된 키</b><div class="hint" style="margin-top:4px">코드 근음이 이 키 기준으로 적혀 있어요. 연주 키와의 차이만큼 코드를 옮깁니다.</div><div style="margin-top:14px">${KEYS12.map(k=>`<button class="q ${k===cur?'on':''}" data-k="${k}">${k}</button>`).join('')}<button class="q ${!cur?'on':''}" data-k="">모름</button></div>`,{center:true});
  $('#modal').onclick=e=>{const b=e.target.closest('[data-k]');if(!b)return;closeModal();cb(b.dataset.k)}}
 function chordEditModal(svc,it,p,cid,pos){const c=cid?(p.chords||[]).find(x=>x.id===cid):null;
@@ -1467,7 +1493,7 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
  if(NET.server===true){try{takeMe(await api('/me'))}catch(e){if(e.status===401)NET.user=null;else NET.server=null}}
  if(!online()&&!me().name){setTimeout(()=>{render();settingsModal()},0)}else render();
  if(online()&&S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()});
- window.CONTI={S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg};
+ window.CONTI={S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage};
 })();
 })();
 </script>

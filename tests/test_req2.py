@@ -4,7 +4,7 @@ from playwright.sync_api import sync_playwright
 
 URL = os.environ.get('CONTI_URL', 'http://localhost:8766/')
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SHEET = os.path.join(ROOT, 'docs', 'sample_sheet.jpg')
+SHEET = os.environ.get('CONTI_SHEET') or os.path.join(ROOT, 'docs', 'sample_sheet.jpg')
 tag = str(int(time.time()))[-6:]
 LEADER = ('lead' + tag, 'secret1', '하은'); DRUM = ('mem' + tag, 'secret1', '민수'); KEYS = ('key' + tag, 'secret1', '지은')
 
@@ -55,6 +55,16 @@ def run():
             pg.click('[data-act="tool"][data-t="chord"]'); pg.wait_for_selector('#sheet .chdbox'); pg.locator('#sheet .chdbox').first.click(); pg.wait_for_selector('#chText'); pg.fill('#chText', 'Em7'); pg.click('#chOk'); pg.wait_for_timeout(400)
             if pg.evaluate("CONTI.S.services[0].items[0].pieces[0].chords[0].text") != 'Em7': fail('코드 수정 미반영')
             pg.click('[data-act="tool"][data-t="marker"]')
+            # 자동 채우기: 제목·키가 빈 곡에 악보를 넣으면 채워진다
+            pg.click('[data-act="add-item"]'); pg.wait_for_selector('[data-f="item.title"]'); pg.wait_for_timeout(300)
+            pg.set_input_files('#pieceFile', [SHEET])
+            pg.wait_for_function("(()=>{const it=CONTI.S.services[0].items[1];const p=it&&it.pieces[0];return p&&p.ocr==='done'})()", timeout=40000)
+            auto = pg.evaluate("(()=>{const it=CONTI.S.services[0].items[1];return {title:it.title,key:it.key,mode:it.pieces[0].ocrMode,n:it.pieces[0].chords.length}})()")
+            print('autofill:', auto)
+            if not auto['title'] or not auto['key']: fail('제목/키 자동 채우기 실패: %s' % auto)
+            if pg.locator('[data-f="item.title"]').input_value() != auto['title']: fail('제목 입력창 미갱신')
+            pg.click('[data-act="del-item"]'); pg.wait_for_timeout(500)
+            pg.locator('.list-item').first.click(); pg.wait_for_timeout(400)
         else:
             pg.wait_for_timeout(3000); print('OCR 미연결 → 인식 검사 건너뜀')
         # ---- 미디어: 전체 1개 + 드럼 전용 1개 ----

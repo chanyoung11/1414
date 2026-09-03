@@ -420,7 +420,7 @@ on('POST', '/ocr', async ({ uid, body }) => {
   const teamId = str(body.teamId, 64);
   await requireMember(uid, teamId, 'leader');
   if (!visionConfigured()) throw new HttpError(503, 'no_ocr', '코드 인식 엔진이 아직 연결되지 않았어요 (GOOGLE_VISION_KEY)');
-  const images = (Array.isArray(body.images) ? body.images : []).slice(0, 16).map((im) => ({ b64: String(im.b64 || ''), mime: str(im.mime, 40), w: +im.w || 0, h: +im.h || 0 })).filter((im) => im.b64.length > 100);
+  const images = (Array.isArray(body.images) ? body.images : []).slice(0, 16).map((im) => ({ b64: String(im.b64 || ''), mime: str(im.mime, 40), w: +im.w || 0, h: +im.h || 0, kind: str(im.kind, 10) })).filter((im) => im.b64.length > 100);
   if (!images.length) throw bad('이미지가 없어요');
   if (images.reduce((n, im) => n + im.b64.length, 0) > 12 * 1024 * 1024) throw new HttpError(413, 'too_large', '이미지가 너무 커요');
   const results = await ocrBands(images);
