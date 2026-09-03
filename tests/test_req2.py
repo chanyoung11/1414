@@ -43,8 +43,10 @@ def run():
             # 악보 키를 G로 확정 → 연주 키 A → +2, 빨간 코드가 옮겨져 있어야 함
             pg.click('.chordbar [data-act="sheet-key"]'); pg.wait_for_selector('#modal [data-k="G"]'); pg.click('#modal [data-k="G"]'); pg.wait_for_timeout(500)
             red = pg.evaluate("[...document.querySelectorAll('#sheet .chd')].map(e=>e.textContent)")
-            print('red:', red[:6])
-            if not red or red[0] != 'A' or 'C#m7' not in red: fail('전조 결과 이상: %s' % red[:6])
+            want = pg.evaluate("(()=>{const it=CONTI.S.services[0].items[0];const p=it.pieces[0];const off=CONTI.chordOffset(it,p);return {off,list:p.chords.map(c=>CONTI.transposeChord(c.text,off,it.key)),orig:p.chords.slice(0,6).map(c=>c.text)}})()")
+            print('orig:', want['orig'], '-> red:', red[:6], 'offset', want['off'])
+            if want['off'] != 2 or not red or red != want['list']: fail('전조 결과 이상: %s vs %s' % (red[:6], want['list'][:6]))
+            if not any('/' in x for x in want['orig'] + red): print('  (분수 코드 없음)')
             # 연주 키를 G로 → 전조량 0 → 빨간 글씨 없음
             pg.fill('[data-f="item.key"]', 'G'); pg.wait_for_timeout(500)
             if pg.locator('#sheet .chd').count() != 0: fail('전조량 0인데 빨간 글씨가 있음')

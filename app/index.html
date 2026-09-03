@@ -1420,7 +1420,7 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
  if(NET.server===true){try{takeMe(await api('/me'))}catch(e){if(e.status===401)NET.user=null;else NET.server=null}}
  if(!online()&&!me().name){setTimeout(()=>{render();settingsModal()},0)}else render();
  if(online()&&S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()});
- window.CONTI={S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC};
+ window.CONTI={S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord};
 })();
 })();
 </script>
