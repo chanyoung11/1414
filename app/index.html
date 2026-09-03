@@ -1135,8 +1135,11 @@ async function recognizeChords(svc,it,piece){if(!online()||!isLeader()||!piece)r
  }catch(e){piece.ocr=e.code==='no_ocr'?'none':'error';piece.ocrErr=e.message||'';if(piece.ocr==='error')toast('코드 인식 실패: '+piece.ocrErr)}
  touch(svc);save();syncLib(it);if(route().name==='edit')render()}
 // 제목 추정: 상단 띠의 토큰을 줄로 묶고, 글자 높이가 가장 큰 줄(메타 정보 제외)
-function guessTitle(tokens){const skip=/작사|작곡|채보|편곡|Words|Music|Arranged|Lyrics|^\W*=\s*\d+|♩|^\d+$/;const lines=[];tokens.slice().sort((a,b)=>a.y-b.y||a.x-b.x).forEach(t=>{const L=lines.find(l=>Math.abs(l.y-t.y)<Math.max(l.h,t.h)*0.6);if(L){L.toks.push(t);L.h=Math.max(L.h,t.h)}else lines.push({y:t.y,h:t.h,toks:[t]})});
- const cands=lines.map(l=>({text:l.toks.sort((a,b)=>a.x-b.x).map(t=>t.text).join(' ').replace(/\s+/g,' ').trim(),h:l.h,x:Math.min(...l.toks.map(t=>t.x))})).filter(l=>l.text.length>=2&&!skip.test(l.text)&&!isChordText(l.text));
+function guessTitle(tokens){const bad=/작사|작곡|채보|편곡|Words|Music|Arranged|Lyrics|Public Domain|=\s*\d+|♩|^[\d\s+\-.,:]+$/;
+ const lines=[];tokens.slice().sort((a,b)=>a.y-b.y||a.x-b.x).forEach(t=>{const L=lines.find(l=>Math.abs(l.y-t.y)<Math.max(l.h,t.h)*0.6);if(L){L.toks.push(t);L.h=Math.max(L.h,t.h)}else lines.push({y:t.y,h:t.h,toks:[t]})});
+ const cands=lines.map(l=>{let toks=l.toks.sort((a,b)=>a.x-b.x);const seg=[];toks.forEach(t=>{const prev=seg.length?seg[seg.length-1]:null;if(prev&&t.x-(prev.x+prev.w)>l.h*2.5)seg.push(null);seg.push(t)});const cut=seg.indexOf(null);if(cut>0)toks=seg.slice(0,cut); // 두 장 나란히: 왼쪽 제목만
+  const words=toks.map(t=>t.text.trim()).filter(Boolean);const chordy=words.filter(w=>isChordText(w)).length;return {text:words.join(' ').replace(/\s+/g,' '),h:l.h,x:toks.length?toks[0].x:0,words:words.length,chordy}})
+  .filter(c=>c.words&&c.chordy/c.words<0.5&&!bad.test(c.text)&&/[가-힣]{2,}|[A-Za-z]{3,}/.test(c.text)&&c.text.replace(/[^가-힣A-Za-z]/g,'').length>=2);
  if(!cands.length)return '';const maxH=Math.max(...cands.map(c=>c.h));const big=cands.filter(c=>c.h>=maxH*0.8).sort((a,b)=>a.x-b.x);return big[0].text.slice(0,60)}
 function keyPickerModal(cur,cb){modal(`<b style="font-size:17px">악보에 인쇄된 키</b><div class="hint" style="margin-top:4px">코드 근음이 이 키 기준으로 적혀 있어요. 연주 키와의 차이만큼 코드를 옮깁니다.</div><div style="margin-top:14px">${KEYS12.map(k=>`<button class="q ${k===cur?'on':''}" data-k="${k}">${k}</button>`).join('')}<button class="q ${!cur?'on':''}" data-k="">모름</button></div>`,{center:true});
  $('#modal').onclick=e=>{const b=e.target.closest('[data-k]');if(!b)return;closeModal();cb(b.dataset.k)}}

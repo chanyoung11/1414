@@ -35,9 +35,10 @@ def run():
         pg.click('[data-act="add-item"]'); pg.wait_for_selector('[data-f="item.title"]'); pg.fill('[data-f="item.title"]', '우리 주 하나님'); pg.fill('[data-f="item.key"]', 'A')
         pg.set_input_files('#pieceFile', [SHEET])
         if ocr.get('available'):
-            pg.wait_for_function("(()=>{const p=CONTI.S.services[0].items[0].pieces[0];return p&&p.ocr==='done'})()", timeout=30000)
-            info = pg.evaluate("(()=>{const p=CONTI.S.services[0].items[0].pieces[0];return {n:(p.chords||[]).length,key:p.sheetKey}})()")
+            pg.wait_for_function("(()=>{const p=CONTI.S.services[0].items[0].pieces[0];return p&&p.ocr&&p.ocr!=='pending'})()", timeout=90000)
+            info = pg.evaluate("(()=>{const p=CONTI.S.services[0].items[0].pieces[0];return {n:(p.chords||[]).length,key:p.sheetKey,ocr:p.ocr,err:p.ocrErr,mode:p.ocrMode}})()")
             print('chords:', info)
+            if info['ocr'] != 'done': fail('인식 실패: %s' % info)
             if info['n'] < 5: fail('코드 인식 결과가 너무 적음')
             pg.wait_for_selector('.chordbar [data-act="sheet-key"]', timeout=8000)
             # 악보 키를 G로 확정 → 연주 키 A → +2, 빨간 코드가 옮겨져 있어야 함
@@ -58,7 +59,7 @@ def run():
             # 자동 채우기: 제목·키가 빈 곡에 악보를 넣으면 채워진다
             pg.click('[data-act="add-item"]'); pg.wait_for_selector('[data-f="item.title"]'); pg.wait_for_timeout(300)
             pg.set_input_files('#pieceFile', [SHEET])
-            pg.wait_for_function("(()=>{const it=CONTI.S.services[0].items[1];const p=it&&it.pieces[0];return p&&p.ocr==='done'})()", timeout=40000)
+            pg.wait_for_function("(()=>{const it=CONTI.S.services[0].items[1];const p=it&&it.pieces[0];return p&&p.ocr&&p.ocr!=='pending'})()", timeout=90000)
             auto = pg.evaluate("(()=>{const it=CONTI.S.services[0].items[1];return {title:it.title,key:it.key,mode:it.pieces[0].ocrMode,n:it.pieces[0].chords.length}})()")
             print('autofill:', auto)
             if not auto['title'] or not auto['key']: fail('제목/키 자동 채우기 실패: %s' % auto)
