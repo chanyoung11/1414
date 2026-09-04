@@ -104,6 +104,15 @@ def run():
             if len(two) != 2: fail('두 곡으로 나뉘지 않음: %s' % two)
             if ocr.get('available') and not (two[0]['n'] and two[1]['n']): fail('나뉜 곡의 코드가 비어 있음: %s' % two)
             print('two-page split ok')
+        STACK = os.path.join(ROOT, 'docs', 'sample_stacked.jpg')
+        if os.path.exists(STACK):
+            A.goto(URL + '#/home'); A.wait_for_selector('.hd'); A.click('[data-act="new-svc"]'); A.wait_for_selector('[data-f="svc.name"]'); A.fill('[data-f="svc.name"]', '세로 분리')
+            A.click('[data-act="add-item"]'); A.wait_for_selector('[data-f="item.title"]'); A.set_input_files('#pieceFile', [STACK])
+            A.wait_for_function("(()=>{const s=CONTI.S.services.find(x=>x.name==='세로 분리');const its=s?s.items:[];return its.length>=2&&its.every(it=>it.pieces.length&&it.pieces.every(p=>p.ocr&&p.ocr!=='pending'))})()", timeout=120000)
+            st = A.evaluate("CONTI.S.services.find(x=>x.name==='세로 분리').items.map(it=>({title:it.title,key:it.key,n:it.pieces[0].chords.length,h:it.pieces[0].h}))")
+            print('stacked split:', st)
+            if len(st) != 2: fail('위아래 두 곡이 나뉘지 않음: %s' % st)
+            print('stacked split ok')
 
         # ---- 모바일 더보기 메뉴 ----
         cM = b.new_context(viewport={'width': 390, 'height': 844}); M = cM.new_page(); login(M, (LEADER[0], 'newpass1', LEADER[2])); M.wait_for_selector('.hd', timeout=8000)

@@ -1261,23 +1261,32 @@ function initSongDrag(svc){const first=$('.list-item');if(!first)return;const li
  list.addEventListener('pointerup',done);list.addEventListener('pointercancel',done)}
 function autoGrow(t){if(!t||t.tagName!=='TEXTAREA')return;t.style.height='auto';t.style.height=(t.scrollHeight+2)+'px'}
 function drawEditorSheet(svc){const it=curItem(svc);const sh=$('#sheet');if(!it||!sh)return;const W=sh.clientWidth-56;sh.classList.toggle('hltool',SEL[svc.id].tool==='hl');const sw=$('#sheetwrap');const st=sw?sw.scrollTop:0;sh.innerHTML=sheetHTML(it,Math.max(200,W),{mode:'edit',tool:SEL[svc.id].tool});if(sw)sw.scrollTop=st}
-// 두 장 나란히 스캔 감지: 가운데(폭 30~70%) 세로 흰 골이 있고 양쪽 모두 오선이 2개 이상이면 좌·우로 나눔
+// 위아래로 붙은 여러 곡: 오선 사이 큰 여백 안에 제목처럼 큰 글자 덩어리가 있으면 그 위에서 자름 (여러 지점 가능)
+function splitPointsV(cv){const sys=detectSystems(cv);if(sys.length<4)return [];const {g,W,H}=grayOf(cv,600);const hist=new Uint32Array(256);for(let i=0;i<g.length;i++)hist[g[i]]++;let bg=255,mx=0;for(let v=120;v<256;v++)if(hist[v]>mx){mx=hist[v];bg=v}const thr=bg-Math.max(40,bg*0.25);
+ const k=cv.height/H;const cov=new Float32Array(H);for(let y=0;y<H;y++){let n=0;for(let x=0;x<W;x++)if(g[y*W+x]<thr)n++;cov[y]=n/W}
+ const blocks=(a,b)=>{const out=[];let y=a;while(y<b){if(cov[y]>0.006){const s0=y;while(y<b&&cov[y]>0.006)y++;out.push({s:s0,e:y,h:y-s0})}else y++}return out};
+ const rows=[];sys.map(o=>({top:o.top/k,bottom:o.bottom/k})).sort((a,b)=>a.top-b.top).forEach(o=>{const r=rows[rows.length-1];if(r&&o.top<r.bottom+2)r.bottom=Math.max(r.bottom,o.bottom);else rows.push({...o})});
+ if(rows.length<4)return [];const allBlocks=[];for(let i=0;i<rows.length-1;i++)allBlocks.push(...blocks(Math.round(rows[i].bottom)+1,Math.round(rows[i+1].top)-1));
+ const hs=allBlocks.map(b=>b.h).sort((a,b)=>a-b);const medH=hs.length?hs[Math.floor(hs.length/2)]:0;const cuts=[];
+ for(let i=0;i<rows.length-1;i++){const a=Math.round(rows[i].bottom)+1,b=Math.round(rows[i+1].top)-1;if(b-a<H*0.06)continue;const bl=blocks(a,b);if(!bl.length)continue;const big=bl.reduce((m,x)=>x.h>m.h?x:m);
+  const farBelow=big.s-a>H*0.035;const tall=big.h>=Math.max(medH*1.6,H*0.018);if(farBelow&&tall)cuts.push(Math.round((big.s-Math.round(H*0.008))*k))}
+ return cuts}
+// 한 이미지에 여러 곡: 좌·우(가운데 세로 흰 골) → 각 열을 위·아래(제목 덩어리)로 나눠 조각 목록으로
 async function splitPages(blob){try{const img=await loadImg(URL.createObjectURL(blob));const cv=document.createElement('canvas');cv.width=img.naturalWidth;cv.height=img.naturalHeight;cv.getContext('2d').drawImage(img,0,0);
  const {g,W,H}=grayOf(cv,600);const hist=new Uint32Array(256);for(let i=0;i<g.length;i++)hist[g[i]]++;let bg=255,mx=0;for(let v=120;v<256;v++)if(hist[v]>mx){mx=hist[v];bg=v}const thr=bg-Math.max(40,bg*0.25);
  const col=new Float32Array(W);for(let x=0;x<W;x++){let n=0;for(let y=0;y<H;y++)if(g[y*W+x]<thr)n++;col[x]=n/H}
  let best=null,x=Math.floor(W*0.3);const xe=Math.floor(W*0.7);while(x<xe){if(col[x]<0.003){const s0=x;while(x<xe&&col[x]<0.003)x++;if(!best||x-s0>best.len)best={s:s0,e:x,len:x-s0}}else x++}
- if(!best||best.len<W*0.02)return null;const cut=Math.round((best.s+best.e)/2*cv.width/W);
- const crop=(a,b)=>{const c=document.createElement('canvas');c.width=b-a;c.height=cv.height;c.getContext('2d').drawImage(cv,a,0,b-a,cv.height,0,0,b-a,cv.height);return c};
- const L=crop(0,cut),R=crop(cut,cv.width);if(detectSystems(L).length<2||detectSystems(R).length<2)return null;
- const toBlob=c=>new Promise(res=>c.toBlob(res,'image/jpeg',0.92));return [await toBlob(L),await toBlob(R)]}catch(e){console.warn('splitPages',e);return null}}
+ const crop=(src,a,b,y0,y1)=>{const c=document.createElement('canvas');c.width=b-a;c.height=y1-y0;c.getContext('2d').drawImage(src,a,y0,b-a,y1-y0,0,0,b-a,y1-y0);return c};
+ let cols=[cv];if(best&&best.len>=W*0.02){const cut=Math.round((best.s+best.e)/2*cv.width/W);const L=crop(cv,0,cut,0,cv.height),R=crop(cv,cut,cv.width,0,cv.height);if(detectSystems(L).length>=2&&detectSystems(R).length>=2)cols=[L,R]}
+ const parts=[];cols.forEach(c=>{const cuts=splitPointsV(c);let y0=0;[...cuts,c.height].forEach(y1=>{if(y1-y0>c.height*0.12)parts.push(crop(c,0,c.width,y0,y1));y0=y1})});
+ if(parts.length<2)return null;const toBlob=c=>new Promise(res=>c.toBlob(res,'image/jpeg',0.92));const out=[];for(const c of parts)out.push(await toBlob(c));return out}catch(e){console.warn('splitPages',e);return null}}
 async function addPieces(svc,it,files){files=Array.from(files||[]).filter(f=>/^image\//.test(f.type));if(!it||!files.length){if(files&&!files.length)toast('이미지 파일만 넣을 수 있어요');return}toast('이미지 처리 중…');let fixes=[];let split=0;
  const pushPiece=async(target,r)=>{const id=uid();await IDB.put('blobs',id,r.blob);target.pieces.push({id,blob:id,w:r.w,h:r.h,gaps:r.gaps,markers:[],hls:[],name:'',chords:[],sheetKey:'',keyConfirmed:false,offset:null});const np=target.pieces[target.pieces.length-1];if(online()&&isLeader())setTimeout(()=>recognizeChords(svc,target,np),100);
   const fx=[];if(Math.abs(r.fix.angle)>=0.3)fx.push('기울기 '+(r.fix.angle>0?'+':'')+r.fix.angle.toFixed(1)+'°');if(r.fix.photo)fx.push('명암');if(r.fix.trimmed)fx.push('여백');if(fx.length)fixes.push(fx.join('·'))};
  for(const f of files){try{const r=await importImage(f);const parts=await splitPages(r.blob);
-  if(parts){const rA=await importImage(new File([parts[0]],'left.jpg',{type:'image/jpeg'}));await pushPiece(it,rA);
-   const it2=newItem();const idx=svc.items.indexOf(it);svc.items.splice(idx+1,0,it2);const rB=await importImage(new File([parts[1]],'right.jpg',{type:'image/jpeg'}));await pushPiece(it2,rB);split++}
+  if(parts){let target=it;for(let k=0;k<parts.length;k++){if(k>0){const it2=newItem();svc.items.splice(svc.items.indexOf(target)+1,0,it2);target=it2}const rr=await importImage(new File([parts[k]],'part'+k+'.jpg',{type:'image/jpeg'}));await pushPiece(target,rr)}split+=parts.length-1}
   else await pushPiece(it,r)}catch(err){console.error(err);toast('이미지를 읽지 못했어요')}}
- if(split)setTimeout(()=>toast(`두 곡이 나란히 있어 ${split}장을 좌·우로 나눠 다음 곡으로 추가했어요`),1200);
+ if(split)setTimeout(()=>toast(`한 이미지에 여러 곡이 있어 ${split}곡을 다음 곡으로 추가했어요`),1200);
    if(fixes.length)setTimeout(()=>toast('자동 정리: '+fixes.join(' / ')+' · 줄 사이 여백 '+(it.pieces[it.pieces.length-1].gaps||[]).length+'곳 인식'),300);
    touch(svc);save();syncLib(it);await preload(svc);render()}
 function afterEditor(svc){
