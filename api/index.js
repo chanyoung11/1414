@@ -360,8 +360,10 @@ on('POST', '/blobs/:id', async ({ req, uid, url, params }) => {
   const teamId = str(url.searchParams.get('team'), 64);
   await requireMember(uid, teamId, 'leader');
   if (!/^[A-Za-z0-9_-]{4,40}$/.test(params.id)) throw bad('파일 id가 이상해요');
-  const existing = await one('select url from blobs where team_id=$1 and id=$2', [teamId, params.id]);
-  if (existing) return { url: existing.url, existed: true };
+  const force = url.searchParams.get('force') === '1';
+  const existing = await one('select url, pathname from blobs where team_id=$1 and id=$2', [teamId, params.id]);
+  if (existing && !force) return { url: existing.url, existed: true };
+  if (existing) { try { await delBlobs([existing.url]); } catch (e) {} await q('delete from blobs where team_id=$1 and id=$2', [teamId, params.id]); }
   const buf = await readRaw(req);
   if (!buf.length) throw bad('빈 파일이에요');
   const type = str(req.headers['content-type'], 100) || 'application/octet-stream';

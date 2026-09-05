@@ -998,7 +998,7 @@ async function teamModal(){
  <div class="lbl">멤버</div><div id="tmList">${t.members.map(m=>`<div class="mrow"><span class="grow"><b>${esc(m.name)}</b> <span class="muted">${esc(m.session)}</span>${m.userId===me().userId?' <span class="pill">나</span>':''}</span>
   ${lead?`<select data-u="${m.userId}">${Object.keys(RL).map(k=>`<option value="${k}" ${k===m.role?'selected':''}>${RL[k]}</option>`).join('')}</select>${m.userId!==me().userId?`<button class="icon sm ghost" data-reset="${m.userId}" title="비밀번호 초기화">${ic('gear')}</button><button class="icon sm ghost" data-kick="${m.userId}" title="내보내기">${ic('trash')}</button>`:''}`:`<span class="pill">${roleLabel(m.role)}</span>`}</div>`).join('')}</div>
  ${NET.teams.length>1?`<div class="lbl">다른 팀</div><div>${NET.teams.filter(x=>x.teamId!==S.team.id).map(x=>`<button class="btn sm" data-switch="${x.teamId}">${esc(x.teamName)}로 전환</button>`).join(' ')}</div>`:''}
- <div class="row" style="margin-top:18px;justify-content:space-between"><button class="btn ghost danger" id="tmLeave">팀 나가기</button><button class="btn" id="tmClose">닫기</button></div>`,{center:true});
+ ${lead?`<div class="lbl">문제 해결</div><div class="row"><button class="btn sm" id="tmRepair">${ic('import')}악보 파일 다시 올리기</button><span class="hint">악보가 안 보인다는 팀원이 있으면 눌러요</span></div>`:''}<div class="row" style="margin-top:18px;justify-content:space-between"><button class="btn ghost danger" id="tmLeave">팀 나가기</button><button class="btn" id="tmClose">닫기</button></div>`,{center:true});
  $('#modal').onclick=async e=>{try{
   if(e.target.closest('#tmClose')){closeModal();render();return}
   if(e.target.closest('#tmCopy')){await copyText(link);toast('링크를 복사했어요');return}
@@ -1009,6 +1009,7 @@ async function teamModal(){
    $('#modal').onclick=async ev=>{if(ev.target.closest('#pwCopy')){await copyText(r.password);toast('복사했어요')}if(ev.target.closest('#pwClose')){closeModal();teamModal()}};return}
   const k=e.target.closest('[data-kick]');if(k){if(!confirm('이 멤버를 내보낼까요?'))return;await api('/teams/'+S.team.id+'/members/'+k.dataset.kick,{method:'DELETE'});teamModal();return}
   const sw=e.target.closest('[data-switch]');if(sw){applyMembership(await api('/teams/'+sw.dataset.switch));closeModal();render();return}
+  if(e.target.closest('#tmRepair')){const btn=e.target.closest('#tmRepair');btn.disabled=true;btn.textContent='올리는 중…';const r=await SYNC.repairBlobs();toast(r.miss?`${r.ok}개 올림 · ${r.miss}개는 이 기기에 없어요`:`악보 ${r.ok}개를 다시 올렸어요`);teamModal();return}
   if(e.target.closest('#tmLeave')){if(!confirm('팀에서 나갈까요?'))return;await api('/teams/'+S.team.id+'/members/'+me().userId,{method:'DELETE'});S.team.id='';S.team.invite='';save();await refreshMe();closeModal();render();return}
  }catch(err){toast(err.message)}};
  $('#modal').onchange=async e=>{const sel=e.target.closest('select[data-u]');if(!sel)return;try{await api('/teams/'+S.team.id+'/members/'+sel.dataset.u,{method:'PATCH',body:{role:sel.value}});toast('역할을 바꿨어요');if(sel.dataset.u===me().userId)await refreshMe()}catch(err){toast(err.message);teamModal()}};
