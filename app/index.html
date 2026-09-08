@@ -181,6 +181,12 @@ html.dark .songbar::placeholder{color:rgba(10,10,10,.5)}
 .grip svg.ic{width:14px;height:14px}
 .list-item.dragging{background:var(--card);opacity:.95;box-shadow:0 12px 32px rgba(0,0,0,.25);border-color:var(--border)}
 .list-item.dragging .grip{cursor:grabbing}
+/* §5 합주 녹음 */
+.rehrow{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line2);cursor:pointer}.rehrow:last-child{border-bottom:0}.rehrow b{display:block;font-size:13.5px}
+.rhprog{position:relative;height:8px;border-radius:999px;background:var(--muted);margin-top:14px;cursor:pointer;overflow:visible}
+.rhprog i{display:block;height:100%;border-radius:999px;background:var(--fg);width:0}
+.rhprog .ticks i{position:absolute;top:-3px;width:2px;height:14px;border-radius:1px;background:var(--warning)}
+.reheard{margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)}.reheard .tl{cursor:pointer}.reheard .hint{display:block;margin-top:2px}
 /* §3 편성: 달력 · 석 달 표 · 그날 편성 */
 .cal-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}.cal-hd b{font-size:15px}
 .cal-wd{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px}.cal-wd span{text-align:center;font-size:11.5px;color:var(--muted-fg)}
@@ -682,9 +688,11 @@ function viewerHTML(svc){
    ${lineupLine(svc)}
    ${hasWord(svc.word)?`<div class="wordline" data-act="msg" data-id="${esc(svc.id)}">${ic('note')}<span>${esc([svc.word.passage,svc.word.title].filter(Boolean).join(' · '))}</span></div>`:''}
    ${pub.notice?`<div class="card" style="background:var(--amber-soft);color:var(--amber)"><b>전체 공지</b><div style="color:var(--ink);margin-top:2px">${esc(pub.notice).replace(/\n/g,'<br>')}</div></div>`:''}
+   ${rehearsalsHTML(svc)}
    ${pub.items.map((it,i)=>{const live=svc.items.find(x=>x.id===it.id)||it;const notes=(live.notes||[]).filter(n=>noteVisible(n,ctx));const k=keyStr(it);
     return `<div class="card"><div class="row sb"><div class="row"><span class="num">${i+1}</span><b style="font-size:17px;letter-spacing:-.01em">${esc(it.title||'(제목 없음)')}</b></div><span class="pill key">${esc(k||'-')}</span></div>
     ${it.reason?`<div class="reason">${ic('note')}<span>${esc(it.reason)}</span></div>`:''}
+    ${rehItemNotes(svc,it.id)}
     ${it.form?`<div class="songbar" style="margin-top:10px">${esc(it.form)}</div>`:''}
     <div class="row" style="align-items:flex-start;gap:14px;margin-top:12px">${it.pieces[0]?`<div class="thumb" style="background-image:url('${url(it.pieces[0].blob)}')"></div>`:''}
      <div class="grow small">${visMedia(it,sess).map(md=>`<div class="row" style="margin-bottom:4px"><span class="icon sm ${md.type==='youtube'?'ytc':'micc'}">${ic(md.type==='youtube'?'yt':'mic')}</span>${mdSess(md).length?`<span class="tag">${esc(mdTag(md))}</span>`:''}<span class="grow muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(md.name||md.url)}${md.type==='youtube'&&(md.start||md.end)?` <span class="pill">${fmtT(md.start||0)}–${md.end?fmtT(md.end):'끝'}</span>`:''}</span>${md.type==='youtube'?`<a class="btn sm ghost" href="https://youtu.be/${ytId(md.url)}?t=${md.start||0}" target="_blank" rel="noopener">${ic('open')}열기</a>`:''}</div>
@@ -828,6 +836,127 @@ function messageSheet(svc,first){const pub=pubOrDraft(svc);if(!hasNote(svc))retu
  $('#modal').onclick=e=>{if(e.target.closest('#msgMore')){$('#msgBody').classList.remove('clamp');$('#msgMore').remove();return}
   if(e.target.closest('#msgOk')||e.target.closest('[data-close]')||e.target.classList.contains('ov')){done();closeModal()}};
 }
+/* ---------- §5 합주 녹음 ---------- */
+const REH={bySvc:{},urls:{},at:{}};
+const canUploadReh=()=>{const st=S.team.settings||{};const rank={member:0,session_lead:1,pastor:-1,leader:2};return (rank[me().role]||0)>=(rank[st.rehearsalUploadRole||'member']||0)&&!isPastor()};
+const fmtDur=s=>{s=Math.max(0,Math.round(s||0));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return (h?h+':'+String(m).padStart(2,'0'):m)+':'+String(x).padStart(2,'0')};
+const fmtMB=b=>(b/1048576).toFixed(b>10485760?0:1)+'MB';
+async function pullRehearsals(svcId,force){if(!online()||!S.team.id||!svcId)return false;
+ if(!force&&REH.at[svcId]&&Date.now()-REH.at[svcId]<20000)return false;
+ try{const r=await api(`/rehearsals?team=${S.team.id}&service=${svcId}`);REH.bySvc[svcId]=r.rehearsals||[];Object.assign(REH.urls,r.urls||{});REH.at[svcId]=Date.now();return true}catch(e){return false}}
+function rehearsalsHTML(svc){const list=REH.bySvc[svc.id]||[];const can=canUploadReh();
+ if(!online())return '';
+ if(!list.length&&!can)return '';
+ return `<div class="card"><div class="row sb"><b>연습 녹음</b>${can?`<button class="btn sm" data-act="reh-add">${ic('mic')}녹음 올리기</button>`:''}</div>
+  ${list.length?`<div style="margin-top:8px">${list.map(r=>`<div class="rehrow" data-act="reh-play" data-id="${esc(r.id)}"><span class="icon sm">${ic('play')}</span>
+   <div class="grow"><b>${esc(r.label)}${r.keep?' 🔒':''}</b><div class="hint">${esc(fmtDate(r.date).md)} · ${fmtDur(r.duration)} · ${esc(r.uploaderName||'')}${r.sizeBytes?' · '+fmtMB(+r.sizeBytes):''}</div></div>
+   ${isLeader()?`<button class="icon sm ghost" data-act="reh-menu" data-id="${esc(r.id)}" title="더 보기">${ic('list')}</button>`:''}</div>`).join('')}</div>`
+  :'<div class="hint" style="margin-top:6px">아직 올라온 연습 녹음이 없어요</div>'}</div>`}
+// 곡 카드 "지난 연습에서" (§5.3): 그 곡으로 태그된 녹음 메모
+function rehItemNotes(svc,itemId){const list=REH.bySvc[svc.id]||[];const out=[];
+ list.forEach(r=>(r.notes||[]).forEach(n=>{if(n.itemId===itemId)out.push({r,n})}));
+ if(!out.length)return '';
+ return `<div class="reheard">${out.slice(0,3).map(({r,n})=>`<div class="tl" data-act="reh-play" data-id="${esc(r.id)}" data-t="${n.t}"><span class="t">${fmtDur(n.t)}</span><span>${esc(n.text)}</span></div>`).join('')}<span class="hint">지난 연습에서</span></div>`}
+function rehAddModal(svc){
+ modal(`<b style="font-size:17px">연습 녹음 올리기</b><div class="hint" style="margin-top:4px">3시간·150MB 이하 · 90일 뒤 자동 삭제(인도자가 잠그면 유지)</div>
+  <div class="lbl">날짜</div><input class="field" id="rhDate" type="date" value="${esc(svc.date||today())}" style="width:auto">
+  <div class="lbl">이름</div><input class="field" id="rhLabel" placeholder="${esc(fmtDate(svc.date||today()).md)} 연습" maxlength="20">
+  <div class="lbl">파일</div>
+  <div class="row" style="gap:8px;flex-wrap:wrap"><label class="btn sm" for="rhFile">${ic('import')}파일 고르기</label><input id="rhFile" type="file" accept="audio/*" style="display:none">
+   <button class="btn sm" id="rhRec">${ic('mic')}지금 녹음</button><span class="hint" id="rhPick">고른 파일 없음</span></div>
+  <div class="hint" id="rhProg" style="margin-top:8px"></div>
+  <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" data-close="1">닫기</button><button class="btn pri" id="rhOk" disabled>${ic('send')}올리기</button></div>`,{center:true});
+ let file=null,dur=0,rec=null,chunks=[];
+ const setPick=(name,d)=>{$('#rhPick').textContent=name+(d?` · ${fmtDur(d)}`:'');$('#rhOk').disabled=!file};
+ const measure=b=>new Promise(res=>{const a=new Audio(URL.createObjectURL(b));a.onloadedmetadata=()=>{res(isFinite(a.duration)?a.duration:0);URL.revokeObjectURL(a.src)};a.onerror=()=>res(0);setTimeout(()=>res(0),4000)});
+ $('#modal').onchange=async e=>{if(e.target.id!=='rhFile')return;const f=e.target.files[0];if(!f)return;
+  if(f.size>150*1024*1024){toast('150MB 이하만 올릴 수 있어요');return}
+  file=f;dur=await measure(f);setPick(f.name,dur)};
+ $('#modal').onclick=async e=>{
+  if(e.target.closest('[data-close]')){if(rec&&rec.state==='recording')rec.stop();closeModal();return}
+  if(e.target.closest('#rhRec')){const btn=$('#rhRec');
+   if(rec&&rec.state==='recording'){rec.stop();return}
+   try{const stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:false,noiseSuppression:false}});
+    const mime=['audio/mp4','audio/webm;codecs=opus','audio/webm'].find(t=>window.MediaRecorder&&MediaRecorder.isTypeSupported(t))||'';
+    rec=new MediaRecorder(stream,mime?{mimeType:mime,audioBitsPerSecond:64000}:{});chunks=[];const t0=Date.now();
+    rec.ondataavailable=ev=>{if(ev.data&&ev.data.size)chunks.push(ev.data)};
+    rec.onstop=async()=>{stream.getTracks().forEach(t=>t.stop());const b=new Blob(chunks,{type:rec.mimeType||'audio/webm'});
+     file=new File([b],'연습녹음',{type:b.type});dur=Math.round((Date.now()-t0)/1000);btn.textContent='다시 녹음';setPick('방금 녹음',dur)};
+    rec.start(1000);btn.innerHTML='■ 녹음 멈추기';$('#rhPick').textContent='녹음 중…'}
+   catch(err){toast('마이크를 쓸 수 없어요')}return}
+  if(e.target.closest('#rhOk')){if(!file)return;const btn=$('#rhOk');btn.disabled=true;const prog=$('#rhProg');
+   try{prog.textContent='올릴 자리 준비 중…';
+    const u=await api('/rehearsals/upload-url',{method:'POST',body:{teamId:S.team.id,size:file.size,mime:file.type||'audio/mp4'}});
+    await putDirect(u.uploadUrl,file,p=>{prog.textContent=`올리는 중… ${p}%`});
+    prog.textContent='마무리 중…';
+    const r=await api('/rehearsals',{method:'POST',body:{teamId:S.team.id,serviceId:svc.id,blobId:u.blobId,pathname:u.pathname,date:$('#rhDate').value,label:$('#rhLabel').value.trim(),duration:Math.round(dur)}});
+    (REH.bySvc[svc.id]=REH.bySvc[svc.id]||[]).unshift(r.rehearsal);await pullRehearsals(svc.id,true);
+    closeModal();render();toast('녹음을 올렸어요')}
+   catch(err){prog.innerHTML=`<span style="color:var(--destructive)">${esc(err.message)}</span> <button class="btn sm" id="rhOk">다시 시도</button>`;btn.disabled=false;toast(err.message)}return}}}
+// 진행률이 보이는 직접 업로드 (fetch 는 진행률이 없어 XHR 사용)
+function putDirect(url,file,onProgress){return new Promise((res,rej)=>{const x=new XMLHttpRequest();x.open('PUT',url);
+ x.setRequestHeader('content-type',file.type||'application/octet-stream');
+ x.upload.onprogress=ev=>{if(ev.lengthComputable&&onProgress)onProgress(Math.round(ev.loaded/ev.total*100))};
+ x.onload=()=>x.status>=200&&x.status<300?res():rej(new Error('업로드 실패 ('+x.status+')'));
+ x.onerror=()=>rej(new Error('네트워크 오류로 업로드하지 못했어요'));x.send(file)})}
+// 녹음 플레이어: 재생 · ±5초 · 진행바 · 여기에 메모 (연습 화면과 같은 조작)
+function rehPlayer(svc,r){const src=REH.urls[r.blobId];
+ if(!src){toast('재생 주소를 받지 못했어요');return}
+ const notes=()=>(r.notes||[]).slice().sort((a,b)=>a.t-b.t);
+ const draw=()=>{const a=$('#rhAudio');if(!a)return;const d=a.duration||r.duration||0;
+  const bar=$('#rhBar');if(bar){bar.style.width=(d?a.currentTime/d*100:0)+'%'}
+  const t=$('#rhT');if(t)t.textContent=fmtDur(a.currentTime)+' / '+fmtDur(d);
+  const tk=$('#rhTicks');if(tk&&d)tk.innerHTML=notes().map(n=>`<i style="left:${Math.min(100,n.t/d*100)}%"></i>`).join('');
+  const li=$('#rhNotes');if(li)li.innerHTML=notes().map(n=>`<div class="tl" data-rt="${n.t}"><span class="t">${fmtDur(n.t)}</span>${n.itemId?`<span class="tag">${esc(((pubOrDraft(svc).items.find(x=>x.id===n.itemId)||{}).title||'').slice(0,10))}</span>`:(n.layer==='leader'?'<span class="tag">전체</span>':n.session?`<span class="tag">${esc(n.session)}</span>`:'<span class="tag me">나</span>')}<span>${esc(n.text)}</span></div>`).join('')||'<div class="hint" style="padding:4px 8px">메모 없음 — 재생하며 "여기에 메모"</div>'};
+ modal(`<div class="row" style="gap:10px"><span class="icon sm">${ic('mic')}</span><div class="grow"><b style="font-size:17px">${esc(r.label)}</b><div class="hint">${esc(fmtDate(r.date).md)} · ${fmtDur(r.duration)} · ${esc(r.uploaderName||'')}</div></div><button class="icon sm ghost" data-close="1">${ic('x')}</button></div>
+  <audio id="rhAudio" src="${esc(src)}" preload="metadata"></audio>
+  <div class="rhprog" id="rhProgBar"><i id="rhBar"></i><div id="rhTicks" class="ticks"></div></div>
+  <div class="row sb" style="margin-top:8px"><span class="hint mono" id="rhT">0:00 / ${fmtDur(r.duration)}</span>
+   <span class="row" style="gap:6px"><button class="btn sm" id="rhB5">-5초</button><button class="btn sm pri" id="rhPlay">${ic('play')}재생</button><button class="btn sm" id="rhF5">+5초</button><button class="btn sm" id="rhNote">${ic('note')}여기에 메모</button></span></div>
+  <div id="rhNotes" style="margin-top:10px;max-height:230px;overflow:auto"></div>`,{center:true});
+ const a=$('#rhAudio');a.ontimeupdate=draw;a.onloadedmetadata=draw;a.onplay=()=>{$('#rhPlay').innerHTML=ic('pause')+'멈춤'};a.onpause=()=>{$('#rhPlay').innerHTML=ic('play')+'재생'};
+ draw();
+ $('#modal').onclick=async e=>{
+  if(e.target.closest('[data-close]')||e.target.classList.contains('ov')){a.pause();closeModal();return}
+  if(e.target.closest('#rhPlay')){a.paused?a.play():a.pause();return}
+  if(e.target.closest('#rhB5')){a.currentTime=Math.max(0,a.currentTime-5);return}
+  if(e.target.closest('#rhF5')){a.currentTime=Math.min(a.duration||1e9,a.currentTime+5);return}
+  const bar=e.target.closest('#rhProgBar');if(bar){const rect=bar.getBoundingClientRect();a.currentTime=(e.clientX-rect.left)/rect.width*(a.duration||0);draw();return}
+  const tl=e.target.closest('[data-rt]');if(tl){a.currentTime=+tl.dataset.rt;a.play();return}
+  if(e.target.closest('#rhNote')){const t=a.currentTime;a.pause();rehNoteSheet(svc,r,t,()=>{draw();rehPlayer(svc,r)});return}}}
+function rehNoteSheet(svc,r,t,done){const lead=isLeader();const items=pubOrDraft(svc).items;
+ modal(`<b style="font-size:17px">${fmtDur(t)} 메모</b>
+  <div class="lbl">내용</div><input class="field" id="rnText" maxlength="60" placeholder="3번 B 들어갈 때 반박 빠름">
+  ${S.team.phrases.length?`<div style="margin-top:8px">${S.team.phrases.map(p=>`<button class="q sm" data-phr="${esc(p)}">${esc(p)}</button>`).join('')}</div>`:''}
+  <div class="lbl">곡 태그 <span class="hint">선택 · 그 곡 카드에 "지난 연습에서"로 보여요</span></div>
+  <select class="field" id="rnItem"><option value="">곡 없음</option>${items.map((it,i)=>`<option value="${esc(it.id)}">${i+1}. ${esc(it.title||'(제목 없음)')}</option>`).join('')}</select>
+  <div class="lbl">누가 보나요</div><div id="rnLayer">${lead?`<button class="q on" data-lay="leader">전체</button><button class="q" data-lay="session">${esc(me().session)} 세션</button>`:`<button class="q on" data-lay="mine">나만</button><button class="q" data-lay="session">${esc(me().session)} 세션</button>`}</div>
+  <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" data-close="1">취소</button><button class="btn pri" id="rnOk">${ic('check')}저장</button></div>`,{center:true});
+ let layer=lead?'leader':'mine';
+ setTimeout(()=>{const f=$('#rnText');f&&f.focus()},50);
+ $('#modal').onclick=async e=>{
+  const ph=e.target.closest('[data-phr]');if(ph){const f=$('#rnText');f.value=(f.value?f.value+' ':'')+ph.dataset.phr;return}
+  const ly=e.target.closest('[data-lay]');if(ly){layer=ly.dataset.lay;$$('#rnLayer .q').forEach(b=>b.classList.toggle('on',b.dataset.lay===layer));return}
+  if(e.target.closest('[data-close]')){closeModal();done&&done();return}
+  if(e.target.closest('#rnOk')){const text=$('#rnText').value.trim();if(!text){toast('내용을 적어주세요');return}
+   const n={id:uid(),t:Math.round(t),text,author:me().name||'나',layer,session:layer==='session'?me().session:undefined,itemId:$('#rnItem').value||undefined,createdAt:Date.now()};
+   r.notes=(r.notes||[]).concat(n);
+   try{await api('/rehearsals/'+r.id+'/notes',{method:'POST',body:{teamId:S.team.id,note:n}})}catch(err){toast(err.message)}
+   closeModal();done&&done();return}}}
+function rehMenu(svc,r){
+ modal(`<b style="font-size:17px">${esc(r.label)}</b><div class="hint" style="margin-top:4px">${esc(fmtDate(r.date).md)} · ${fmtDur(r.duration)}${r.keep?' · 보관 잠금':(r.expiresAt?' · '+fmtRel(r.expiresAt)+' 삭제 예정':'')}</div>
+  <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
+   <button class="btn" id="rmKeep">${ic('check')}${r.keep?'보관 잠금 풀기':'보관 잠금 (90일 삭제 안 함)'}</button>
+   <button class="btn" id="rmRen">${ic('pen')}이름 바꾸기</button>
+   <button class="btn ghost danger" id="rmDel">${ic('trash')}삭제</button></div>
+  <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" data-close="1">닫기</button></div>`,{center:true});
+ $('#modal').onclick=async e=>{try{
+  if(e.target.closest('[data-close]')){closeModal();return}
+  if(e.target.closest('#rmKeep')){await api('/rehearsals/'+r.id,{method:'PATCH',body:{teamId:S.team.id,keep:!r.keep}});await pullRehearsals(svc.id,true);closeModal();render();toast(r.keep?'잠금을 풀었어요':'보관 잠금했어요');return}
+  if(e.target.closest('#rmRen')){const v=prompt('새 이름',r.label);if(v==null)return;await api('/rehearsals/'+r.id,{method:'PATCH',body:{teamId:S.team.id,label:v.trim().slice(0,20)}});await pullRehearsals(svc.id,true);closeModal();render();return}
+  if(e.target.closest('#rmDel')){if(!confirm('이 녹음을 지울까요? 메모도 같이 사라져요.'))return;await api('/rehearsals/'+r.id+'?team='+S.team.id,{method:'DELETE'});await pullRehearsals(svc.id,true);closeModal();render();toast('지웠어요');return}
+ }catch(err){toast(err.message)}}}
+
 /* ---------- §3 편성 스케줄링: 내 일정(달력) · 편성 표 · 그날 편성 ---------- */
 const SCH={dates:[],availability:[],members:[],role:'',month:'',at:0,onlyUnset:false};
 const AVN={unset:{sym:'·',cls:'a-unset',label:'미선택'},ok:{sym:'●',cls:'a-ok',label:'가능'},maybe:{sym:'◐',cls:'a-maybe',label:'보류'},no:{sym:'○',cls:'a-no',label:'불가능'}};
@@ -1654,6 +1783,9 @@ async function render(){
   if(!svc&&online()){app.innerHTML=`<div class="empty" style="margin:40px auto;max-width:420px"><b>콘티를 받는 중…</b>팀 서버에서 발행본을 내려받고 있어요.</div>`;try{svc=await SYNC.pullService(r.a)}catch(e){toast(e.message)}}
   if(!svc)return go('home');
   if(online()&&(!same||!SYNC.pulledAt[svc.id]))await SYNC.pullNotes(svc);
+  if(online()&&r.name==='view'&&!REH.at[svc.id])await pullRehearsals(svc.id);
+  else if(online()&&r.name==='view'&&!same)pullRehearsals(svc.id).then(ch=>{if(ch&&route().name==='view')render()});
+  if(online()&&r.name==='view'&&!SCH.at)pullSchedule(monthKey(),true).catch(()=>{});
   await preload(svc);
   if(r.name==='edit'){if(online()&&!same&&isLeader()){try{await SYNC.pullDraft(svc)}catch(e){}}app.innerHTML=editorHTML(svc);afterEditor(svc);restoreScroll();return}
   if(r.name==='view'){app.innerHTML=viewerHTML(svc);if(!same&&msgUnread(svc))setTimeout(()=>messageSheet(svc,true),150);return}
@@ -1924,6 +2056,9 @@ document.addEventListener('click',async e=>{
    $('#modal').onclick=ev=>{const b=ev.target.closest('[data-m]');if(!b)return;closeModal();if(b.dataset.m==='lib'){libraryModal();return}const proxy=document.querySelector(`.more-hide [data-act="${b.dataset.m}"]`);if(proxy)proxy.click()};break}
   case 'nav-lib':libraryModal();break;
   case 'inbox':inboxModal();break;
+  case 'reh-add':{const s2=svcById(route().a);if(s2)rehAddModal(s2);break}
+  case 'reh-menu':{const s2=svcById(route().a);const r2=(REH.bySvc[s2&&s2.id]||[]).find(x=>x.id===el.dataset.id);if(s2&&r2)rehMenu(s2,r2);break}
+  case 'reh-play':{const s2=svcById(route().a);const r2=(REH.bySvc[s2&&s2.id]||[]).find(x=>x.id===el.dataset.id);if(s2&&r2)rehPlayer(s2,r2);break}
   case 'cal':go('cal');break;
   case 'sched':go('sched');break;
   case 'lineup':go('lineup/'+el.dataset.id);break;

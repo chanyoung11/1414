@@ -4,7 +4,7 @@
 import { q, one } from '../lib/db.js';
 import { sessionClaims, sessionCookie, clearSessionCookie, randomToken } from '../lib/session.js';
 import { hashPassword, verifyPassword, USERNAME_RE, PASSWORD_MIN } from '../lib/password.js';
-import { putBlob, delBlobs, readUrls } from '../lib/blob.js';
+import { putBlob, delBlobs, readUrls, presignPut, headBlob } from '../lib/blob.js';
 import { ocrBands, visionConfigured } from '../lib/vision.js';
 import { transcribeSheet, geminiConfigured, geminiModel, estimateUSD } from '../lib/gemini.js';
 
@@ -471,6 +471,144 @@ on('POST', '/blobs/:id', async ({ req, uid, url, params }) => {
   await q('insert into blobs(team_id, id, url, pathname, type, size) values($1,$2,$3,$4,$5,$6) on conflict (team_id, id) do nothing', [teamId, params.id, up.url, up.pathname, type, buf.length]);
   return { url: up.url };
 });
+
+/* ---------- §5 합주 녹음 ---------- */
+const ROLE_RANK = { member: 0, session_lead: 1, pastor: 0, leader: 2 };
+const canUploadRehearsal = (m, st) => m.role !== 'pastor' && ROLE_RANK[m.role] >= ROLE_RANK[st.rehearsalUploadRole || 'member'];
+const REHEARSAL_MAX = 150 * 1024 * 1024, REHEARSAL_KEEP_DAYS = 90;
+
+// 브라우저가 Blob 으로 바로 올릴 서명 URL (서버리스 본문 한도 4.5MB 우회)
+on('POST', '/rehearsals/upload-url', async ({ uid, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  const m = await requireMember(uid, teamId);
+  const st = { ...DEF_SETTINGS, ...(m.settings || {}) };
+  if (!canUploadRehearsal(m, st)) throw forbidden('녹음을 올릴 권한이 없어요');
+  const size = Math.max(0, Math.round(+body.size || 0));
+  if (size > REHEARSAL_MAX) throw new HttpError(413, 'too_large', '녹음은 150MB 이하만 올릴 수 있어요');
+  const mime = /^audio\//.test(str(body.mime, 60)) ? str(body.mime, 60) : 'audio/mp4';
+  const blobId = 'r' + randomToken(12).replace(/[^A-Za-z0-9]/g, '').slice(0, 16).toLowerCase();
+  const ext = mime.includes('mp4') || mime.includes('m4a') ? '.m4a' : mime.includes('webm') ? '.webm' : mime.includes('mpeg') ? '.mp3' : '.audio';
+  const pathname = `teams/${teamId}/rehearsals/${blobId}${ext}`;
+  const p = await presignPut(pathname, mime, 30);
+  return { blobId, pathname, uploadUrl: p.url, mime };
+});
+
+// 올린 뒤 등록 (파일이 실제로 있는지 확인하고 DB 에 기록)
+on('POST', '/rehearsals', async ({ uid, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  const m = await requireMember(uid, teamId);
+  const st = { ...DEF_SETTINGS, ...(m.settings || {}) };
+  if (!canUploadRehearsal(m, st)) throw forbidden('녹음을 올릴 권한이 없어요');
+  const serviceId = str(body.serviceId, 64); if (!serviceId) throw bad('어느 예배인지 알 수 없어요');
+  const pathname = str(body.pathname, 300); const blobId = str(body.blobId, 64);
+  if (!pathname.startsWith(`teams/${teamId}/rehearsals/`)) throw bad('경로가 이상해요');
+  const h = await headBlob(pathname);
+  if (!h) throw bad('파일이 올라오지 않았어요. 다시 시도해 주세요');
+  if (h.size > REHEARSAL_MAX) { await delBlobs([h.url]); throw new HttpError(413, 'too_large', '녹음은 150MB 이하만 올릴 수 있어요'); }
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(str(body.date, 10)) ? str(body.date, 10) : new Date().toISOString().slice(0, 10);
+  const label = str(body.label, 20) || `${mdOf(date)} 연습`;
+  const expires = new Date(Date.now() + REHEARSAL_KEEP_DAYS * 86400000);
+  await q('insert into blobs(team_id, id, url, pathname, type, size) values($1,$2,$3,$4,$5,$6) on conflict (team_id, id) do nothing',
+    [teamId, blobId, h.url, h.pathname, h.contentType || 'audio/mp4', h.size]);
+  const r = await one(`insert into rehearsals(team_id, service_id, date, label, blob_id, mime, duration, size_bytes, uploaded_by, expires_at)
+                       values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning id, date::text as date, label, blob_id as "blobId", mime, duration, size_bytes as "sizeBytes", keep, expires_at as "expiresAt", created_at as "createdAt"`,
+    [teamId, serviceId, date, label, blobId, h.contentType || 'audio/mp4', Math.max(0, Math.round(+body.duration || 0)), h.size, uid, expires]);
+  // §1 rehearsal.uploaded: 편성된 사람, 없으면 전원
+  try {
+    const d = await one('select lineup from service_dates where team_id=$1 and service_id=$2', [teamId, serviceId]);
+    let to = d ? [...new Set(cleanLineup(d.lineup).map((x) => x.memberId).filter(Boolean))] : [];
+    if (!to.length) to = await teamUserIds(teamId, { exceptRole: 'pastor' });
+    to = to.filter((x) => x !== uid);
+    const mm = Math.floor((+body.duration || 0) / 60), ss = Math.round((+body.duration || 0) % 60);
+    await notify(teamId, to, 'rehearsal.uploaded', r.id, { title: `${label} 녹음이 올라왔어요`, body: (+body.duration ? `${mm}:${String(ss).padStart(2, '0')}` : '') , link: '#/view/' + serviceId });
+  } catch (e) { console.error('notify rehearsal', e); }
+  return { ok: true, rehearsal: { ...r, uploadedBy: uid, uploaderName: m.mname } };
+});
+
+// 목록 (재생 URL 포함)
+on('GET', '/rehearsals', async ({ uid, url }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(url.searchParams.get('team'), 64), serviceId = str(url.searchParams.get('service'), 64);
+  await requireMember(uid, teamId);
+  const me0 = await membership(uid, teamId);
+  const rows = (await q(`select r.id, r.date::text as date, r.label, r.blob_id as "blobId", r.mime, r.duration, r.size_bytes as "sizeBytes",
+                               r.keep, r.expires_at as "expiresAt", r.created_at as "createdAt", r.uploaded_by as "uploadedBy", r.notes, m.name as "uploaderName"
+                        from rehearsals r left join members m on m.team_id=r.team_id and m.user_id=r.uploaded_by
+                        where r.team_id=$1 ${serviceId ? 'and r.service_id=$2' : ''} order by r.created_at desc`, serviceId ? [teamId, serviceId] : [teamId]))
+    .map((r) => ({ ...r, notes: (Array.isArray(r.notes) ? r.notes : []).filter((n) => rehNoteVisible(n, me0)) }));
+  const blobs = rows.length ? await q('select id, url, pathname from blobs where team_id=$1 and id = any($2::text[])', [teamId, rows.map((r) => r.blobId)]) : [];
+  return { rehearsals: rows, urls: await readUrls(blobs) };
+});
+
+// 녹음 타임라인 메모: 범위(전체·세션·나만)에 따라 보이는 것만 내려준다
+const rehNoteVisible = (n, m) => n.layer === 'leader' || m.role === 'leader' || (n.layer === 'session' && mySessions(m).includes(n.session)) || n.authorId === m.user_id;
+on('POST', '/rehearsals/:id/notes', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  const m = await requireMember(uid, teamId);
+  const r = await one('select notes from rehearsals where id=$1 and team_id=$2', [params.id, teamId]);
+  if (!r) throw notFound('녹음이 없어요');
+  const b = body.note || {};
+  const layer = ['leader', 'session', 'mine'].includes(str(b.layer, 10)) ? str(b.layer, 10) : 'mine';
+  if (layer === 'leader' && m.role !== 'leader') throw forbidden('전체 메모는 인도자만 쓸 수 있어요');
+  const n = { id: str(b.id, 40) || randomToken(8), t: Math.max(0, Math.round(+b.t || 0)), text: str(b.text, 60), layer,
+    session: layer === 'session' ? str(b.session, 40) : null, itemId: str(b.itemId, 64) || null,
+    authorId: uid, author: m.mname, createdAt: new Date().toISOString() };
+  if (!n.text) throw bad('내용을 적어 주세요');
+  const list = [...(Array.isArray(r.notes) ? r.notes : []).filter((x) => x.id !== n.id), n].slice(-300);
+  await q('update rehearsals set notes=$2 where id=$1', [params.id, JSON.stringify(list)]);
+  return { ok: true, note: n };
+});
+on('DELETE', '/rehearsals/:id/notes/:noteId', async ({ uid, params, url }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(url.searchParams.get('team'), 64);
+  const m = await requireMember(uid, teamId);
+  const r = await one('select notes from rehearsals where id=$1 and team_id=$2', [params.id, teamId]);
+  if (!r) throw notFound('녹음이 없어요');
+  const list = (Array.isArray(r.notes) ? r.notes : []).filter((x) => !(x.id === params.noteId && (m.role === 'leader' || x.authorId === uid)));
+  await q('update rehearsals set notes=$2 where id=$1', [params.id, JSON.stringify(list)]);
+  return { ok: true };
+});
+
+// 이름 바꾸기 · 보관 잠금 (인도자)
+on('PATCH', '/rehearsals/:id', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  await requireMember(uid, teamId, 'leader');
+  const r = await one('select id, keep from rehearsals where id=$1 and team_id=$2', [params.id, teamId]);
+  if (!r) throw notFound('녹음이 없어요');
+  const label = body.label != null ? str(body.label, 20) : null;
+  const keep = body.keep == null ? null : !!body.keep;
+  await q(`update rehearsals set label=coalesce($3, label), keep=coalesce($4, keep),
+           expires_at = case when $4 is null then expires_at when $4 then null else now() + interval '${REHEARSAL_KEEP_DAYS} days' end,
+           warned_at = case when $4 then null else warned_at end
+           where id=$1 and team_id=$2`, [params.id, teamId, label, keep]);
+  return { ok: true };
+});
+
+on('DELETE', '/rehearsals/:id', async ({ uid, params, url }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(url.searchParams.get('team'), 64);
+  await requireMember(uid, teamId, 'leader');
+  const r = await one('select blob_id as "blobId" from rehearsals where id=$1 and team_id=$2', [params.id, teamId]);
+  if (!r) throw notFound('녹음이 없어요');
+  await q('delete from rehearsals where id=$1 and team_id=$2', [params.id, teamId]);
+  await dropBlobs(teamId, [r.blobId]);
+  return { ok: true };
+});
+// blobs 행과 실제 파일을 같이 지운다 (다른 곳에서 안 쓰는 것만)
+async function dropBlobs(teamId, ids) {
+  if (!ids.length) return 0;
+  const still = new Set((await q('select blob_id from rehearsals where team_id=$1 and blob_id = any($2::text[])', [teamId, ids])).map((r) => r.blob_id));
+  const gone = ids.filter((x) => !still.has(x));
+  if (!gone.length) return 0;
+  const rows = await q('select url from blobs where team_id=$1 and id = any($2::text[])', [teamId, gone]);
+  await q('delete from blobs where team_id=$1 and id = any($2::text[])', [teamId, gone]);
+  await delBlobs(rows.map((r) => r.url));
+  return gone.length;
+}
 
 // 메모: 내가 볼 수 있는 것 = 인도자 메모 전부 + 내 세션 공유 메모 + 내 메모
 on('GET', '/notes', async ({ uid, url }) => {
@@ -961,7 +1099,21 @@ on('GET', '/cron/dates', async ({ req }) => {
     try { const r = await scheduleReminders(t.id, { ...DEF_SETTINGS, ...(t.settings || {}) }); asked += r.asked; maybes += r.maybes; } catch (e) { console.error('reminders', t.id, e); }
   }
   const purged = (await q(`delete from notifications where updated_at < now() - interval '90 days' returning id`)).length;
-  return { ok: true, recurring: n, created, asked, maybes, purged };
+  // §5.4 녹음 보관: 만료 7일 전 인도자에게 알림함 항목, 지난 것은 파일까지 삭제
+  let warned = 0, dropped = 0;
+  for (const r of await q(`select id, team_id, service_id, label, date::text as date, expires_at from rehearsals
+                           where keep=false and warned_at is null and expires_at is not null and expires_at < now() + interval '7 days'`)) {
+    const leaders = (await q(`select user_id from members where team_id=$1 and role='leader'`, [r.team_id])).map((x) => x.user_id);
+    await notify(r.team_id, leaders, 'rehearsal.expiring', r.id, { title: `${r.label} 녹음이 7일 뒤 삭제돼요`, body: '보관하려면 잠금', link: '#/view/' + r.service_id });
+    await q('update rehearsals set warned_at=now() where id=$1', [r.id]);
+    warned++;
+  }
+  for (const r of await q(`select id, team_id, blob_id from rehearsals where keep=false and expires_at is not null and expires_at < now()`)) {
+    await q('delete from rehearsals where id=$1', [r.id]);
+    await dropBlobs(r.team_id, [r.blob_id]);
+    dropped++;
+  }
+  return { ok: true, recurring: n, created, asked, maybes, purged, warned, dropped };
 });
 
 /* ---------- 진입점 ---------- */

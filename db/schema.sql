@@ -192,3 +192,23 @@ create table if not exists availability (
 );
 -- 편성은 사역 날짜에 붙는다 (콘티가 없어도 미리 짤 수 있게)
 alter table service_dates add column if not exists lineup jsonb not null default '[]';
+
+-- §5 합주 녹음: 파일은 Blob, 메타·메모는 여기. 90일 뒤 삭제(보관 잠금이면 유지)
+create table if not exists rehearsals (
+  id          uuid primary key default gen_random_uuid(),
+  team_id     uuid not null references teams(id) on delete cascade,
+  service_id  text not null,
+  date        date not null,
+  label       text not null default '',
+  blob_id     text not null,
+  mime        text not null default 'audio/mp4',
+  duration    int not null default 0,
+  size_bytes  bigint not null default 0,
+  uploaded_by uuid references users(id),
+  keep        bool not null default false,
+  expires_at  timestamptz,
+  warned_at   timestamptz,
+  created_at  timestamptz not null default now()
+);
+create index if not exists rehearsals_svc_idx on rehearsals(team_id, service_id, created_at desc);
+alter table rehearsals add column if not exists notes jsonb not null default '[]';
