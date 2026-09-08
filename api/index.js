@@ -45,21 +45,32 @@ const nowSec = () => Math.floor(Date.now() / 1000);
 const strList = (v) => Array.isArray(v) ? v.map((s) => str(s, 40)).filter(Boolean).slice(0, 30) : null;
 
 /* ---------- 도메인 ---------- */
+const mySessions = (m) => (Array.isArray(m.msessions) && m.msessions.length ? m.msessions : (m.session ? [m.session] : []));
 const memberView = (t, m) => ({
   teamId: t.id, teamName: t.name, sessions: t.sessions, phrases: t.phrases,
   invite: m.role === 'leader' ? t.invite_token : undefined,
   settings: { ...DEF_SETTINGS, ...(t.settings || {}) },
-  me: { userId: m.user_id, name: m.name, session: m.session, role: m.role, capo: +m.capo || 0 },
+  me: { userId: m.user_id, name: m.name, session: m.session, mySessions: mySessions(m), role: m.role, capo: +m.capo || 0 },
 });
 const teamUserIds = async (teamId, { exceptRole, except } = {}) =>
   (await q('select user_id, role from members where team_id=$1', [teamId]))
     .filter((m) => m.role !== exceptRole && m.user_id !== except).map((m) => m.user_id);
 const mdOf = (d) => { const m = String(d || '').match(/^\d{4}-(\d{2})-(\d{2})/); return m ? `${+m[1]}/${+m[2]}` : ''; };
+// 조사 붙이기: 한글 받침과 숫자 읽는 소리를 보고 이/가, 을/를 을 고른다
+const DIGIT_BATCHIM = [true, true, false, true, false, false, true, true, true, false]; // 영 일 이 삼 사 오 육 칠 팔 구
+function hasBatchim(s) {
+  const t = String(s || '').trim(); if (!t) return false;
+  const c = t.charCodeAt(t.length - 1);
+  if (c >= 0xac00 && c <= 0xd7a3) return (c - 0xac00) % 28 !== 0;
+  if (c >= 0x30 && c <= 0x39) return DIGIT_BATCHIM[c - 0x30];
+  return false;
+}
+const josa = (s, withB, withoutB) => `${s}${hasBatchim(s) ? withB : withoutB}`;
 async function membership(uid, teamId) {
-  return one(`select t.*, m.user_id, m.name as mname, m.session, m.role, m.capo from members m join teams t on t.id=m.team_id
+  return one(`select t.*, m.user_id, m.name as mname, m.session, m.sessions as msessions, m.role, m.capo from members m join teams t on t.id=m.team_id
               where m.user_id=$1 ${teamId ? 'and m.team_id=$2' : ''} order by m.created_at asc limit 1`, teamId ? [uid, teamId] : [uid]);
 }
-const viewOf = (row) => row && memberView(row, { user_id: row.user_id, name: row.mname, session: row.session, role: row.role, capo: row.capo });
+const viewOf = (row) => row && memberView(row, { user_id: row.user_id, name: row.mname, session: row.session, msessions: row.msessions, role: row.role, capo: row.capo });
 async function requireMember(uid, teamId, role) {
   const m = await membership(uid, teamId);
   if (!m) throw forbidden('이 팀의 멤버가 아니에요');
@@ -69,7 +80,7 @@ async function requireMember(uid, teamId, role) {
 async function meView(uid) {
   const u = await one('select id, username, display_name from users where id=$1', [uid]);
   if (!u) throw noAuth();
-  const rows = await q(`select t.*, m.user_id, m.name as mname, m.session, m.role, m.capo from members m join teams t on t.id=m.team_id
+  const rows = await q(`select t.*, m.user_id, m.name as mname, m.session, m.sessions as msessions, m.role, m.capo from members m join teams t on t.id=m.team_id
                         where m.user_id=$1 order by m.created_at asc`, [uid]);
   return { user: { id: u.id, username: u.username, name: u.display_name }, team: rows[0] ? viewOf(rows[0]) : null, teams: rows.map(viewOf) };
 }
@@ -150,7 +161,12 @@ on('PATCH', '/me', async ({ uid, body }) => {
   const m = await requireMember(uid, teamId);
   const name = str(body.name, 40) || m.mname, session = pickSession(m, str(body.session, 40) || m.session);
   const capo = body.capo == null ? (+m.capo || 0) : Math.max(0, Math.min(9, Math.round(+body.capo) || 0));
-  await q('update members set name=$3, session=$4, capo=$5 where user_id=$1 and team_id=$2', [uid, teamId, name, session, capo]);
+  // 겸임 세션 (§3): 팀 세션 목록에 있는 것만, 대표 세션은 항상 포함
+  const asked = strList(body.mySessions);
+  const sessions = asked
+    ? [...new Set([session, ...asked])].filter((s) => s && (m.sessions || []).includes(s))
+    : mySessions(m);
+  await q('update members set name=$3, session=$4, capo=$5, sessions=$6 where user_id=$1 and team_id=$2', [uid, teamId, name, session, capo, sessions]);
   await q('update users set display_name=$2 where id=$1', [uid, name]);
   return viewOf(await membership(uid, teamId));
 });
@@ -323,7 +339,7 @@ on('PUT', '/services/:id/word', async ({ uid, params, body }) => {
       const svc = await one('select name, date::text as date from services where team_id=$1 and id=$2', [teamId, params.id]);
       const leaders = (await q(`select user_id from members where team_id=$1 and role='leader'`, [teamId])).map((r) => r.user_id);
       const who = /[님사]$/.test(m.mname || '') ? m.mname : `${m.mname || '목사'}님`;
-      await notify(teamId, leaders, 'word.received', params.id, { title: `${who}이 ${svc ? mdOf(svc.date) : ''} 말씀을 보냈어요`.replace(/\s+/g, ' '), body: [word.passage, word.title].filter(Boolean).join(' · '), link: '#/edit/' + params.id });
+      await notify(teamId, leaders, 'word.received', params.id, { title: `${josa(who, '이', '가')} ${svc ? mdOf(svc.date) : ''} 말씀을 보냈어요`.replace(/\s+/g, ' '), body: [word.passage, word.title].filter(Boolean).join(' · '), link: '#/edit/' + params.id });
     } catch (e) { console.error('notify word.received', e); }
   }
   return { ok: true, word: wordView(word, m) };
@@ -570,9 +586,22 @@ async function autoCreateServices(teamId) {
     const doc = { id, name: fmtName(st.nameRule, r.date, r.label), date: r.date, notice: '', message: '', messageRev: 0, version: 0, editedAt: Date.now(), items: [], auto: true, dateId: r.id };
     await q('insert into drafts(team_id, id, doc, updated_at) values($1,$2,$3,now()) on conflict (team_id, id) do nothing', [teamId, id, JSON.stringify(doc)]);
     await q('update service_dates set service_id=$2 where id=$1', [r.id, id]);
+    try { await fillDefaultLineup(teamId, r.id, r.date, st); } catch (e) { console.error('defaultLineup', e); }
     n++;
   }
   return n;
+}
+// §3.6 기본 편성 채우기: 그 날 '불가능'인 사람은 비운다. 이미 편성이 있으면 손대지 않는다
+async function fillDefaultLineup(teamId, dateId, date, st) {
+  const row = await one('select lineup from service_dates where id=$1', [dateId]);
+  if (row && Array.isArray(row.lineup) && row.lineup.length) return 0;
+  const def = (st && st.defaultLineup) || {};
+  if (!Object.keys(def).length) return 0;
+  const no = new Set((await q(`select user_id from availability where team_id=$1 and date=$2 and state='no'`, [teamId, date])).map((r) => r.user_id));
+  const out = [];
+  for (const [session, ids] of Object.entries(def)) for (const mid of (Array.isArray(ids) ? ids : [])) out.push({ session, memberId: no.has(mid) ? '' : mid, notifiedAt: null, acknowledgedAt: null });
+  await q('update service_dates set lineup=$2 where id=$1', [dateId, JSON.stringify(out)]);
+  return out.length;
 }
 function fmtName(rule, d, label) {
   const dt = new Date(d + 'T00:00:00');
@@ -702,11 +731,131 @@ on('PATCH', '/teams/:id/settings', async ({ uid, params, body }) => {
   if (body.reminderDay != null) next.reminderDay = Math.max(20, Math.min(28, Math.round(+body.reminderDay)));
   if (body.wordRequestDay != null) next.wordRequestDay = Math.max(0, Math.min(6, Math.round(+body.wordRequestDay)));
   if (body.rehearsalUploadRole != null && ['member', 'session_lead', 'leader'].includes(body.rehearsalUploadRole)) next.rehearsalUploadRole = body.rehearsalUploadRole;
+  // §3.6 세션 정원 · 기본 편성
+  const team = await one('select sessions from teams where id=$1', [params.id]);
+  const list = team.sessions || [];
+  if (body.slots && typeof body.slots === 'object') { const s = {}; for (const k of list) if (body.slots[k] != null) s[k] = Math.max(0, Math.min(9, Math.round(+body.slots[k]) || 0)); next.slots = { ...(next.slots || {}), ...s }; }
+  if (body.defaultLineup && typeof body.defaultLineup === 'object') { const d = {}; for (const k of list) if (Array.isArray(body.defaultLineup[k])) d[k] = body.defaultLineup[k].map((x) => str(x, 64)).slice(0, 9); next.defaultLineup = { ...(next.defaultLineup || {}), ...d }; }
   await q('update teams set settings=$2 where id=$1', [params.id, JSON.stringify(next)]);
   return { ok: true, settings: next };
 });
 
 // 매일 03:00 크론: 13주 앞 유지
+/* ---------- §3 편성 스케줄링 ---------- */
+const AV = ['ok', 'maybe', 'no'];
+const teamMembers = (teamId) => q(`select user_id as "userId", name, session, sessions as msessions, role from members where team_id=$1 order by created_at asc`, [teamId]);
+const memberSessions = (m) => (Array.isArray(m.msessions) && m.msessions.length ? m.msessions : (m.session ? [m.session] : []));
+const cleanLineup = (v, teamSessions) => (Array.isArray(v) ? v : []).slice(0, 60)
+  .map((r) => ({ session: str(r && r.session, 40), memberId: str(r && r.memberId, 64), notifiedAt: r && r.notifiedAt ? String(r.notifiedAt) : null, acknowledgedAt: r && r.acknowledgedAt ? String(r.acknowledgedAt) : null }))
+  .filter((r) => r.session && (!teamSessions || teamSessions.includes(r.session)));
+const lineupKey = (l) => (l || []).map((r) => r.session + ':' + r.memberId).sort().join(',');
+
+// 달력·표에 필요한 것을 한 번에: 사역 날짜(편성 포함) + 가능 여부(인도자는 전원, 멤버는 자기 것) + 멤버 목록
+on('GET', '/teams/:id/schedule', async ({ uid, url, params }) => {
+  if (!uid) throw noAuth();
+  const m = await requireMember(uid, params.id);
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get('from') || '') ? url.searchParams.get('from') : null;
+  const to = /^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get('to') || '') ? url.searchParams.get('to') : null;
+  const range = from && to ? 'and date between $2 and $3' : "and date >= current_date - interval '1 month'";
+  const args = from && to ? [params.id, from, to] : [params.id];
+  const dates = await q(`select id, date::text as date, label, time, source, open, service_id as "serviceId", lineup
+                         from service_dates where team_id=$1 ${range} order by date asc`, args);
+  const av = m.role === 'leader'
+    ? await q(`select user_id as "userId", date::text as date, state, memo from availability where team_id=$1 ${range}`, args)
+    : await q(`select user_id as "userId", date::text as date, state, memo from availability where team_id=$1 and user_id=$${args.length + 1} ${range}`, [...args, uid]);
+  return { dates, availability: av, members: await teamMembers(params.id), role: m.role };
+});
+
+// 가능 여부: 탭 한 번에 저장. 'unset'이면 행을 지운다
+on('PUT', '/teams/:id/availability', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  const m = await requireMember(uid, params.id);
+  if (m.role === 'pastor') throw forbidden('목회자는 편성에 들어가지 않아요');
+  const date = str(body.date, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw bad('날짜가 이상해요');
+  const state = str(body.state, 10), memo = str(body.memo, 40);
+  if (state === 'unset' || !state) { await q('delete from availability where team_id=$1 and user_id=$2 and date=$3', [params.id, uid, date]); return { ok: true, state: 'unset' }; }
+  if (!AV.includes(state)) throw bad('상태가 이상해요');
+  await q(`insert into availability(team_id, user_id, date, state, memo) values($1,$2,$3,$4,$5)
+           on conflict (team_id, user_id, date) do update set state=excluded.state, memo=excluded.memo, updated_at=now()`, [params.id, uid, date, state, memo]);
+  // §1 avail.conflict: 편성된 날을 불가능으로 바꾸면 인도자에게
+  if (state === 'no') {
+    try {
+      const d = await one('select id, date::text as date, label, lineup from service_dates where team_id=$1 and date=$2 and open order by created_at asc limit 1', [params.id, date]);
+      const mine = d && cleanLineup(d.lineup).filter((r) => r.memberId === uid);
+      if (mine && mine.length) {
+        const leaders = (await q(`select user_id from members where team_id=$1 and role='leader'`, [params.id])).map((r) => r.user_id);
+        await notify(params.id, leaders, 'avail.conflict', d.id + ':' + uid, {
+          title: `${josa(m.mname, '이', '가')} ${josa(mdOf(date), '을', '를')} 불가능으로 바꿨어요`, body: [memo ? `"${memo}"` : '', `${mine.map((r) => r.session).join('·')}으로 편성돼 있음`].filter(Boolean).join(' · '),
+          link: '#/lineup/' + d.id, actionable: true, expiresAt: new Date(date + 'T23:59:59+09:00'),
+        });
+      }
+    } catch (e) { console.error('notify avail.conflict', e); }
+  }
+  return { ok: true, state, memo };
+});
+
+// 그날 편성 저장 (인도자)
+on('PUT', '/teams/:id/dates/:did/lineup', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  const m = await requireMember(uid, params.id, 'leader');
+  const row = await one('select id, lineup from service_dates where id=$1 and team_id=$2', [params.did, params.id]);
+  if (!row) throw notFound('날짜가 없어요');
+  const prev = cleanLineup(row.lineup);
+  const next = cleanLineup(body.lineup, m.sessions || null).map((r) => {
+    const old = prev.find((p) => p.session === r.session && p.memberId === r.memberId);
+    return { ...r, notifiedAt: old ? old.notifiedAt : null, acknowledgedAt: old ? old.acknowledgedAt : null };
+  });
+  await q('update service_dates set lineup=$2 where id=$1', [params.did, JSON.stringify(next)]);
+  return { ok: true, lineup: next, changed: lineupKey(prev) !== lineupKey(next) };
+});
+
+// 통보하기 / 변경 통보 (§3.4)
+on('POST', '/teams/:id/dates/:did/notify', async ({ uid, params }) => {
+  if (!uid) throw noAuth();
+  await requireMember(uid, params.id, 'leader');
+  const row = await one('select id, date::text as date, label, time, lineup, service_id as "serviceId" from service_dates where id=$1 and team_id=$2', [params.did, params.id]);
+  if (!row) throw notFound('날짜가 없어요');
+  const lineup = cleanLineup(row.lineup);
+  const md = mdOf(row.date), where = `${md} ${row.label}`;
+  const link = row.serviceId ? '#/view/' + row.serviceId : '#/home';
+  const now = new Date().toISOString();
+  const firstTime = !lineup.some((r) => r.notifiedAt);
+  const already = new Set(lineup.filter((r) => r.notifiedAt).map((r) => r.memberId));
+  const nowIn = new Set(lineup.map((r) => r.memberId).filter(Boolean));
+  const added = [...nowIn].filter((x) => !already.has(x));
+  const dropped = [...already].filter((x) => !nowIn.has(x));
+  const sessionsOf = (mid) => lineup.filter((r) => r.memberId === mid).map((r) => r.session).join('·');
+  const timeLine = row.time ? `${row.time} 시작` : '';
+  let sent = 0;
+  for (const mid of (firstTime ? [...nowIn] : added)) {
+    await notify(params.id, [mid], firstTime ? 'lineup.notify' : 'lineup.changed', row.id, {
+      title: `${where} · ${josa(sessionsOf(mid), '으로', '로')} 섭니다`, body: timeLine, link, actionable: true, expiresAt: new Date(row.date + 'T23:59:59+09:00'),
+    });
+    sent++;
+  }
+  for (const mid of dropped) {
+    await notify(params.id, [mid], 'lineup.changed', row.id, { title: `${md} 편성에서 빠졌어요`, body: row.label, link: '#/home', actionable: true, expiresAt: new Date(row.date + 'T23:59:59+09:00') });
+    sent++;
+  }
+  await q('update service_dates set lineup=$2 where id=$1', [params.did, JSON.stringify(lineup.map((r) => ({ ...r, notifiedAt: r.notifiedAt || now })))]);
+  return { ok: true, sent, added: added.length, dropped: dropped.length, firstTime };
+});
+
+// 카톡용 편성 문구
+on('GET', '/teams/:id/dates/:did/text', async ({ uid, params }) => {
+  if (!uid) throw noAuth();
+  await requireMember(uid, params.id, 'leader');
+  const row = await one('select date::text as date, label, time, lineup from service_dates where id=$1 and team_id=$2', [params.did, params.id]);
+  if (!row) throw notFound('날짜가 없어요');
+  const ms = await teamMembers(params.id);
+  const nameOf = (id) => (ms.find((x) => x.userId === id) || {}).name || '';
+  const byS = {};
+  for (const r of cleanLineup(row.lineup)) if (r.memberId) (byS[r.session] || (byS[r.session] = [])).push(nameOf(r.memberId));
+  const lines = [`[${mdOf(row.date)} ${row.label}${row.time ? ' ' + row.time : ''} 편성]`, ...Object.entries(byS).map(([s, n]) => `${s} ${n.join(', ')}`)];
+  return { text: lines.join('\n') };
+});
+
 // §1 알림함: 내 알림 목록(90일), 읽음, 처리(actionable 카드 닫기)
 on('GET', '/notifications', async ({ uid, url }) => {
   if (!uid) throw noAuth();
@@ -716,6 +865,24 @@ on('GET', '/notifications', async ({ uid, url }) => {
                         from notifications where team_id=$1 and user_id=$2 and updated_at > now() - interval '90 days' order by updated_at desc limit 100`, [teamId, uid]);
   return { notifications: rows, unread: rows.filter((r) => !r.readAt).length };
 });
+// §3.3 "다시 요청": 미선택이 많은 멤버에게 가능 여부를 다시 묻는다 (24시간 1회)
+on('POST', '/notifications/ask', async ({ uid, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  await requireMember(uid, teamId, 'leader');
+  const target = str(body.userId, 64);
+  if (!(await one('select 1 from members where team_id=$1 and user_id=$2', [teamId, target]))) throw notFound('그 멤버가 없어요');
+  const month = /^\d{4}-\d{2}$/.test(str(body.month, 7)) ? str(body.month, 7) : new Date().toISOString().slice(0, 7);
+  const recent = await one(`select 1 from notifications where team_id=$1 and user_id=$2 and type='avail.request' and target_id=$3 and updated_at > now() - interval '24 hours'`, [teamId, target, month]);
+  if (recent) throw bad('이미 24시간 안에 요청했어요');
+  const [y, mo] = month.split('-').map(Number);
+  const from = `${month}-01`, to = new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10);
+  const dates = await q('select date::text as date from service_dates where team_id=$1 and open and date between $2 and $3', [teamId, from, to]);
+  const answered = await one('select count(*)::int as n from availability where team_id=$1 and user_id=$2 and date between $3 and $4', [teamId, target, from, to]);
+  await notify(teamId, [target], 'avail.request', month, { title: `${mo}월 스케줄 알려주세요`, body: `사역일 ${dates.length}일 · 아직 미선택 ${Math.max(0, dates.length - (answered ? answered.n : 0))}일`, link: '#/cal/' + month, actionable: true, expiresAt: new Date(to + 'T23:59:59+09:00') });
+  return { ok: true };
+});
+
 on('POST', '/notifications/read', async ({ uid, body }) => {
   if (!uid) throw noAuth();
   const teamId = str(body.teamId, 64);
@@ -735,17 +902,66 @@ on('POST', '/notifications/:id/ack', async ({ uid, params, body }) => {
   return { ok: true };
 });
 
+// §1 avail.request (매월 reminderDay) · avail.maybe (보류 D-14) · word.request (매주 wordRequestDay)
+async function scheduleReminders(teamId, st) {
+  const now = new Date(Date.now() + 9 * 3600 * 1000); // KST 기준 날짜·요일
+  const day = now.getUTCDate(), dow = now.getUTCDay();
+  let asked = 0, maybes = 0;
+  // 다음 달 사역일 가능 여부 요청
+  if (day === (+st.reminderDay || 25)) {
+    const y = now.getUTCFullYear(), mo = now.getUTCMonth();
+    const from = new Date(Date.UTC(y, mo + 1, 1)).toISOString().slice(0, 10);
+    const to = new Date(Date.UTC(y, mo + 2, 0)).toISOString().slice(0, 10);
+    const dates = await q('select date::text as date from service_dates where team_id=$1 and open and date between $2 and $3', [teamId, from, to]);
+    if (dates.length) {
+      const members = (await q(`select user_id from members where team_id=$1 and role<>'pastor'`, [teamId])).map((r) => r.user_id);
+      const answered = await q('select user_id, count(*)::int as n from availability where team_id=$1 and date between $2 and $3 group by user_id', [teamId, from, to]);
+      const cnt = Object.fromEntries(answered.map((r) => [r.user_id, r.n]));
+      const label = `${new Date(from + 'T00:00:00Z').getUTCMonth() + 1}월`;
+      for (const mid of members) {
+        const left = dates.length - (cnt[mid] || 0);
+        if (left <= 0) continue;
+        await notify(teamId, [mid], 'avail.request', from.slice(0, 7), { title: `${label} 스케줄 알려주세요`, body: `사역일 ${dates.length}일 · 아직 미선택 ${left}일`, link: '#/cal/' + from.slice(0, 7), actionable: true, expiresAt: new Date(to + 'T23:59:59+09:00') });
+        asked++;
+      }
+    }
+  }
+  // 보류(maybe)인 날짜가 2주 앞으로 다가오면 그 사람에게만
+  const d14 = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 14)).toISOString().slice(0, 10);
+  for (const r of await q(`select a.user_id, a.date::text as date, sd.label from availability a
+                           join service_dates sd on sd.team_id=a.team_id and sd.date=a.date and sd.open
+                           where a.team_id=$1 and a.state='maybe' and a.date=$2`, [teamId, d14])) {
+    await notify(teamId, [r.user_id], 'avail.maybe', r.date, { title: `${mdOf(r.date)} 아직 보류예요. 정해졌나요?`, body: `${r.label} · D-14`, link: '#/cal/' + r.date.slice(0, 7), actionable: true, expiresAt: new Date(r.date + 'T23:59:59+09:00') });
+    maybes++;
+  }
+  // 그 주 예배 중 말씀 미입력이 있으면 목회자에게
+  if (dow === (st.wordRequestDay == null ? 2 : +st.wordRequestDay)) {
+    const pastors = (await q(`select user_id from members where team_id=$1 and role='pastor'`, [teamId])).map((r) => r.user_id);
+    if (pastors.length) {
+      const upto = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 7)).toISOString().slice(0, 10);
+      const need = await q(`select sd.date::text as date, sd.label from service_dates sd
+                            left join service_words w on w.team_id=sd.team_id and w.service_id=sd.service_id
+                            where sd.team_id=$1 and sd.open and sd.date between current_date and $2 and (w.word is null or w.word->>'passage' is null or w.word->>'passage'='')`, [teamId, upto]);
+      if (need.length) await notify(teamId, pastors, 'word.request', upto, { title: '이번 주 말씀 알려주세요', body: need.map((r) => `${mdOf(r.date)} ${r.label}`).join(', '), link: '#/word', actionable: true, expiresAt: new Date(upto + 'T23:59:59+09:00') });
+    }
+  }
+  return { asked, maybes };
+}
+
 on('GET', '/cron/dates', async ({ req }) => {
   // Vercel 크론은 CRON_SECRET 이 설정돼 있으면 Authorization: Bearer <secret> 를 붙여 부른다. 미설정이면 아예 막는다 (위조 가능한 헤더로는 통과 불가)
   if (!process.env.CRON_SECRET || req.headers['authorization'] !== `Bearer ${process.env.CRON_SECRET}`) throw forbidden('크론 전용');
   const recs = await q('select * from recurring where active=true');
   let n = 0;
   for (const rec of recs) { await fillDates(rec.team_id, rec); n++; }
-  // D-N주 콘티 자동 생성 (모든 팀) + 90일 지난 알림 정리 (§1.3 보관)
-  let created = 0;
-  for (const t of await q('select id from teams')) { try { created += await autoCreateServices(t.id); } catch (e) { console.error('autoCreate', t.id, e); } }
+  // D-N주 콘티 자동 생성 (모든 팀) + 월간 스케줄 요청 + 보류 D-14 확인 + 90일 지난 알림 정리
+  let created = 0, asked = 0, maybes = 0;
+  for (const t of await q('select id, settings from teams')) {
+    try { created += await autoCreateServices(t.id); } catch (e) { console.error('autoCreate', t.id, e); }
+    try { const r = await scheduleReminders(t.id, { ...DEF_SETTINGS, ...(t.settings || {}) }); asked += r.asked; maybes += r.maybes; } catch (e) { console.error('reminders', t.id, e); }
+  }
   const purged = (await q(`delete from notifications where updated_at < now() - interval '90 days' returning id`)).length;
-  return { ok: true, recurring: n, created, purged };
+  return { ok: true, recurring: n, created, asked, maybes, purged };
 });
 
 /* ---------- 진입점 ---------- */

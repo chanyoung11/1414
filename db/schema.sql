@@ -177,3 +177,18 @@ create table if not exists service_reads (
 -- §0 역할에 목회자(pastor) 추가. 세션 없음, 콘티 편집·편성 없음, 말씀을 쓴다
 alter table members drop constraint if exists members_role_check;
 alter table members add constraint members_role_check check (role in ('leader','session_lead','member','pastor'));
+
+-- §3 편성: 멤버는 세션을 여러 개 맡을 수 있다(겸임)
+alter table members add column if not exists sessions text[];
+-- 가능 여부. 'unset'은 행이 없는 것과 같아 저장하지 않는다
+create table if not exists availability (
+  team_id    uuid not null references teams(id) on delete cascade,
+  user_id    uuid not null references users(id) on delete cascade,
+  date       date not null,
+  state      text not null check (state in ('ok','maybe','no')),
+  memo       text not null default '',
+  updated_at timestamptz not null default now(),
+  primary key (team_id, user_id, date)
+);
+-- 편성은 사역 날짜에 붙는다 (콘티가 없어도 미리 짤 수 있게)
+alter table service_dates add column if not exists lineup jsonb not null default '[]';
