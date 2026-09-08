@@ -477,6 +477,35 @@ const ROLE_RANK = { member: 0, session_lead: 1, pastor: 0, leader: 2 };
 const canUploadRehearsal = (m, st) => m.role !== 'pastor' && ROLE_RANK[m.role] >= ROLE_RANK[st.rehearsalUploadRole || 'member'];
 const REHEARSAL_MAX = 150 * 1024 * 1024, REHEARSAL_KEEP_DAYS = 90;
 
+// 콘티 파일(악보·오디오)도 4.5MB 를 넘으면 브라우저가 Blob 으로 바로 올린다
+on('POST', '/blobs/:id/upload-url', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  await requireMember(uid, teamId, 'leader');
+  if (!/^[A-Za-z0-9_-]{4,40}$/.test(params.id)) throw bad('파일 id가 이상해요');
+  const size = Math.max(0, Math.round(+body.size || 0));
+  if (size > 200 * 1024 * 1024) throw new HttpError(413, 'too_large', '파일이 너무 커요 (200MB 이하)');
+  const type = str(body.mime, 100) || 'application/octet-stream';
+  const ext = type.includes('jpeg') ? '.jpg' : type.includes('png') ? '.png' : type.includes('webp') ? '.webp' : type.startsWith('audio/') ? '.audio' : '';
+  const pathname = `teams/${teamId}/${params.id}${ext}`;
+  const p = await presignPut(pathname, type, 30);
+  return { uploadUrl: p.url, pathname, mime: type };
+});
+// 직접 올린 파일을 DB 에 등록 (실제로 있는지 확인)
+on('POST', '/blobs/:id/register', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  await requireMember(uid, teamId, 'leader');
+  const pathname = str(body.pathname, 300);
+  if (!pathname.startsWith(`teams/${teamId}/`)) throw bad('경로가 이상해요');
+  const h = await headBlob(pathname);
+  if (!h) throw bad('파일이 올라오지 않았어요');
+  await q(`insert into blobs(team_id, id, url, pathname, type, size) values($1,$2,$3,$4,$5,$6)
+           on conflict (team_id, id) do update set url=excluded.url, pathname=excluded.pathname, type=excluded.type, size=excluded.size`,
+    [teamId, params.id, h.url, h.pathname, h.contentType || 'application/octet-stream', h.size]);
+  return { ok: true, url: h.url };
+});
+
 // 브라우저가 Blob 으로 바로 올릴 서명 URL (서버리스 본문 한도 4.5MB 우회)
 on('POST', '/rehearsals/upload-url', async ({ uid, body }) => {
   if (!uid) throw noAuth();
@@ -1130,7 +1159,9 @@ export default async function handler(req, res) {
     }
     if (method !== 'GET' && req.headers['x-conti'] !== '1') throw forbidden('앱에서만 호출할 수 있어요');
     const params = path.match(route.re).groups || {};
-    const body = (method === 'GET' || /^\/blobs\//.test(path)) ? {} : await readBody(req, /^\/(ocr|omr)$/.test(path) ? 12e6 : 1e6); // 이미지 base64 를 실어 보내는 경로만 크게
+    // 파일 그 자체가 본문인 경로(POST /blobs/:id)만 JSON 파싱을 건너뛴다. 이미지 base64 를 싣는 경로는 크게
+    const rawBody = method === 'POST' && /^\/blobs\/[^/]+$/.test(path);
+    const body = (method === 'GET' || rawBody) ? {} : await readBody(req, /^\/(ocr|omr)$/.test(path) ? 12e6 : 1e6);
     // 세션: 서명·만료 검사 후, 비밀번호 변경(auth_epoch) 이전에 발급된 토큰은 무효 처리
     let uid = null; const claims = sessionClaims(req);
     if (claims) {

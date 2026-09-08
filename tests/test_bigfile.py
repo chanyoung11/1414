@@ -1,0 +1,32 @@
+# 4.5MB 를 넘는 콘티 오디오가 Blob 직접 업로드로 발행되는지 (서버리스 본문 한도 우회)
+# 콘티 오디오(4.5MB 초과)가 직접 업로드로 발행되는지
+import os,sys,time
+from playwright.sync_api import sync_playwright
+URL=os.environ.get('CONTI_URL','http://localhost:8766/'); tag=str(int(time.time()))[-6:]
+def fail(m): print('FAIL:',m); sys.exit(1)
+with sync_playwright() as p:
+    b=p.chromium.launch(); c=b.new_context(viewport={'width':1240,'height':900}); pg=c.new_page()
+    errs=[]; pg.on('pageerror',lambda e:errs.append(str(e))); pg.on('dialog',lambda d:d.accept())
+    pg.goto(URL); pg.wait_for_selector('#lgUser')
+    pg.click('[data-act="lg-mode"][data-m="signup"]'); pg.wait_for_selector('#lgName')
+    pg.fill('#lgName','하은'); pg.fill('#lgUser','bg'+tag); pg.fill('#lgPass','secret1'); pg.click('[data-act="lg-submit"]')
+    pg.wait_for_selector('#gtTeam'); pg.fill('#gtTeam','큰파일팀'); pg.click('[data-act="team-create"]'); pg.wait_for_selector('.hd [data-act="team"]')
+    team=pg.evaluate('CONTI.S.team.id')
+    pg.click('[data-act="new-svc"]'); pg.wait_for_selector('[data-f="svc.name"]'); pg.fill('[data-f="svc.name"]','큰 오디오')
+    pg.click('[data-act="add-item"]'); pg.wait_for_selector('[data-f="item.title"]'); pg.fill('[data-f="item.title"]','곡')
+    f=os.path.join(os.path.dirname(os.path.abspath(__file__)),'..','scratch-big.m4a')
+    open(f,'wb').write(b'\0'*(7*1024*1024))
+    pg.set_input_files('#audFile',f); pg.wait_for_timeout(2500)
+    n=pg.evaluate('CONTI.S.services[0].items[0].media.length')
+    if n!=1: fail('오디오가 안 들어감: %s'%n)
+    pg.click('[data-act="publish"]'); pg.wait_for_selector('#pubOnly'); pg.click('#pubOnly')
+    pg.wait_for_function("!document.querySelector('#pubOnly')",timeout=90000); pg.wait_for_timeout(4000)
+    r=c.request.get(URL+'api/services?team='+team).json()
+    if not r['services']: fail('발행 실패 — 큰 오디오가 막힘')
+    bid=pg.evaluate('CONTI.S.services[0].items[0].media[0].blob')
+    bl=c.request.get(URL+'api/blobs?team=%s&ids=%s'%(team,bid)).json()
+    if not bl['blobs'].get(bid): fail('blob 등록 안 됨: %s'%bl)
+    os.remove(f); print('7MB audio published ok'); print('errors:',errs)
+    if errs: fail('page errors')
+    b.close()
+print('BIG MEDIA TEST OK')

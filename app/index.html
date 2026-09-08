@@ -893,6 +893,17 @@ function rehAddModal(svc){
     (REH.bySvc[svc.id]=REH.bySvc[svc.id]||[]).unshift(r.rehearsal);await pullRehearsals(svc.id,true);
     closeModal();render();toast('녹음을 올렸어요')}
    catch(err){prog.innerHTML=`<span style="color:var(--destructive)">${esc(err.message)}</span> <button class="btn sm" id="rhOk">다시 시도</button>`;btn.disabled=false;toast(err.message)}return}}}
+// 파일 하나 올리기. 서버리스 본문 한도(4.5MB)를 넘으면 Blob 스토어로 바로 올린 뒤 등록한다
+const DIRECT_OVER=3.5*1024*1024;
+async function uploadBlob(id,b,onProgress,force){
+ if(b.size<=DIRECT_OVER){
+  const r=await fetch('/api/blobs/'+id+'?team='+S.team.id+(force?'&force=1':''),{method:'POST',headers:{'x-conti':'1','content-type':b.type||'application/octet-stream'},body:b,credentials:'same-origin'});
+  if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.message||'파일 업로드 실패')}
+  return true}
+ const u=await api('/blobs/'+id+'/upload-url',{method:'POST',body:{teamId:S.team.id,size:b.size,mime:b.type||'application/octet-stream'}});
+ await putDirect(u.uploadUrl,b,onProgress);
+ await api('/blobs/'+id+'/register',{method:'POST',body:{teamId:S.team.id,pathname:u.pathname}});
+ return true}
 // 진행률이 보이는 직접 업로드 (fetch 는 진행률이 없어 XHR 사용)
 function putDirect(url,file,onProgress){return new Promise((res,rej)=>{const x=new XMLHttpRequest();x.open('PUT',url);
  x.setRequestHeader('content-type',file.type||'application/octet-stream');
@@ -1331,12 +1342,11 @@ const SYNC={t:null,pulledAt:{},
  async ensureBlobs(items,quiet){const ids=SYNC.blobIds(items);let have={};if(ids.length){have=(await api('/blobs?team='+S.team.id+'&ids='+ids.join(','))).blobs}
   const todo=ids.filter(id=>!have[id]);let k=0;
   for(const id of todo){k++;if(!quiet)toast(`파일 올리는 중 ${k}/${todo.length}…`);const b=await IDB.get('blobs',id);if(!b)throw new Error('이 기기에 없는 파일이 있어요');
-   const r=await fetch('/api/blobs/'+id+'?team='+S.team.id,{method:'POST',headers:{'x-conti':'1','content-type':b.type||'application/octet-stream'},body:b,credentials:'same-origin'});
-   if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.message||'파일 업로드 실패')}}},
+   await uploadBlob(id,b,quiet?null:p=>{if(p<100)toast(`파일 올리는 중 ${k}/${todo.length} · ${p}%`)})}},
  // 파일 복구(인도자): 이 팀의 콘티가 참조하는 파일을 이 기기의 저장소에서 강제로 다시 올린다 — 스토어에서 파일이 사라졌을 때 팀원들 화면을 살리는 용도
  async repairBlobs(){if(!online()||!isLeader()||!S.team.id)return {ok:0,miss:0};const ids=new Set();S.services.forEach(s=>{SYNC.blobIds(s.items).forEach(id=>ids.add(id));if(s.published)SYNC.blobIds(s.published.items).forEach(id=>ids.add(id))});
   let ok=0,miss=0,k=0;for(const id of ids){k++;toast(`파일 올리는 중 ${k}/${ids.size}…`);const b=await IDB.get('blobs',id);if(!b){miss++;continue}
-   try{const r=await fetch('/api/blobs/'+id+'?team='+S.team.id+'&force=1',{method:'POST',headers:{'x-conti':'1','content-type':b.type||'application/octet-stream'},body:b,credentials:'same-origin'});if(r.ok)ok++;else miss++}catch(e){miss++}}
+   try{await uploadBlob(id,b,null,true);ok++}catch(e){miss++}}
   return {ok,miss}},
  // 초안(인도자): 기기 간 이어서 편집
  draftDoc(svc){return {id:svc.id,name:svc.name,date:svc.date,notice:svc.notice||'',message:svc.message||'',messageRev:svc.messageRev||0,word:svc.word||null,version:svc.version||0,editedAt:svc.editedAt||0,items:clone(svc.items).map(it=>({...it,notes:undefined,media:(it.media||[]).map(m=>({...m,notes:undefined}))}))}},
@@ -1863,7 +1873,7 @@ function afterEditor(svc){
  app.onchange=async e=>{
   if(e.target.dataset.md){const it=curItem(svc);const md=it&&it.media.find(x=>x.id===e.target.dataset.id);if(!md)return;const v=e.target.value.trim();md[e.target.dataset.md]=v?parseT(v):0;if(md.end&&md.start&&md.end<=md.start){md.end=0;e.target.value='';toast('끝은 시작보다 뒤여야 해요')}touch(svc);save();syncLib(it);return}
   if(e.target.id==='pieceFile'){await addPieces(svc,curItem(svc),e.target.files);return}
-  if(e.target.id==='audFile'){const it=curItem(svc);const f=e.target.files[0];if(!it||!f)return;if(f.size>60*1024*1024){toast('60MB 이하만');return}const id=uid();await IDB.put('blobs',id,f);it.media.push({id,type:'audio',blob:id,name:f.name,notes:[],sessions:((SEL[svc.id]||{}).mdTarget||[]).slice()});touch(svc);save();render();return}
+  if(e.target.id==='audFile'){const it=curItem(svc);const f=e.target.files[0];if(!it||!f)return;if(f.size>150*1024*1024){toast('150MB 이하만 올릴 수 있어요');return}const id=uid();await IDB.put('blobs',id,f);it.media.push({id,type:'audio',blob:id,name:f.name,notes:[],sessions:((SEL[svc.id]||{}).mdTarget||[]).slice()});touch(svc);save();render();return}
  };
  const mt=$('#mdTarget');if(mt)mt.onclick=e=>{const b=e.target.closest('[data-mdt]');if(!b)return;const sel=SEL[svc.id];let t=sel.mdTarget||[];const v=b.dataset.mdt;if(!v)t=[];else t=t.includes(v)?t.filter(x=>x!==v):t.concat(v);sel.mdTarget=t;$$('[data-mdt]',mt).forEach(x=>x.classList.toggle('on',x.dataset.mdt?t.includes(x.dataset.mdt):!t.length))};
  // 악보 사진 드래그 앤 드롭 / 붙여넣기
