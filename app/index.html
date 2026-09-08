@@ -68,7 +68,7 @@ a{color:inherit}
 ::selection{background:rgba(10,10,10,.14)}html.dark ::selection{background:rgba(240,240,240,.14)}
 :focus-visible{outline:2px solid var(--fg);outline-offset:2px;border-radius:var(--r-sm)}
 svg.ic{width:20px;height:20px;flex:0 0 auto;display:block}
-#app{height:100%;display:flex;flex-direction:column;color:var(--fg)}
+#app{height:100%;display:flex;flex-direction:column;color:var(--fg);padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)} /* iOS 홈 화면 설치 시 상태바·홈 인디케이터 피함 */
 .display{font-family:"Satoshi","Pretendard Variable","Pretendard",sans-serif}
 .tnum{font-variant-numeric:tabular-nums}
 
@@ -215,7 +215,7 @@ html.dark .songbar::placeholder{color:rgba(10,10,10,.5)}
 .sect-hd{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:6px 2px 12px}
 .sect-hd h2{margin:0;font-size:17px;font-weight:700;letter-spacing:-.03em}
 .sect-hd p{margin:3px 0 0;font-size:12.5px;color:var(--muted-fg)}
-.bnav{position:fixed;left:12px;right:12px;bottom:12px;z-index:40;border:1px solid var(--surface-border);border-radius:var(--r-xl);background:var(--card);padding:6px;box-shadow:0 24px 56px -28px rgba(0,0,0,.6);backdrop-filter:blur(10px);display:grid;grid-auto-flow:column;gap:4px}
+.bnav{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:40;border:1px solid var(--surface-border);border-radius:var(--r-xl);background:var(--card);padding:6px;box-shadow:0 24px 56px -28px rgba(0,0,0,.6);backdrop-filter:blur(10px);display:grid;grid-auto-flow:column;gap:4px}
 .bnav button{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 4px;border-radius:var(--r-lg);font-size:11px;font-weight:600;color:var(--muted-fg)}
 .bnav button svg.ic{width:18px;height:18px}
 .bnav button.on{background:var(--primary);color:var(--primary-fg)}
@@ -314,6 +314,7 @@ html.dark .sheet{box-shadow:0 10px 40px rgba(0,0,0,.5);border-color:transparent}
 .stage #sheetpanel .ptab{display:none}
 .stage .stagebar{display:flex}
 .stagebar{display:none;align-items:center;gap:10px;padding:7px 12px;background:var(--form-bg);color:var(--form-fg);font-size:12.5px;white-space:nowrap;overflow-x:auto;flex:0 0 auto}
+.stagebar [data-act="stage"]{position:sticky;right:0;margin-left:auto;background:var(--form-bg);box-shadow:-10px 0 10px var(--form-bg)} /* 좁은 화면에서 가로 스크롤돼도 종료 버튼은 항상 보이게 */
 .stagetitle{font-weight:800;flex:0 0 auto;letter-spacing:-.02em}
 .stageform{font-family:"Geist Mono",ui-monospace,"SF Mono",Menlo,monospace;font-weight:600}
 .stagenote{opacity:.75;flex:0 0 auto}
@@ -472,6 +473,7 @@ const clone=o=>JSON.parse(JSON.stringify(o));
 const fmtT=s=>{s=Math.max(0,Math.floor(s||0));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
 const parseT=str=>{const m=String(str).trim().match(/^(\d+):(\d{1,2})$/);if(m)return +m[1]*60+ +m[2];const n=parseFloat(str);return isNaN(n)?0:n};
 const today=()=>new Date().toISOString().slice(0,10);
+const lsGet=k=>{try{return localStorage.getItem(k)}catch(e){return null}}; // 저장소가 막힌 환경(사파리 설정 등)에서도 앱이 죽지 않게
 const THEME={get(){try{return localStorage.getItem('conti-theme')||'system'}catch(e){return 'system'}},set(v){try{localStorage.setItem('conti-theme',v)}catch(e){}THEME.apply()},
  apply(){const v=THEME.get();const dark=v==='dark'||(v==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',dark);const mt=document.querySelector('meta[name=theme-color]');if(mt)mt.content=dark?'#0A0A0A':'#FAFAFA'},
  cycle(){const n={system:'dark',dark:'light',light:'system'}[THEME.get()];THEME.set(n);toast({system:'시스템 설정을 따라요',dark:'다크 모드',light:'라이트 모드'}[n]);render()}};
@@ -525,11 +527,11 @@ const fmtDate=d=>{if(!d)return {md:'—',w:''};const t=new Date(d+'T00:00:00');i
 /* ---------- EDITOR ---------- */
 /* ---------- workspace helpers ---------- */
 function ptab(name,sub,right){return `<div class="ptab"><span class="tab">${esc(name)}</span>${sub?`<span class="sub">${sub}</span>`:''}<span class="grow"></span>${right||''}</div>`}
-function initGutter(onEnd){const ws=$('#ws');if(!ws)return;initVGutter(onEnd);const g=$('.gutter',ws);if(!g)return;const saved=localStorage.getItem('conti-lw');if(saved)ws.style.setProperty('--lw',saved);
+function initGutter(onEnd){const ws=$('#ws');if(!ws)return;initVGutter(onEnd);const g=$('.gutter',ws);if(!g)return;const saved=lsGet('conti-lw');if(saved)ws.style.setProperty('--lw',saved);
  g.onpointerdown=e=>{g.setPointerCapture(e.pointerId);g.classList.add('drag');const r=ws.getBoundingClientRect();g.onpointermove=ev=>{const w=Math.min(Math.max(ev.clientX-r.left-8,300),r.width-340);ws.style.setProperty('--lw',w+'px')};
   g.onpointerup=()=>{g.onpointermove=null;g.classList.remove('drag');try{localStorage.setItem('conti-lw',ws.style.getPropertyValue('--lw'))}catch(e){}onEnd&&onEnd()}}}
 
-function initVGutter(onEnd){const st=$('#stack');if(!st)return;const g=$('.vgutter',st);if(!g)return;const key='conti-th-'+route().name;const saved=localStorage.getItem(key);if(saved)st.style.gridTemplateRows=saved+'px 6px minmax(0,1fr)';
+function initVGutter(onEnd){const st=$('#stack');if(!st)return;const g=$('.vgutter',st);if(!g)return;const key='conti-th-'+route().name;const saved=lsGet(key);if(saved)st.style.gridTemplateRows=saved+'px 6px minmax(0,1fr)';
  g.onpointerdown=e=>{g.setPointerCapture(e.pointerId);g.classList.add('drag');const r=st.getBoundingClientRect();g.onpointermove=ev=>{const h=Math.min(Math.max(ev.clientY-r.top-3,80),r.height-120);st.style.gridTemplateRows=h+'px 6px minmax(0,1fr)'};
   g.onpointerup=()=>{g.onpointermove=null;g.classList.remove('drag');try{localStorage.setItem(key,parseInt(st.style.gridTemplateRows))}catch(e){}onEnd&&onEnd()}}}
 
@@ -548,7 +550,7 @@ function homeHTML(){
   ${on?`<button class="navi" data-act="logout">${ic('logout')}로그아웃</button>`:''}`;
  const rows=svcs.map((s,i)=>{const d=fmtDate(s.date);const past=(s.date||'')<today();
   const st=s.published?(s.version>s.published.version?`<span class="badge warn">v${s.published.version} 발행 · 수정 중</span>`:`<span class="badge ok">v${s.published.version} 발행됨</span>`):`<span class="badge neutral">미발행</span>`;
-  return `<div class="svcrow ${past?'past':''} rise d${Math.min(i,3)}" data-act="open-svc" data-id="${s.id}"><div class="date"><b>${esc(d.md)}</b><span>${esc(d.w)}</span></div><div class="grow"><div class="t">${esc(s.name||'(이름 없음)')}</div><div class="s"><span>${s.items.length}곡</span>${st}</div></div>
+  return `<div class="svcrow ${past?'past':''} rise d${Math.min(i,3)}" data-act="open-svc" data-id="${esc(s.id)}"><div class="date"><b>${esc(d.md)}</b><span>${esc(d.w)}</span></div><div class="grow"><div class="t">${esc(s.name||'(이름 없음)')}</div><div class="s"><span>${s.items.length}곡</span>${st}</div></div>
    <div class="row">${lead?`<button class="btn sm" data-act="edit-svc" data-id="${s.id}">${ic('pen')}편집</button>`:''}<button class="btn sm ${lead?'':'pri'}" data-act="view-svc" data-id="${s.id}">${ic('eye')}콘티</button>${lead?`<button class="icon sm ghost" data-act="del-svc" data-id="${s.id}" title="삭제">${ic('trash')}</button>`:''}</div></div>`}).join('');
  return `<div class="shell">
   <aside class="side"><div class="box"><div class="head">${logoLockup(26)}<span class="pill">${on?esc(S.team.name||'팀'):'기기 전용'}</span></div><nav>${nav}</nav>
@@ -605,7 +607,7 @@ function itemEditorHTML(svc,it){const sel=SEL[svc.id]||(SEL[svc.id]={});
     ${md.notes.slice().sort((a,b)=>a.t-b.t).map(n=>`<div class="row small" style="padding:3px 0"><span class="mono" style="color:var(--amber);min-width:42px;font-weight:600">${fmtT(n.t)}</span><span class="tag">${esc(n.session||'전체')}</span><span class="grow" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(n.text)}</span><button class="icon sm ghost" data-act="del-tnote" data-mid="${md.id}" data-id="${n.id}">${ic('x')}</button></div>`).join('')}
     <div class="row" style="gap:6px;margin-top:4px"><input class="field mono" data-tl="t" placeholder="1:23" style="width:72px;text-align:center"><select class="field" data-tl="s" style="width:auto;padding-right:8px"><option value="">전체</option>${S.team.sessions.filter(s=>s!=='인도자').map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join('')}</select><input class="field grow" data-tl="text" placeholder="드럼 여기 필 그대로"><button class="btn sm" data-act="add-tnote" data-mid="${md.id}">${ic('plus')}</button></div>
    </div></div>`).join('')}
-  <div class="row" style="margin-top:6px"><input class="field grow" id="ytUrl" placeholder="https://youtu.be/… 붙여넣기"><button class="btn sm" data-act="add-yt"><span class="ytc" style="display:inline-flex">${ic('yt')}</span>추가</button><label class="btn sm" for="audFile">${ic('mic')}녹음</label><input id="audFile" type="file" accept="audio/*,video/*" style="display:none"></div>
+  <div class="row" style="margin-top:6px"><input class="field grow" id="ytUrl" placeholder="https://youtu.be/… 붙여넣기"><button class="btn sm" data-act="add-yt"><span class="ytc" style="display:inline-flex">${ic('yt')}</span>추가</button><label class="btn sm" for="audFile">${ic('mic')}녹음</label><input id="audFile" type="file" accept="audio/*" style="display:none"></div>
   <div class="row" id="mdTarget" style="margin-top:6px;flex-wrap:wrap;gap:0"><span class="hint" style="margin-right:6px">대상</span><button class="q ${(sel.mdTarget||[]).length?'':'on'}" data-mdt="">전체</button>${S.team.sessions.filter(x=>x!=='인도자').map(x=>`<button class="q ${(sel.mdTarget||[]).includes(x)?'on':''}" data-mdt="${esc(x)}">${esc(x)}</button>`).join('')}<span class="hint" style="margin-left:4px">특정 세션만 보게 하려면 골라요</span></div>
   <div class="hint" style="margin:6px 0 10px">타임라인 메모: 유튜브 앱에서 보면서 시각을 적어 넣거나, 연습 화면에서 재생하며 "여기에 메모"로 찍어요. 멤버가 탭하면 그 시각으로 열립니다.</div>
   <div class="hr"></div>
@@ -810,8 +812,8 @@ function settingsModal(){
   if(e.target.closest('#sOk')){const name=$('#sName').value.trim();
    if(on){try{
      if($('#sPw1')&&$('#sPw1').value){await api('/auth/password',{method:'POST',body:{current:$('#sPw0').value,next:$('#sPw1').value}})}
-     if(lead&&$('#sList')){applyMembership(await api('/teams/'+S.team.id,{method:'PATCH',body:{sessions:split($('#sList')),phrases:split($('#sPhr'))}}))}
-     applyMembership(await api('/me',{method:'PATCH',body:{teamId:S.team.id,name,session:sess,capo:+($('#sCapo')||{value:0}).value||0}}));
+     if(lead&&$('#sList')){await applyMembership(await api('/teams/'+S.team.id,{method:'PATCH',body:{sessions:split($('#sList')),phrases:split($('#sPhr'))}}))}
+     await applyMembership(await api('/me',{method:'PATCH',body:{teamId:S.team.id,name,session:sess,capo:+($('#sCapo')||{value:0}).value||0}}));
     }catch(err){$('#sErr').textContent=err.message;return}}
    else{m.name=name;m.session=sess;m.role=role;m.capo=+($('#sCapo')||{value:0}).value||0;S.team.sessions=split($('#sList'));S.team.phrases=split($('#sPhr'));if(!S.team.sessions.includes(m.session))m.session=S.team.sessions[0]||''}
    save();closeModal();render()}
@@ -824,7 +826,7 @@ function settingsModal(){
 }
 function libraryPicker(svc){
  if(!S.library.length){toast('라이브러리가 비어 있어요');return}
- modal(`<b style="font-size:17px">라이브러리에서 추가</b><input class="field" id="libQ" placeholder="제목 검색" style="margin:10px 0"><div id="libList">${S.library.map(s=>`<div class="list-item" data-lib="${s.id}"><span class="icon sm" style="background:var(--panel2)">${ic('music')}</span><span class="grow" style="font-weight:600">${esc(s.title)}</span><span class="k">${esc(s.key)} · 조각 ${s.pieces.length} · 마커 ${s.pieces.reduce((n,p)=>n+p.markers.length,0)}</span></div>`).join('')}</div>`,{center:true});
+ modal(`<b style="font-size:17px">라이브러리에서 추가</b><input class="field" id="libQ" placeholder="제목 검색" style="margin:10px 0"><div id="libList">${S.library.map(s=>`<div class="list-item" data-lib="${esc(s.id)}"><span class="icon sm" style="background:var(--panel2)">${ic('music')}</span><span class="grow" style="font-weight:600">${esc(s.title)}</span><span class="k">${esc(s.key)} · 조각 ${s.pieces.length} · 마커 ${s.pieces.reduce((n,p)=>n+p.markers.length,0)}</span></div>`).join('')}</div>`,{center:true});
  $('#libQ').oninput=e=>{const q=e.target.value.trim();$$('#libList .list-item').forEach(li=>{const s=S.library.find(x=>x.id===li.dataset.lib);li.style.display=!q||s.title.includes(q)?'':'none'})};
  $('#modal').onclick=e=>{const li=e.target.closest('[data-lib]');if(!li)return;const s=S.library.find(x=>x.id===li.dataset.lib);const it=newItem();Object.assign(it,{title:s.title,key:s.key,mod:s.mod||'',form:s.form,songNote:s.songNote||'',pieces:clone(s.pieces),media:clone(s.media),libId:s.id});
   it.pieces.forEach(p=>{p.id=uid();p.markers.forEach(mk=>mk.id=uid());(p.hls||[]).forEach(h=>h.id=uid())});it.media.forEach(m=>{m.id=uid();m.notes=[]});
@@ -861,7 +863,18 @@ const url=id=>urlCache.get(id)||'';
 const DEF_SESS=['드럼','베이스','건반','일렉','어쿠스틱','싱어','인도자'];
 const DEF_PHR=['Down','Full','쉬기','패드만','브레이크','하프타임','반복'];
 let S={v:1,team:{sessions:DEF_SESS.slice(),phrases:DEF_PHR.slice(),me:{name:'',session:'건반',role:'leader'}},services:[],library:[]};
-let saveT;function save(){clearTimeout(saveT);saveT=setTimeout(()=>IDB.put('kv','state',JSON.stringify(S)).catch(e=>console.error(e)),250);if(typeof SYNC!=='undefined')SYNC.schedulePush()}
+// 로컬 상태는 (계정, 팀) 단위로 따로 저장한다 — 로그아웃·팀 전환 뒤에 다른 팀의 콘티·악보가 화면에 남거나 서버로 올라가지 않도록
+let saveT;let CUR_SCOPE='legacy';
+const scopeKey=(userId,teamId)=>'state:'+(userId||'local')+':'+(teamId||'none');
+function flushSave(){clearTimeout(saveT);return IDB.put('kv',CUR_SCOPE==='legacy'?'state':CUR_SCOPE,JSON.stringify(S)).then(()=>{if(CUR_SCOPE!=='legacy')return IDB.put('kv','scope',CUR_SCOPE)}).catch(e=>console.error(e))}
+function save(){clearTimeout(saveT);saveT=setTimeout(flushSave,250);if(typeof SYNC!=='undefined')SYNC.schedulePush()}
+const DEF_TEAM=()=>({sessions:DEF_SESS.slice(),phrases:DEF_PHR.slice(),me:{name:'',session:'건반',role:'leader'}});
+// 스코프 전환: 지금 상태를 저장해 두고, 새 (계정,팀)의 콘티·라이브러리·메모 그림자를 불러온다. 팀 정보(S.team)는 호출자가 이어서 채운다
+async function switchScope(next){if(next===CUR_SCOPE)return;
+ if(CUR_SCOPE==='legacy'){CUR_SCOPE=next;await flushSave();try{await IDB.del('kv','state')}catch(e){}return} // 예전 단일 저장소는 첫 스코프가 그대로 물려받음
+ await flushSave();CUR_SCOPE=next;let s=null;try{const raw=await IDB.get('kv',next);if(raw)s=JSON.parse(raw)}catch(e){console.warn('scope',e)}
+ S.services=(s&&s.services)||[];S.library=(s&&s.library)||[];S.noteShadow=(s&&s.noteShadow)||{};S.seedAt=(s&&s.seedAt)||0;S.team=Object.assign(DEF_TEAM(),(s&&s.team)||{});
+ if(typeof SYNC!=='undefined')Object.keys(SYNC.pulledAt).forEach(k=>delete SYNC.pulledAt[k])}
 const me=()=>S.team.me;
 const isLeader=()=>me().role==='leader';
 const svcById=id=>S.services.find(s=>s.id===id);
@@ -879,9 +892,19 @@ async function api(path,o){const opt={method:(o&&o.method)||'GET',headers:{'x-co
  const r=await fetch('/api'+path,opt);let j=null;try{j=await r.json()}catch(e){}
  if(!r.ok){const err=new Error((j&&j.message)||('오류 '+r.status));err.status=r.status;err.code=j&&j.error;throw err}return j}
 async function probeServer(){try{const r=await fetch('/api/health',{cache:'no-store'});if(!r.ok)return false;const j=await r.json();return !!(j&&j.app==='conti')}catch(e){return null}}
-function applyMembership(t){S.team.id=t.teamId;S.team.name=t.teamName;S.team.invite=t.invite||'';S.team.sessions=t.sessions.slice();S.team.phrases=t.phrases.slice();S.team.me={userId:t.me.userId,name:t.me.name,session:t.me.session,role:t.me.role,capo:+t.me.capo||0};save()}
-function takeMe(m){NET.user=m.user;NET.teams=m.teams||[];const cur=NET.teams.find(x=>x.teamId===S.team.id)||m.team;if(cur)applyMembership(cur);else{S.team.id='';S.team.invite='';save()}}
-async function refreshMe(){try{takeMe(await api('/me'))}catch(e){if(e.status===401)NET.user=null}}
+// 채보 엔진 연결 여부 (인도자 편집기의 '채보' 버튼 표시용)
+function probeOmr(){if(!online()||!NET.user)return;api('/omr').then(r=>{const on=!!(r&&r.available);if(on!==NET.omr){NET.omr=on;if(route().name==='edit')render()}}).catch(()=>{})}
+async function applyMembership(t){const next=scopeKey(NET.user&&NET.user.id,t.teamId);
+ if(next!==CUR_SCOPE){const prev=S.team.id;await switchScope(next);if(prev&&prev!==t.teamId&&route().name!=='home')go('home')} // 팀이 바뀌면 이전 팀 콘티 화면에서 빠져나옴
+ S.team.id=t.teamId;S.team.name=t.teamName;S.team.invite=t.invite||'';S.team.sessions=t.sessions.slice();S.team.phrases=t.phrases.slice();S.team.me={userId:t.me.userId,name:t.me.name,session:t.me.session,role:t.me.role,capo:+t.me.capo||0};save()}
+async function takeMe(m){NET.user=m.user;NET.teams=m.teams||[];const cur=NET.teams.find(x=>x.teamId===S.team.id)||m.team;
+ if(cur){if(S.team.id&&cur.teamId!==S.team.id)toast((cur.teamName||'다른')+' 팀으로 전환했어요');await applyMembership(cur)}
+ else{await switchScope(scopeKey(m.user&&m.user.id,''));S.team.id='';S.team.invite='';save()}}
+async function refreshMe(){try{await takeMe(await api('/me'))}catch(e){if(e.status===401)NET.user=null}}
+
+// 밖에서 들어온 문서(가져오기 파일·서버 발행본·초안·메모)의 id 들은 속성에 그대로 들어가므로 형식을 강제한다. 이상한 값은 새 id 로 바꿈
+const ID_RE=/^[A-Za-z0-9_-]{1,64}$/;const ID_KEYS=new Set(['id','blob','marker','libId','mediaId','markerId','itemId']);
+function scrubIds(x){if(Array.isArray(x)){x.forEach(scrubIds);return x}if(x&&typeof x==='object'){for(const k in x){const v=x[k];if(ID_KEYS.has(k)){if(v!=null&&v!==''&&!(typeof v==='string'&&ID_RE.test(v)))x[k]=uid()}else if(v&&typeof v==='object')scrubIds(v)}}return x}
 
 /* ---------- 서버 동기화: 발행본 · 파일 · 메모 ---------- */
 const SYNC={t:null,pulledAt:{},
@@ -894,7 +917,7 @@ const SYNC={t:null,pulledAt:{},
    if(cur&&localV>=r.version)continue;
    try{await SYNC.pullService(r.id);changed=true}catch(e){console.warn('pull',r.id,e.message)}}
   if(changed)save();return changed},
- async pullService(id){const d=await api('/services/'+id+'?team='+S.team.id);const doc=d.doc;await SYNC.fetchBlobs(d.blobs);
+ async pullService(id){const d=await api('/services/'+id+'?team='+S.team.id);const doc=scrubIds(d.doc);await SYNC.fetchBlobs(d.blobs);
   let cur=svcById(id);if(!cur){cur={id,name:doc.name,date:doc.date,notice:doc.notice||'',version:0,items:[],published:null};S.services.push(cur)}
   const old=new Map(cur.items.map(it=>[it.id,it]));
   cur.published={version:doc.version,at:new Date(d.updatedAt).getTime()||Date.now(),name:doc.name,date:doc.date,notice:doc.notice||'',message:doc.message||'',messageRev:doc.messageRev||0,author:doc.author||'',items:clone(doc.items)};
@@ -908,10 +931,15 @@ const SYNC={t:null,pulledAt:{},
   for(const id of todo){k++;if(!quiet)toast(`파일 올리는 중 ${k}/${todo.length}…`);const b=await IDB.get('blobs',id);if(!b)throw new Error('이 기기에 없는 파일이 있어요');
    const r=await fetch('/api/blobs/'+id+'?team='+S.team.id,{method:'POST',headers:{'x-conti':'1','content-type':b.type||'application/octet-stream'},body:b,credentials:'same-origin'});
    if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.message||'파일 업로드 실패')}}},
+ // 파일 복구(인도자): 이 팀의 콘티가 참조하는 파일을 이 기기의 저장소에서 강제로 다시 올린다 — 스토어에서 파일이 사라졌을 때 팀원들 화면을 살리는 용도
+ async repairBlobs(){if(!online()||!isLeader()||!S.team.id)return {ok:0,miss:0};const ids=new Set();S.services.forEach(s=>{SYNC.blobIds(s.items).forEach(id=>ids.add(id));if(s.published)SYNC.blobIds(s.published.items).forEach(id=>ids.add(id))});
+  let ok=0,miss=0,k=0;for(const id of ids){k++;toast(`파일 올리는 중 ${k}/${ids.size}…`);const b=await IDB.get('blobs',id);if(!b){miss++;continue}
+   try{const r=await fetch('/api/blobs/'+id+'?team='+S.team.id+'&force=1',{method:'POST',headers:{'x-conti':'1','content-type':b.type||'application/octet-stream'},body:b,credentials:'same-origin'});if(r.ok)ok++;else miss++}catch(e){miss++}}
+  return {ok,miss}},
  // 초안(인도자): 기기 간 이어서 편집
  draftDoc(svc){return {id:svc.id,name:svc.name,date:svc.date,notice:svc.notice||'',message:svc.message||'',messageRev:svc.messageRev||0,version:svc.version||0,editedAt:svc.editedAt||0,items:clone(svc.items).map(it=>({...it,notes:undefined,media:(it.media||[]).map(m=>({...m,notes:undefined}))}))}},
  async pushDraft(svc){if(!online()||!isLeader()||!svc||!svc.editedAt)return;if(svc.draftPushedAt===svc.editedAt)return;try{await SYNC.ensureBlobs(svc.items,true);await api('/services/'+svc.id+'/draft',{method:'PUT',body:{teamId:S.team.id,doc:SYNC.draftDoc(svc)}});svc.draftPushedAt=svc.editedAt;save()}catch(e){console.warn('draft push',e.message)}},
- applyDraft(svc,doc){const old=new Map(svc.items.map(it=>[it.id,it]));svc.name=doc.name;svc.date=doc.date;svc.notice=doc.notice||'';svc.message=doc.message||'';svc.messageRev=doc.messageRev||0;svc.version=Math.max(svc.version||0,doc.version||0);svc.editedAt=doc.editedAt||Date.now();svc.draftPushedAt=svc.editedAt;
+ applyDraft(svc,doc){scrubIds(doc);const old=new Map(svc.items.map(it=>[it.id,it]));svc.name=doc.name;svc.date=doc.date;svc.notice=doc.notice||'';svc.message=doc.message||'';svc.messageRev=doc.messageRev||0;svc.version=Math.max(svc.version||0,doc.version||0);svc.editedAt=doc.editedAt||Date.now();svc.draftPushedAt=svc.editedAt;
   svc.items=clone(doc.items).map(it=>{const o=old.get(it.id);it.notes=o?(o.notes||[]):[];it.media=(it.media||[]).map(m=>{const om=o&&(o.media||[]).find(x=>x.id===m.id);return {...m,notes:om?(om.notes||[]):[]}});return it});save()},
  async pullDraft(svc){if(!online()||!isLeader()||!svc)return false;let d;try{d=await api('/services/'+svc.id+'/draft?team='+S.team.id)}catch(e){return false}
   if(!d||!d.doc)return false;const remote=+d.doc.editedAt||0;if(remote<=(svc.editedAt||0)+500)return false;
@@ -931,7 +959,7 @@ const SYNC={t:null,pulledAt:{},
    if(del.length)await api('/notes',{method:'DELETE',keepalive:!!keep,body:{teamId:S.team.id,ids:del}});
    S.noteShadow[svc.id]=localIds;save()}catch(e){console.warn('notes push',e.message)}},
  async pullNotes(svc){if(!online()||!svc||!S.team.id)return;await SYNC.pushNotes(svc);let d;try{d=await api('/notes?team='+S.team.id+'&service='+svc.id)}catch(e){return}
-  const who=n=>n.layer==='leader'?'인도자':(n.authorId===d.me?(me().name||'나'):(n.authorName||'멤버'));const by={};d.notes.forEach(n=>{(by[n.itemId]||(by[n.itemId]=[])).push(n)});
+  scrubIds(d.notes=d.notes||[]);const who=n=>n.layer==='leader'?'인도자':(n.authorId===d.me?(me().name||'나'):(n.authorName||'멤버'));const by={};d.notes.forEach(n=>{(by[n.itemId]||(by[n.itemId]=[])).push(n)});
   svc.items.forEach(it=>{const list=by[it.id]||[];it.notes=list.filter(n=>!n.mediaId).map(n=>({id:n.id,marker:n.markerId,layer:n.layer,session:n.session,text:n.text,author:who(n),at:new Date(n.createdAt).getTime()}));
    (it.media||[]).forEach(m=>{m.notes=list.filter(n=>n.mediaId===m.id).map(n=>({id:n.id,t:+n.t||0,marker:n.markerId||undefined,layer:n.layer,session:n.session,text:n.text,author:who(n)}))})});
   S.noteShadow=S.noteShadow||{};S.noteShadow[svc.id]=d.notes.map(n=>n.id);SYNC.pulledAt[svc.id]=Date.now();save()},
@@ -977,42 +1005,89 @@ async function afterGate(){const gs=$('#gtSess');if(gs)gs.onclick=e=>{const b=e.
 async function doGate(act,el){
  try{
   if(act==='lg-mode'){GATE.mode=el.dataset.m;GATE.err='';GATE.user=($('#lgUser')||{value:''}).value;render();return}
-  if(act==='rc-submit'){const username=$('#lgUser').value.trim(),code=$('#rcCode').value.trim(),next=$('#lgPass').value;GATE.user=username;const m=await api('/auth/recover',{method:'POST',body:{username,code,next}});GATE.err='';GATE.mode='login';takeMe(m);toast('비밀번호를 바꿨어요. 설정에서 복구 코드를 새로 발급해 두세요');render();return}
+  if(act==='rc-submit'){const username=$('#lgUser').value.trim(),code=$('#rcCode').value.trim(),next=$('#lgPass').value;GATE.user=username;const m=await api('/auth/recover',{method:'POST',body:{username,code,next}});GATE.err='';GATE.mode='login';await takeMe(m);toast('비밀번호를 바꿨어요. 설정에서 복구 코드를 새로 발급해 두세요');render();return}
   if(act==='lg-submit'){const username=$('#lgUser').value.trim(),password=$('#lgPass').value;GATE.user=username;
    const m=GATE.mode==='login'?await api('/auth/login',{method:'POST',body:{username,password}}):await api('/auth/signup',{method:'POST',body:{username,password,name:$('#lgName').value.trim()}});
-   GATE.err='';GATE.preview=null;takeMe(m);render();if(S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()});return}
-  if(act==='logout'){try{await api('/auth/logout',{method:'POST'})}catch(e){}NET.user=null;NET.teams=[];S.team.id='';S.team.invite='';save();GATE.preview=null;if(route().name!=='home')go('home');render();return}
+   GATE.err='';GATE.preview=null;await takeMe(m);render();probeOmr();if(S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()});return}
+  if(act==='logout'){try{await api('/auth/logout',{method:'POST'})}catch(e){}NET.user=null;NET.teams=[];await switchScope(scopeKey('',''));S.team=Object.assign(DEF_TEAM(),{id:'',invite:''});save();GATE.preview=null;if(route().name!=='home')go('home');render();return}
   if(act==='join-go'){const v=$('#gtLink').value.trim();const tok=(v.match(/join\/([A-Za-z0-9_-]+)/)||[])[1]||v;if(!tok){$('#gtErr').textContent='링크나 코드를 붙여넣어 주세요';return}GATE.preview=null;go('join/'+tok);return}
-  if(act==='team-create'){const t=await api('/teams',{method:'POST',body:{name:$('#gtTeam').value.trim(),myName:$('#gtName').value.trim(),session:GATE.sess||'인도자'}});applyMembership(t);NET.teams.push(t);toast('팀을 만들었어요');go('home');render();return}
-  if(act==='team-join'){const p=GATE.preview;const t=await api('/invite/'+el.dataset.tok+'/join',{method:'POST',body:{name:$('#jnName').value.trim(),session:GATE.sess||(p&&p.sessions[0])}});applyMembership(t);NET.teams.push(t);GATE.preview=null;toast(t.teamName+' 팀에 들어왔어요');go('home');render();return}
+  if(act==='team-create'){const t=await api('/teams',{method:'POST',body:{name:$('#gtTeam').value.trim(),myName:$('#gtName').value.trim(),session:GATE.sess||'인도자'}});await applyMembership(t);NET.teams.push(t);toast('팀을 만들었어요');go('home');render();return}
+  if(act==='team-join'){const p=GATE.preview;const t=await api('/invite/'+el.dataset.tok+'/join',{method:'POST',body:{name:$('#jnName').value.trim(),session:GATE.sess||(p&&p.sessions[0])}});await applyMembership(t);NET.teams.push(t);GATE.preview=null;toast(t.teamName+' 팀에 들어왔어요');go('home');render();return}
  }catch(e){const box=$('#lgErr')||$('#jnErr')||$('#gtErr2')||$('#gtErr');if(box)box.textContent=e.message;else toast(e.message)}
 }
 function copyText(t){if(navigator.clipboard&&navigator.clipboard.writeText)return navigator.clipboard.writeText(t);const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();return Promise.resolve()}
 const inviteLink=()=>location.origin+location.pathname+'#/join/'+(S.team.invite||'');
 async function teamModal(){
  let t;try{t=await api('/teams/'+S.team.id)}catch(e){toast(e.message);return}
- applyMembership(t);const lead=isLeader();const link=inviteLink();
+ await applyMembership(t);const lead=isLeader();const link=inviteLink();
  modal(`<b style="font-size:17px">${esc(t.teamName)}</b> <span class="hint">멤버 ${t.members.length}명</span>
  ${lead?`<div class="lbl">초대 링크 <span class="hint">카톡에 붙여넣으면 멤버가 이 링크로 가입해요</span></div><div class="linkbox" id="tmLink">${esc(link)}</div>
  <div class="row" style="margin-top:8px"><button class="btn sm pri" id="tmCopy">${ic('export')}링크 복사</button><button class="btn sm" id="tmKakao">카톡 문구 복사</button><span class="grow"></span><button class="btn sm ghost" id="tmRotate">링크 재발급</button></div>`:''}
  <div class="lbl">멤버</div><div id="tmList">${t.members.map(m=>`<div class="mrow"><span class="grow"><b>${esc(m.name)}</b> <span class="muted">${esc(m.session)}</span>${m.userId===me().userId?' <span class="pill">나</span>':''}</span>
   ${lead?`<select data-u="${m.userId}">${Object.keys(RL).map(k=>`<option value="${k}" ${k===m.role?'selected':''}>${RL[k]}</option>`).join('')}</select>${m.userId!==me().userId?`<button class="icon sm ghost" data-reset="${m.userId}" title="비밀번호 초기화">${ic('gear')}</button><button class="icon sm ghost" data-kick="${m.userId}" title="내보내기">${ic('trash')}</button>`:''}`:`<span class="pill">${roleLabel(m.role)}</span>`}</div>`).join('')}</div>
  ${NET.teams.length>1?`<div class="lbl">다른 팀</div><div>${NET.teams.filter(x=>x.teamId!==S.team.id).map(x=>`<button class="btn sm" data-switch="${x.teamId}">${esc(x.teamName)}로 전환</button>`).join(' ')}</div>`:''}
+ ${lead?`<div class="lbl">예배 일정</div><div class="row"><button class="btn sm" id="tmDates">${ic('list')}정기 예배 · 날짜 관리</button><span class="hint">정기 예배를 정하면 다가오는 날짜가 자동으로 생겨요</span></div>`:''}
  ${lead?`<div class="lbl">문제 해결</div><div class="row"><button class="btn sm" id="tmRepair">${ic('import')}악보 파일 다시 올리기</button><span class="hint">악보가 안 보인다는 팀원이 있으면 눌러요</span></div>`:''}<div class="row" style="margin-top:18px;justify-content:space-between"><button class="btn ghost danger" id="tmLeave">팀 나가기</button><button class="btn" id="tmClose">닫기</button></div>`,{center:true});
  $('#modal').onclick=async e=>{try{
   if(e.target.closest('#tmClose')){closeModal();render();return}
   if(e.target.closest('#tmCopy')){await copyText(link);toast('링크를 복사했어요');return}
   if(e.target.closest('#tmKakao')){await copyText(`[${t.teamName}] 1414 초대\n아래 링크를 열어 가입하면 콘티를 같이 볼 수 있어요.\n${link}`);toast('카톡 문구를 복사했어요');return}
-  if(e.target.closest('#tmRotate')){if(!confirm('기존 링크는 못 쓰게 됩니다. 재발급할까요?'))return;applyMembership(await api('/teams/'+S.team.id+'/invite/rotate',{method:'POST'}));teamModal();return}
+  if(e.target.closest('#tmRotate')){if(!confirm('기존 링크는 못 쓰게 됩니다. 재발급할까요?'))return;await applyMembership(await api('/teams/'+S.team.id+'/invite/rotate',{method:'POST'}));teamModal();return}
   const rs=e.target.closest('[data-reset]');if(rs){const mem=t.members.find(x=>x.userId===rs.dataset.reset);if(!confirm(`${mem?mem.name:'이 멤버'}의 비밀번호를 초기화할까요? 임시 비밀번호가 한 번만 표시됩니다.`))return;const r=await api('/teams/'+S.team.id+'/members/'+rs.dataset.reset+'/reset',{method:'POST'});
    modal(`<b style="font-size:17px">임시 비밀번호</b><div class="hint" style="margin-top:4px">${esc(mem?mem.name:'')}에게 전달하세요. 로그인 후 설정에서 바꾸면 됩니다.</div><div class="linkbox" style="margin-top:12px;font-size:18px;letter-spacing:.06em">${esc(r.password)}</div><div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" id="pwCopy">복사</button><button class="btn pri" id="pwClose">닫기</button></div>`,{center:true});
    $('#modal').onclick=async ev=>{if(ev.target.closest('#pwCopy')){await copyText(r.password);toast('복사했어요')}if(ev.target.closest('#pwClose')){closeModal();teamModal()}};return}
   const k=e.target.closest('[data-kick]');if(k){if(!confirm('이 멤버를 내보낼까요?'))return;await api('/teams/'+S.team.id+'/members/'+k.dataset.kick,{method:'DELETE'});teamModal();return}
-  const sw=e.target.closest('[data-switch]');if(sw){applyMembership(await api('/teams/'+sw.dataset.switch));closeModal();render();return}
+  const sw=e.target.closest('[data-switch]');if(sw){await applyMembership(await api('/teams/'+sw.dataset.switch));closeModal();render();SYNC.pullServices().then(ch=>{if(ch)render()});return}
+  if(e.target.closest('#tmDates')){closeModal();recurringModal();return}
   if(e.target.closest('#tmRepair')){const btn=e.target.closest('#tmRepair');btn.disabled=true;btn.textContent='올리는 중…';const r=await SYNC.repairBlobs();toast(r.miss?`${r.ok}개 올림 · ${r.miss}개는 이 기기에 없어요`:`악보 ${r.ok}개를 다시 올렸어요`);teamModal();return}
   if(e.target.closest('#tmLeave')){if(!confirm('팀에서 나갈까요?'))return;await api('/teams/'+S.team.id+'/members/'+me().userId,{method:'DELETE'});S.team.id='';S.team.invite='';save();await refreshMe();closeModal();render();return}
  }catch(err){toast(err.message)}};
  $('#modal').onchange=async e=>{const sel=e.target.closest('select[data-u]');if(!sel)return;try{await api('/teams/'+S.team.id+'/members/'+sel.dataset.u,{method:'PATCH',body:{role:sel.value}});toast('역할을 바꿨어요');if(sel.dataset.u===me().userId)await refreshMe()}catch(err){toast(err.message);teamModal()}};
+}
+
+/* ---------- 정기 예배 · 사역 날짜 (§2) ---------- */
+const WD=['일','월','화','수','목','금','토'];
+function dLabel(iso){const p=(iso||'').split('-').map(Number);if(p.length<3)return iso;const wd=new Date(p[0],p[1]-1,p[2]).getDay();return `${p[1]}/${p[2]} (${WD[wd]})`}
+async function recurringModal(){
+ if(!online()){toast('온라인일 때만 쓸 수 있어요');return}
+ if(!isLeader()){toast('인도자만 열 수 있어요');return}
+ let data,team;try{data=await api('/teams/'+S.team.id+'/dates');team=await api('/teams/'+S.team.id)}catch(e){toast(e.message);return}
+ const st={...(team.settings||{})};
+ const body=()=>`<b style="font-size:17px">예배 일정</b> <span class="hint">정기 예배를 정하면 다가오는 날짜가 자동으로 생겨요</span>
+  <div class="lbl">정기 예배</div>
+  <div id="reclist">${data.recurring.length?data.recurring.map(r=>`<div class="mrow"><span class="grow"><b>${WD[r.weekday]}요일</b> ${esc(r.label)}${r.time?` <span class="muted">${esc(r.time)}</span>`:''}${r.active?'':' <span class="pill">쉼</span>'}</span>${r.active?`<button class="btn sm ghost" data-recoff="${r.id}">쉬기</button>`:`<button class="btn sm ghost" data-recon="${r.id}">다시</button>`}<button class="icon sm ghost" data-recdel="${r.id}" title="삭제">${ic('trash')}</button></div>`).join(''):'<div class="hint">아직 없어요</div>'}</div>
+  <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap">
+   <select class="field" id="rcWd" style="width:auto">${WD.map((w,i)=>`<option value="${i}">${w}요일</option>`).join('')}</select>
+   <input class="field" id="rcLabel" placeholder="주일 오전예배" style="flex:1;min-width:120px">
+   <input class="field mono" id="rcTime" placeholder="11:00" style="width:76px;text-align:center">
+   <button class="btn sm pri" id="rcAdd">${ic('plus')}추가</button>
+  </div>
+  <div class="lbl">콘티 자동 생성</div>
+  <div class="row"><span class="hint">예배</span><input class="field mono" id="stWeeks" type="number" min="1" max="12" value="${+st.serviceAutoCreateWeeks||4}" style="width:64px;text-align:center"><span class="hint">주 전부터 홈에 예배 카드가 떠요</span></div>
+  <div class="lbl">콘티 이름 규칙 <span class="hint">{월} {일} {요일} {이름} 을 넣을 수 있어요</span></div>
+  <input class="field" id="stRule" value="${esc(st.nameRule||'{월}/{일} {요일}')}">
+  <div class="lbl">다가오는 예배 날짜</div>
+  <div id="datelist">${data.dates.length?data.dates.map(d=>`<div class="mrow"><span class="grow"><b>${dLabel(d.date)}</b> ${esc(d.label)}${d.time?` <span class="muted">${esc(d.time)}</span>`:''}${d.serviceId?' <span class="pill">콘티</span>':(d.open?'':' <span class="pill">닫힘</span>')}</span>${d.serviceId?'':`<button class="btn sm ghost" data-dateoff="${d.id}" data-open="${d.open?1:0}">${d.open?'닫기':'열기'}</button>`}</div>`).join(''):'<div class="hint">정기 예배를 등록하면 날짜가 여기 나와요</div>'}</div>
+  <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap">
+   <input class="field" id="mdDate" type="date" style="width:auto">
+   <input class="field" id="mdLabel" placeholder="특별집회" style="flex:1;min-width:110px">
+   <input class="field mono" id="mdTime" placeholder="19:30" style="width:76px;text-align:center">
+   <button class="btn sm" id="mdAdd">날짜 추가</button>
+  </div>
+  <div class="row" style="margin-top:16px;justify-content:space-between"><button class="btn" id="rmClose2">닫기</button><button class="btn pri" id="rmSave">${ic('check')}설정 저장</button></div>`;
+ const show=()=>modal(body(),{center:true});
+ const redraw=async()=>{const w=$('#stWeeks'),ru=$('#stRule');if(w)st.serviceAutoCreateWeeks=+w.value||4;if(ru)st.nameRule=ru.value;try{data=await api('/teams/'+S.team.id+'/dates')}catch(e){toast(e.message)}show()};
+ show();
+ $('#modal').onclick=async e=>{try{
+  if(e.target.closest('#rmClose2')){closeModal();return}
+  if(e.target.closest('#rcAdd')){const label=$('#rcLabel').value.trim();if(!label){toast('예배 이름을 적어주세요');return}await api('/teams/'+S.team.id+'/recurring',{method:'POST',body:{weekday:+$('#rcWd').value,label,time:$('#rcTime').value.trim()}});await redraw();return}
+  const off=e.target.closest('[data-recoff]');if(off){await api('/teams/'+S.team.id+'/recurring/'+off.dataset.recoff,{method:'PATCH',body:{active:false}});await redraw();return}
+  const on=e.target.closest('[data-recon]');if(on){const r=data.recurring.find(x=>x.id===on.dataset.recon);await api('/teams/'+S.team.id+'/recurring/'+on.dataset.recon,{method:'PATCH',body:{label:r.label,time:r.time||'',active:true}});await redraw();return}
+  const del=e.target.closest('[data-recdel]');if(del){if(!confirm('이 정기 예배와, 콘티가 없는 예정 날짜를 삭제할까요?'))return;await api('/teams/'+S.team.id+'/recurring/'+del.dataset.recdel,{method:'DELETE'});await redraw();return}
+  const dt=e.target.closest('[data-dateoff]');if(dt){await api('/teams/'+S.team.id+'/dates/'+dt.dataset.dateoff,{method:'PATCH',body:{open:dt.dataset.open!=='1'}});await redraw();return}
+  if(e.target.closest('#mdAdd')){const date=$('#mdDate').value;const label=$('#mdLabel').value.trim();if(!date||!label){toast('날짜와 이름을 적어주세요');return}await api('/teams/'+S.team.id+'/dates',{method:'POST',body:{date,label,time:$('#mdTime').value.trim()}});await redraw();return}
+  if(e.target.closest('#rmSave')){const weeks=Math.min(12,Math.max(1,+$('#stWeeks').value||4));const rule=$('#stRule').value.trim()||'{월}/{일} {요일}';await api('/teams/'+S.team.id+'/settings',{method:'PATCH',body:{serviceAutoCreateWeeks:weeks,nameRule:rule}});toast('저장했어요');closeModal();return}
+ }catch(err){toast(err.message)}};
 }
 
 /* ---------- song form parser ---------- */
@@ -1128,6 +1203,37 @@ function detectSystems(canvas){const W=Math.min(1600,canvas.width);const H=Math.
  found.forEach(f=>{const o=out.find(o=>o.siEnd===f.si-1&&Math.abs(o.top-f.top)<=Math.max(o.sp,f.sp)*1.2+2&&Math.abs(o.bottom-f.bottom)<=Math.max(o.sp,f.sp)*1.2+2);
   if(o){o.top=Math.min(o.top,f.top);o.bottom=Math.max(o.bottom,f.bottom);o.x1=f.x1;o.siEnd=f.si;o.sp=Math.max(o.sp,f.sp)}else out.push({top:f.top,bottom:f.bottom,x0:f.x0,x1:f.x1,sp:f.sp,siEnd:f.si})});
  const k=canvas.height/H;return out.filter(o=>o.x1-o.x0>=sw*2).sort((a,b)=>a.top-b.top||a.x0-b.x0).map(o=>({top:Math.round(o.top*k),bottom:Math.round(o.bottom*k),x0:Math.round(Math.max(0,o.x0-sw)*k),x1:Math.round(Math.min(W,o.x1+sw)*k)}))}
+/* ---------- 채보(OMR): 악보 한 장 → 코드 차트. 서버의 /omr(Gemini) 호출, 결과를 보여주고 곡 정보에 채움 ---------- */
+async function transcribePiece(svc,it,piece){if(!online()||!isLeader()||!piece)return;
+ const blob=await IDB.get('blobs',piece.blob);if(!blob){toast('이 기기에 악보 파일이 없어요');return}
+ toast('채보 중… 10초쯤 걸려요');let b64,mime='image/jpeg';
+ try{
+  if(blob.size>2.5*1024*1024){const img=await loadImg(URL.createObjectURL(blob));const sc=Math.min(1,1800/img.naturalWidth);const c=document.createElement('canvas');c.width=Math.round(img.naturalWidth*sc);c.height=Math.round(img.naturalHeight*sc);c.getContext('2d').drawImage(img,0,0,c.width,c.height);b64=c.toDataURL('image/jpeg',0.85).split(',')[1]}
+  else{b64=await toB64(blob);mime=/^image\/(png|webp)$/.test(blob.type)?blob.type:'image/jpeg'}
+ }catch(e){toast('이미지를 준비하지 못했어요');return}
+ let r;try{r=await api('/omr',{method:'POST',body:{teamId:S.team.id,b64,mime}})}catch(e){toast(e.message);return}
+ const songs=r.songs||[];if(!songs.length){toast('악보를 읽지 못했어요. 더 선명한 사진으로 다시 해 보세요');return}
+ omrModal(svc,it,songs,r);
+}
+function chartText(s){return s.sections.map(sec=>`[${sec.name}${sec.repeat?' x'+sec.repeat:''}] `+sec.bars.map(b=>'| '+(b.chords.join(' ')||'·')).join(' ')+' |'+(sec.bars.some(b=>b.lyric)?'\n   '+sec.bars.map(b=>b.lyric).filter(Boolean).join(' / '):'')).join('\n')}
+function omrModal(svc,it,songs,r){
+ const one=(s,i)=>`<div style="padding:10px 0;border-top:1px solid var(--line2)"><div class="row" style="gap:8px;align-items:baseline"><b style="font-size:15px">${esc(s.title||'(제목 없음)')}</b>${s.subtitle?`<span class="hint">${esc(s.subtitle)}</span>`:''}<span class="grow"></span><span class="hint">키 ${esc(s.key||'?')} · ${esc(s.timeSignature||'?')}${s.tempo?' · '+s.tempo+'bpm':''} · 확신 ${Math.round((s.confidence||0)*100)}%</span></div>
+  <div class="mono" style="margin:6px 0;font-size:12.5px">${esc(s.form||'')}</div>
+  ${s.sections.map(sec=>`<div style="margin:6px 0;font-size:12.5px"><b>[${esc(sec.name)}${sec.repeat?' x'+sec.repeat:''}]</b> <span class="mono">${esc(sec.bars.map(b=>'| '+(b.chords.join(' ')||'·')).join(' ')+' |')}</span>${sec.bars.some(b=>b.lyric)?`<div class="hint">${esc(sec.bars.map(b=>b.lyric).filter(Boolean).join(' / '))}</div>`:''}</div>`).join('')}
+  ${s.notes?`<div class="hint">메모: ${esc(s.notes)}</div>`:''}
+  <div class="row" style="margin-top:8px;gap:6px"><button class="btn sm pri" data-apply="${i}">${ic('check')}곡 정보에 적용</button><button class="btn sm" data-copy="${i}">차트 복사</button></div></div>`;
+ modal(`<b style="font-size:17px">채보 결과</b> <span class="hint">${songs.length>1?songs.length+'곡이 읽혔어요. ':''}코드는 악보에 적힌 그대로예요. 틀린 곳은 적용 후 고치면 돼요</span>${songs.map(one).join('')}
+  <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn" id="omrClose">닫기</button></div>`,{center:true});
+ $('#modal').onclick=async e=>{
+  if(e.target.closest('#omrClose')){closeModal();return}
+  const cp=e.target.closest('[data-copy]');if(cp){await copyText(chartText(songs[+cp.dataset.copy]));toast('차트를 복사했어요');return}
+  const ap=e.target.closest('[data-apply]');if(ap){const s=songs[+ap.dataset.apply];
+   if(s.title&&!it.title)it.title=s.title;if(s.key&&!it.key)it.key=s.key;
+   if(s.form&&(!it.form||confirm('송폼을 채보 결과로 바꿀까요?\n'+s.form)))it.form=s.form;
+   it.chart={at:Date.now(),model:r.model||'',title:s.title,key:s.key,timeSignature:s.timeSignature,tempo:s.tempo,form:s.form,sections:s.sections,notes:s.notes||null};
+   touch(svc);save();closeModal();render();toast('곡 정보에 넣었어요');return}
+ };
+}
 async function recognizeChords(svc,it,piece){if(!online()||!isLeader()||!piece)return;piece.ocr='pending';piece.ocrErr='';save();if(route().name==='edit')drawEditorSheet(svc);
  try{const blob=await IDB.get('blobs',piece.blob);if(!blob)throw new Error('이 기기에 악보 파일이 없어요');const img=await loadImg(URL.createObjectURL(blob));
   const cv=document.createElement('canvas');cv.width=img.naturalWidth;cv.height=img.naturalHeight;cv.getContext('2d').drawImage(img,0,0);
@@ -1214,7 +1320,7 @@ function sheetHTML(item,W,ctx){
   html+=`<div class="piece" data-piece="${p.id}">`;
   if(pieces.length>1)html+=`<div class="phead"><span class="ln"></span>조각 ${pi+1}${p.name?' · '+esc(p.name):''}<span class="ln"></span></div>`;
   const capo=ctx.mode==='edit'?0:(+me().capo||0);const off=chordOffset(item,p)-capo;const nCh=(p.chords||[]).length;const showRed=off!==0&&(ctx.f?ctx.f.chords!==false:true);const chordTool=ctx.mode==='edit'&&ctx.tool==='chord';
-  if(ctx.mode==='edit')html+=`<div class="chordbar ${(nCh||p.sheetKey||p.ocr==='pending')?'':'slim'}">${p.ocr==='pending'?'<span class="hint">코드 인식 중…</span>':''}${(nCh||p.sheetKey)?`<button class="btn sm" data-act="sheet-key" data-id="${p.id}">악보 키 ${esc(p.sheetKey||'?')}${p.keyConfirmed?'':' <span class="muted">(추정)</span>'}</button><span class="hint">→ 연주 키 ${esc(item.key||'?')}</span><span class="pill">${off>0?'+':''}${off}</span><button class="icon sm ghost" data-act="chord-off" data-id="${p.id}" data-d="-1" title="반음 내림">${ic('down')}</button><button class="icon sm ghost" data-act="chord-off" data-id="${p.id}" data-d="1" title="반음 올림">${ic('up')}</button><span class="hint">${nCh}개 코드${off?' · 전조 코드 병기':' · 같은 키'}</span>`:''}${p.ocr==='none'?'<span class="hint">인식 엔진 미연결 — "코드" 도구로 직접 추가</span>':''}${p.ocr==='error'?`<span class="hint" style="color:var(--destructive)">인식 실패: ${esc(p.ocrErr||'')}</span>`:''}<span class="grow"></span>${p.ocr!=='pending'?`<button class="btn sm ghost" data-act="ocr" data-id="${p.id}">${ic('marker')}${nCh?'다시 인식':'코드 인식'}</button>`:''}</div>`;
+  if(ctx.mode==='edit')html+=`<div class="chordbar ${(nCh||p.sheetKey||p.ocr==='pending')?'':'slim'}">${p.ocr==='pending'?'<span class="hint">코드 인식 중…</span>':''}${(nCh||p.sheetKey)?`<button class="btn sm" data-act="sheet-key" data-id="${p.id}">악보 키 ${esc(p.sheetKey||'?')}${p.keyConfirmed?'':' <span class="muted">(추정)</span>'}</button><span class="hint">→ 연주 키 ${esc(item.key||'?')}</span><span class="pill">${off>0?'+':''}${off}</span><button class="icon sm ghost" data-act="chord-off" data-id="${p.id}" data-d="-1" title="반음 내림">${ic('down')}</button><button class="icon sm ghost" data-act="chord-off" data-id="${p.id}" data-d="1" title="반음 올림">${ic('up')}</button><span class="hint">${nCh}개 코드${off?' · 전조 코드 병기':' · 같은 키'}</span>`:''}${p.ocr==='none'?'<span class="hint">인식 엔진 미연결 — "코드" 도구로 직접 추가</span>':''}${p.ocr==='error'?`<span class="hint" style="color:var(--destructive)">인식 실패: ${esc(p.ocrErr||'')}</span>`:''}<span class="grow"></span>${p.ocr!=='pending'?`<button class="btn sm ghost" data-act="ocr" data-id="${p.id}">${ic('marker')}${nCh?'다시 인식':'코드 인식'}</button>`:''}${NET.omr&&p.ocr!=='pending'?`<button class="btn sm ghost" data-act="omr" data-id="${p.id}" title="코드·가사·구성을 읽어 곡 정보에 채움">${ic('music')}채보</button>`:''}</div>`;
   for(let i=0;i<bounds.length-1;i++){
    const a=bounds[i],b=bounds[i+1];
    if(i>0){const m=stripMarkers[i-1];html+=stripHTML(m,notesBy[m.id],mods,ctx)}
@@ -1393,7 +1499,7 @@ function ytCmd(func,args){if(!P.yt)return;try{P.yt.contentWindow.postMessage(JSO
 window.addEventListener('message',e=>{if(!P.yt||e.source!==P.yt.contentWindow)return;let d;try{d=typeof e.data==='string'?JSON.parse(e.data):e.data}catch{return}
  if(d.event==='onReady'||d.event==='initialDelivery'){P.ytReady=true}
  if(d.event==='infoDelivery'&&d.info){if(d.info.currentTime!=null){P.t=d.info.currentTime}if(d.info.duration)P.dur=d.info.duration;if(d.info.playerState!=null)P.playing=d.info.playerState===1;updateTL()}});
-let PL={svc:null,idx:0,mi:0,stage:false,zoom:+(localStorage.getItem('conti-zoom')||1)||1,f:{leader:true,session:true,mine:true,chords:true},session:null};
+let PL={svc:null,idx:0,mi:0,stage:false,zoom:+(lsGet('conti-zoom')||1)||1,f:{leader:true,session:true,mine:true,chords:true},session:null};
 // 인쇄: A4 세로, 곡마다 한 장 — 번호·제목·키·송폼 헤더 + 악보(메모 띠·전조 코드 포함)
 async function printService(svc){const pub=pubOrDraft(svc);const my=me();await preload(svc);
  const ctx={mode:'play',session:my.session,f:{leader:true,session:true,mine:true,chords:true}};
@@ -1443,9 +1549,13 @@ function updateTL(){
 
 /* ---------- settings / library / export-import ---------- */
 async function exportJSON(onlySvcId){
- const svcs=onlySvcId?S.services.filter(s=>s.id===onlySvcId):S.services;const ids=new Set();svcs.forEach(s=>{[...s.items,...(s.published?s.published.items:[])].forEach(it=>{it.pieces.forEach(p=>ids.add(p.blob));it.media.forEach(m=>{if(m.blob)ids.add(m.blob)})})});
- const blobs={};let total=0;for(const id of ids){const b=await IDB.get('blobs',id);if(!b)continue;if(b.type&&!b.type.startsWith('image/')&&b.size>25*1024*1024)continue;total+=b.size;blobs[id]={type:b.type,b64:await toB64(b)}}
- const data={app:'conti',v:1,at:Date.now(),team:{sessions:S.team.sessions,phrases:S.team.phrases},services:svcs,library:onlySvcId?[]:S.library,blobs};
+ const svcs=clone(onlySvcId?S.services.filter(s=>s.id===onlySvcId):S.services);const lib=onlySvcId?[]:clone(S.library);
+ // 개인('나만') 메모는 내보내지 않는다 — 받는 사람(인도자)이 남의 개인 메모를 보게 되므로
+ const shared=n=>n.layer==='leader'||n.layer==='session';svcs.forEach(s=>[...s.items,...(s.published?s.published.items:[])].forEach(it=>{it.notes=(it.notes||[]).filter(shared);(it.media||[]).forEach(m=>m.notes=(m.notes||[]).filter(shared))}));
+ const ids=new Set();const collect=it=>{(it.pieces||[]).forEach(p=>p.blob&&ids.add(p.blob));(it.media||[]).forEach(m=>{if(m.blob)ids.add(m.blob)})};svcs.forEach(s=>[...s.items,...(s.published?s.published.items:[])].forEach(collect));lib.forEach(collect); // 라이브러리 악보 파일도 같이
+ const blobs={};let total=0;const skipped=[];for(const id of ids){const b=await IDB.get('blobs',id);if(!b)continue;if(b.type&&!b.type.startsWith('image/')&&b.size>25*1024*1024){skipped.push(id);continue}total+=b.size;blobs[id]={type:b.type,b64:await toB64(b)}}
+ if(skipped.length&&!confirm(`25MB가 넘는 오디오 ${skipped.length}개는 파일에 담기지 않아요. 받는 기기에서는 그 녹음이 재생되지 않습니다. 계속할까요?`))return;
+ const data={app:'conti',v:1,at:Date.now(),team:{sessions:S.team.sessions,phrases:S.team.phrases},services:svcs,library:lib,blobs};
  const name=(onlySvcId?(svcs[0].name||'예배'):'콘티_전체')+'_v'+(svcs[0]&&svcs[0].version||0)+'.conti.json';
  const json=JSON.stringify(data);
  try{if(window.claude&&window.claude.use){const dl=await window.claude.use('downloads');if(dl){await dl.save({filename:name,data:json});toast('저장됨');return}}}catch(e){console.warn(e)}
@@ -1456,15 +1566,26 @@ function b64Blob(b64,type){const bin=atob(b64);const u=new Uint8Array(bin.length
 async function importJSON(file){
  let data;try{data=JSON.parse(await file.text())}catch{toast('파일을 읽지 못했어요');return}
  if(data.app!=='conti'){toast('콘티 파일이 아니에요');return}
- for(const id in (data.blobs||{})){const ex=await IDB.get('blobs',id);if(!ex)await IDB.put('blobs',id,b64Blob(data.blobs[id].b64,data.blobs[id].type))}
+ data.services=scrubIds(Array.isArray(data.services)?data.services:[]);data.library=scrubIds(Array.isArray(data.library)?data.library:[]);
+ for(const id in (data.blobs||{})){if(!ID_RE.test(id)||!data.blobs[id]||typeof data.blobs[id].b64!=='string')continue;const ex=await IDB.get('blobs',id);if(!ex)await IDB.put('blobs',id,b64Blob(data.blobs[id].b64,data.blobs[id].type))}
  const my=me().name;let n=0;
- for(const inc of data.services||[]){const cur=svcById(inc.id);
+ // 이미 있는 예배는 확인을 받고서만 덮어쓴다 — 이 기기의 미발행 수정이 사라질 수 있으므로
+ const dup=data.services.filter(inc=>svcById(inc.id));let overwrite=true;
+ if(dup.length){const newer=dup.filter(inc=>{const c=svcById(inc.id);return (c.version||0)>(inc.version||0)||(c.editedAt||0)>(data.at||0)}).length;overwrite=confirm(`${dup.length}개 예배가 이미 이 기기에 있어요.${newer?` 그중 ${newer}개는 이 기기 쪽이 더 새로워요.`:''}\n파일 내용으로 덮어쓸까요? (취소하면 새 예배만 가져와요)`)}
+ // 온라인이면 남의 메모는 들여오지 않는다 — 내 계정 이름으로 서버에 올라가 버리므로. 인도자 메모와 내 메모만
+ const keepNote=x=>!online()||x.layer==='leader'||x.author===my;
+ for(const inc of data.services){const cur=svcById(inc.id);
+  if(cur&&!overwrite)continue;
+  (inc.items||[]).forEach(it=>{it.notes=(it.notes||[]).filter(keepNote);(it.media||[]).forEach(md=>md.notes=(md.notes||[]).filter(keepNote))});
   if(cur){ // carry my own notes across
    inc.items.forEach(it=>{const old=cur.items.find(x=>x.id===it.id);if(!old)return;const mine=(old.notes||[]).filter(x=>x.layer!=='leader'&&x.author===my);const mids=new Set(it.pieces.flatMap(p=>p.markers.map(m=>m.id)));it.notes=(it.notes||[]).filter(x=>x.layer==='leader'||x.author!==my).concat(mine.filter(x=>mids.has(x.marker)));
     it.media.forEach(md=>{const om=(old.media||[]).find(x=>x.id===md.id);if(om){md.notes=(md.notes||[]).filter(x=>x.layer==='leader'||x.author!==my).concat((om.notes||[]).filter(x=>x.layer!=='leader'&&x.author===my))}})});
-   Object.assign(cur,inc)}else S.services.push(inc);n++}
- if(data.team){if(data.team.sessions&&data.team.sessions.length)S.team.sessions=data.team.sessions;if(data.team.phrases&&data.team.phrases.length)S.team.phrases=data.team.phrases;if(!S.team.sessions.includes(me().session))me().session=S.team.sessions[0]}
- (data.library||[]).forEach(s=>{if(!S.library.find(x=>x.id===s.id))S.library.push(s)});
+   Object.assign(cur,inc)}else S.services.push(inc);
+  // 메모 그림자: 파일에 없는 서버 메모를 '삭제'로 보내지 않도록, 서버에 있다고 아는 목록을 지금 로컬에 있는 것으로만 좁힌다 (다음 동기화 때 서버 메모가 다시 내려옴)
+  if(S.noteShadow&&S.noteShadow[inc.id]){const have=new Set(SYNC.localNotes(svcById(inc.id)).map(x=>x.id));S.noteShadow[inc.id]=S.noteShadow[inc.id].filter(id=>have.has(id))}
+  n++}
+ if(data.team&&!online()){if(data.team.sessions&&data.team.sessions.length)S.team.sessions=data.team.sessions;if(data.team.phrases&&data.team.phrases.length)S.team.phrases=data.team.phrases;if(!S.team.sessions.includes(me().session))me().session=S.team.sessions[0]} // 온라인이면 팀 설정은 서버가 기준
+ data.library.forEach(s=>{if(!S.library.find(x=>x.id===s.id))S.library.push(s)});
  save();toast(n+'개 예배 가져옴');render();
 }
 
@@ -1516,6 +1637,7 @@ document.addEventListener('click',async e=>{
   case 'del-piece':{const s=svcById(r.a);const it=curItem(s);if(!confirm('조각을 삭제할까요? 마커와 메모도 지워집니다.'))break;const p=it.pieces.find(x=>x.id===el.dataset.id);const mids=new Set(p.markers.map(m=>m.id));it.notes=it.notes.filter(n=>!mids.has(n.marker));it.pieces=it.pieces.filter(x=>x.id!==p.id);touch(s);save();syncLib(it);render();break}
   case 'add-yt':{const s=svcById(r.a);const it=curItem(s);const u=$('#ytUrl').value.trim();if(!ytId(u)){toast('유튜브 링크가 아니에요');break}it.media.push({id:uid(),type:'youtube',url:u,name:'',start:ytStart(u)||0,end:0,notes:[],sessions:((SEL[s.id]||{}).mdTarget||[]).slice()});touch(s);save();syncLib(it);render();break}
   case 'ocr':{const s=svcById(r.a);const it=curItem(s);const p=it&&it.pieces.find(x=>x.id===el.dataset.id);if(!p)break;if(!online()){toast('서버에 연결돼 있을 때만 인식할 수 있어요');break}recognizeChords(s,it,p);break}
+  case 'omr':{const s=svcById(r.a);const it=curItem(s);const p=it&&it.pieces.find(x=>x.id===el.dataset.id);if(!p)break;if(!online()){toast('서버에 연결돼 있을 때만 채보할 수 있어요');break}transcribePiece(s,it,p);break}
   case 'sheet-key':{const s=svcById(r.a);const it=curItem(s);const p=it&&it.pieces.find(x=>x.id===el.dataset.id);if(!p)break;keyPickerModal(p.sheetKey||'',k=>{p.sheetKey=k;p.keyConfirmed=!!k;p.offset=null;touch(s);save();syncLib(it);drawEditorSheet(s)});break}
   case 'chord-off':{const s=svcById(r.a);const it=curItem(s);const p=it&&it.pieces.find(x=>x.id===el.dataset.id);if(!p)break;p.offset=chordOffset(it,p)+ +el.dataset.d;if(p.offset>6)p.offset-=12;if(p.offset<-6)p.offset+=12;touch(s);save();syncLib(it);drawEditorSheet(s);break}
   case 'md-target':{const s=svcById(r.a);const it=curItem(s);const md=it&&it.media.find(m=>m.id===el.dataset.id);if(!md)break;mediaTargetModal(s,it,md);break}
@@ -1548,7 +1670,7 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
 
 /* ---------- boot ---------- */
 (async function boot(){
- try{await IDB.open();const raw=await IDB.get('kv','state');if(raw){const s=JSON.parse(raw);S=Object.assign(S,s);S.team=Object.assign({sessions:DEF_SESS.slice(),phrases:DEF_PHR.slice(),me:{name:'',session:'건반',role:'leader'}},S.team||{});
+ try{await IDB.open();const sc=await IDB.get('kv','scope');if(sc)CUR_SCOPE=sc;const raw=await IDB.get('kv',sc||'state');if(raw){const s=JSON.parse(raw);S=Object.assign(S,s);S.team=Object.assign({sessions:DEF_SESS.slice(),phrases:DEF_PHR.slice(),me:{name:'',session:'건반',role:'leader'}},S.team||{});
   const mig=it=>{if(it&&it.keyNow!==undefined){it.mod=(it.keyNow&&it.keyNow!==it.key)?it.keyNow:(it.mod||'');delete it.keyNow}};
   S.services.forEach(s=>{s.items.forEach(mig);if(s.published)s.published.items.forEach(mig)});S.library.forEach(mig)}}catch(e){console.error(e);alert('저장소를 열 수 없어요. 사파리 비공개 모드에서는 동작하지 않습니다.')}
  // seed (embedded data) — used when this page is published with data inside
@@ -1556,10 +1678,11 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
  const seed=document.getElementById('seed');if(seed&&seed.textContent.trim()){try{const d=JSON.parse(seed.textContent);if(!S.seedAt||d.at>S.seedAt){S.seedAt=d.at;await importJSON(new Blob([seed.textContent],{type:'application/json'}))}}catch(e){console.warn('seed',e)}}
  // 서버 감지: /api 가 있으면 로그인·팀 흐름, 없으면(정적 호스팅) 기기 안에서만. 네트워크가 끊겼으면 마지막으로 받은 팀 정보로 그대로 진행
  NET.server=await probeServer();
- if(NET.server===true){try{takeMe(await api('/me'))}catch(e){if(e.status===401)NET.user=null;else NET.server=null}}
+ if(NET.server===true){try{await takeMe(await api('/me'))}catch(e){if(e.status===401)NET.user=null;else NET.server=null}}
  if(!online()&&!me().name){setTimeout(()=>{render();settingsModal()},0)}else render();
  if(online()&&S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()});
- window.CONTI={S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage};
+ probeOmr();
+ window.CONTI={S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE};
 })();
 })();
 </script>

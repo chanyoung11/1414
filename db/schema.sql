@@ -98,3 +98,39 @@ create table if not exists drafts (
 );
 -- 비공개 Blob: 서명 URL 발급용 경로
 alter table blobs add column if not exists pathname text;
+
+-- ---------- §2 정기 예배 · 사역 날짜 ----------
+-- 팀 설정 확장 (없으면 추가)
+alter table teams add column if not exists settings jsonb not null default '{}';
+-- settings: { serviceAutoCreateWeeks:4, nameRule:'{월}/{일} {요일}', reminderDay:25, wordRequestDay:2, rehearsalUploadRole:'member', slots:{}, defaultLineup:{} }
+
+-- 정기 예배 (요일 기반)
+create table if not exists recurring (
+  id         uuid primary key default gen_random_uuid(),
+  team_id    uuid not null references teams(id) on delete cascade,
+  weekday    int  not null check (weekday between 0 and 6),   -- 0=일
+  label      text not null,
+  time       text,                                            -- 'HH:MM'
+  active     bool not null default true,
+  created_at timestamptz not null default now()
+);
+create index if not exists recurring_team_idx on recurring(team_id);
+
+-- 사역 날짜 (실제 달력에 뜨는 개별 날짜)
+create table if not exists service_dates (
+  id           uuid primary key default gen_random_uuid(),
+  team_id      uuid not null references teams(id) on delete cascade,
+  date         date not null,
+  label        text not null,
+  time         text,
+  source       text not null default 'manual' check (source in ('recurring','manual')),
+  recurring_id uuid references recurring(id) on delete set null,
+  open         bool not null default true,
+  service_id   text,                                          -- 연결된 콘티(Service.id)
+  created_at   timestamptz not null default now(),
+  unique (team_id, date, label)
+);
+create index if not exists sdate_team_idx on service_dates(team_id, date);
+
+-- 비밀번호 변경·초기화·복구 시각. 이보다 먼저 발급된 세션 토큰(iat)은 무효 (null 이면 검사 안 함)
+alter table users add column if not exists auth_epoch timestamptz;

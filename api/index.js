@@ -2,10 +2,11 @@
 // vercel.json 의 rewrite 가 /api/* 를 /api?p=<경로> 로 보내고, 여기서 p(또는 원래 pathname)로 라우팅합니다.
 // 로컬: npm run dev (scripts/dev.mjs가 이 핸들러를 /api/* 에 그대로 붙임)
 import { q, one } from '../lib/db.js';
-import { sessionUserId, sessionCookie, clearSessionCookie, randomToken } from '../lib/session.js';
+import { sessionClaims, sessionCookie, clearSessionCookie, randomToken } from '../lib/session.js';
 import { hashPassword, verifyPassword, USERNAME_RE, PASSWORD_MIN } from '../lib/password.js';
 import { putBlob, delBlobs, readUrls } from '../lib/blob.js';
 import { ocrBands, visionConfigured } from '../lib/vision.js';
+import { transcribeSheet, geminiConfigured, geminiModel, estimateUSD } from '../lib/gemini.js';
 
 class HttpError extends Error { constructor(status, code, message) { super(message || code); this.status = status; this.code = code; } }
 const bad = (m) => new HttpError(400, 'bad_request', m);
@@ -14,11 +15,11 @@ const forbidden = (m) => new HttpError(403, 'forbidden', m || '권한이 없어�
 const notFound = (m) => new HttpError(404, 'not_found', m || '없어요');
 
 /* ---------- 요청/응답 도우미 ---------- */
-async function readBody(req) {
+async function readBody(req, max = 1e6) {
   if (req.body !== undefined && req.body !== null) return typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body;
   return new Promise((res, rej) => {
     let s = ''; req.setEncoding('utf8');
-    req.on('data', (c) => { s += c; if (s.length > 1e6) rej(bad('요청이 너무 커요')); });
+    req.on('data', (c) => { s += c; if (s.length > max) rej(bad('요청이 너무 커요')); });
     req.on('end', () => { try { res(s ? JSON.parse(s) : {}); } catch { rej(bad('JSON이 아니에요')); } });
     req.on('error', rej);
   });
@@ -40,6 +41,7 @@ function send(res, status, data, headers) {
   res.end(JSON.stringify(data));
 }
 const str = (v, max = 200) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+const nowSec = () => Math.floor(Date.now() / 1000);
 const strList = (v) => Array.isArray(v) ? v.map((s) => str(s, 40)).filter(Boolean).slice(0, 30) : null;
 
 /* ---------- 도메인 ---------- */
@@ -105,14 +107,15 @@ on('POST', '/auth/login', async ({ req, body }) => {
 
 on('POST', '/auth/logout', async ({ req }) => ({ data: { ok: true }, headers: { 'Set-Cookie': clearSessionCookie(req) } }));
 
-on('POST', '/auth/password', async ({ uid, body }) => {
+on('POST', '/auth/password', async ({ req, uid, body }) => {
   if (!uid) throw noAuth();
   const cur = String(body.current || ''), next = String(body.next || '');
   if (next.length < PASSWORD_MIN) throw bad(`비밀번호는 ${PASSWORD_MIN}자 이상이에요`);
   const u = await one('select password_hash from users where id=$1', [uid]);
   if (!verifyPassword(cur, u.password_hash)) throw new HttpError(401, 'bad_login', '현재 비밀번호가 맞지 않아요');
-  await q('update users set password_hash=$2 where id=$1', [uid, hashPassword(next)]);
-  return { ok: true };
+  // 다른 기기의 로그인은 끊고, 이 기기는 새 쿠키로 이어간다
+  await q('update users set password_hash=$2, auth_epoch=to_timestamp($3) where id=$1', [uid, hashPassword(next), nowSec()]);
+  return { data: { ok: true }, headers: { 'Set-Cookie': sessionCookie(req, uid) } };
 });
 
 on('GET', '/me', async ({ uid }) => { if (!uid) throw noAuth(); const r = await meView(uid); const u = await one('select recovery_hash is not null as has from users where id=$1', [uid]); r.user.hasRecovery = !!(u && u.has); return r; });
@@ -131,7 +134,7 @@ on('POST', '/auth/recover', async ({ req, body }) => {
   if (next.length < PASSWORD_MIN) throw bad(`비밀번호는 ${PASSWORD_MIN}자 이상이에요`);
   const u = await one('select id, recovery_hash from users where username=$1', [username]);
   if (!u || !u.recovery_hash || !verifyPassword(code, u.recovery_hash)) throw new HttpError(401, 'bad_recovery', '아이디 또는 복구 코드가 맞지 않아요');
-  await q('update users set password_hash=$2, recovery_hash=null, last_login_at=now() where id=$1', [u.id, hashPassword(next)]);
+  await q('update users set password_hash=$2, recovery_hash=null, last_login_at=now(), auth_epoch=to_timestamp($3) where id=$1', [u.id, hashPassword(next), nowSec()]);
   return { data: await meView(u.id), headers: { 'Set-Cookie': sessionCookie(req, u.id) } };
 });
 
@@ -162,7 +165,8 @@ on('GET', '/teams/:id', async ({ uid, params }) => {
   if (!uid) throw noAuth();
   const m = await requireMember(uid, params.id);
   const members = await q('select user_id as "userId", name, session, role, created_at as "joinedAt" from members where team_id=$1 order by created_at asc', [params.id]);
-  return { ...viewOf(m), members };
+  const t = await one('select settings from teams where id=$1', [params.id]);
+  return { ...viewOf(m), members, settings: { ...DEF_SETTINGS, ...(t && t.settings || {}) } };
 });
 
 on('PATCH', '/teams/:id', async ({ uid, params, body }) => {
@@ -203,10 +207,14 @@ on('POST', '/teams/:id/members/:userId/reset', async ({ uid, params }) => {
   if (params.userId === uid) throw bad('내 비밀번호는 설정에서 바꿔 주세요');
   const target = await one('select user_id from members where team_id=$1 and user_id=$2', [params.id, params.userId]);
   if (!target) throw notFound('그 멤버가 없어요');
+  // 계정은 팀 밖의 전역 객체다. 다른 팀에도 속한 계정을 이 팀 인도자가 초기화하면 그 팀들의 자료까지 열리므로 막는다
+  const elsewhere = await one('select count(*)::int as n from members where user_id=$1 and team_id<>$2', [params.userId, params.id]);
+  if (elsewhere && elsewhere.n > 0) throw forbidden('이 멤버는 다른 팀에도 속해 있어 여기서 초기화할 수 없어요. 본인이 복구 코드로 바꾸게 해 주세요');
   const alphabet = 'abcdefghjkmnpqrstuvwxyz23456789';
   const bytes = randomToken(12); let pw = '';
   for (let i = 0; i < 8; i++) pw += alphabet[bytes.charCodeAt(i) % alphabet.length];
-  await q('update users set password_hash=$2 where id=$1', [params.userId, hashPassword(pw)]);
+  // 비밀번호가 바뀌면 그 계정의 기존 로그인은 전부 끊는다 (auth_epoch 이전에 발급된 세션은 무효)
+  await q('update users set password_hash=$2, auth_epoch=to_timestamp($3) where id=$1', [params.userId, hashPassword(pw), nowSec()]);
   return { password: pw };
 });
 
@@ -415,6 +423,26 @@ on('DELETE', '/notes', async ({ uid, body }) => {
   return { ok: true, deleted: r.length };
 });
 
+// 채보 OMR (인도자): 악보 한 장 → 코드 차트(제목·키·박자·섹션·마디별 코드·가사). Gemini 키는 서버 환경변수에만 있고 클라이언트엔 내려가지 않음
+on('GET', '/omr', async ({ uid }) => { if (!uid) throw noAuth(); return { available: geminiConfigured(), model: geminiConfigured() ? geminiModel() : null, mock: process.env.GEMINI_API_KEY === 'mock' }; });
+on('POST', '/omr', async ({ uid, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  await requireMember(uid, teamId, 'leader');
+  if (!geminiConfigured()) throw new HttpError(503, 'no_omr', '채보 엔진이 아직 연결되지 않았어요 (GEMINI_API_KEY)');
+  const b64 = String(body.b64 || '');
+  const mime = /^image\/(jpeg|png|webp)$/.test(String(body.mime || '')) ? String(body.mime) : 'image/jpeg';
+  if (b64.length < 100) throw bad('이미지가 비어 있어요');
+  if (b64.length > 9e6) throw new HttpError(413, 'too_large', '이미지가 너무 커요 (6MB 이하)');
+  let r;
+  try { r = await transcribeSheet({ b64, mime }); }
+  catch (e) {
+    if (e.status === 429) throw new HttpError(429, 'omr_quota', '채보 한도에 걸렸어요. 잠시 뒤 다시 해 주세요');
+    throw new HttpError(502, 'omr_failed', '채보 실패: ' + (e.message || ''));
+  }
+  return { songs: r.songs, model: r.model, usage: r.usage, cost: estimateUSD(r.model, r.usage) };
+});
+
 // 코드 OCR (인도자): 클라이언트가 자른 코드 띠 이미지들을 Vision 에 넘김
 on('GET', '/ocr', async ({ uid }) => { if (!uid) throw noAuth(); return { available: visionConfigured(), mock: process.env.GOOGLE_VISION_KEY === 'mock' }; });
 on('POST', '/ocr', async ({ uid, body }) => {
@@ -427,6 +455,135 @@ on('POST', '/ocr', async ({ uid, body }) => {
   if (images.reduce((n, im) => n + im.b64.length, 0) > 12 * 1024 * 1024) throw new HttpError(413, 'too_large', '이미지가 너무 커요');
   const results = await ocrBands(images);
   return { results };
+});
+
+/* ---------- §2 정기 예배 · 사역 날짜 ---------- */
+const DEF_SETTINGS = { serviceAutoCreateWeeks: 4, nameRule: '{월}/{일} {요일}', reminderDay: 25, wordRequestDay: 2, rehearsalUploadRole: 'member' };
+const WD = ['일', '월', '화', '수', '목', '금', '토'];
+function fmtName(rule, d, label) {
+  const dt = new Date(d + 'T00:00:00');
+  return String(rule || '{월}/{일} {요일}')
+    .replace(/\{월\}/g, dt.getMonth() + 1).replace(/\{일\}/g, dt.getDate())
+    .replace(/\{요일\}/g, WD[dt.getDay()]).replace(/\{이름\}/g, label || '');
+}
+function isoDate(dt) { return dt.toISOString().slice(0, 10); }
+
+// 정기 예배 하나가 앞으로 13주 안에 놓는 날짜들을 채운다 (빠진 것만 insert)
+async function fillDates(teamId, rec, weeks = 13) {
+  const start = new Date(); start.setHours(0, 0, 0, 0);
+  const end = new Date(start); end.setDate(end.getDate() + weeks * 7);
+  const t = await one('select settings from teams where id=$1', [teamId]);
+  const rule = (t && t.settings && t.settings.nameRule) || DEF_SETTINGS.nameRule;
+  const d = new Date(start);
+  d.setDate(d.getDate() + ((rec.weekday - d.getDay() + 7) % 7));
+  for (; d < end; d.setDate(d.getDate() + 7)) {
+    const iso = isoDate(d);
+    await q(`insert into service_dates(team_id, date, label, time, source, recurring_id, open)
+             values($1,$2,$3,$4,'recurring',$5,true) on conflict (team_id, date, label) do nothing`,
+      [teamId, iso, rec.label, rec.time || null, rec.id]);
+  }
+}
+
+on('GET', '/teams/:id/dates', async ({ uid, url, params }) => {
+  if (!uid) throw noAuth();
+  await requireMember(uid, params.id);
+  const rows = await q(`select id, date::text as date, label, time, source, recurring_id as "recurringId", open, service_id as "serviceId"
+                        from service_dates where team_id=$1 and date >= (current_date - interval '1 day') order by date asc`, [params.id]);
+  const rec = await q('select id, weekday, label, time, active from recurring where team_id=$1 order by weekday', [params.id]);
+  return { dates: rows, recurring: rec };
+});
+
+on('POST', '/teams/:id/recurring', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  await requireMember(uid, params.id, 'leader');
+  const weekday = Math.max(0, Math.min(6, Math.round(+body.weekday)));
+  const label = str(body.label, 40); if (!label) throw bad('이름을 적어 주세요');
+  const time = /^\d{1,2}:\d{2}$/.test(String(body.time || '')) ? String(body.time) : null;
+  const rec = await one('insert into recurring(team_id, weekday, label, time) values($1,$2,$3,$4) returning id, weekday, label, time, active', [params.id, weekday, label, time]);
+  await fillDates(params.id, rec);
+  return { ok: true, recurring: rec };
+});
+
+on('PATCH', '/teams/:id/recurring/:rid', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  await requireMember(uid, params.id, 'leader');
+  const rec = await one('select * from recurring where id=$1 and team_id=$2', [params.rid, params.id]);
+  if (!rec) throw notFound('정기 예배가 없어요');
+  if (typeof body.active === 'boolean' && !body.active) {
+    // 비활성: 미래의 콘티 없는 날짜 삭제, 콘티/답 있는 날짜는 닫기만
+    await q(`delete from service_dates where team_id=$1 and recurring_id=$2 and date > current_date and service_id is null`, [params.id, params.rid]);
+    await q(`update service_dates set open=false where team_id=$1 and recurring_id=$2 and date > current_date`, [params.id, params.rid]);
+    await q('update recurring set active=false where id=$1', [params.rid]);
+    return { ok: true };
+  }
+  const label = str(body.label, 40) || rec.label;
+  const time = body.time == null ? rec.time : (/^\d{1,2}:\d{2}$/.test(String(body.time)) ? String(body.time) : null);
+  await q('update recurring set label=$2, time=$3, active=true where id=$1', [params.rid, label, time]);
+  const nrec = await one('select id, weekday, label, time, active from recurring where id=$1', [params.rid]);
+  await fillDates(params.id, nrec);
+  return { ok: true, recurring: nrec };
+});
+
+on('DELETE', '/teams/:id/recurring/:rid', async ({ uid, params }) => {
+  if (!uid) throw noAuth();
+  await requireMember(uid, params.id, 'leader');
+  await q(`delete from service_dates where team_id=$1 and recurring_id=$2 and date > current_date and service_id is null`, [params.id, params.rid]);
+  await q(`update service_dates set open=false, recurring_id=null where team_id=$1 and recurring_id=$2`, [params.id, params.rid]);
+  await q('delete from recurring where id=$1 and team_id=$2', [params.rid, params.id]);
+  return { ok: true };
+});
+
+// 인도자가 날짜 열기 (manual)
+on('POST', '/teams/:id/dates', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  await requireMember(uid, params.id, 'leader');
+  const date = str(body.date, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw bad('날짜가 이상해요');
+  const label = str(body.label, 40); if (!label) throw bad('이름을 적어 주세요');
+  const time = /^\d{1,2}:\d{2}$/.test(String(body.time || '')) ? String(body.time) : null;
+  const row = await one(`insert into service_dates(team_id, date, label, time, source, open) values($1,$2,$3,$4,'manual',true)
+                         on conflict (team_id, date, label) do update set open=true returning id, date::text as date, label, time, open`, [params.id, date, label, time]);
+  return { ok: true, date: row };
+});
+
+// 날짜 열기·닫기
+on('PATCH', '/teams/:id/dates/:did', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  await requireMember(uid, params.id, 'leader');
+  const row = await one('select * from service_dates where id=$1 and team_id=$2', [params.did, params.id]);
+  if (!row) throw notFound('날짜가 없어요');
+  if (typeof body.open === 'boolean') {
+    if (!body.open && row.service_id) throw bad('콘티가 있는 날짜는 닫을 수 없어요. 먼저 콘티를 삭제하세요');
+    await q('update service_dates set open=$2 where id=$1', [params.did, body.open]);
+  }
+  if (body.label != null || body.time != null) {
+    await q('update service_dates set label=coalesce(nullif($2,\'\'),label), time=$3 where id=$1',
+      [params.did, str(body.label, 40), /^\d{1,2}:\d{2}$/.test(String(body.time || '')) ? String(body.time) : row.time]);
+  }
+  return { ok: true };
+});
+
+// 팀 설정 읽기/쓰기
+on('PATCH', '/teams/:id/settings', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  await requireMember(uid, params.id, 'leader');
+  const cur = (await one('select settings from teams where id=$1', [params.id])).settings || {};
+  const next = { ...DEF_SETTINGS, ...cur };
+  if (body.serviceAutoCreateWeeks != null) next.serviceAutoCreateWeeks = Math.max(1, Math.min(8, Math.round(+body.serviceAutoCreateWeeks)));
+  if (body.nameRule != null) next.nameRule = str(body.nameRule, 60);
+  if (body.reminderDay != null) next.reminderDay = Math.max(20, Math.min(28, Math.round(+body.reminderDay)));
+  if (body.rehearsalUploadRole != null && ['member', 'session_lead', 'leader'].includes(body.rehearsalUploadRole)) next.rehearsalUploadRole = body.rehearsalUploadRole;
+  await q('update teams set settings=$2 where id=$1', [params.id, JSON.stringify(next)]);
+  return { ok: true, settings: next };
+});
+
+// 매일 03:00 크론: 13주 앞 유지
+on('GET', '/cron/dates', async ({ req }) => {
+  // Vercel 크론은 CRON_SECRET 이 설정돼 있으면 Authorization: Bearer <secret> 를 붙여 부른다. 미설정이면 아예 막는다 (위조 가능한 헤더로는 통과 불가)
+  if (!process.env.CRON_SECRET || req.headers['authorization'] !== `Bearer ${process.env.CRON_SECRET}`) throw forbidden('크론 전용');
+  const recs = await q('select * from recurring where active=true');
+  let n = 0;
+  for (const rec of recs) { await fillDates(rec.team_id, rec); n++; }
+  return { ok: true, recurring: n };
 });
 
 /* ---------- 진입점 ---------- */
@@ -443,8 +600,13 @@ export default async function handler(req, res) {
     }
     if (method !== 'GET' && req.headers['x-conti'] !== '1') throw forbidden('앱에서만 호출할 수 있어요');
     const params = path.match(route.re).groups || {};
-    const body = (method === 'GET' || /^\/blobs\//.test(path)) ? {} : await readBody(req);
-    const uid = sessionUserId(req);
+    const body = (method === 'GET' || /^\/blobs\//.test(path)) ? {} : await readBody(req, /^\/(ocr|omr)$/.test(path) ? 12e6 : 1e6); // 이미지 base64 를 실어 보내는 경로만 크게
+    // 세션: 서명·만료 검사 후, 비밀번호 변경(auth_epoch) 이전에 발급된 토큰은 무효 처리
+    let uid = null; const claims = sessionClaims(req);
+    if (claims) {
+      const ep = await one('select extract(epoch from auth_epoch)::bigint as e from users where id=$1', [claims.uid]);
+      if (ep && (ep.e == null || (claims.iat && claims.iat >= Number(ep.e)))) uid = claims.uid;
+    }
     const out = await route.fn({ req, uid, params, body, url });
     if (out && out.headers && 'data' in out) return send(res, 200, out.data, out.headers);
     return send(res, 200, out);
