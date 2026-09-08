@@ -48,8 +48,13 @@ const strList = (v) => Array.isArray(v) ? v.map((s) => str(s, 40)).filter(Boolea
 const memberView = (t, m) => ({
   teamId: t.id, teamName: t.name, sessions: t.sessions, phrases: t.phrases,
   invite: m.role === 'leader' ? t.invite_token : undefined,
+  settings: { ...DEF_SETTINGS, ...(t.settings || {}) },
   me: { userId: m.user_id, name: m.name, session: m.session, role: m.role, capo: +m.capo || 0 },
 });
+const teamUserIds = async (teamId, { exceptRole, except } = {}) =>
+  (await q('select user_id, role from members where team_id=$1', [teamId]))
+    .filter((m) => m.role !== exceptRole && m.user_id !== except).map((m) => m.user_id);
+const mdOf = (d) => { const m = String(d || '').match(/^\d{4}-(\d{2})-(\d{2})/); return m ? `${+m[1]}/${+m[2]}` : ''; };
 async function membership(uid, teamId) {
   return one(`select t.*, m.user_id, m.name as mname, m.session, m.role, m.capo from members m join teams t on t.id=m.team_id
               where m.user_id=$1 ${teamId ? 'and m.team_id=$2' : ''} order by m.created_at asc limit 1`, teamId ? [uid, teamId] : [uid]);
@@ -191,10 +196,15 @@ on('PATCH', '/teams/:id/members/:userId', async ({ uid, params, body }) => {
   if (!uid) throw noAuth();
   await requireMember(uid, params.id, 'leader');
   const role = str(body.role, 20);
-  if (!['leader', 'session_lead', 'member'].includes(role)) throw bad('역할이 이상해요');
+  if (!['leader', 'session_lead', 'member', 'pastor'].includes(role)) throw bad('역할이 이상해요');
   if (params.userId === uid && role !== 'leader') {
     const n = await one('select count(*)::int as n from members where team_id=$1 and role=$2', [params.id, 'leader']);
     if (n.n <= 1) throw bad('인도자가 한 명뿐이라 역할을 내릴 수 없어요. 먼저 다른 사람을 인도자로 지정하세요');
+  }
+  // 목회자는 팀당 2명까지 (§0)
+  if (role === 'pastor') {
+    const n = await one(`select count(*)::int as n from members where team_id=$1 and role='pastor' and user_id<>$2`, [params.id, params.userId]);
+    if (n.n >= 2) throw bad('목회자는 팀에 두 명까지예요');
   }
   const r = await q('update members set role=$3 where team_id=$1 and user_id=$2 returning user_id', [params.id, params.userId, role]);
   if (!r.length) throw notFound('그 멤버가 없어요');
@@ -261,6 +271,7 @@ on('GET', '/services', async ({ uid, url }) => {
   const teamId = str(url.searchParams.get('team'), 64);
   await requireMember(uid, teamId);
   const m = await membership(uid, teamId);
+  if (m && m.role === 'leader') { try { await autoCreateServices(teamId); } catch (e) { console.error('autoCreate', e); } } // D-N주 날짜의 콘티 초안 자동 생성 (§2.2)
   const drafts = m && m.role === 'leader' ? await q('select id, updated_at as "updatedAt" from drafts where team_id=$1', [teamId]) : [];
   return { services: await q('select id, name, date, version, updated_at as "updatedAt" from services where team_id=$1 order by date desc', [teamId]), drafts };
 });
@@ -277,7 +288,56 @@ on('GET', '/services/:id', async ({ uid, url, params }) => {
   if (!row) throw notFound(wantDraft ? '초안이 없어요' : '발행된 콘티가 없어요');
   const ids = blobIdsOf(row.doc);
   const blobs = ids.length ? await q('select id, url, pathname from blobs where team_id=$1 and id = any($2::text[])', [teamId, ids]) : [];
-  return { doc: row.doc, version: row.version, updatedAt: row.updatedAt, blobs: await readUrls(blobs) };
+  const w = await one('select word, updated_at as "updatedAt" from service_words where team_id=$1 and service_id=$2', [teamId, params.id]);
+  const rd = await one('select rev from service_reads where team_id=$1 and service_id=$2 and user_id=$3', [teamId, params.id, uid]);
+  return { doc: row.doc, version: row.version, updatedAt: row.updatedAt, blobs: await readUrls(blobs), word: wordView(w && w.word, await membership(uid, teamId)), readRev: rd ? rd.rev : 0 };
+});
+// 말씀 (§4.1): 본문·제목·한 줄은 항상 전체 공개, 목회자 메모는 memoPublic 이 아니면 인도자에게만
+function wordView(w, m) {
+  if (!w || !(w.passage || w.title || w.line)) return null;
+  const canSeeMemo = w.memoPublic || (m && (m.role === 'leader' || m.role === 'pastor'));
+  return { passage: w.passage || '', title: w.title || '', line: w.line || '', memo: canSeeMemo ? (w.memo || '') : '', memoPublic: !!w.memoPublic, from: w.from || null, receivedAt: w.receivedAt || null, updatedAt: w.updatedAt || null };
+}
+const wordKey = (w) => w ? [w.passage, w.title, w.line, w.memo, w.memoPublic ? 1 : 0].map((x) => String(x == null ? '' : x)).join('') : '';
+
+// 말씀 저장 (§4.2·§4.3): 인도자는 직접 입력, 목회자는 말씀 탭에서. 저장 즉시 전원에게 보인다
+on('PUT', '/services/:id/word', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  const m = await requireMember(uid, teamId);
+  if (m.role !== 'leader' && m.role !== 'pastor') throw forbidden('인도자와 목회자만 말씀을 적을 수 있어요');
+  const b = body.word || {};
+  const prev = await one('select word from service_words where team_id=$1 and service_id=$2', [teamId, params.id]);
+  const word = {
+    passage: str(b.passage, 60), title: str(b.title, 40), line: str(b.line, 80),
+    memo: str(b.memo, 1000), memoPublic: !!b.memoPublic,
+    from: { type: m.role === 'pastor' ? 'pastor' : 'leader', memberId: uid, name: m.mname || '' },
+    receivedAt: (prev && prev.word && prev.word.receivedAt) || new Date().toISOString(), updatedAt: new Date().toISOString(),
+  };
+  await q(`insert into service_words(team_id, service_id, word, updated_by, updated_at) values($1,$2,$3,$4,now())
+           on conflict (team_id, service_id) do update set word=excluded.word, updated_by=excluded.updated_by, updated_at=now()`,
+    [teamId, params.id, JSON.stringify(word), uid]);
+  // §1 word.received: 목회자가 저장하면 인도자에게
+  if (m.role === 'pastor' && wordKey(word) !== wordKey(prev && prev.word)) {
+    try {
+      const svc = await one('select name, date::text as date from services where team_id=$1 and id=$2', [teamId, params.id]);
+      const leaders = (await q(`select user_id from members where team_id=$1 and role='leader'`, [teamId])).map((r) => r.user_id);
+      const who = /[님사]$/.test(m.mname || '') ? m.mname : `${m.mname || '목사'}님`;
+      await notify(teamId, leaders, 'word.received', params.id, { title: `${who}이 ${svc ? mdOf(svc.date) : ''} 말씀을 보냈어요`.replace(/\s+/g, ' '), body: [word.passage, word.title].filter(Boolean).join(' · '), link: '#/edit/' + params.id });
+    } catch (e) { console.error('notify word.received', e); }
+  }
+  return { ok: true, word: wordView(word, m) };
+});
+
+// §4.5 예배 노트: 어디까지 읽었는지 (기기 + 서버)
+on('POST', '/services/:id/read', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  await requireMember(uid, teamId);
+  const rev = Math.max(0, Math.round(+body.rev || 0));
+  await q(`insert into service_reads(team_id, service_id, user_id, rev, at) values($1,$2,$3,$4,now())
+           on conflict (team_id, service_id, user_id) do update set rev=greatest(service_reads.rev, excluded.rev), at=now()`, [teamId, params.id, uid, rev]);
+  return { ok: true };
 });
 function blobIdsOf(doc) {
   const ids = new Set();
@@ -299,11 +359,25 @@ on('PUT', '/services/:id', async ({ uid, params, body }) => {
   const have = missing.length ? (await q('select id from blobs where team_id=$1 and id = any($2::text[])', [teamId, missing])).map((r) => r.id) : [];
   const notUploaded = missing.filter((id) => !have.includes(id));
   if (notUploaded.length) throw bad('아직 올라가지 않은 파일이 있어요: ' + notUploaded.length + '개');
-  const cur = await one('select version from services where team_id=$1 and id=$2', [teamId, params.id]);
+  const cur = await one('select version, doc from services where team_id=$1 and id=$2', [teamId, params.id]);
   if (cur && cur.version >= (+doc.version || 0)) throw new HttpError(409, 'version_conflict', `다른 기기에서 v${cur.version}이 이미 발행됐어요. 새로고침으로 받은 뒤 다시 발행하세요`);
   await q(`insert into services(team_id, id, doc, version, name, date, updated_by, updated_at) values($1,$2,$3,$4,$5,$6,$7,now())
            on conflict (team_id, id) do update set doc=excluded.doc, version=excluded.version, name=excluded.name, date=excluded.date, updated_by=excluded.updated_by, updated_at=now()`,
     [teamId, params.id, JSON.stringify(doc), +doc.version || 0, str(doc.name, 120), str(doc.date, 20), uid]);
+  // §1 알림: publish(팀 전원, 발행자 제외) · note.updated(인도자의 글이 이전 발행과 다를 때)
+  try {
+    const version = +doc.version || 0, md = mdOf(doc.date), name = str(doc.name, 60) || '예배';
+    const label = name.startsWith(md) ? name : `${md} ${name}`; // 이름 규칙에 이미 날짜가 들어 있으면 겹쳐 쓰지 않음
+    const titles = doc.items.map((it) => str(it && it.title, 40)).filter(Boolean);
+    const body = titles.length ? (titles.length > 1 ? `${titles[0]} ~ ${titles[titles.length - 1]}` : titles[0]) : '곡 없음';
+    const to = await teamUserIds(teamId, { except: uid });
+    await notify(teamId, to, 'publish', params.id, { title: `${label} 콘티 v${version}`, body, link: '#/view/' + params.id });
+    const prevMsg = cur && cur.doc ? String(cur.doc.message || '') : '';
+    const prevWord = cur && cur.doc ? wordKey(cur.doc.word) : '';
+    if (cur && (String(doc.message || '') !== prevMsg || wordKey(doc.word) !== prevWord) && (String(doc.message || '').trim() || wordKey(doc.word)))
+      await notify(teamId, to, 'note.updated', params.id, { title: `${label} 인도자의 글이 바뀌었어요`, body: String(doc.message).split('\n')[0], link: '#/view/' + params.id });
+    await linkDate(teamId, params.id, doc.date, name);
+  } catch (e) { console.error('notify publish', e); }
   return { ok: true, version: +doc.version || 0 };
 });
 
@@ -325,6 +399,7 @@ on('PUT', '/services/:id/draft', async ({ uid, params, body }) => {
   if (!doc || !Array.isArray(doc.items)) throw bad('초안이 비어 있어요');
   await q(`insert into drafts(team_id, id, doc, updated_by, updated_at) values($1,$2,$3,$4,now())
            on conflict (team_id, id) do update set doc=excluded.doc, updated_by=excluded.updated_by, updated_at=now()`, [teamId, params.id, JSON.stringify(doc), uid]);
+  try { await linkDate(teamId, params.id, doc.date, str(doc.name, 60)); } catch (e) { console.error('linkDate', e); }
   return { ok: true };
 });
 
@@ -458,13 +533,53 @@ on('POST', '/ocr', async ({ uid, body }) => {
 });
 
 /* ---------- §2 정기 예배 · 사역 날짜 ---------- */
-const DEF_SETTINGS = { serviceAutoCreateWeeks: 4, nameRule: '{월}/{일} {요일}', reminderDay: 25, wordRequestDay: 2, rehearsalUploadRole: 'member' };
+const DEF_SETTINGS = { serviceAutoCreateWeeks: 4, nameRule: '{월}/{일} {이름}', reminderDay: 25, wordRequestDay: 2, rehearsalUploadRole: 'member' };
 const WD = ['일', '월', '화', '수', '목', '금', '토'];
+
+// 알림 (§1): 알림함에 남기고, 같은 (type, targetId, user) 키가 24시간 안에 다시 오면 갱신만(읽음 상태 유지). actionable 이면 홈 카드에 뜸
+async function notify(teamId, userIds, type, targetId, { title, body = '', link = '', actionable = false, expiresAt = null }) {
+  for (const u of [...new Set(userIds)]) {
+    await q(`insert into notifications(team_id, user_id, type, target_id, title, body, link, actionable, expires_at)
+             values($1,$2,$3,$4,$5,$6,$7,$8,$9)
+             on conflict (team_id, user_id, type, target_id) do update set
+               title=excluded.title, body=excluded.body, link=excluded.link, actionable=excluded.actionable, expires_at=excluded.expires_at,
+               read_at = case when notifications.updated_at > now() - interval '24 hours' then notifications.read_at else null end,
+               acknowledged_at = case when excluded.type = 'lineup.changed' or notifications.updated_at <= now() - interval '24 hours' then null else notifications.acknowledged_at end,
+               updated_at = now()`,
+      [teamId, u, type, String(targetId || ''), str(title, 120), str(body, 300), str(link, 200), !!actionable, expiresAt]);
+  }
+}
+// 콘티(발행본·초안)를 같은 날짜의 사역 날짜에 연결한다. 없으면 manual 날짜를 만든다 (§2.2)
+async function linkDate(teamId, serviceId, date, label) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return;
+  if (await one('select id from service_dates where team_id=$1 and service_id=$2', [teamId, serviceId])) return;
+  const free = await one(`select id from service_dates where team_id=$1 and date=$2 and service_id is null order by (source='recurring') desc, created_at asc limit 1`, [teamId, date]);
+  if (free) await q('update service_dates set service_id=$2 where id=$1', [free.id, serviceId]);
+  else await q(`insert into service_dates(team_id, date, label, source, open, service_id) values($1,$2,$3,'manual',true,$4)
+                on conflict (team_id, date, label) do update set service_id=coalesce(service_dates.service_id, excluded.service_id)`, [teamId, date, str(label, 40) || '예배', serviceId]);
+}
+// D-N주 안의 열린 날짜에 콘티가 없으면 초안을 자동 생성한다 (§2.2). 이름 = 팀 이름 규칙
+async function autoCreateServices(teamId) {
+  const t = await one('select settings from teams where id=$1', [teamId]);
+  const st = { ...DEF_SETTINGS, ...(t && t.settings || {}) };
+  const rows = await q(`select id, date::text as date, label from service_dates where team_id=$1 and open and service_id is null
+                        and date >= current_date and date < current_date + ($2::int * interval '1 day') order by date`, [teamId, st.serviceAutoCreateWeeks * 7]);
+  let n = 0;
+  for (const r of rows) {
+    const id = 'a' + randomToken(9).replace(/[^A-Za-z0-9]/g, '').slice(0, 10).toLowerCase();
+    const doc = { id, name: fmtName(st.nameRule, r.date, r.label), date: r.date, notice: '', message: '', messageRev: 0, version: 0, editedAt: Date.now(), items: [], auto: true, dateId: r.id };
+    await q('insert into drafts(team_id, id, doc, updated_at) values($1,$2,$3,now()) on conflict (team_id, id) do nothing', [teamId, id, JSON.stringify(doc)]);
+    await q('update service_dates set service_id=$2 where id=$1', [r.id, id]);
+    n++;
+  }
+  return n;
+}
 function fmtName(rule, d, label) {
   const dt = new Date(d + 'T00:00:00');
-  return String(rule || '{월}/{일} {요일}')
+  return String(rule || DEF_SETTINGS.nameRule)
     .replace(/\{월\}/g, dt.getMonth() + 1).replace(/\{일\}/g, dt.getDate())
-    .replace(/\{요일\}/g, WD[dt.getDay()]).replace(/\{이름\}/g, label || '');
+    .replace(/\{요일\}/g, WD[dt.getDay()]).replace(/\{이름\}/g, label || '')
+    .replace(/\s+/g, ' ').trim();
 }
 function isoDate(dt) { return dt.toISOString().slice(0, 10); }
 
@@ -501,6 +616,7 @@ on('POST', '/teams/:id/recurring', async ({ uid, params, body }) => {
   const time = /^\d{1,2}:\d{2}$/.test(String(body.time || '')) ? String(body.time) : null;
   const rec = await one('insert into recurring(team_id, weekday, label, time) values($1,$2,$3,$4) returning id, weekday, label, time, active', [params.id, weekday, label, time]);
   await fillDates(params.id, rec);
+  try { await autoCreateServices(params.id); } catch (e) { console.error('autoCreate', e); }
   return { ok: true, recurring: rec };
 });
 
@@ -521,6 +637,7 @@ on('PATCH', '/teams/:id/recurring/:rid', async ({ uid, params, body }) => {
   await q('update recurring set label=$2, time=$3, active=true where id=$1', [params.rid, label, time]);
   const nrec = await one('select id, weekday, label, time, active from recurring where id=$1', [params.rid]);
   await fillDates(params.id, nrec);
+  try { await autoCreateServices(params.id); } catch (e) { console.error('autoCreate', e); }
   return { ok: true, recurring: nrec };
 });
 
@@ -542,6 +659,11 @@ on('POST', '/teams/:id/dates', async ({ uid, params, body }) => {
   const time = /^\d{1,2}:\d{2}$/.test(String(body.time || '')) ? String(body.time) : null;
   const row = await one(`insert into service_dates(team_id, date, label, time, source, open) values($1,$2,$3,$4,'manual',true)
                          on conflict (team_id, date, label) do update set open=true returning id, date::text as date, label, time, open`, [params.id, date, label, time]);
+  // §1 date.opened: 팀 전원(목회자 제외), 홈 카드. 그 날이 지나면 카드는 사라짐
+  try {
+    const to = await teamUserIds(params.id, { exceptRole: 'pastor', except: uid });
+    await notify(params.id, to, 'date.opened', row.id, { title: `${mdOf(row.date)} ${row.label} 일정이 열렸어요`, body: row.time ? `${row.time} · 참여 가능한지 알려주세요` : '참여 가능한지 알려주세요', link: '#/home', actionable: true, expiresAt: new Date(row.date + 'T23:59:59+09:00') });
+  } catch (e) { console.error('notify date.opened', e); }
   return { ok: true, date: row };
 });
 
@@ -554,6 +676,13 @@ on('PATCH', '/teams/:id/dates/:did', async ({ uid, params, body }) => {
   if (typeof body.open === 'boolean') {
     if (!body.open && row.service_id) throw bad('콘티가 있는 날짜는 닫을 수 없어요. 먼저 콘티를 삭제하세요');
     await q('update service_dates set open=$2 where id=$1', [params.did, body.open]);
+    if (body.open !== !!row.open) { // §1 date.opened / date.closed
+      try {
+        const md = mdOf(row.date instanceof Date ? row.date.toISOString().slice(0, 10) : String(row.date));
+        if (body.open) await notify(params.id, await teamUserIds(params.id, { exceptRole: 'pastor', except: uid }), 'date.opened', row.id, { title: `${md} ${row.label} 일정이 열렸어요`, body: row.time ? `${row.time} · 참여 가능한지 알려주세요` : '참여 가능한지 알려주세요', link: '#/home', actionable: true, expiresAt: new Date(String(row.date).slice(0, 10) + 'T23:59:59+09:00') });
+        else await notify(params.id, await teamUserIds(params.id, { except: uid }), 'date.closed', row.id, { title: `${md} ${row.label}는 이번 주 쉽니다`, body: '', link: '#/home' });
+      } catch (e) { console.error('notify date', e); }
+    }
   }
   if (body.label != null || body.time != null) {
     await q('update service_dates set label=coalesce(nullif($2,\'\'),label), time=$3 where id=$1',
@@ -571,19 +700,52 @@ on('PATCH', '/teams/:id/settings', async ({ uid, params, body }) => {
   if (body.serviceAutoCreateWeeks != null) next.serviceAutoCreateWeeks = Math.max(1, Math.min(8, Math.round(+body.serviceAutoCreateWeeks)));
   if (body.nameRule != null) next.nameRule = str(body.nameRule, 60);
   if (body.reminderDay != null) next.reminderDay = Math.max(20, Math.min(28, Math.round(+body.reminderDay)));
+  if (body.wordRequestDay != null) next.wordRequestDay = Math.max(0, Math.min(6, Math.round(+body.wordRequestDay)));
   if (body.rehearsalUploadRole != null && ['member', 'session_lead', 'leader'].includes(body.rehearsalUploadRole)) next.rehearsalUploadRole = body.rehearsalUploadRole;
   await q('update teams set settings=$2 where id=$1', [params.id, JSON.stringify(next)]);
   return { ok: true, settings: next };
 });
 
 // 매일 03:00 크론: 13주 앞 유지
+// §1 알림함: 내 알림 목록(90일), 읽음, 처리(actionable 카드 닫기)
+on('GET', '/notifications', async ({ uid, url }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(url.searchParams.get('team'), 64);
+  await requireMember(uid, teamId);
+  const rows = await q(`select id, type, target_id as "targetId", title, body, link, actionable, read_at as "readAt", acknowledged_at as "ackAt", expires_at as "expiresAt", updated_at as "at"
+                        from notifications where team_id=$1 and user_id=$2 and updated_at > now() - interval '90 days' order by updated_at desc limit 100`, [teamId, uid]);
+  return { notifications: rows, unread: rows.filter((r) => !r.readAt).length };
+});
+on('POST', '/notifications/read', async ({ uid, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  await requireMember(uid, teamId);
+  const ids = Array.isArray(body.ids) ? body.ids.map((x) => str(x, 64)).filter(Boolean) : [];
+  const r = body.all
+    ? await q('update notifications set read_at=now() where team_id=$1 and user_id=$2 and read_at is null returning id', [teamId, uid])
+    : await q('update notifications set read_at=coalesce(read_at, now()) where team_id=$1 and user_id=$2 and id::text = any($3::text[]) returning id', [teamId, uid, ids]);
+  return { ok: true, read: r.length };
+});
+on('POST', '/notifications/:id/ack', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  await requireMember(uid, teamId);
+  const r = await q('update notifications set acknowledged_at=now(), read_at=coalesce(read_at, now()) where team_id=$1 and user_id=$2 and id::text=$3 returning id', [teamId, uid, str(params.id, 64)]);
+  if (!r.length) throw notFound('알림이 없어요');
+  return { ok: true };
+});
+
 on('GET', '/cron/dates', async ({ req }) => {
   // Vercel 크론은 CRON_SECRET 이 설정돼 있으면 Authorization: Bearer <secret> 를 붙여 부른다. 미설정이면 아예 막는다 (위조 가능한 헤더로는 통과 불가)
   if (!process.env.CRON_SECRET || req.headers['authorization'] !== `Bearer ${process.env.CRON_SECRET}`) throw forbidden('크론 전용');
   const recs = await q('select * from recurring where active=true');
   let n = 0;
   for (const rec of recs) { await fillDates(rec.team_id, rec); n++; }
-  return { ok: true, recurring: n };
+  // D-N주 콘티 자동 생성 (모든 팀) + 90일 지난 알림 정리 (§1.3 보관)
+  let created = 0;
+  for (const t of await q('select id from teams')) { try { created += await autoCreateServices(t.id); } catch (e) { console.error('autoCreate', t.id, e); } }
+  const purged = (await q(`delete from notifications where updated_at < now() - interval '90 days' returning id`)).length;
+  return { ok: true, recurring: n, created, purged };
 });
 
 /* ---------- 진입점 ---------- */

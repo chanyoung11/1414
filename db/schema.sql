@@ -134,3 +134,46 @@ create index if not exists sdate_team_idx on service_dates(team_id, date);
 
 -- 비밀번호 변경·초기화·복구 시각. 이보다 먼저 발급된 세션 토큰(iat)은 무효 (null 이면 검사 안 함)
 alter table users add column if not exists auth_epoch timestamptz;
+
+-- §1 알림함: 사용자별 알림. (team,user,type,target) 중복 키는 24시간 안에 갱신만
+create table if not exists notifications (
+  id              uuid primary key default gen_random_uuid(),
+  team_id         uuid not null references teams(id) on delete cascade,
+  user_id         uuid not null references users(id) on delete cascade,
+  type            text not null,
+  target_id       text not null default '',
+  title           text not null,
+  body            text not null default '',
+  link            text not null default '',
+  actionable      bool not null default false,
+  read_at         timestamptz,
+  acknowledged_at timestamptz,
+  expires_at      timestamptz,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now(),
+  unique (team_id, user_id, type, target_id)
+);
+create index if not exists notifications_user_idx on notifications(team_id, user_id, updated_at desc);
+
+-- §4 말씀: 콘티와 별개로 저장해 저장 즉시 전원에게 보이게 한다 (목회자·인도자·링크가 씀)
+create table if not exists service_words (
+  team_id    uuid not null references teams(id) on delete cascade,
+  service_id text not null,
+  word       jsonb not null default '{}',
+  updated_by uuid references users(id),
+  updated_at timestamptz not null default now(),
+  primary key (team_id, service_id)
+);
+-- §4.5 예배 노트 바텀시트: 어디까지 읽었는지 (기기 + 서버)
+create table if not exists service_reads (
+  team_id    uuid not null references teams(id) on delete cascade,
+  service_id text not null,
+  user_id    uuid not null references users(id) on delete cascade,
+  rev        int not null default 0,
+  at         timestamptz not null default now(),
+  primary key (team_id, service_id, user_id)
+);
+
+-- §0 역할에 목회자(pastor) 추가. 세션 없음, 콘티 편집·편성 없음, 말씀을 쓴다
+alter table members drop constraint if exists members_role_check;
+alter table members add constraint members_role_check check (role in ('leader','session_lead','member','pastor'));

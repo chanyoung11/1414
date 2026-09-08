@@ -181,6 +181,17 @@ html.dark .songbar::placeholder{color:rgba(10,10,10,.5)}
 .grip svg.ic{width:14px;height:14px}
 .list-item.dragging{background:var(--card);opacity:.95;box-shadow:0 12px 32px rgba(0,0,0,.25);border-color:var(--border)}
 .list-item.dragging .grip{cursor:grabbing}
+.wordblock{margin:8px 0;padding:10px 14px;border-left:3px solid var(--warning);background:var(--muted);border-radius:0 var(--r-md) var(--r-md) 0}
+.wordblock b{font-size:14px;display:block}.wordblock .wtitle{font-weight:700;font-size:15px;margin-top:1px}.wordblock .wline{color:var(--muted-fg);font-size:13px;margin-top:2px}
+.wordblock .wfrom,.wordblock .wlock{color:var(--muted-fg);font-size:12px;text-align:right}.wordblock .wlock{display:flex;align-items:center;gap:4px;justify-content:flex-end;margin-bottom:4px}.wordblock .wlock svg{width:13px;height:13px}
+.wordblock .wmemo{margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:13px}.wordblock .wmemo .pill{margin-bottom:4px}
+.wordline{display:flex;align-items:center;gap:7px;padding:9px 13px;margin-bottom:10px;border:1px solid var(--border);border-radius:var(--r-lg);background:var(--card);cursor:pointer;font-size:13px}.wordline svg{width:15px;height:15px;flex:0 0 auto;color:var(--muted-fg)}
+.reason{display:flex;align-items:flex-start;gap:6px;margin-top:6px;color:var(--muted-fg);font-size:12.5px}.reason svg{width:13px;height:13px;flex:0 0 auto;margin-top:2px}
+.todo{margin-bottom:16px}.todo-hd{display:flex;align-items:center;gap:8px;margin-bottom:8px}.todo-hd b{font-size:14px;letter-spacing:-.01em}
+.todo-card{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:var(--r-lg);background:var(--secondary);border:1px solid var(--border-2);margin-bottom:8px}.todo-card b{display:block;font-size:13.5px}
+.nrow{display:flex;align-items:flex-start;gap:10px;padding:10px 4px;border-bottom:1px solid var(--line2);cursor:pointer}.nrow .dot{width:6px;height:6px;border-radius:50%;background:var(--fg);margin-top:8px;flex:0 0 auto;opacity:0}.nrow.unread .dot{opacity:1}.nrow:not(.unread){opacity:.72}.nrow b{display:block;font-size:13.5px}
+.navi .cnt.badge-n{background:var(--fg);color:var(--bg);border-radius:999px;min-width:18px;text-align:center;font-weight:700}.navi .cnt[hidden]{display:none}
+.bnav .bdot{position:absolute;top:6px;right:calc(50% - 16px);width:7px;height:7px;border-radius:50%;background:var(--fg)}.bnav .bdot[hidden]{display:none}
 .svcrow{display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:var(--r-lg);background:var(--card);border:1px solid var(--border);margin-bottom:8px;cursor:pointer;transition:background .12s,border-color .12s}
 .svcrow:hover{background:var(--muted);border-color:var(--border-2)}
 .svcrow.past{opacity:.6}
@@ -486,6 +497,7 @@ let toastT;function toast(msg){const t=$('#toast');t.textContent=msg;t.classList
 const ICONS={
  play:'<path d="M8 5.5v13a1 1 0 0 0 1.5.86l11-6.5a1 1 0 0 0 0-1.72l-11-6.5A1 1 0 0 0 8 5.5z" fill="currentColor"/>',
  home:'<path d="M4 10.5 12 4l8 6.5V20h-5.5v-6h-5v6H4z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/>',
+ bell:'<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round"/>',
  users:'<circle cx="9" cy="8" r="3.2" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M3.5 19c.5-3.2 2.8-5 5.5-5s5 1.8 5.5 5M15.5 5.3a3 3 0 0 1 0 5.4M17 14c2.2.4 3.6 2 4 5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>',
  logout:'<path d="M10 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20H10M15 8l4 4-4 4M19 12H9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>',
  monitor:'<rect x="3" y="4.5" width="18" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M9 20h6M12 16.5V20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>',
@@ -542,6 +554,7 @@ function homeHTML(){
  const upcoming=svcs.filter(s=>(s.date||'')>=today()).length;const pubN=svcs.filter(s=>s.published).length;
  const nav=`<div class="sect">메뉴</div>
   <button class="navi on" data-act="home">${ic('home')}예배<span class="cnt">${S.services.length}</span></button>
+  ${on?`<button class="navi" data-act="inbox">${ic('bell')}알림<span class="cnt badge-n" data-noti-badge ${NOTI.unread?'':'hidden'}>${NOTI.unread||''}</span></button>`:''}
   ${lead?`<button class="navi" data-act="nav-lib">${ic('music')}라이브러리<span class="cnt">${S.library.length}</span></button>`:''}
   ${on?`<button class="navi" data-act="team">${ic('users')}팀<span class="cnt">${esc(S.team.name||'')}</span></button>`:''}
   <div class="sect">계정</div>
@@ -550,7 +563,7 @@ function homeHTML(){
   ${on?`<button class="navi" data-act="logout">${ic('logout')}로그아웃</button>`:''}`;
  const rows=svcs.map((s,i)=>{const d=fmtDate(s.date);const past=(s.date||'')<today();
   const st=s.published?(s.version>s.published.version?`<span class="badge warn">v${s.published.version} 발행 · 수정 중</span>`:`<span class="badge ok">v${s.published.version} 발행됨</span>`):`<span class="badge neutral">미발행</span>`;
-  return `<div class="svcrow ${past?'past':''} rise d${Math.min(i,3)}" data-act="open-svc" data-id="${esc(s.id)}"><div class="date"><b>${esc(d.md)}</b><span>${esc(d.w)}</span></div><div class="grow"><div class="t">${esc(s.name||'(이름 없음)')}</div><div class="s"><span>${s.items.length}곡</span>${st}</div></div>
+  return `<div class="svcrow ${past?'past':''} rise d${Math.min(i,3)}" data-act="open-svc" data-id="${esc(s.id)}"><div class="date"><b>${esc(d.md)}</b><span>${esc(d.w)}</span></div><div class="grow"><div class="t">${esc(svcName(s))}</div><div class="s"><span>${s.items.length}곡</span>${st}</div></div>
    <div class="row">${lead?`<button class="btn sm" data-act="edit-svc" data-id="${s.id}">${ic('pen')}편집</button>`:''}<button class="btn sm ${lead?'':'pri'}" data-act="view-svc" data-id="${s.id}">${ic('eye')}콘티</button>${lead?`<button class="icon sm ghost" data-act="del-svc" data-id="${s.id}" title="삭제">${ic('trash')}</button>`:''}</div></div>`}).join('');
  return `<div class="shell">
   <aside class="side"><div class="box"><div class="head">${logoLockup(26)}<span class="pill">${on?esc(S.team.name||'팀'):'기기 전용'}</span></div><nav>${nav}</nav>
@@ -559,26 +572,28 @@ function homeHTML(){
    <header class="hd"><div class="ttl"><h1>예배</h1><span class="date">${fmtToday()}</span></div>
     <div class="acts"><span class="pill">${whoStr(m)}</span>${on?`<button class="btn sm ghost" data-act="team">${ic('users')}${esc(S.team.name||'팀')}</button>`:''}<button class="icon ghost" data-act="settings" title="설정">${ic('gear')}</button></div></header>
    <main>
+    ${todoHTML()}
     <div class="metrics rise"><div class="metric"><div class="v">${S.services.length}</div><div class="l">전체 예배</div></div><div class="metric"><div class="v">${upcoming}</div><div class="l">다가오는 예배</div></div><div class="metric"><div class="v">${pubN}</div><div class="l">발행된 콘티</div></div></div>
     <div class="sect-hd rise d1"><div><h2>예배 목록</h2><p>${on?`${esc(S.team.name)} 팀 · 인도자가 발행하면 자동으로 내려와요`:'이 기기에만 저장돼요. 팀에 보내려면 내보내기 파일을 카톡으로 보내세요'}</p></div>
      <div class="row">${lead?`<button class="btn sm pri" data-act="new-svc">${ic('plus')}새 예배</button>`:''}<span class="row more-hide">${on?`<button class="btn sm" data-act="sync" title="팀 서버에서 최신 발행본 받기">${ic('import')}새로고침</button>`:''}${(!on||lead)?`<button class="btn sm" data-act="import">${ic('import')}가져오기</button>`:''}<button class="btn sm" data-act="export">${ic('export')}내보내기</button></span><button class="icon more-only" data-act="home-more" title="더 보기">${ic('list')}</button></div></div>
     ${svcs.length?rows:`<div class="empty rise d1"><b>아직 예배가 없어요</b>${lead?'첫 콘티를 만들거나, 받은 파일을 가져오세요.':(on?'인도자가 발행하면 여기에 자동으로 나타나요.':'인도자가 보낸 파일을 "가져오기"로 여세요.')}${lead?`<div><button class="btn pri" data-act="new-svc">${ic('plus')}새 예배 만들기</button></div>`:''}</div>`}
 
    </main></div></div>
-  <nav class="bnav"><button class="on" data-act="home">${ic('home')}예배</button>${on?`<button data-act="team">${ic('users')}팀</button>`:''}<button data-act="settings">${ic('gear')}설정</button><button data-act="theme">${ic(themeIcon())}테마</button></nav>`;
+  <nav class="bnav"><button class="on" data-act="home">${ic('home')}예배</button>${on?`<button data-act="inbox" style="position:relative">${ic('bell')}알림<i class="bdot" data-noti-dot ${NOTI.unread?'':'hidden'}></i></button><button data-act="team">${ic('users')}팀</button>`:''}<button data-act="settings">${ic('gear')}설정</button><button data-act="theme">${ic(themeIcon())}테마</button></nav>`;
 }
 /* ---------- EDITOR ---------- */
 function editorHTML(svc){
  const sel=SEL[svc.id]||(SEL[svc.id]={item:svc.items[0]&&svc.items[0].id,tool:'marker'});
  const it=svc.items.find(i=>i.id===sel.item)||svc.items[0];if(it)sel.item=it.id;
  const status=svc.published?'v'+svc.published.version+(svc.version>svc.published.version?' · 수정 중':''):'초안';
- return `<div class="top"><button class="icon ghost" data-act="home" title="홈">${ic('back')}</button><h1><label class="titlewrap"><input class="titlein" data-f="svc.name" placeholder="예배 이름 (예: 11/21 LIKE MT 저녁집회)" value="${esc(svc.name)}"><span class="penic">${ic('pen')}</span></label><span class="pill">${esc(status)}</span></h1>
+ return `<div class="top"><button class="icon ghost" data-act="home" title="홈">${ic('back')}</button><h1><label class="titlewrap"><input class="titlein" data-f="svc.name" placeholder="${esc(svcName(svc))}" title="비워 두면 팀 이름 규칙으로 자동" value="${esc(svc.name)}"><span class="penic">${ic('pen')}</span></label><span class="pill">${esc(status)}</span></h1>
   <button class="btn ghost" data-act="view-svc" data-id="${svc.id}">${ic('eye')}미리보기</button><button class="btn pri" data-act="publish">${ic('send')}발행</button></div>
  <div class="ws split" id="ws">
   <div class="stack ed" id="stack">
    <div class="panel">${ptab('예배','날짜 · 공지 · 곡 순서',`<button class="btn sm" data-act="add-lib">${ic('music')}라이브러리</button><button class="btn sm pri" data-act="add-item">${ic('plus')}새 곡</button>`)}
     <div class="pbody">
      <div class="row" style="gap:10px"><input class="field" type="date" data-f="svc.date" value="${esc(svc.date)}" style="width:150px"><textarea class="field grow" data-f="svc.notice" rows="1" placeholder="전체 공지 — 연습 일정, 편성, 집합 장소">${esc(svc.notice)}</textarea></div>
+   ${wordCardHTML(svc)}
    <div class="lbl" style="margin-top:10px">인도자의 글 <span class="hint">예배에 담은 마음, 콘티 흐름. 멤버가 처음 열 때 한 번 보여요</span></div><textarea class="field msgin" data-f="svc.message" placeholder="이번 예배에 담은 마음, 콘티 흐름을 적어요. 멤버가 처음 열 때 한 번 보여요." style="min-height:72px">${esc(svc.message||'')}</textarea>
      <div style="margin-top:10px">${svc.items.map((x,i)=>`<div class="list-item ${x.id===sel.item?'sel':''}" data-act="sel-item" data-id="${x.id}"><span class="grip" title="끌어서 순서 바꾸기">${ic('list')}</span><span class="num">${i+1}</span><span class="grow" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600">${esc(x.title||'(제목 없음)')}</span><span class="k">${esc(keyStr(x))}</span><button class="icon sm ghost" data-act="mv-item" data-id="${x.id}" data-d="-1" title="위로">${ic('up')}</button><button class="icon sm ghost" data-act="mv-item" data-id="${x.id}" data-d="1" title="아래로">${ic('down')}</button></div>`).join('')||'<div class="empty" style="padding:14px">곡을 추가하세요</div>'}</div>
     </div></div>
@@ -613,6 +628,8 @@ function itemEditorHTML(svc,it){const sel=SEL[svc.id]||(SEL[svc.id]={});
   <div class="hr"></div>
   <div class="lbl">곡 메모 <span class="hint">섹션에 안 붙는 한 줄</span></div>
   <input class="field" data-f="item.songNote" placeholder="전체적으로 밝게, 템포 서두르지 않기" value="${esc(it.songNote)}">
+  <div class="lbl">이 곡을 여기 둔 이유 <span class="hint">선택 · 콘티 보기 곡 카드에 한 줄로</span></div>
+  <input class="field" data-f="item.reason" placeholder="“은혜를 세어보라”는 구절과 이어지는 곡이라 여기 뒀어요" value="${esc(it.reason||'')}">
   <div class="lbl">섹션 메모 <span class="hint">${it.notes.length}개 · 악보 패널의 "메모" 도구로 마커를 탭</span></div>
   <div class="small">${it.notes.map(n=>`<div class="row" style="padding:3px 0"><span class="mk" style="width:24px;height:24px;font-size:11px">${esc((markerOf(it,n.marker)||{}).label||'?')}</span>${noteChip(n)}<span class="hint">${esc(n.session||'전체')}</span><button class="icon sm ghost" data-act="del-note" data-id="${n.id}">${ic('x')}</button></div>`).join('')||'<span class="hint">없음</span>'}</div>
  </div>`;
@@ -623,13 +640,15 @@ function viewerHTML(svc){
  const pub=pubOrDraft(svc);const my=me();const sess=VF.session||my.session;
  const ctx={mode:'play',session:sess,f:{leader:true,session:true,mine:true,chords:true}};
  return `<div class="top"><button class="icon ghost" data-act="home">${ic('back')}</button><h1>${esc(pub.name||'예배')}<span class="pill ${pub.draft?'':'amber'}">${pub.draft?(svc.published?`초안 미리보기 · 발행본 v${svc.published.version}${svc.version>svc.published.version?'과 다름':'과 같음'}`:'미발행 초안'):'v'+pub.version}</span></h1>
-  ${pub.message?`<button class="icon ghost ${msgUnread(svc)?'dot':''}" data-act="msg" data-id="${svc.id}" title="인도자의 글">${ic('note')}</button>`:''}<button class="icon ghost" data-act="print" data-id="${svc.id}" title="인쇄 (A4, 곡당 한 장)">${ic('export')}</button><button class="btn" data-act="play" data-id="${svc.id}" data-i="0">${ic('play')}연습</button><button class="btn pri" data-act="play" data-id="${svc.id}" data-i="0" data-stage="1">${ic('moon')}무대</button></div>
+  ${hasNote(svc)?`<button class="icon ghost ${msgUnread(svc)?'dot':''}" data-act="msg" data-id="${svc.id}" title="예배 노트">${ic('note')}</button>`:''}<button class="icon ghost" data-act="print" data-id="${svc.id}" title="인쇄 (A4, 곡당 한 장)">${ic('export')}</button><button class="btn" data-act="play" data-id="${svc.id}" data-i="0">${ic('play')}연습</button><button class="btn pri" data-act="play" data-id="${svc.id}" data-i="0" data-stage="1">${ic('moon')}무대</button></div>
   <div class="ws" style="grid-template-columns:minmax(0,1fr)">
    <div class="panel">${ptab('콘티',pub.items.length+'곡',`<span class="hint" style="margin-right:6px">세션</span><div class="seg">${S.team.sessions.filter(s=>s!=='인도자').map(s=>`<button class="${s===sess?'on':''}" data-act="vsess" data-s="${esc(s)}">${esc(s)}</button>`).join('')}</div>`)}
    <div class="pbody"><div style="max-width:900px;margin:0 auto">
+   ${hasWord(svc.word)?`<div class="wordline" data-act="msg" data-id="${esc(svc.id)}">${ic('note')}<span>${esc([svc.word.passage,svc.word.title].filter(Boolean).join(' · '))}</span></div>`:''}
    ${pub.notice?`<div class="card" style="background:var(--amber-soft);color:var(--amber)"><b>전체 공지</b><div style="color:var(--ink);margin-top:2px">${esc(pub.notice).replace(/\n/g,'<br>')}</div></div>`:''}
    ${pub.items.map((it,i)=>{const live=svc.items.find(x=>x.id===it.id)||it;const notes=(live.notes||[]).filter(n=>noteVisible(n,ctx));const k=keyStr(it);
     return `<div class="card"><div class="row sb"><div class="row"><span class="num">${i+1}</span><b style="font-size:17px;letter-spacing:-.01em">${esc(it.title||'(제목 없음)')}</b></div><span class="pill key">${esc(k||'-')}</span></div>
+    ${it.reason?`<div class="reason">${ic('note')}<span>${esc(it.reason)}</span></div>`:''}
     ${it.form?`<div class="songbar" style="margin-top:10px">${esc(it.form)}</div>`:''}
     <div class="row" style="align-items:flex-start;gap:14px;margin-top:12px">${it.pieces[0]?`<div class="thumb" style="background-image:url('${url(it.pieces[0].blob)}')"></div>`:''}
      <div class="grow small">${visMedia(it,sess).map(md=>`<div class="row" style="margin-bottom:4px"><span class="icon sm ${md.type==='youtube'?'ytc':'micc'}">${ic(md.type==='youtube'?'yt':'mic')}</span>${mdSess(md).length?`<span class="tag">${esc(mdTag(md))}</span>`:''}<span class="grow muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(md.name||md.url)}${md.type==='youtube'&&(md.start||md.end)?` <span class="pill">${fmtT(md.start||0)}–${md.end?fmtT(md.end):'끝'}</span>`:''}</span>${md.type==='youtube'?`<a class="btn sm ghost" href="https://youtu.be/${ytId(md.url)}?t=${md.start||0}" target="_blank" rel="noopener">${ic('open')}열기</a>`:''}</div>
@@ -646,7 +665,7 @@ function playHTML(svc,idx){
  const my=me();const sess=PL.session||my.session;const k=keyStr(it);const prev=pub.items[idx-1],next=pub.items[idx+1];PL.ml=visMedia(it,sess);
  return `<div class="top"><button class="icon ghost" data-act="back-view" data-id="${svc.id}">${ic('back')}</button>
   <div class="songnav grow"><span class="nb prev" ${prev?'data-act="pn" data-d="-1"':''}>${prev?esc(prev.title||'(제목 없음)'):''}</span><button class="icon sm" data-act="pn" data-d="-1" ${prev?'':'disabled'} title="이전 곡">${ic('left')}</button><span class="nb cur"><span class="num">${idx+1}</span>${esc(it.title||'(제목 없음)')}<span class="pill key">${esc(k||'-')}</span></span><button class="icon sm" data-act="pn" data-d="1" ${next?'':'disabled'} title="다음 곡">${ic('right')}</button><span class="nb next" ${next?'data-act="pn" data-d="1"':''}>${next?esc(next.title||'(제목 없음)'):''}</span></div>
-  ${pub.message?`<button class="icon ghost ${msgUnread(svc)?'dot':''}" data-act="msg" data-id="${svc.id}" title="인도자의 글">${ic('note')}</button>`:''}<button class="switch ${PL.stage?'on':''}" data-act="stage"><i></i>무대 모드</button></div>
+  ${hasNote(svc)?`<button class="icon ghost ${msgUnread(svc)?'dot':''}" data-act="msg" data-id="${svc.id}" title="예배 노트">${ic('note')}</button>`:''}<button class="switch ${PL.stage?'on':''}" data-act="stage"><i></i>무대 모드</button></div>
  <div class="ws split" id="ws">
   <div class="stack" id="stack">
    <div class="panel media">${ptab('미디어','',PL.ml.length?PL.ml.map((md,i)=>`<button class="chip t ${i===0?'on':''}" data-act="msel" data-i="${i}" title="${esc(mdTag(md))}"><span class="${md.type==='youtube'?'ytc':'micc'}" style="display:inline-flex">${ic(md.type==='youtube'?'yt':'mic')}</span>${mdSess(md).length?`<span class="tag" style="margin-right:2px">${esc(mdTag(md))}</span>`:''}${esc((md.name||md.url||'').replace(/^https?:\/\//,'').slice(0,20))}</button>`).join(''):'<span class="hint">미디어 없음</span>')}
@@ -739,21 +758,69 @@ function openComposer(svc,it,o){ // o: {marker, leader, t, mediaId}
   }
  };
 }
-const msgUnread=svc=>{const pub=svc.published;if(!pub||!pub.message)return false;S.readRev=S.readRev||{};return (S.readRev[svc.id]||0)<(pub.messageRev||0)};
-function messageSheet(svc,first){const pub=svc.published;if(!pub||!pub.message)return;
- const done=()=>{S.readRev=S.readRev||{};S.readRev[svc.id]=pub.messageRev||0;save();$$('[data-act="msg"]').forEach(b=>b.classList.remove('dot'))};
- const long=pub.message.split('\n').length>5||pub.message.length>260;
+/* ---------- §4 말씀 · 예배 노트 ---------- */
+const hasWord=w=>!!(w&&(w.passage||w.title||w.line));
+// 말씀 블록(인용문): 바텀시트·에디터 카드 공용. memo 는 인도자이거나 memoPublic 일 때만 서버가 내려줌
+function wordBlockHTML(w,opts){if(!hasWord(w))return '';const o=opts||{};
+ const src=w.from&&w.from.name?w.from.name:'';const when=w.updatedAt?fmtRel(w.updatedAt):'';
+ return `<div class="wordblock">${o.lock?`<div class="wlock">${ic('check')}${esc(src||'목사님')}${when?' · '+esc(when):''}</div>`:''}
+  ${w.passage?`<b>${esc(w.passage)}</b>`:''}${w.title?`<div class="wtitle">${esc(w.title)}</div>`:''}${w.line?`<div class="wline">${esc(w.line)}</div>`:''}
+  ${!o.lock&&src?`<div class="wfrom">${esc(src)}</div>`:''}
+  ${w.memo?`<div class="wmemo"><span class="pill">${w.memoPublic?'전체 공개':'인도자만'}</span><div>${esc(w.memo).replace(/\n/g,'<br>')}</div></div>`:''}</div>`}
+// 에디터 말씀 카드 (§4.3): 목회자·링크 입력이 있으면 잠기고, 없으면 인도자가 직접 입력
+function wordCardHTML(svc){const w=svc.word;const locked=hasWord(w)&&w.from&&w.from.type!=='leader';
+ return `<div class="lbl" style="margin-top:10px">말씀 <span class="hint">${locked?'목사님이 보낸 내용이라 여기서는 고치지 않아요':'본문·제목·한 줄은 팀 전원에게 보여요'}</span></div>
+  ${locked?`${wordBlockHTML(w,{lock:true})}<div class="row" style="margin-top:6px"><button class="btn sm ghost" data-act="word-req">수정 요청</button></div>`
+   :`<div class="row" style="gap:8px"><input class="field" data-w="passage" placeholder="시편 103:1-5" value="${esc((w&&w.passage)||'')}" style="width:180px"><input class="field grow" data-w="title" placeholder="잊지 말아야 할 은혜" value="${esc((w&&w.title)||'')}"></div>
+    <input class="field" data-w="line" placeholder="받은 은혜를 세어보는 예배" value="${esc((w&&w.line)||'')}" style="margin-top:6px">
+    <div class="row" style="margin-top:6px"><span class="hint" id="wSaved">${hasWord(w)?'저장됨':'적으면 자동 저장돼요'}</span></div>`}`}
+let WORD_T;
+async function saveWord(svc){if(!online()||!S.team.id||!svc)return;
+ try{const r=await api('/services/'+svc.id+'/word',{method:'PUT',body:{teamId:S.team.id,word:svc.word||{}}});svc.word=r.word||svc.word;touch(svc);save();const s=$('#wSaved');if(s)s.textContent='저장됨'}
+ catch(e){const s=$('#wSaved');if(s)s.textContent='저장 실패 — 다시 시도할게요';toast(e.message)}}
+const noteRev=svc=>{const pub=svc.published;return pub?(pub.messageRev||0):0};
+const hasNote=svc=>{const pub=pubOrDraft(svc);return !!((pub&&pub.message)||hasWord(svc.word))};
+const msgUnread=svc=>{if(!svc.published||!hasNote(svc))return false;S.readRev=S.readRev||{};return (S.readRev[svc.id]||0)<noteRev(svc)};
+function messageSheet(svc,first){const pub=pubOrDraft(svc);if(!hasNote(svc))return;
+ const done=()=>{S.readRev=S.readRev||{};S.readRev[svc.id]=noteRev(svc);save();$$('[data-act="msg"]').forEach(b=>b.classList.remove('dot'));
+  if(online()&&svc.published)api('/services/'+svc.id+'/read',{method:'POST',body:{teamId:S.team.id,rev:noteRev(svc)}}).catch(()=>{})};
+ const msg=pub.message||'';const long=msg.split('\n').length>5||msg.length>260;
  modal(`<div class="row" style="gap:10px"><span class="icon sm">${ic('note')}</span><div class="grow"><b style="font-size:17px;letter-spacing:-.03em">인도자의 글</b><div class="hint">${esc(pub.author||'인도자')} · ${esc(pub.name||'예배')} · v${pub.version}</div></div><button class="icon sm ghost" data-close="1">${ic('x')}</button></div>
-  <div class="msgbody ${long?'clamp':''}" id="msgBody">${esc(pub.message)}</div>${long?`<button class="btn sm ghost" id="msgMore" style="margin-top:6px">더 보기</button>`:''}
+  ${wordBlockHTML(svc.word)}
+  ${msg?`<div class="msgbody ${long?'clamp':''}" id="msgBody">${esc(msg)}</div>${long?`<button class="btn sm ghost" id="msgMore" style="margin-top:6px">더 보기</button>`:''}`:''}
   <div class="row sb" style="margin-top:18px">${first?`<span class="hint">다시 보려면 상단 ${ic('note')} 아이콘</span>`:'<span></span>'}<button class="btn pri" id="msgOk">${ic('check')}읽었어요</button></div>`);
  $('#modal').onclick=e=>{if(e.target.closest('#msgMore')){$('#msgBody').classList.remove('clamp');$('#msgMore').remove();return}
   if(e.target.closest('#msgOk')||e.target.closest('[data-close]')||e.target.classList.contains('ov')){done();closeModal()}};
 }
+/* ---------- 홈 "지금 할 일" (§1.5) + 알림함 (§1.4) ---------- */
+function todoCards(){const cards=[];
+ if(isLeader()&&online()){const weeks=+(S.team.settings&&S.team.settings.serviceAutoCreateWeeks)||4;const lim=new Date();lim.setDate(lim.getDate()+weeks*7);const limIso=lim.toISOString().slice(0,10);const t=today();
+  S.services.filter(s=>!s.published&&!s.items.length&&(s.date||'')>=t&&(s.date||'')<=limIso).sort((a,b)=>(a.date||'').localeCompare(b.date||'')).forEach(s=>cards.push({icon:'pen',title:`${fmtDate(s.date).md} ${svcName(s)} 콘티가 비어 있어요`,body:'곡을 채우고 발행하세요',btn:'편집',act:'edit-svc',arg:s.id}))}
+ notiActionable().forEach(n=>cards.push({icon:NOTI_ICON[n.type]||'note',title:n.title,body:n.body,btn:'확인',act:'noti-ack',arg:n.id}));
+ return cards}
+function todoHTML(){const cards=todoCards();if(!cards.length)return '';
+ return `<div class="todo rise"><div class="todo-hd"><b>지금 할 일</b><span class="pill">${cards.length}</span></div>${cards.slice(0,3).map(c=>`<div class="todo-card"><span class="icon sm">${ic(c.icon)}</span><div class="grow"><b>${esc(c.title)}</b>${c.body?`<div class="hint">${esc(c.body)}</div>`:''}</div><button class="btn sm pri" data-act="${c.act}" data-id="${esc(c.arg)}">${esc(c.btn)}</button></div>`).join('')}${cards.length>3?`<button class="btn sm ghost" data-act="inbox">+${cards.length-3} 더 보기</button>`:''}</div>`}
+async function inboxModal(){await pullNoti();const list=NOTI.list;
+ modal(`<div class="row" style="align-items:center;gap:8px"><b style="font-size:17px">알림함</b>${NOTI.unread?`<span class="pill">${NOTI.unread}</span>`:''}<span class="grow"></span>${NOTI.unread?`<button class="btn sm ghost" id="nbAll">모두 읽음</button>`:''}</div>
+  <div style="margin-top:10px">${list.length?list.map(n=>`<div class="nrow ${n.readAt?'':'unread'}" data-nid="${esc(n.id)}"><i class="dot"></i><span class="icon sm">${ic(NOTI_ICON[n.type]||'note')}</span><div class="grow"><b>${esc(n.title)}</b>${n.body?`<div class="hint">${esc(n.body)}</div>`:''}</div><span class="hint" style="white-space:nowrap">${fmtRel(n.at)}</span></div>`).join(''):'<div class="empty">아직 알림이 없어요</div>'}</div>
+  <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn" id="nbClose">닫기</button></div>`,{center:true});
+ updateBadges();
+ $('#modal').onclick=async e=>{try{
+  if(e.target.closest('#nbClose')){closeModal();return}
+  if(e.target.closest('#nbAll')){await api('/notifications/read',{method:'POST',body:{teamId:S.team.id,all:true}});const now=new Date().toISOString();NOTI.list.forEach(n=>n.readAt=n.readAt||now);NOTI.unread=0;NOTI.sig='';updateBadges();inboxModal();return}
+  const row=e.target.closest('[data-nid]');if(row){const n=NOTI.list.find(x=>x.id===row.dataset.nid);if(!n)return;
+   if(!n.readAt){n.readAt=new Date().toISOString();NOTI.unread=Math.max(0,NOTI.unread-1);NOTI.sig='';updateBadges();api('/notifications/read',{method:'POST',body:{teamId:S.team.id,ids:[n.id]}}).catch(()=>{})}
+   closeModal();const h=String(n.link||'').replace(/^#\/?/,'');if(h&&h!=='home')go(h);else render();return}
+ }catch(err){toast(err.message)}}}
 function libraryModal(){const lead=isLeader();const usedIn=id=>S.services.filter(sv=>sv.items.some(it=>it.libId===id)).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
- modal(`<b style="font-size:17px">라이브러리</b> <span class="hint">${S.library.length}곡 · 예배에 넣은 곡은 자동 저장</span>
+ const groups=Object.values(S.library.reduce((g,s)=>{const k=normTitle(s.title);if(!k)return g;(g[k]||(g[k]=[])).push(s);return g},{})).filter(g=>g.length>1);const dupN=groups.reduce((n,g)=>n+g.length-1,0);
+ modal(`<b style="font-size:17px">라이브러리</b> <span class="hint">${S.library.length}곡 · 예배에 넣은 곡은 자동 저장</span>${lead&&dupN?`<div class="row" style="margin-top:8px"><button class="btn sm" id="libMerge">같은 곡 ${dupN}개 합치기</button><span class="hint">제목이 같은 곡: ${groups.map(g=>esc(g[0].title)).slice(0,3).join(', ')}${groups.length>3?' 외':''}</span></div>`:''}
   <div style="margin-top:12px">${S.library.length?S.library.slice().sort((a,b)=>(a.title||'').localeCompare(b.title||'','ko')).map(sg=>{const u=usedIn(sg.id);return `<div class="mrow"><span class="grow"><b>${esc(sg.title||'(제목 없음)')}</b> <span class="muted">${esc(keyStr(sg))}</span><div class="hint" style="margin-top:2px">${u.length?'사용: '+u.slice(0,4).map(sv=>esc(sv.name||'(이름 없음)')).join(', ')+(u.length>4?' 외 '+(u.length-4):''):'아직 안 쓴 곡'} · 악보 ${(sg.pieces||[]).length}장 · 미디어 ${(sg.media||[]).length}</div></span>${lead?`<button class="icon sm ghost" data-libdel="${sg.id}" title="라이브러리에서 삭제">${ic('trash')}</button>`:''}</div>`}).join(''):'<div class="empty">비어 있어요. 예배에 곡을 넣으면 여기에 쌓입니다.</div>'}</div>
   <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" data-close="1">닫기</button></div>`,{center:true});
- $('#modal').onclick=e=>{if(e.target.closest('[data-close]')){closeModal();return}const d=e.target.closest('[data-libdel]');if(d){if(!confirm('라이브러리에서 이 곡을 지울까요? 이미 들어간 예배에는 영향이 없어요.'))return;S.library=S.library.filter(x=>x.id!==d.dataset.libdel);save();libraryModal()}}}
+ $('#modal').onclick=e=>{if(e.target.closest('[data-close]')){closeModal();return}const d=e.target.closest('[data-libdel]');if(d){if(!confirm('라이브러리에서 이 곡을 지울까요? 이미 들어간 예배에는 영향이 없어요.'))return;S.library=S.library.filter(x=>x.id!==d.dataset.libdel);save();libraryModal()}
+  if(e.target.closest('#libMerge')){if(!confirm(`제목이 같은 곡을 하나로 합칠까요? 악보가 많은 쪽을 남기고, 예배에 들어간 곡은 남는 쪽으로 이어집니다.`))return;let merged=0;
+   groups.forEach(g=>{const keep=g.slice().sort((a,b)=>((b.pieces||[]).length-(a.pieces||[]).length)||((b.at||0)-(a.at||0)))[0];g.forEach(s=>{if(s===keep)return;S.services.forEach(sv=>sv.items.forEach(it=>{if(it.libId===s.id)it.libId=keep.id}));if(!keep.form&&s.form)keep.form=s.form;if(!keep.songNote&&s.songNote)keep.songNote=s.songNote;S.library=S.library.filter(x=>x.id!==s.id);merged++})});
+   save();toast(merged+'곡을 합쳤어요');libraryModal()}}}
 function mediaTargetModal(svc,it,md){let t=mdSess(md).slice();
  modal(`<b style="font-size:17px">이 미디어를 누가 보나요</b><div class="hint" style="margin-top:4px">${esc(md.name||md.url)}</div>
   <div style="margin-top:14px" id="mtSel"><button class="q ${t.length?'':'on'}" data-mdt="">전체</button>${S.team.sessions.filter(x=>x!=='인도자').map(x=>`<button class="q ${t.includes(x)?'on':''}" data-mdt="${esc(x)}">${esc(x)}</button>`).join('')}</div>
@@ -785,8 +852,8 @@ function publishModal(svc){
   <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" id="kkCopy">텍스트 복사</button>${online()?`<button class="btn pri" id="pubOnly">${ic('send')}발행하고 팀에 공유</button>`:`<button class="btn" id="pubOnly">${ic('check')}발행만</button><button class="btn pri" id="pubOk">${ic('send')}발행 + 파일 내보내기</button>`}</div>`);
  $('#modal').onclick=async e=>{
   if(e.target.closest('#kkCopy')){try{await navigator.clipboard.writeText($('#kk').value);toast('복사됨')}catch{$('#kk').select();document.execCommand('copy');toast('복사됨')}}
-  const only=e.target.closest('#pubOnly'),withFile=e.target.closest('#pubOk');if(only||withFile){const prevPub=svc.published,prevVer=svc.version,prevRev=svc.messageRev;const msg=(svc.message||'').trim();const prevMsg=svc.published?(svc.published.message||''):'';if(msg!==prevMsg)svc.messageRev=(svc.messageRev||0)+1;
-   svc.published={version:nextV,at:Date.now(),name:svc.name,date:svc.date,notice:svc.notice,message:msg,messageRev:svc.messageRev||0,author:me().name||'인도자',items:clone(svc.items).map(it=>({...it,notes:undefined}))};S.readRev=S.readRev||{};S.readRev[svc.id]=svc.messageRev||0;save();closeModal();
+  const only=e.target.closest('#pubOnly'),withFile=e.target.closest('#pubOk');if(only||withFile){if(!(svc.name||'').trim()){svc.name=svcName(svc);const ti=$('.titlein');if(ti)ti.value=svc.name}const prevPub=svc.published,prevVer=svc.version,prevRev=svc.messageRev;const msg=(svc.message||'').trim();const prevMsg=svc.published?(svc.published.message||''):'';const wk=w=>w?[w.passage,w.title,w.line,w.memo,w.memoPublic?1:0].map(x=>String(x==null?'':x)).join(''):'';if(msg!==prevMsg||wk(svc.word)!==wk(svc.published&&svc.published.word))svc.messageRev=(svc.messageRev||0)+1;
+   svc.published={version:nextV,at:Date.now(),name:svc.name,date:svc.date,notice:svc.notice,message:msg,messageRev:svc.messageRev||0,word:svc.word?clone(svc.word):null,author:me().name||'인도자',items:clone(svc.items).map(it=>({...it,notes:undefined}))};S.readRev=S.readRev||{};S.readRev[svc.id]=svc.messageRev||0;save();closeModal();
    if(online()){toast('팀 서버에 올리는 중…');try{await SYNC.pushPublish(svc);toast('v'+nextV+' 발행 · 팀에 공유됐어요')}catch(err){if(err.code==='version_conflict'){svc.published=prevPub;svc.version=prevVer;svc.messageRev=prevRev;save();alert(err.message);try{await SYNC.pullService(svc.id)}catch(e2){}}else toast('발행은 됐지만 서버 업로드 실패: '+err.message)}}else toast('v'+nextV+' 발행');
    if(withFile)await exportJSON(svc.id);render()}
  };
@@ -796,7 +863,7 @@ function settingsModal(){
  const split=el=>el.value.split(',').map(x=>x.trim()).filter(Boolean);
  modal(`<b style="font-size:17px">설정</b>${on?` <span class="hint">${esc(S.team.name)} · ${roleLabel(m.role)}</span>`:''}
   <div class="lbl">내 이름</div><input class="field" id="sName" value="${esc(m.name)}" placeholder="하은">
-  <div class="lbl">내 세션</div><div id="sSess">${S.team.sessions.map(s=>`<button class="q ${s===m.session?'on':''}" data-s="${esc(s)}">${esc(s)}</button>`).join('')}</div>
+  ${isPastor()?'':`<div class="lbl">내 세션</div><div id="sSess">${S.team.sessions.map(s=>`<button class="q ${s===m.session?'on':''}" data-s="${esc(s)}">${esc(s)}</button>`).join('')}</div>`}
   ${on?'':`<div class="lbl">역할</div><div id="sRole"><button class="q ${m.role==='leader'?'on':''}" data-r="leader">인도자 (콘티 제작)</button><button class="q ${m.role!=='leader'?'on':''}" data-r="member">멤버</button></div>`}
   ${!on||lead?`<div class="lbl">팀 세션 목록 <span class="hint">쉼표로</span></div><input class="field" id="sList" value="${esc(S.team.sessions.join(', '))}">
   <div class="lbl">상용구 <span class="hint">메모 작성창에 칩으로</span></div><input class="field" id="sPhr" value="${esc(S.team.phrases.join(', '))}">`:''}
@@ -868,24 +935,44 @@ let saveT;let CUR_SCOPE='legacy';
 const scopeKey=(userId,teamId)=>'state:'+(userId||'local')+':'+(teamId||'none');
 function flushSave(){clearTimeout(saveT);return IDB.put('kv',CUR_SCOPE==='legacy'?'state':CUR_SCOPE,JSON.stringify(S)).then(()=>{if(CUR_SCOPE!=='legacy')return IDB.put('kv','scope',CUR_SCOPE)}).catch(e=>console.error(e))}
 function save(){clearTimeout(saveT);saveT=setTimeout(flushSave,250);if(typeof SYNC!=='undefined')SYNC.schedulePush()}
-const DEF_TEAM=()=>({sessions:DEF_SESS.slice(),phrases:DEF_PHR.slice(),me:{name:'',session:'건반',role:'leader'}});
+const DEF_TEAM=()=>({sessions:DEF_SESS.slice(),phrases:DEF_PHR.slice(),settings:{},me:{name:'',session:'건반',role:'leader'}});
 // 스코프 전환: 지금 상태를 저장해 두고, 새 (계정,팀)의 콘티·라이브러리·메모 그림자를 불러온다. 팀 정보(S.team)는 호출자가 이어서 채운다
 async function switchScope(next){if(next===CUR_SCOPE)return;
  if(CUR_SCOPE==='legacy'){CUR_SCOPE=next;await flushSave();try{await IDB.del('kv','state')}catch(e){}return} // 예전 단일 저장소는 첫 스코프가 그대로 물려받음
  await flushSave();CUR_SCOPE=next;let s=null;try{const raw=await IDB.get('kv',next);if(raw)s=JSON.parse(raw)}catch(e){console.warn('scope',e)}
- S.services=(s&&s.services)||[];S.library=(s&&s.library)||[];S.noteShadow=(s&&s.noteShadow)||{};S.seedAt=(s&&s.seedAt)||0;S.team=Object.assign(DEF_TEAM(),(s&&s.team)||{});
- if(typeof SYNC!=='undefined')Object.keys(SYNC.pulledAt).forEach(k=>delete SYNC.pulledAt[k])}
+ S.services=(s&&s.services)||[];S.library=(s&&s.library)||[];S.noteShadow=(s&&s.noteShadow)||{};S.seedAt=(s&&s.seedAt)||0;S.dropped=(s&&s.dropped)||[];S.team=Object.assign(DEF_TEAM(),(s&&s.team)||{});
+ if(typeof SYNC!=='undefined')Object.keys(SYNC.pulledAt).forEach(k=>delete SYNC.pulledAt[k]);
+ if(typeof NOTI!=='undefined'){NOTI.list=[];NOTI.unread=0;NOTI.at=0;NOTI.sig=''}}
 const me=()=>S.team.me;
 const isLeader=()=>me().role==='leader';
 const svcById=id=>S.services.find(s=>s.id===id);
 function newService(){return {id:uid(),name:'',date:today(),notice:'',version:0,items:[],published:null}}
 function newItem(){return {id:uid(),title:'',key:'',mod:'',form:'',songNote:'',pieces:[],media:[],notes:[]}}
 const keyStr=it=>it.mod?`${it.key||'?'} – ${it.mod}`:(it.key||'');
+// 예배 이름 규칙 (§2.4·§9): 이름이 비면 팀 규칙으로 만든 기본 이름을 쓴다. {월} {일} {요일} {이름}
+const WDK=['일','월','화','수','목','금','토'];
+function fmtNameC(rule,d,label){const t=new Date((d||today())+'T00:00:00');if(isNaN(t))return label||'';return String(rule||'{월}/{일} {이름}').replace(/\{월\}/g,t.getMonth()+1).replace(/\{일\}/g,t.getDate()).replace(/\{요일\}/g,WDK[t.getDay()]).replace(/\{이름\}/g,label||'').replace(/\s+/g,' ').trim()}
+const svcName=s=>(s.name||'').trim()||fmtNameC(S.team.settings&&S.team.settings.nameRule,s.date,s.label||'')||'예배';
+// 같은 예배 합치기 (§9): src 의 곡 중 dst 에 없는 것만 뒤에 붙인다
+function mergeInto(dst,src){(src.items||[]).forEach(it=>{if(!dst.items.some(t=>t.title===it.title&&t.key===it.key))dst.items.push(it)});if(!dst.notice&&src.notice)dst.notice=src.notice;if(!dst.message&&src.message)dst.message=src.message;touch(dst)}
+// 라이브러리 제목 정규화 (§9): 괄호·기호·공백을 빼고 비교
+const normTitle=t=>String(t||'').toLowerCase().replace(/\([^)]*\)|\[[^\]]*\]/g,'').replace(/[\s\-–—_.,·'"“”‘’!?~]/g,'');
 
 /* ---------- server (계정·팀) — /api 가 있으면 온라인, 없으면 지금처럼 기기 안에서만 ---------- */
 const NET={server:null,user:null,teams:[]};   // server: true=있음, false=없음(정적 호스팅), null=모름(네트워크 불가)
+/* ---------- 알림 (§1): 알림함 ① + 홈 카드 ②. 푸시 ③는 앱 단계 ---------- */
+const NOTI={list:[],unread:0,at:0,sig:'',timer:null};
+const NOTI_ICON={publish:'send','note.updated':'note','date.opened':'users','date.closed':'moon','lineup.notify':'users','lineup.changed':'users','avail.request':'list','avail.maybe':'list','avail.conflict':'marker','word.request':'note','word.received':'note','rehearsal.uploaded':'mic'};
+const fmtRel=t=>{const d=Date.now()-new Date(t).getTime();if(!(d>=0))return '';if(d<60e3)return '방금';if(d<3600e3)return Math.floor(d/60e3)+'분 전';if(d<86400e3)return Math.floor(d/3600e3)+'시간 전';if(d<7*86400e3)return Math.floor(d/86400e3)+'일 전';const x=new Date(t);return (x.getMonth()+1)+'/'+x.getDate()};
+async function pullNoti(){if(!online()||!S.team.id||!NET.user)return false;try{const r=await api('/notifications?team='+S.team.id);NOTI.list=r.notifications||[];NOTI.unread=r.unread||0;NOTI.at=Date.now();const sig=NOTI.list.map(n=>n.id+(n.readAt?'r':'')+(n.ackAt?'a':'')).join(',');const ch=sig!==NOTI.sig;NOTI.sig=sig;return ch}catch(e){return false}}
+function refreshNoti(){return pullNoti().then(ch=>{updateBadges();if(ch&&route().name==='home')render();return ch})}
+function startNotiPoll(){clearInterval(NOTI.timer);NOTI.timer=setInterval(()=>{if(document.hidden||!online())return;refreshNoti()},60000);
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&online()&&Date.now()-NOTI.at>10000)refreshNoti()})}
+function updateBadges(){$$('[data-noti-badge]').forEach(b=>{b.textContent=NOTI.unread||'';b.hidden=!NOTI.unread});$$('[data-noti-dot]').forEach(b=>{b.hidden=!NOTI.unread})}
+const notiActionable=()=>NOTI.list.filter(n=>n.actionable&&!n.ackAt&&(!n.expiresAt||new Date(n.expiresAt)>new Date()));
 const online=()=>NET.server===true;
-const RL={leader:'인도자',session_lead:'세션리더',member:'멤버'};
+const RL={leader:'인도자',session_lead:'세션리더',member:'멤버',pastor:'목회자'};
+const isPastor=()=>me().role==='pastor';   // 목회자: 세션 없음, 편성·라이브러리 편집 없음, 말씀을 쓴다 (§0)
 const roleLabel=r=>RL[r]||'멤버';
 const whoStr=m=>[m.name||'이름 없음',m.session,roleLabel(m.role)].filter((x,i,a)=>x&&a.indexOf(x)===i).map(esc).join(' · ');
 async function api(path,o){const opt={method:(o&&o.method)||'GET',headers:{'x-conti':'1'},credentials:'same-origin',cache:'no-store'};if(o&&o.keepalive)opt.keepalive=true;if(o&&o.body){opt.headers['content-type']='application/json';opt.body=JSON.stringify(o.body)}
@@ -896,7 +983,7 @@ async function probeServer(){try{const r=await fetch('/api/health',{cache:'no-st
 function probeOmr(){if(!online()||!NET.user)return;api('/omr').then(r=>{const on=!!(r&&r.available);if(on!==NET.omr){NET.omr=on;if(route().name==='edit')render()}}).catch(()=>{})}
 async function applyMembership(t){const next=scopeKey(NET.user&&NET.user.id,t.teamId);
  if(next!==CUR_SCOPE){const prev=S.team.id;await switchScope(next);if(prev&&prev!==t.teamId&&route().name!=='home')go('home')} // 팀이 바뀌면 이전 팀 콘티 화면에서 빠져나옴
- S.team.id=t.teamId;S.team.name=t.teamName;S.team.invite=t.invite||'';S.team.sessions=t.sessions.slice();S.team.phrases=t.phrases.slice();S.team.me={userId:t.me.userId,name:t.me.name,session:t.me.session,role:t.me.role,capo:+t.me.capo||0};save()}
+ S.team.id=t.teamId;S.team.name=t.teamName;S.team.invite=t.invite||'';S.team.sessions=t.sessions.slice();S.team.phrases=t.phrases.slice();S.team.settings=t.settings||S.team.settings||{};S.team.me={userId:t.me.userId,name:t.me.name,session:t.me.session,role:t.me.role,capo:+t.me.capo||0};save()}
 async function takeMe(m){NET.user=m.user;NET.teams=m.teams||[];const cur=NET.teams.find(x=>x.teamId===S.team.id)||m.team;
  if(cur){if(S.team.id&&cur.teamId!==S.team.id)toast((cur.teamName||'다른')+' 팀으로 전환했어요');await applyMembership(cur)}
  else{await switchScope(scopeKey(m.user&&m.user.id,''));S.team.id='';S.team.invite='';save()}}
@@ -912,15 +999,22 @@ const SYNC={t:null,pulledAt:{},
  // 팀의 발행본 목록을 받아 새 것·새 버전만 내려받음. 바뀐 게 있으면 true
  async pullServices(){if(!online()||!S.team.id)return false;let list,drafts=[];try{const r=await api('/services?team='+S.team.id);list=r.services;drafts=r.drafts||[]}catch(e){return false}
   let changed=false;
-  if(isLeader())for(const d of drafts){if(svcById(d.id))continue;try{const dd=await api('/services/'+d.id+'?team='+S.team.id+'&draft=1');if(dd&&dd.doc){await SYNC.fetchBlobs(dd.blobs);const cur={id:d.id,name:'',date:today(),notice:'',version:0,items:[],published:null};S.services.push(cur);SYNC.applyDraft(cur,dd.doc);changed=true}}catch(e){console.warn('draft',d.id,e.message)}}
+  if(isLeader())for(const d of drafts){if(svcById(d.id)||(S.dropped||[]).includes(d.id))continue;try{const dd=await api('/services/'+d.id+'?team='+S.team.id+'&draft=1');if(dd&&dd.doc){
+    if(dd.doc.auto&&!(dd.doc.items||[]).length&&S.services.some(x=>x.date===dd.doc.date)){S.dropped=(S.dropped||[]).concat(d.id);continue} // 자동 생성 초안인데 그 날짜 콘티가 이미 있으면 받지 않음
+    await SYNC.fetchBlobs(dd.blobs);const cur={id:d.id,name:'',date:today(),notice:'',version:0,items:[],published:null};S.services.push(cur);SYNC.applyDraft(cur,dd.doc);changed=true}}catch(e){console.warn('draft',d.id,e.message)}}
   for(const r of list){const cur=svcById(r.id);const localV=cur&&cur.published?cur.published.version:0;
    if(cur&&localV>=r.version)continue;
+   if(!cur&&(S.dropped||[]).includes(r.id))continue;
+   if(!cur){const twin=S.services.find(x=>!x.published&&(r.name||'').trim()&&x.name===r.name&&x.date===r.date); // §9 같은 이름·날짜의 내 초안 → 합칠지 묻기
+    if(twin&&confirm(`"${r.name}" (${r.date}) 발행본이 서버에 있어요. 이 기기의 같은 이름 초안과 합칠까요?\n(취소하면 둘 다 남아요)`)){try{const pulled=await SYNC.pullService(r.id);mergeInto(pulled,twin);S.services=S.services.filter(x=>x.id!==twin.id);S.dropped=(S.dropped||[]).concat(twin.id);changed=true}catch(e){console.warn('merge',e.message)}continue}}
    try{await SYNC.pullService(r.id);changed=true}catch(e){console.warn('pull',r.id,e.message)}}
   if(changed)save();return changed},
  async pullService(id){const d=await api('/services/'+id+'?team='+S.team.id);const doc=scrubIds(d.doc);await SYNC.fetchBlobs(d.blobs);
-  let cur=svcById(id);if(!cur){cur={id,name:doc.name,date:doc.date,notice:doc.notice||'',version:0,items:[],published:null};S.services.push(cur)}
+  if(d.word!==undefined){const cur0=svcById(id);if(cur0)cur0.word=d.word||null}
+  if(d.readRev){S.readRev=S.readRev||{};S.readRev[id]=Math.max(S.readRev[id]||0,d.readRev)}
+  let cur=svcById(id);if(!cur){cur={id,name:doc.name,date:doc.date,notice:doc.notice||'',version:0,items:[],published:null};S.services.push(cur);if(d.word!==undefined)cur.word=d.word||null}
   const old=new Map(cur.items.map(it=>[it.id,it]));
-  cur.published={version:doc.version,at:new Date(d.updatedAt).getTime()||Date.now(),name:doc.name,date:doc.date,notice:doc.notice||'',message:doc.message||'',messageRev:doc.messageRev||0,author:doc.author||'',items:clone(doc.items)};
+  cur.published={version:doc.version,at:new Date(d.updatedAt).getTime()||Date.now(),name:doc.name,date:doc.date,notice:doc.notice||'',message:doc.message||'',messageRev:doc.messageRev||0,word:doc.word||null,author:doc.author||'',items:clone(doc.items)};
   if(!isLeader()||cur.version<=doc.version){ // 인도자 기기의 더 새로운 초안은 건드리지 않음
    cur.name=doc.name;cur.date=doc.date;cur.notice=doc.notice||'';cur.message=doc.message||'';cur.messageRev=doc.messageRev||0;cur.version=doc.version;
    cur.items=clone(doc.items).map(it=>{const o=old.get(it.id);it.notes=o?(o.notes||[]):[];it.media=(it.media||[]).map(m=>{const om=o&&(o.media||[]).find(x=>x.id===m.id);return {...m,notes:om?(om.notes||[]):[]}});return it})}
@@ -937,9 +1031,9 @@ const SYNC={t:null,pulledAt:{},
    try{const r=await fetch('/api/blobs/'+id+'?team='+S.team.id+'&force=1',{method:'POST',headers:{'x-conti':'1','content-type':b.type||'application/octet-stream'},body:b,credentials:'same-origin'});if(r.ok)ok++;else miss++}catch(e){miss++}}
   return {ok,miss}},
  // 초안(인도자): 기기 간 이어서 편집
- draftDoc(svc){return {id:svc.id,name:svc.name,date:svc.date,notice:svc.notice||'',message:svc.message||'',messageRev:svc.messageRev||0,version:svc.version||0,editedAt:svc.editedAt||0,items:clone(svc.items).map(it=>({...it,notes:undefined,media:(it.media||[]).map(m=>({...m,notes:undefined}))}))}},
+ draftDoc(svc){return {id:svc.id,name:svc.name,date:svc.date,notice:svc.notice||'',message:svc.message||'',messageRev:svc.messageRev||0,word:svc.word||null,version:svc.version||0,editedAt:svc.editedAt||0,items:clone(svc.items).map(it=>({...it,notes:undefined,media:(it.media||[]).map(m=>({...m,notes:undefined}))}))}},
  async pushDraft(svc){if(!online()||!isLeader()||!svc||!svc.editedAt)return;if(svc.draftPushedAt===svc.editedAt)return;try{await SYNC.ensureBlobs(svc.items,true);await api('/services/'+svc.id+'/draft',{method:'PUT',body:{teamId:S.team.id,doc:SYNC.draftDoc(svc)}});svc.draftPushedAt=svc.editedAt;save()}catch(e){console.warn('draft push',e.message)}},
- applyDraft(svc,doc){scrubIds(doc);const old=new Map(svc.items.map(it=>[it.id,it]));svc.name=doc.name;svc.date=doc.date;svc.notice=doc.notice||'';svc.message=doc.message||'';svc.messageRev=doc.messageRev||0;svc.version=Math.max(svc.version||0,doc.version||0);svc.editedAt=doc.editedAt||Date.now();svc.draftPushedAt=svc.editedAt;
+ applyDraft(svc,doc){scrubIds(doc);const old=new Map(svc.items.map(it=>[it.id,it]));if(doc.word&&!svc.word)svc.word=doc.word;svc.name=doc.name;svc.date=doc.date;svc.notice=doc.notice||'';svc.message=doc.message||'';svc.messageRev=doc.messageRev||0;svc.version=Math.max(svc.version||0,doc.version||0);svc.editedAt=doc.editedAt||Date.now();svc.draftPushedAt=svc.editedAt;
   svc.items=clone(doc.items).map(it=>{const o=old.get(it.id);it.notes=o?(o.notes||[]):[];it.media=(it.media||[]).map(m=>{const om=o&&(o.media||[]).find(x=>x.id===m.id);return {...m,notes:om?(om.notes||[]):[]}});return it});save()},
  async pullDraft(svc){if(!online()||!isLeader()||!svc)return false;let d;try{d=await api('/services/'+svc.id+'/draft?team='+S.team.id)}catch(e){return false}
   if(!d||!d.doc)return false;const remote=+d.doc.editedAt||0;if(remote<=(svc.editedAt||0)+500)return false;
@@ -948,7 +1042,7 @@ const SYNC={t:null,pulledAt:{},
   await SYNC.fetchBlobs(d.blobs);SYNC.applyDraft(svc,d.doc);toast('다른 기기의 초안을 가져왔어요');return true},
  // 발행(인도자): 새 파일 업로드 → 스냅샷 저장
  async pushPublish(svc){if(!online()||!isLeader())return false;const pub=svc.published;await SYNC.ensureBlobs(pub.items);
-  await api('/services/'+svc.id,{method:'PUT',body:{teamId:S.team.id,doc:{id:svc.id,name:pub.name,date:pub.date,notice:pub.notice,message:pub.message||'',messageRev:pub.messageRev||0,author:pub.author||'',version:pub.version,items:pub.items}}});return true},
+  await api('/services/'+svc.id,{method:'PUT',body:{teamId:S.team.id,doc:{id:svc.id,name:pub.name,date:pub.date,notice:pub.notice,message:pub.message||'',messageRev:pub.messageRev||0,word:svc.word||null,author:pub.author||'',version:pub.version,items:pub.items}}});return true},
  async deleteService(id){if(!online()||!isLeader())return;try{await api('/services/'+id+'?team='+S.team.id,{method:'DELETE'})}catch(e){toast(e.message)}},
  // 메모: 로컬 ↔ 서버 차이만 올림 (실패하면 다음 저장 때 다시)
  localNotes(svc){const out=[];svc.items.forEach(it=>{(it.notes||[]).forEach(n=>out.push({...n,itemId:it.id,markerId:n.marker||null,mediaId:null}));(it.media||[]).forEach(m=>(m.notes||[]).forEach(n=>out.push({...n,itemId:it.id,markerId:n.marker||null,mediaId:m.id})))});return out},
@@ -1063,9 +1157,15 @@ async function recurringModal(){
    <button class="btn sm pri" id="rcAdd">${ic('plus')}추가</button>
   </div>
   <div class="lbl">콘티 자동 생성</div>
-  <div class="row"><span class="hint">예배</span><input class="field mono" id="stWeeks" type="number" min="1" max="12" value="${+st.serviceAutoCreateWeeks||4}" style="width:64px;text-align:center"><span class="hint">주 전부터 홈에 예배 카드가 떠요</span></div>
-  <div class="lbl">콘티 이름 규칙 <span class="hint">{월} {일} {요일} {이름} 을 넣을 수 있어요</span></div>
-  <input class="field" id="stRule" value="${esc(st.nameRule||'{월}/{일} {요일}')}">
+  <div class="row"><span class="hint">예배</span><input class="field mono" id="stWeeks" type="number" min="1" max="8" value="${+st.serviceAutoCreateWeeks||4}" style="width:64px;text-align:center"><span class="hint">주 전부터 홈에 예배 카드가 떠요</span></div>
+  <div class="lbl">콘티 이름 규칙 <span class="hint">{월} {일} {요일} {이름} 을 넣을 수 있어요 · 예: ${esc(fmtNameC(st.nameRule||'{월}/{일} {이름}',today(),'주일 2부'))}</span></div>
+  <input class="field" id="stRule" value="${esc(st.nameRule||'{월}/{일} {이름}')}">
+  <div class="lbl">스케줄 알림일 <span class="hint">매월 이 날 10:00에 다음 달 가능 여부를 물어요</span></div>
+  <div class="row"><span class="hint">매월</span><select class="field" id="stRem" style="width:auto">${[20,21,22,23,24,25,26,27,28].map(d=>`<option value="${d}" ${(+st.reminderDay||25)===d?'selected':''}>${d}일</option>`).join('')}</select><span class="hint">10:00 · 3개월 앞까지</span></div>
+  <div class="lbl">말씀 요청 요일 <span class="hint">매주 이 요일 10:00에 목회자에게</span></div>
+  <div class="row"><select class="field" id="stWord" style="width:auto">${WD.map((w,i)=>`<option value="${i}" ${(st.wordRequestDay==null?2:+st.wordRequestDay)===i?'selected':''}>${w}요일</option>`).join('')}</select><span class="hint">10:00</span></div>
+  <div class="lbl">녹음 올리기</div>
+  <select class="field" id="stRec" style="width:auto"><option value="member" ${(st.rehearsalUploadRole||'member')==='member'?'selected':''}>전원</option><option value="session_lead" ${st.rehearsalUploadRole==='session_lead'?'selected':''}>세션 리더 이상</option><option value="leader" ${st.rehearsalUploadRole==='leader'?'selected':''}>인도자만</option></select>
   <div class="lbl">다가오는 예배 날짜</div>
   <div id="datelist">${data.dates.length?data.dates.map(d=>`<div class="mrow"><span class="grow"><b>${dLabel(d.date)}</b> ${esc(d.label)}${d.time?` <span class="muted">${esc(d.time)}</span>`:''}${d.serviceId?' <span class="pill">콘티</span>':(d.open?'':' <span class="pill">닫힘</span>')}</span>${d.serviceId?'':`<button class="btn sm ghost" data-dateoff="${d.id}" data-open="${d.open?1:0}">${d.open?'닫기':'열기'}</button>`}</div>`).join(''):'<div class="hint">정기 예배를 등록하면 날짜가 여기 나와요</div>'}</div>
   <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap">
@@ -1076,7 +1176,7 @@ async function recurringModal(){
   </div>
   <div class="row" style="margin-top:16px;justify-content:space-between"><button class="btn" id="rmClose2">닫기</button><button class="btn pri" id="rmSave">${ic('check')}설정 저장</button></div>`;
  const show=()=>modal(body(),{center:true});
- const redraw=async()=>{const w=$('#stWeeks'),ru=$('#stRule');if(w)st.serviceAutoCreateWeeks=+w.value||4;if(ru)st.nameRule=ru.value;try{data=await api('/teams/'+S.team.id+'/dates')}catch(e){toast(e.message)}show()};
+ const redraw=async()=>{const w=$('#stWeeks'),ru=$('#stRule'),rm=$('#stRem'),wd=$('#stWord'),rc=$('#stRec');if(w)st.serviceAutoCreateWeeks=+w.value||4;if(ru)st.nameRule=ru.value;if(rm)st.reminderDay=+rm.value;if(wd)st.wordRequestDay=+wd.value;if(rc)st.rehearsalUploadRole=rc.value;try{data=await api('/teams/'+S.team.id+'/dates')}catch(e){toast(e.message)}show()};
  show();
  $('#modal').onclick=async e=>{try{
   if(e.target.closest('#rmClose2')){closeModal();return}
@@ -1086,7 +1186,7 @@ async function recurringModal(){
   const del=e.target.closest('[data-recdel]');if(del){if(!confirm('이 정기 예배와, 콘티가 없는 예정 날짜를 삭제할까요?'))return;await api('/teams/'+S.team.id+'/recurring/'+del.dataset.recdel,{method:'DELETE'});await redraw();return}
   const dt=e.target.closest('[data-dateoff]');if(dt){await api('/teams/'+S.team.id+'/dates/'+dt.dataset.dateoff,{method:'PATCH',body:{open:dt.dataset.open!=='1'}});await redraw();return}
   if(e.target.closest('#mdAdd')){const date=$('#mdDate').value;const label=$('#mdLabel').value.trim();if(!date||!label){toast('날짜와 이름을 적어주세요');return}await api('/teams/'+S.team.id+'/dates',{method:'POST',body:{date,label,time:$('#mdTime').value.trim()}});await redraw();return}
-  if(e.target.closest('#rmSave')){const weeks=Math.min(12,Math.max(1,+$('#stWeeks').value||4));const rule=$('#stRule').value.trim()||'{월}/{일} {요일}';await api('/teams/'+S.team.id+'/settings',{method:'PATCH',body:{serviceAutoCreateWeeks:weeks,nameRule:rule}});toast('저장했어요');closeModal();return}
+  if(e.target.closest('#rmSave')){const weeks=Math.min(8,Math.max(1,+$('#stWeeks').value||4));const rule=$('#stRule').value.trim()||'{월}/{일} {이름}';const r=await api('/teams/'+S.team.id+'/settings',{method:'PATCH',body:{serviceAutoCreateWeeks:weeks,nameRule:rule,reminderDay:+$('#stRem').value,wordRequestDay:+$('#stWord').value,rehearsalUploadRole:$('#stRec').value}});S.team.settings=r.settings||S.team.settings;save();toast('저장했어요');closeModal();render();return}
  }catch(err){toast(err.message)}};
 }
 
@@ -1372,6 +1472,7 @@ async function render(){
   if(r.name==='view'){app.innerHTML=viewerHTML(svc);if(!same&&msgUnread(svc))setTimeout(()=>messageSheet(svc,true),150);return}
   app.innerHTML=playHTML(svc,+r.b||0);afterPlay(svc,+r.b||0);restoreScroll();return}
  app.innerHTML=homeHTML();
+ if(online()&&S.team.id&&NET.user&&Date.now()-NOTI.at>8000)refreshNoti();
  if(online()&&!same)SYNC.pullServices().then(ch=>{if(ch&&route().name==='home')render()});
 }
 async function preload(svc){const ids=[];const items=(svc.published?svc.published.items:svc.items).concat(svc.items);items.forEach(it=>(it.pieces||[]).forEach(p=>ids.push(p.blob)));await Promise.all([...new Set(ids)].map(blobURL))}
@@ -1420,7 +1521,10 @@ function afterEditor(svc){
  drawEditorSheet(svc);initGutter(()=>drawEditorSheet(svc));$$('textarea.songbar,textarea.msgin').forEach(autoGrow);initSongDrag(svc);
  const app=$('#app');
  // field bindings
- app.oninput=e=>{const f=e.target.dataset.f;if(!f)return;const it=curItem(svc);
+ app.oninput=e=>{const wf=e.target.dataset.w;if(wf){ // 말씀 (§4.3): 콘티와 따로 저장돼 저장 즉시 전원에게 보인다
+   svc.word=Object.assign({passage:'',title:'',line:'',memo:'',memoPublic:false},svc.word,{[wf]:e.target.value});save();
+   clearTimeout(WORD_T);WORD_T=setTimeout(()=>saveWord(svc),900);const s=$('#wSaved');if(s)s.textContent='저장 중…';return}
+  const f=e.target.dataset.f;if(!f)return;const it=curItem(svc);
   if(f==='svc.name')svc.name=e.target.value;else if(f==='svc.date')svc.date=e.target.value;else if(f==='svc.notice')svc.notice=e.target.value;else if(f==='svc.message'){svc.message=e.target.value;autoGrow(e.target)}
   else if(it){const k=f.split('.')[1];it[k]=e.target.value;if(k==='form'){$('#formchips').innerHTML=chipsHTML(it.form,'t');autoGrow(e.target)}if(k==='title'){const tab=$$('.ptab .tab').find(t=>t.textContent==='곡 편집');const sub=tab&&tab.parentElement.querySelector('.sub');if(sub)sub.textContent=it.title||'(제목 없음)'}if(k==='key')drawEditorSheet(svc);if(k==='title'||k==='key'||k==='mod'){const li=$$('.list-item').find(l=>l.dataset.id===it.id);if(li){const t=li.querySelector('.grow'),k=li.querySelector('.k');if(t)t.textContent=it.title||'(제목 없음)';if(k)k.textContent=keyStr(it)}}syncLib(it)}
   svc.version=Math.max(svc.version,(svc.published?svc.published.version:0));touch(svc);save()};
@@ -1467,21 +1571,21 @@ function afterEditor(svc){
  window.onresize=()=>{if(route().name==='edit')drawEditorSheet(svc)};
 }
 function touch(svc){if(svc.published&&svc.version<=svc.published.version)svc.version=svc.published.version+1;svc.editedAt=Date.now()}
-function syncLib(it){if(!it.title)return;let s=S.library.find(x=>x.id===it.libId);const snap={id:it.libId||uid(),title:it.title,key:it.key,mod:it.mod||'',form:it.form,pieces:clone(it.pieces),media:clone(it.media).map(m=>({...m,notes:[]})),songNote:it.songNote};it.libId=snap.id;if(s)Object.assign(s,snap);else S.library.push(snap)}
+function syncLib(it){if(!it.title)return;let s=S.library.find(x=>x.id===it.libId)||(!it.libId&&normTitle(it.title)?S.library.find(x=>normTitle(x.title)===normTitle(it.title)):null);const snap={id:s?s.id:(it.libId||uid()),title:it.title,key:it.key,mod:it.mod||'',form:it.form,pieces:clone(it.pieces),media:clone(it.media).map(m=>({...m,notes:[]})),songNote:it.songNote};it.libId=snap.id;if(s)Object.assign(s,snap);else S.library.push(snap)}
 /* ---------- composer ---------- */
 /* ---------- publish ---------- */
 function kakaoText(svc){
- const lines=[`[${svc.name||'예배'} 콘티 v${svc.version||1}]`];
+ const lines=[`[${svcName(svc)} 콘티 v${svc.version||1}]`];
  svc.items.forEach((it,i)=>{const k=keyStr(it);lines.push(`${i+1}. ${it.title||'(제목 없음)'}${k?' / '+k:''}`)});
  if(svc.notice)lines.push('',svc.notice.split('\n')[0]);
  const msg=(svc.message||'').trim();if(msg){const paras=msg.split(/\n\s*\n/);lines.push('',paras[0].trim()+(paras.length>1?' …':''),'(앱에서 전문 보기)')}
- lines.push('',online()?'👉 '+location.origin+location.pathname+'#/view/'+svc.id:'👉 (앱에서 "'+(svc.name||'예배')+'" 열기 — 파일 가져오기)');
+ lines.push('',online()?'👉 '+location.origin+location.pathname+'#/view/'+svc.id:'👉 (앱에서 "'+(svcName(svc))+'" 열기 — 파일 가져오기)');
  if(svc.published){const d=diffSvc(svc.published,svc);if(d.length)lines.push('',`v${svc.version} 변경: `+d.join(', '))}
  return lines.join('\n');
 }
 function diffSvc(prev,cur){const out=[];const pm=new Map(prev.items.map(i=>[i.id,i]));cur.items.forEach((it,i)=>{const p=pm.get(it.id);if(!p){out.push(`${i+1}번 추가`);return}if((p.mod||'')!==(it.mod||'')||p.key!==it.key)out.push(`${i+1}번 키 변경`);if(p.form!==it.form)out.push(`${i+1}번 송폼 수정`);if((p.media||[]).length!==(it.media||[]).length)out.push(`${i+1}번 미디어 변경`)});prev.items.forEach(p=>{if(!cur.items.find(i=>i.id===p.id))out.push(`"${p.title}" 삭제`)});return out}
 /* ---------- VIEWER ---------- */
-const draftOf=svc=>({name:svc.name,date:svc.date,notice:svc.notice,message:svc.message||'',messageRev:svc.messageRev||0,author:me().name||'인도자',items:svc.items,version:svc.version||0,draft:true});
+const draftOf=svc=>({name:svc.name,date:svc.date,notice:svc.notice,message:svc.message||'',messageRev:svc.messageRev||0,word:svc.word||null,author:me().name||'인도자',items:svc.items,version:svc.version||0,draft:true});
 function pubOrDraft(svc){if(VF.draft&&isLeader()&&route().name==='view')return draftOf(svc);return svc.published?{...svc.published,draft:false}:draftOf(svc)}
 let VF={session:null,draft:false};
 /* ---------- PRACTICE / STAGE ---------- */
@@ -1576,6 +1680,8 @@ async function importJSON(file){
  const keepNote=x=>!online()||x.layer==='leader'||x.author===my;
  for(const inc of data.services){const cur=svcById(inc.id);
   if(cur&&!overwrite)continue;
+  if(!cur){const twin=S.services.find(x=>x.id!==inc.id&&(inc.name||'').trim()&&x.name===inc.name&&x.date===inc.date); // §9 같은 이름·날짜 → 합칠지 묻기
+   if(twin&&confirm(`"${inc.name}" (${inc.date})이 이미 있어요. 파일의 곡을 그 예배에 합칠까요?\n(취소하면 따로 추가돼요)`)){mergeInto(twin,inc);n++;continue}}
   (inc.items||[]).forEach(it=>{it.notes=(it.notes||[]).filter(keepNote);(it.media||[]).forEach(md=>md.notes=(md.notes||[]).filter(keepNote))});
   if(cur){ // carry my own notes across
    inc.items.forEach(it=>{const old=cur.items.find(x=>x.id===it.id);if(!old)return;const mine=(old.notes||[]).filter(x=>x.layer!=='leader'&&x.author===my);const mids=new Set(it.pieces.flatMap(p=>p.markers.map(m=>m.id)));it.notes=(it.notes||[]).filter(x=>x.layer==='leader'||x.author!==my).concat(mine.filter(x=>mids.has(x.marker)));
@@ -1617,6 +1723,9 @@ document.addEventListener('click',async e=>{
   case 'home-more':{const on=online(),lead=isLeader();modal(`<b style="font-size:17px">더 보기</b><div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">${on?`<button class="btn" data-m="sync">${ic('import')}팀 서버에서 새로고침</button>`:''}${(!on||lead)?`<button class="btn" data-m="import">${ic('import')}파일 가져오기</button>`:''}<button class="btn" data-m="export">${ic('export')}파일 내보내기</button>${lead?`<button class="btn" data-m="lib">${ic('music')}라이브러리</button>`:''}</div>`,{center:true});
    $('#modal').onclick=ev=>{const b=ev.target.closest('[data-m]');if(!b)return;closeModal();if(b.dataset.m==='lib'){libraryModal();return}const proxy=document.querySelector(`.more-hide [data-act="${b.dataset.m}"]`);if(proxy)proxy.click()};break}
   case 'nav-lib':libraryModal();break;
+  case 'inbox':inboxModal();break;
+  case 'word-req':{const svc2=svcById(route().a);if(!svc2)break;await copyText(`[${svcName(svc2)}] 말씀 수정 요청\n${svc2.word&&svc2.word.passage?svc2.word.passage+' · ':''}${(svc2.word&&svc2.word.title)||''}\n이 부분을 다시 봐 주실 수 있을까요?`);toast('수정 요청 문구를 복사했어요. 목사님께 보내세요');break}
+  case 'noti-ack':{const n=NOTI.list.find(x=>x.id===el.dataset.id);if(!n)break;n.ackAt=new Date().toISOString();if(!n.readAt){n.readAt=n.ackAt;NOTI.unread=Math.max(0,NOTI.unread-1)}NOTI.sig='';api('/notifications/'+n.id+'/ack',{method:'POST',body:{teamId:S.team.id}}).catch(e=>toast(e.message));render();break}
   case 'go-home':go('home');break;
   case 'lg-mode':case 'lg-submit':case 'rc-submit':case 'logout':case 'join-go':case 'team-create':case 'team-join':e.preventDefault();doGate(act,el);break;
   case 'new-svc':{const s=newService();S.services.push(s);save();go('edit/'+s.id);break}
@@ -1681,8 +1790,8 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
  if(NET.server===true){try{await takeMe(await api('/me'))}catch(e){if(e.status===401)NET.user=null;else NET.server=null}}
  if(!online()&&!me().name){setTimeout(()=>{render();settingsModal()},0)}else render();
  if(online()&&S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()});
- probeOmr();
- window.CONTI={S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE};
+ probeOmr();startNotiPoll();
+ window.CONTI={S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards};
 })();
 })();
 </script>
