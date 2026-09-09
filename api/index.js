@@ -598,6 +598,56 @@ on('POST', '/blobs/:id', async ({ req, uid, url, params }) => {
   return { url: up.url };
 });
 
+/* ---------- 라이브러리: 팀이 함께 쓰는 곡 보관함 ---------- */
+const normTitle = (t) => String(t || '').toLowerCase().replace(/\([^)]*\)|\[[^\]]*\]/g, '').replace(/[\s\-–—_.,·'"“”‘’!?~]/g, '');
+// 곡 하나에서 참조하는 파일 id
+const songBlobIds = (s) => {
+  const ids = new Set();
+  for (const p of (s && s.pieces) || []) if (p && p.blob) ids.add(p.blob);
+  for (const m of (s && s.media) || []) if (m && m.blob) ids.add(m.blob);
+  return [...ids];
+};
+// 내려받기: since 이후 바뀐 것만 (삭제 포함)
+on('GET', '/library', async ({ uid, url }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(url.searchParams.get('team'), 64);
+  await requireMember(uid, teamId);
+  const since = str(url.searchParams.get('since'), 40);
+  const rows = since
+    ? await q('select id, song, updated_at as "updatedAt", deleted_at as "deletedAt" from library where team_id=$1 and updated_at > $2 order by updated_at asc', [teamId, since])
+    : await q('select id, song, updated_at as "updatedAt", deleted_at as "deletedAt" from library where team_id=$1 order by updated_at asc', [teamId]);
+  const ids = [...new Set(rows.flatMap((r) => songBlobIds(r.song)))];
+  const blobs = ids.length ? await q('select id, url, pathname from blobs where team_id=$1 and id = any($2::text[])', [teamId, ids]) : [];
+  return {
+    songs: rows.filter((r) => !r.deletedAt).map((r) => ({ ...r.song, id: r.id, updatedAt: r.updatedAt })),
+    deleted: rows.filter((r) => r.deletedAt).map((r) => r.id),
+    now: new Date().toISOString(),
+    blobs: await readUrls(blobs),
+  };
+});
+// 올리기 (인도자): 바뀐 곡만. 서버가 더 새로우면 건너뛴다
+on('PUT', '/library', async ({ uid, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  await requireMember(uid, teamId, 'leader');
+  const songs = Array.isArray(body.songs) ? body.songs.slice(0, 200) : [];
+  const saved = [];
+  for (const s of songs) {
+    const id = str(s && s.id, 64); if (!id) continue;
+    const title = str(s.title, 120);
+    const clean = { ...s, id, title, notes: undefined };
+    const r = await one(`insert into library(team_id, id, song, norm_title, updated_by, updated_at) values($1,$2,$3,$4,$5,now())
+                         on conflict (team_id, id) do update set song=excluded.song, norm_title=excluded.norm_title,
+                           updated_by=excluded.updated_by, updated_at=now(), deleted_at=null
+                         returning id, updated_at as "updatedAt"`,
+      [teamId, id, JSON.stringify(clean), normTitle(title), uid]);
+    saved.push(r);
+  }
+  const del = Array.isArray(body.deleted) ? body.deleted.map((x) => str(x, 64)).filter(Boolean).slice(0, 200) : [];
+  if (del.length) await q('update library set deleted_at=now(), updated_at=now() where team_id=$1 and id = any($2::text[])', [teamId, del]);
+  return { ok: true, saved, deleted: del.length, now: new Date().toISOString() };
+});
+
 /* ---------- §5 합주 녹음 ---------- */
 const ROLE_RANK = { member: 0, session_lead: 1, pastor: 0, leader: 2 };
 const canUploadRehearsal = (m, st) => m.role !== 'pastor' && ROLE_RANK[m.role] >= ROLE_RANK[st.rehearsalUploadRole || 'member'];

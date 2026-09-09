@@ -223,3 +223,16 @@ create table if not exists word_links (
   used_at    timestamptz,
   created_at timestamptz not null default now()
 );
+
+-- 라이브러리: 팀이 함께 쓰는 곡 보관함 (기기 안에만 있던 것을 서버로)
+create table if not exists library (
+  team_id    uuid not null references teams(id) on delete cascade,
+  id         text not null,
+  song       jsonb not null,
+  norm_title text not null default '',
+  updated_by uuid references users(id),
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz,
+  primary key (team_id, id)
+);
+create index if not exists library_team_idx on library(team_id, updated_at desc);

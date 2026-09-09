@@ -1271,15 +1271,15 @@ async function inboxModal(){await pullNoti();const list=NOTI.list;
    if(!n.readAt){n.readAt=new Date().toISOString();NOTI.unread=Math.max(0,NOTI.unread-1);NOTI.sig='';updateBadges();api('/notifications/read',{method:'POST',body:{teamId:S.team.id,ids:[n.id]}}).catch(()=>{})}
    closeModal();const h=String(n.link||'').replace(/^#\/?/,'');if(h&&h!=='home')go(h);else render();return}
  }catch(err){toast(err.message)}}}
-function libraryModal(){const lead=isLeader();const usedIn=id=>S.services.filter(sv=>sv.items.some(it=>it.libId===id)).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+async function libraryModal(){const lead=isLeader();const usedIn=id=>S.services.filter(sv=>sv.items.some(it=>it.libId===id)).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
  const groups=Object.values(S.library.reduce((g,s)=>{const k=normTitle(s.title);if(!k)return g;(g[k]||(g[k]=[])).push(s);return g},{})).filter(g=>g.length>1);const dupN=groups.reduce((n,g)=>n+g.length-1,0);
  modal(`<b style="font-size:17px">라이브러리</b> <span class="hint">${S.library.length}곡 · 예배에 넣은 곡은 자동 저장</span>${lead&&dupN?`<div class="row" style="margin-top:8px"><button class="btn sm" id="libMerge">같은 곡 ${dupN}개 합치기</button><span class="hint">제목이 같은 곡: ${groups.map(g=>esc(g[0].title)).slice(0,3).join(', ')}${groups.length>3?' 외':''}</span></div>`:''}
-  <div style="margin-top:12px">${S.library.length?S.library.slice().sort((a,b)=>(a.title||'').localeCompare(b.title||'','ko')).map(sg=>{const u=usedIn(sg.id);return `<div class="mrow"><span class="grow"><b>${esc(sg.title||'(제목 없음)')}</b> <span class="muted">${esc(keyStr(sg))}</span><div class="hint" style="margin-top:2px">${u.length?'사용: '+u.slice(0,4).map(sv=>esc(sv.name||'(이름 없음)')).join(', ')+(u.length>4?' 외 '+(u.length-4):''):'아직 안 쓴 곡'} · 악보 ${(sg.pieces||[]).length}장 · 미디어 ${(sg.media||[]).length}</div></span>${lead?`<button class="icon sm ghost" data-libdel="${sg.id}" title="라이브러리에서 삭제">${ic('trash')}</button>`:''}</div>`}).join(''):'<div class="empty">비어 있어요. 예배에 곡을 넣으면 여기에 쌓입니다.</div>'}</div>
+  <div id="libList" style="margin-top:12px">${S.library.length?S.library.slice().sort((a,b)=>(a.title||'').localeCompare(b.title||'','ko')).map(sg=>{const u=usedIn(sg.id);return `<div class="mrow"><span class="grow"><b>${esc(sg.title||'(제목 없음)')}</b> <span class="muted">${esc(keyStr(sg))}</span><div class="hint" style="margin-top:2px">${u.length?'사용: '+u.slice(0,4).map(sv=>esc(sv.name||'(이름 없음)')).join(', ')+(u.length>4?' 외 '+(u.length-4):''):'아직 안 쓴 곡'} · 악보 ${(sg.pieces||[]).length}장 · 미디어 ${(sg.media||[]).length}</div></span>${lead?`<button class="icon sm ghost" data-libdel="${sg.id}" title="라이브러리에서 삭제">${ic('trash')}</button>`:''}</div>`}).join(''):'<div class="empty">비어 있어요. 예배에 곡을 넣으면 여기에 쌓입니다.</div>'}</div>
   <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" data-close="1">닫기</button></div>`,{center:true});
- $('#modal').onclick=e=>{if(e.target.closest('[data-close]')){closeModal();return}const d=e.target.closest('[data-libdel]');if(d){if(!confirm('라이브러리에서 이 곡을 지울까요? 이미 들어간 예배에는 영향이 없어요.'))return;S.library=S.library.filter(x=>x.id!==d.dataset.libdel);save();libraryModal()}
+ $('#modal').onclick=e=>{if(e.target.closest('[data-close]')){closeModal();return}const d=e.target.closest('[data-libdel]');if(d){if(!confirm('라이브러리에서 이 곡을 지울까요? 이미 들어간 예배에는 영향이 없어요.'))return;S.library=S.library.filter(x=>x.id!==d.dataset.libdel);S.libDeleted=(S.libDeleted||[]).concat(d.dataset.libdel);save();SYNC.pushLibrary().then(()=>libraryModal());libraryModal()}
   if(e.target.closest('#libMerge')){if(!confirm(`제목이 같은 곡을 하나로 합칠까요? 악보가 많은 쪽을 남기고, 예배에 들어간 곡은 남는 쪽으로 이어집니다.`))return;let merged=0;
-   groups.forEach(g=>{const keep=g.slice().sort((a,b)=>((b.pieces||[]).length-(a.pieces||[]).length)||((b.at||0)-(a.at||0)))[0];g.forEach(s=>{if(s===keep)return;S.services.forEach(sv=>sv.items.forEach(it=>{if(it.libId===s.id)it.libId=keep.id}));if(!keep.form&&s.form)keep.form=s.form;if(!keep.songNote&&s.songNote)keep.songNote=s.songNote;S.library=S.library.filter(x=>x.id!==s.id);merged++})});
-   save();toast(merged+'곡을 합쳤어요');libraryModal()}}}
+   groups.forEach(g=>{const keep=g.slice().sort((a,b)=>((b.pieces||[]).length-(a.pieces||[]).length)||((b.at||0)-(a.at||0)))[0];g.forEach(s=>{if(s===keep)return;S.services.forEach(sv=>sv.items.forEach(it=>{if(it.libId===s.id)it.libId=keep.id}));if(!keep.form&&s.form)keep.form=s.form;if(!keep.songNote&&s.songNote)keep.songNote=s.songNote;if(!keep.chart&&s.chart)keep.chart=s.chart;S.library=S.library.filter(x=>x.id!==s.id);S.libDeleted=(S.libDeleted||[]).concat(s.id);keep.dirty=true;merged++})});
+   save();SYNC.pushLibrary();toast(merged+'곡을 합쳤어요');libraryModal()}}}
 function mediaTargetModal(svc,it,md){let t=mdSess(md).slice();
  modal(`<b style="font-size:17px">이 미디어를 누가 보나요</b><div class="hint" style="margin-top:4px">${esc(md.name||md.url)}</div>
   <div style="margin-top:14px" id="mtSel"><button class="q ${t.length?'':'on'}" data-mdt="">전체</button>${S.team.sessions.filter(x=>x!=='인도자').map(x=>`<button class="q ${t.includes(x)?'on':''}" data-mdt="${esc(x)}">${esc(x)}</button>`).join('')}</div>
@@ -1410,7 +1410,7 @@ const DEF_TEAM=()=>({sessions:DEF_SESS.slice(),phrases:DEF_PHR.slice(),settings:
 async function switchScope(next){if(next===CUR_SCOPE)return;
  if(CUR_SCOPE==='legacy'){CUR_SCOPE=next;await flushSave();try{await IDB.del('kv','state')}catch(e){}return} // 예전 단일 저장소는 첫 스코프가 그대로 물려받음
  await flushSave();CUR_SCOPE=next;let s=null;try{const raw=await IDB.get('kv',next);if(raw)s=JSON.parse(raw)}catch(e){console.warn('scope',e)}
- S.services=(s&&s.services)||[];S.library=(s&&s.library)||[];S.noteShadow=(s&&s.noteShadow)||{};S.seedAt=(s&&s.seedAt)||0;S.dropped=(s&&s.dropped)||[];S.team=Object.assign(DEF_TEAM(),(s&&s.team)||{});
+ S.services=(s&&s.services)||[];S.library=(s&&s.library)||[];S.noteShadow=(s&&s.noteShadow)||{};S.seedAt=(s&&s.seedAt)||0;S.dropped=(s&&s.dropped)||[];S.libAt=(s&&s.libAt)||'';S.libDeleted=(s&&s.libDeleted)||[];S.team=Object.assign(DEF_TEAM(),(s&&s.team)||{});
  if(typeof SYNC!=='undefined')Object.keys(SYNC.pulledAt).forEach(k=>delete SYNC.pulledAt[k]);
  if(typeof NOTI!=='undefined'){NOTI.list=[];NOTI.unread=0;NOTI.at=0;NOTI.sig=''}}
 const me=()=>S.team.me;
@@ -1480,7 +1480,8 @@ async function probeServer(){try{const r=await fetch('/api/health',{cache:'no-st
 // 채보 엔진 연결 여부 (인도자 편집기의 '채보' 버튼 표시용)
 function probeOmr(){if(!online()||!NET.user)return;api('/omr').then(r=>{const on=!!(r&&r.available);if(on!==NET.omr){NET.omr=on;if(route().name==='edit')render()}}).catch(()=>{})}
 async function applyMembership(t){const next=scopeKey(NET.user&&NET.user.id,t.teamId);
- if(next!==CUR_SCOPE){const prev=S.team.id;await switchScope(next);if(prev&&prev!==t.teamId&&route().name!=='home')go('home')} // 팀이 바뀌면 이전 팀 콘티 화면에서 빠져나옴
+ if(next!==CUR_SCOPE){const prev=S.team.id;await switchScope(next);if(prev&&prev!==t.teamId&&route().name!=='home')go('home');
+  if(typeof SYNC!=='undefined'&&online())setTimeout(()=>SYNC.pullLibrary(),0)}   // 팀이 바뀌면 그 팀 라이브러리를 받아온다
  S.team.id=t.teamId;S.team.name=t.teamName;S.team.invite=t.invite||'';S.team.sessions=t.sessions.slice();S.team.phrases=t.phrases.slice();S.team.settings=t.settings||S.team.settings||{};S.team.me={userId:t.me.userId,name:t.me.name,session:t.me.session,mySessions:t.me.mySessions||[],role:t.me.role,capo:+t.me.capo||0};save()}
 async function takeMe(m){NET.user=m.user;NET.teams=m.teams||[];const cur=NET.teams.find(x=>x.teamId===S.team.id)||m.team;
  if(cur){if(S.team.id&&cur.teamId!==S.team.id)toast((cur.teamName||'다른')+' 팀으로 전환했어요');await applyMembership(cur)}
@@ -1522,6 +1523,24 @@ const SYNC={t:null,pulledAt:{},
   const todo=ids.filter(id=>!have[id]);let k=0;
   for(const id of todo){k++;if(!quiet)toast(`파일 올리는 중 ${k}/${todo.length}…`);const b=await IDB.get('blobs',id);if(!b)throw new Error('이 기기에 없는 파일이 있어요');
    await uploadBlob(id,b,quiet?null:p=>{if(p<100)toast(`파일 올리는 중 ${k}/${todo.length} · ${p}%`)})}},
+ // 라이브러리: 팀이 함께 쓰는 곡 보관함. 내려받고(전원) 올린다(인도자)
+ libIds(songs){const ids=[];(songs||[]).forEach(s=>{(s.pieces||[]).forEach(p=>p.blob&&ids.push(p.blob));(s.media||[]).forEach(m=>m.blob&&ids.push(m.blob))});return [...new Set(ids)]},
+ async pullLibrary(){if(!online()||!S.team.id)return false;
+  let r;try{r=await api('/library?team='+S.team.id+(S.libAt?'&since='+encodeURIComponent(S.libAt):''))}catch(e){return false}
+  let changed=false;
+  await SYNC.fetchBlobs(r.blobs);
+  (r.songs||[]).forEach(s=>{scrubIds(s);const cur=S.library.find(x=>x.id===s.id);
+   if(!cur){S.library.push(s);changed=true}
+   else if(!cur.dirty){Object.assign(cur,s);changed=true}});   // 이 기기에서 아직 안 올린 수정은 지키기
+  (r.deleted||[]).forEach(id=>{const i=S.library.findIndex(x=>x.id===id);if(i>=0){S.library.splice(i,1);changed=true}});
+  S.libAt=r.now;if(changed)save();return changed},
+ async pushLibrary(){if(!online()||!isLeader()||!S.team.id)return false;
+  const dirty=S.library.filter(s=>s.dirty);const del=(S.libDeleted||[]).slice();
+  if(!dirty.length&&!del.length)return false;
+  try{await SYNC.ensureBlobs(dirty.map(s=>({pieces:s.pieces,media:s.media})),true);
+   const r=await api('/library',{method:'PUT',body:{teamId:S.team.id,songs:dirty.map(s=>{const c=clone(s);delete c.dirty;return c}),deleted:del}});
+   dirty.forEach(s=>delete s.dirty);S.libDeleted=[];S.libAt=r.now;save();return true}
+  catch(e){console.warn('library push',e.message);return false}},
  // 파일 복구(인도자): 이 팀의 콘티가 참조하는 파일을 이 기기의 저장소에서 강제로 다시 올린다 — 스토어에서 파일이 사라졌을 때 팀원들 화면을 살리는 용도
  async repairBlobs(){if(!online()||!isLeader()||!S.team.id)return {ok:0,miss:0};const ids=new Set();S.services.forEach(s=>{SYNC.blobIds(s.items).forEach(id=>ids.add(id));if(s.published)SYNC.blobIds(s.published.items).forEach(id=>ids.add(id))});
   let ok=0,miss=0,k=0;for(const id of ids){k++;toast(`파일 올리는 중 ${k}/${ids.size}…`);const b=await IDB.get('blobs',id);if(!b){miss++;continue}
@@ -1555,7 +1574,7 @@ const SYNC={t:null,pulledAt:{},
    (it.media||[]).forEach(m=>{m.notes=list.filter(n=>n.mediaId===m.id).map(n=>({id:n.id,t:+n.t||0,marker:n.markerId||undefined,layer:n.layer,session:n.session,text:n.text,author:who(n)}))})});
   S.noteShadow=S.noteShadow||{};S.noteShadow[svc.id]=d.notes.map(n=>n.id);SYNC.pulledAt[svc.id]=Date.now();save()},
  flush(){const r=route();const svc=svcById(r.a);if(online()&&svc&&/^(edit|view|play)$/.test(r.name)){clearTimeout(SYNC.t);SYNC.pushNotes(svc,true);if(r.name==='edit'&&isLeader()){clearTimeout(SYNC.td);SYNC.pushDraft(svc)}}},
- schedulePush(){if(!online())return;clearTimeout(SYNC.t);SYNC.t=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&/^(edit|view|play)$/.test(r.name))SYNC.pushNotes(svc)},700);clearTimeout(SYNC.td);SYNC.td=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&r.name==='edit'&&isLeader())SYNC.pushDraft(svc)},2500)}
+ schedulePush(){if(!online())return;clearTimeout(SYNC.tl);SYNC.tl=setTimeout(()=>{SYNC.pushLibrary()},3000);clearTimeout(SYNC.t);SYNC.t=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&/^(edit|view|play)$/.test(r.name))SYNC.pushNotes(svc)},700);clearTimeout(SYNC.td);SYNC.td=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&r.name==='edit'&&isLeader())SYNC.pushDraft(svc)},2500)}
 };
 const GATE={mode:'login',err:'',user:'',sess:'',preview:null};
 function authShell(inner){return `<div class="auth"><aside class="auth-side"><div class="logostack">${logoSymbol(56)}${logoWordmark(47,'')}</div><div><p class="kick">찬양팀 콘티 · 연습 · 무대 — 1414</p><blockquote>“콘티 한 장으로<br>팀 전체가 같은 곳을 봅니다.”</blockquote><p class="desc">곡 순서와 키, 송폼, 악보, 참고 영상을 한 화면에. 인도자가 발행하면 팀원은 자기 세션 메모와 함께 연습하고 무대에 섭니다.</p>
@@ -2107,7 +2126,7 @@ function afterEditor(svc){
  window.onresize=()=>{if(route().name==='edit')drawEditorSheet(svc)};
 }
 function touch(svc){if(svc.published&&svc.version<=svc.published.version)svc.version=svc.published.version+1;svc.editedAt=Date.now()}
-function syncLib(it){if(!it.title)return;let s=S.library.find(x=>x.id===it.libId)||(!it.libId&&normTitle(it.title)?S.library.find(x=>normTitle(x.title)===normTitle(it.title)):null);const snap={id:s?s.id:(it.libId||uid()),chart:it.chart?clone(it.chart):undefined,title:it.title,key:it.key,mod:it.mod||'',form:it.form,pieces:clone(it.pieces),media:clone(it.media).map(m=>({...m,notes:[]})),songNote:it.songNote};it.libId=snap.id;if(s)Object.assign(s,snap);else S.library.push(snap)}
+function syncLib(it){if(!it.title)return;let s=S.library.find(x=>x.id===it.libId)||(!it.libId&&normTitle(it.title)?S.library.find(x=>normTitle(x.title)===normTitle(it.title)):null);const snap={id:s?s.id:(it.libId||uid()),dirty:true,chart:it.chart?clone(it.chart):undefined,title:it.title,key:it.key,mod:it.mod||'',form:it.form,pieces:clone(it.pieces),media:clone(it.media).map(m=>({...m,notes:[]})),songNote:it.songNote};it.libId=snap.id;if(s)Object.assign(s,snap);else S.library.push(snap)}
 /* ---------- composer ---------- */
 /* ---------- publish ---------- */
 function kakaoText(svc){
@@ -2262,7 +2281,7 @@ document.addEventListener('click',async e=>{
   case 'theme':THEME.cycle();break;
   case 'home-more':{const on=online(),lead=isLeader();modal(`<b style="font-size:17px">더 보기</b><div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">${on?`<button class="btn" data-m="sync">${ic('import')}팀 서버에서 새로고침</button>`:''}${(!on||lead)?`<button class="btn" data-m="import">${ic('import')}파일 가져오기</button>`:''}<button class="btn" data-m="export">${ic('export')}파일 내보내기</button>${lead?`<button class="btn" data-m="lib">${ic('music')}라이브러리</button>`:''}</div>`,{center:true});
    $('#modal').onclick=ev=>{const b=ev.target.closest('[data-m]');if(!b)return;closeModal();if(b.dataset.m==='lib'){libraryModal();return}const proxy=document.querySelector(`.more-hide [data-act="${b.dataset.m}"]`);if(proxy)proxy.click()};break}
-  case 'nav-lib':libraryModal();break;
+  case 'nav-lib':{libraryModal();if(online())SYNC.pullLibrary().then(ch=>{if(ch&&$('#libList'))libraryModal()});break}
   case 'inbox':inboxModal();break;
   case 'chart-tab':{PL.chart=!PL.chart;try{localStorage.setItem('conti-chart',PL.chart?'1':'')}catch(e2){}render();break}
   case 'chart-del':{const s2=svcById(route().a);const it2=s2&&curItem(s2);if(!it2||!it2.chart)break;
@@ -2363,7 +2382,7 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
  NET.server=await probeServer();
  if(NET.server===true){try{await takeMe(await api('/me'))}catch(e){if(e.status===401)NET.user=null;else NET.server=null}}
  if(!online()&&!me().name){setTimeout(()=>{render();settingsModal()},0)}else render();
- if(online()&&S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()});
+ if(online()&&S.team.id){SYNC.pullServices().then(ch=>{if(ch)render()});SYNC.pullLibrary()}
  probeOmr();startNotiPoll();
  window.CONTI={S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go};
 })();
