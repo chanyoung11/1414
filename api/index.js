@@ -135,19 +135,25 @@ on('POST', '/auth/delete', async ({ req, uid, body }) => {
                            and (select count(*) from members m2 where m2.team_id=m.team_id and m2.role='leader') = 1
                            and (select count(*) from members m3 where m3.team_id=m.team_id) > 1`, [uid]);
   if (stuck.length) throw bad(`${stuck.map((r) => r.name).join(', ')} 팀의 인도자예요. 다른 사람을 인도자로 지정한 뒤 다시 시도해 주세요`);
-  // 혼자 있는 팀은 팀째로 지운다 (파일·콘티·알림은 외래키 cascade)
-  const solo = await q(`select m.team_id from members m where m.user_id=$1 and (select count(*) from members m2 where m2.team_id=m.team_id) = 1`, [uid]);
-  for (const t of solo) {
-    const rows = await q('select url from blobs where team_id=$1', [t.team_id]);
-    await q('delete from teams where id=$1', [t.team_id]);
-    await delBlobs(rows.map((r) => r.url));
-  }
-  await q('delete from notes where author_id=$1', [uid]);
-  // '누가 했는지'만 가리키는 칸은 비운다 (지운 계정을 참조하면 삭제가 막히므로)
-  for (const [t, c] of [['services', 'updated_by'], ['drafts', 'updated_by'], ['service_words', 'updated_by'], ['rehearsals', 'uploaded_by'], ['word_links', 'created_by']]) {
+  // '누가 했는지'만 가리키는 칸을 먼저 비운다 (지운 계정을 참조하면 삭제가 막히므로)
+  for (const [t, c] of [['services', 'updated_by'], ['drafts', 'updated_by'], ['service_words', 'updated_by'], ['rehearsals', 'uploaded_by'], ['word_links', 'created_by'], ['library', 'updated_by']]) {
     try { await q(`update ${t} set ${c}=null where ${c}=$1`, [uid]); } catch (e) { console.error('null out', t, e.message); }
   }
+  // 팀을 만든 사람 칸은 not null 이라 비울 수 없다 → 남은 인도자(없으면 가장 오래된 멤버)에게 넘긴다
+  for (const t of await q('select id from teams where created_by=$1', [uid])) {
+    const heir = await one(`select user_id from members where team_id=$1 and user_id<>$2 order by (role='leader') desc, created_at asc limit 1`, [t.id, uid]);
+    if (heir) await q('update teams set created_by=$2 where id=$1', [t.id, heir.user_id]);
+  }
+  await q('delete from notes where author_id=$1', [uid]);
+  // 혼자 있는 팀은 팀째로 지운다. 파일 삭제는 계정이 실제로 지워진 뒤에 (중간에 실패해도 파일이 남도록)
+  const solo = await q(`select m.team_id from members m where m.user_id=$1 and (select count(*) from members m2 where m2.team_id=m.team_id) = 1`, [uid]);
+  const soloUrls = [];
+  for (const t of solo) {
+    for (const r of await q('select url from blobs where team_id=$1', [t.team_id])) soloUrls.push(r.url);
+    await q('delete from teams where id=$1', [t.team_id]);
+  }
   await q('delete from users where id=$1', [uid]);
+  await delBlobs(soloUrls);
   return { data: { ok: true }, headers: { 'Set-Cookie': clearSessionCookie(req) } };
 });
 
@@ -330,6 +336,8 @@ on('GET', '/services/:id', async ({ uid, url, params }) => {
     ? await one('select doc, 0 as version, updated_at as "updatedAt" from drafts where team_id=$1 and id=$2', [teamId, params.id])
     : await one('select doc, version, updated_at as "updatedAt" from services where team_id=$1 and id=$2', [teamId, params.id]);
   if (!row) throw notFound(wantDraft ? '초안이 없어요' : '발행된 콘티가 없어요');
+  // 발행본 안에 들어 있는 말씀은 스냅샷이라 메모까지 담겨 있을 수 있다 → 보는 사람 권한으로 다시 거른다
+  if (row.doc && row.doc.word) row.doc = { ...row.doc, word: wordView(row.doc.word, await membership(uid, teamId)) };
   const ids = blobIdsOf(row.doc);
   const blobs = ids.length ? await q('select id, url, pathname from blobs where team_id=$1 and id = any($2::text[])', [teamId, ids]) : [];
   const w = await one('select word, updated_at as "updatedAt" from service_words where team_id=$1 and service_id=$2', [teamId, params.id]);
@@ -553,12 +561,12 @@ on('DELETE', '/services/:id', async ({ uid, url, params }) => {
   await q('delete from services where team_id=$1 and id=$2', [teamId, params.id]);
   await q('delete from drafts where team_id=$1 and id=$2', [teamId, params.id]);
   await q('delete from notes where team_id=$1 and service_id=$2', [teamId, params.id]);
+  await q('update service_dates set service_id=null where team_id=$1 and service_id=$2', [teamId, params.id]); // 날짜를 다시 쓸 수 있게 (닫기·재생성)
   let freed = 0;
   if (row) {
     const mine = blobIdsOf(row.doc);
     if (mine.length) {
-      const others = (await q('select doc from services where team_id=$1', [teamId])).concat(await q('select doc from drafts where team_id=$1', [teamId]));
-      const used = new Set(); others.forEach((o) => blobIdsOf(o.doc).forEach((id) => used.add(id)));
+      const used = await teamBlobRefs(teamId);
       const orphan = mine.filter((id) => !used.has(id));
       if (orphan.length) {
         const rows = await q('delete from blobs where team_id=$1 and id = any($2::text[]) returning url', [teamId, orphan]);
@@ -568,6 +576,15 @@ on('DELETE', '/services/:id', async ({ uid, url, params }) => {
   }
   return { ok: true, freedFiles: freed };
 });
+// 팀 안에서 아직 쓰이는 파일 id 전부 — 콘티·초안뿐 아니라 라이브러리·녹음까지 봐야 남의 파일을 지우지 않는다
+async function teamBlobRefs(teamId) {
+  const used = new Set();
+  for (const r of await q('select doc from services where team_id=$1', [teamId])) blobIdsOf(r.doc).forEach((id) => used.add(id));
+  for (const r of await q('select doc from drafts where team_id=$1', [teamId])) blobIdsOf(r.doc).forEach((id) => used.add(id));
+  for (const r of await q('select song from library where team_id=$1 and deleted_at is null', [teamId])) songBlobIds(r.song).forEach((id) => used.add(id));
+  for (const r of await q('select blob_id from rehearsals where team_id=$1', [teamId])) if (r.blob_id) used.add(r.blob_id);
+  return used;
+}
 
 // 파일: 어떤 id가 이미 있는지
 on('GET', '/blobs', async ({ uid, url }) => {
@@ -588,13 +605,16 @@ on('POST', '/blobs/:id', async ({ req, uid, url, params }) => {
   const force = url.searchParams.get('force') === '1';
   const existing = await one('select url, pathname from blobs where team_id=$1 and id=$2', [teamId, params.id]);
   if (existing && !force) return { url: existing.url, existed: true };
-  if (existing) { try { await delBlobs([existing.url]); } catch (e) {} await q('delete from blobs where team_id=$1 and id=$2', [teamId, params.id]); }
+  // 새 파일을 먼저 올려 성공한 뒤에 옛 파일을 지운다 (도중에 끊겨도 멀쩡한 원본이 사라지지 않게)
   const buf = await readRaw(req);
   if (!buf.length) throw bad('빈 파일이에요');
   const type = str(req.headers['content-type'], 100) || 'application/octet-stream';
   const ext = type.includes('jpeg') ? '.jpg' : type.includes('png') ? '.png' : type.includes('webp') ? '.webp' : type.startsWith('audio/') ? '.audio' : '';
   const up = await putBlob(`teams/${teamId}/${params.id}${ext}`, buf, type);
-  await q('insert into blobs(team_id, id, url, pathname, type, size) values($1,$2,$3,$4,$5,$6) on conflict (team_id, id) do nothing', [teamId, params.id, up.url, up.pathname, type, buf.length]);
+  await q(`insert into blobs(team_id, id, url, pathname, type, size) values($1,$2,$3,$4,$5,$6)
+           on conflict (team_id, id) do update set url=excluded.url, pathname=excluded.pathname, type=excluded.type, size=excluded.size`,
+    [teamId, params.id, up.url, up.pathname, type, buf.length]);
+  if (existing && existing.url !== up.url) { try { await delBlobs([existing.url]); } catch (e) {} }
   return { url: up.url };
 });
 
@@ -674,8 +694,11 @@ on('POST', '/blobs/:id/register', async ({ uid, params, body }) => {
   await requireMember(uid, teamId, 'leader');
   const pathname = str(body.pathname, 300);
   if (!pathname.startsWith(`teams/${teamId}/`)) throw bad('경로가 이상해요');
+  if (!/^[A-Za-z0-9_-]{4,40}$/.test(params.id)) throw bad('파일 id가 이상해요');
+  if (!pathname.startsWith(`teams/${teamId}/${params.id}`)) throw bad('경로가 id 와 맞지 않아요');   // 남의 파일을 자기 id 로 등록하지 못하게
   const h = await headBlob(pathname);
   if (!h) throw bad('파일이 올라오지 않았어요');
+  if (h.size > 200 * 1024 * 1024) { await delBlobs([h.url]); throw new HttpError(413, 'too_large', '파일이 너무 커요 (200MB 이하)'); }
   await q(`insert into blobs(team_id, id, url, pathname, type, size) values($1,$2,$3,$4,$5,$6)
            on conflict (team_id, id) do update set url=excluded.url, pathname=excluded.pathname, type=excluded.type, size=excluded.size`,
     [teamId, params.id, h.url, h.pathname, h.contentType || 'application/octet-stream', h.size]);
@@ -708,7 +731,8 @@ on('POST', '/rehearsals', async ({ uid, body }) => {
   if (!canUploadRehearsal(m, st)) throw forbidden('녹음을 올릴 권한이 없어요');
   const serviceId = str(body.serviceId, 64); if (!serviceId) throw bad('어느 예배인지 알 수 없어요');
   const pathname = str(body.pathname, 300); const blobId = str(body.blobId, 64);
-  if (!pathname.startsWith(`teams/${teamId}/rehearsals/`)) throw bad('경로가 이상해요');
+  if (!/^[A-Za-z0-9_-]{4,40}$/.test(blobId)) throw bad('파일 id가 이상해요');
+  if (!pathname.startsWith(`teams/${teamId}/rehearsals/${blobId}`)) throw bad('경로가 id 와 맞지 않아요');   // 남의 파일 id 로 등록·삭제되지 않게
   const h = await headBlob(pathname);
   if (!h) throw bad('파일이 올라오지 않았어요. 다시 시도해 주세요');
   if (h.size > REHEARSAL_MAX) { await delBlobs([h.url]); throw new HttpError(413, 'too_large', '녹음은 150MB 이하만 올릴 수 있어요'); }
@@ -748,7 +772,9 @@ on('GET', '/rehearsals', async ({ uid, url }) => {
 });
 
 // 녹음 타임라인 메모: 범위(전체·세션·나만)에 따라 보이는 것만 내려준다
-const rehNoteVisible = (n, m) => n.layer === 'leader' || m.role === 'leader' || (n.layer === 'session' && mySessions(m).includes(n.session)) || n.authorId === m.user_id;
+// '나만' 메모는 인도자에게도 보이지 않는다 (§5.3 범위: 전체 / 세션 / 나만)
+const rehNoteVisible = (n, m) => n.authorId === m.user_id || n.layer === 'leader'
+  || (n.layer === 'session' && mySessions(m).includes(n.session));
 on('POST', '/rehearsals/:id/notes', async ({ uid, params, body }) => {
   if (!uid) throw noAuth();
   const teamId = str(body.teamId, 64);
@@ -839,7 +865,7 @@ on('POST', '/notes', async ({ uid, body }) => {
     const session = layer === 'session' ? m.session : layer === 'leader' ? (str(x.session, 40) || null) : null;
     await q(`insert into notes(id, team_id, service_id, item_id, marker_id, media_id, t, layer, session, text, author_id, author_name, created_at)
              values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) on conflict (id) do nothing`,
-      [id, teamId, svcId, itemId, str(x.markerId, 40) || null, str(x.mediaId, 40) || null, x.t == null ? null : +x.t, layer, session, text, uid, layer === 'leader' ? '인도자' : m.name, x.at ? new Date(+x.at) : new Date()]);
+      [id, teamId, svcId, itemId, str(x.markerId, 40) || null, str(x.mediaId, 40) || null, x.t == null ? null : +x.t, layer, session, text, uid, layer === 'leader' ? '인도자' : m.mname, x.at ? new Date(+x.at) : new Date()]);
     n++;
   }
   return { ok: true, saved: n };
@@ -998,8 +1024,10 @@ on('PATCH', '/teams/:id/recurring/:rid', async ({ uid, params, body }) => {
   const rec = await one('select * from recurring where id=$1 and team_id=$2', [params.rid, params.id]);
   if (!rec) throw notFound('정기 예배가 없어요');
   if (typeof body.active === 'boolean' && !body.active) {
-    // 비활성: 미래의 콘티 없는 날짜 삭제, 콘티/답 있는 날짜는 닫기만
-    await q(`delete from service_dates where team_id=$1 and recurring_id=$2 and date > current_date and service_id is null`, [params.id, params.rid]);
+    // 비활성 (§2.2): 미래 날짜 중 콘티도·편성도·가능 여부 답도 없는 것만 삭제. 나머지는 닫기만 한다
+    await q(`delete from service_dates sd where sd.team_id=$1 and sd.recurring_id=$2 and sd.date > current_date
+             and sd.service_id is null and coalesce(jsonb_array_length(sd.lineup), 0) = 0
+             and not exists (select 1 from availability a where a.team_id=sd.team_id and a.date=sd.date)`, [params.id, params.rid]);
     await q(`update service_dates set open=false where team_id=$1 and recurring_id=$2 and date > current_date`, [params.id, params.rid]);
     await q('update recurring set active=false where id=$1', [params.rid]);
     return { ok: true };
@@ -1034,7 +1062,7 @@ on('POST', '/teams/:id/dates', async ({ uid, params, body }) => {
   // §1 date.opened: 팀 전원(목회자 제외), 홈 카드. 그 날이 지나면 카드는 사라짐
   try {
     const to = await teamUserIds(params.id, { exceptRole: 'pastor', except: uid });
-    await notify(params.id, to, 'date.opened', row.id, { title: `${mdOf(row.date)} ${row.label} 일정이 열렸어요`, body: row.time ? `${row.time} · 참여 가능한지 알려주세요` : '참여 가능한지 알려주세요', link: '#/home', actionable: true, expiresAt: new Date(row.date + 'T23:59:59+09:00') });
+    await notify(params.id, to, 'date.opened', row.id, { title: `${mdOf(row.date)} ${row.label} 일정이 열렸어요`, body: row.time ? `${row.time} · 참여 가능한지 알려주세요` : '참여 가능한지 알려주세요', link: '#/cal', actionable: true, expiresAt: new Date(row.date + 'T23:59:59+09:00') });
   } catch (e) { console.error('notify date.opened', e); }
   return { ok: true, date: row };
 });
@@ -1043,16 +1071,16 @@ on('POST', '/teams/:id/dates', async ({ uid, params, body }) => {
 on('PATCH', '/teams/:id/dates/:did', async ({ uid, params, body }) => {
   if (!uid) throw noAuth();
   await requireMember(uid, params.id, 'leader');
-  const row = await one('select * from service_dates where id=$1 and team_id=$2', [params.did, params.id]);
+  const row = await one('select *, date::text as dtext from service_dates where id=$1 and team_id=$2', [params.did, params.id]);
   if (!row) throw notFound('날짜가 없어요');
   if (typeof body.open === 'boolean') {
     if (!body.open && row.service_id) throw bad('콘티가 있는 날짜는 닫을 수 없어요. 먼저 콘티를 삭제하세요');
     await q('update service_dates set open=$2 where id=$1', [params.did, body.open]);
     if (body.open !== !!row.open) { // §1 date.opened / date.closed
       try {
-        const md = mdOf(row.date instanceof Date ? row.date.toISOString().slice(0, 10) : String(row.date));
-        if (body.open) await notify(params.id, await teamUserIds(params.id, { exceptRole: 'pastor', except: uid }), 'date.opened', row.id, { title: `${md} ${row.label} 일정이 열렸어요`, body: row.time ? `${row.time} · 참여 가능한지 알려주세요` : '참여 가능한지 알려주세요', link: '#/home', actionable: true, expiresAt: new Date(String(row.date).slice(0, 10) + 'T23:59:59+09:00') });
-        else await notify(params.id, await teamUserIds(params.id, { except: uid }), 'date.closed', row.id, { title: `${md} ${row.label}는 이번 주 쉽니다`, body: '', link: '#/home' });
+        const iso = String(row.dtext).slice(0, 10), md = mdOf(iso);
+        if (body.open) await notify(params.id, await teamUserIds(params.id, { exceptRole: 'pastor', except: uid }), 'date.opened', row.id, { title: `${md} ${row.label} 일정이 열렸어요`, body: row.time ? `${row.time} · 참여 가능한지 알려주세요` : '참여 가능한지 알려주세요', link: '#/cal', actionable: true, expiresAt: new Date(iso + 'T23:59:59+09:00') });
+        else await notify(params.id, await teamUserIds(params.id, { except: uid }), 'date.closed', row.id, { title: `${md} ${row.label}는 이번 주 쉽니다`, body: '', link: '#/cal' });
       } catch (e) { console.error('notify date', e); }
     }
   }
@@ -1101,7 +1129,7 @@ on('GET', '/teams/:id/schedule', async ({ uid, url, params }) => {
   const to = /^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get('to') || '') ? url.searchParams.get('to') : null;
   const range = from && to ? 'and date between $2 and $3' : "and date >= current_date - interval '1 month'";
   const args = from && to ? [params.id, from, to] : [params.id];
-  const dates = await q(`select id, date::text as date, label, time, source, open, service_id as "serviceId", lineup
+  const dates = await q(`select id, date::text as date, label, time, source, open, service_id as "serviceId", lineup, notified
                          from service_dates where team_id=$1 ${range} order by date asc`, args);
   const av = m.role === 'leader'
     ? await q(`select user_id as "userId", date::text as date, state, memo from availability where team_id=$1 ${range}`, args)
@@ -1157,15 +1185,16 @@ on('PUT', '/teams/:id/dates/:did/lineup', async ({ uid, params, body }) => {
 on('POST', '/teams/:id/dates/:did/notify', async ({ uid, params }) => {
   if (!uid) throw noAuth();
   await requireMember(uid, params.id, 'leader');
-  const row = await one('select id, date::text as date, label, time, lineup, service_id as "serviceId" from service_dates where id=$1 and team_id=$2', [params.did, params.id]);
+  const row = await one('select id, date::text as date, label, time, lineup, notified, service_id as "serviceId" from service_dates where id=$1 and team_id=$2', [params.did, params.id]);
   if (!row) throw notFound('날짜가 없어요');
   const lineup = cleanLineup(row.lineup);
   const md = mdOf(row.date), where = `${md} ${row.label}`;
-  const link = row.serviceId ? '#/view/' + row.serviceId : '#/home';
+  const link = row.serviceId ? '#/view/' + row.serviceId : '#/cal';
   const now = new Date().toISOString();
-  const firstTime = !lineup.some((r) => r.notifiedAt);
-  const already = new Set(lineup.filter((r) => r.notifiedAt).map((r) => r.memberId));
-  const nowIn = new Set(lineup.map((r) => r.memberId).filter(Boolean));
+  // 누구에게 이미 알렸는지는 따로 기록해 둔다. 편성에서 빠진 사람은 지금 lineup 에 없으므로 lineup 만으로는 알 수 없다
+  const already = new Set((Array.isArray(row.notified) ? row.notified : []).map((x) => str(x, 64)).filter(Boolean));
+  const firstTime = already.size === 0;
+  const nowIn = new Set(lineup.map((r) => r.memberId).filter(Boolean));   // 빈 자리('')는 제외
   const added = [...nowIn].filter((x) => !already.has(x));
   const dropped = [...already].filter((x) => !nowIn.has(x));
   const sessionsOf = (mid) => lineup.filter((r) => r.memberId === mid).map((r) => r.session).join('·');
@@ -1178,10 +1207,11 @@ on('POST', '/teams/:id/dates/:did/notify', async ({ uid, params }) => {
     sent++;
   }
   for (const mid of dropped) {
-    await notify(params.id, [mid], 'lineup.changed', row.id, { title: `${md} 편성에서 빠졌어요`, body: row.label, link: '#/home', actionable: true, expiresAt: new Date(row.date + 'T23:59:59+09:00') });
+    await notify(params.id, [mid], 'lineup.changed', row.id, { title: `${md} 편성에서 빠졌어요`, body: row.label, link: '#/cal', actionable: true, expiresAt: new Date(row.date + 'T23:59:59+09:00') });
     sent++;
   }
-  await q('update service_dates set lineup=$2 where id=$1', [params.did, JSON.stringify(lineup.map((r) => ({ ...r, notifiedAt: r.notifiedAt || now })))]);
+  await q('update service_dates set lineup=$2, notified=$3 where id=$1',
+    [params.did, JSON.stringify(lineup.map((r) => ({ ...r, notifiedAt: r.memberId ? (r.notifiedAt || now) : null }))), JSON.stringify([...nowIn])]);
   return { ok: true, sent, added: added.length, dropped: dropped.length, firstTime };
 });
 
@@ -1297,11 +1327,10 @@ on('GET', '/cron/dates', async ({ req }) => {
   const recs = await q('select * from recurring where active=true');
   let n = 0;
   for (const rec of recs) { await fillDates(rec.team_id, rec); n++; }
-  // D-N주 콘티 자동 생성 (모든 팀) + 월간 스케줄 요청 + 보류 D-14 확인 + 90일 지난 알림 정리
-  let created = 0, asked = 0, maybes = 0;
-  for (const t of await q('select id, settings from teams')) {
+  // D-N주 콘티 자동 생성 (모든 팀) + 90일 지난 알림 정리 + 녹음 보관
+  let created = 0;
+  for (const t of await q('select id from teams')) {
     try { created += await autoCreateServices(t.id); } catch (e) { console.error('autoCreate', t.id, e); }
-    try { const r = await scheduleReminders(t.id, { ...DEF_SETTINGS, ...(t.settings || {}) }); asked += r.asked; maybes += r.maybes; } catch (e) { console.error('reminders', t.id, e); }
   }
   const purged = (await q(`delete from notifications where updated_at < now() - interval '90 days' returning id`)).length;
   // §5.4 녹음 보관: 만료 7일 전 인도자에게 알림함 항목, 지난 것은 파일까지 삭제
@@ -1318,7 +1347,17 @@ on('GET', '/cron/dates', async ({ req }) => {
     await dropBlobs(r.team_id, [r.blob_id]);
     dropped++;
   }
-  return { ok: true, recurring: n, created, asked, maybes, purged, warned, dropped };
+  return { ok: true, recurring: n, created, purged, warned, dropped };
+});
+
+// 알림 배치 (KST 10:00): 월간 스케줄 요청 · 보류 D-14 · 주간 말씀 요청 (§1.2 시각)
+on('GET', '/cron/remind', async ({ req }) => {
+  if (!process.env.CRON_SECRET || req.headers['authorization'] !== `Bearer ${process.env.CRON_SECRET}`) throw forbidden('크론 전용');
+  let asked = 0, maybes = 0;
+  for (const t of await q('select id, settings from teams')) {
+    try { const r = await scheduleReminders(t.id, { ...DEF_SETTINGS, ...(t.settings || {}) }); asked += r.asked; maybes += r.maybes; } catch (e) { console.error('reminders', t.id, e); }
+  }
+  return { ok: true, asked, maybes };
 });
 
 /* ---------- 진입점 ---------- */

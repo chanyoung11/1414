@@ -69,6 +69,17 @@ def run():
             pm.wait_for_timeout(500)
             if '드럼 필 주의' not in c2.request.get(URL + 'api/notes?team=' + pm.evaluate("CONTI.S.team.id") + '&service=' + svc_id).text(): gone = True; break
         if not gone: fail('삭제 후에도 서버에 메모가 남음')
+        # 예배를 로컬에서만 지웠다가 다시 받아도 서버 메모는 남아야 한다 (그림자 오염 방지)
+        pm.click('#sheet [data-marker]'); pm.wait_for_selector('#cText'); pm.fill('#cText', '그림자 확인'); pm.click('[data-sc="session"]'); pm.click('#cSave')
+        pm.wait_for_timeout(2500)
+        if '그림자 확인' not in c2.request.get(URL + 'api/notes?team=' + pm.evaluate("CONTI.S.team.id") + '&service=' + svc_id).text(): fail('그림자 확인 메모가 서버에 없음')
+        pm.goto(URL + '#/home'); pm.wait_for_selector('.hd', timeout=10000)
+        pm.evaluate("(id)=>{CONTI.S.services=CONTI.S.services.filter(s=>s.id!==id);CONTI.save()}", svc_id)
+        pm.evaluate("CONTI.SYNC.pullServices()"); pm.wait_for_timeout(2500)
+        pm.goto(URL + '#/play/' + svc_id + '/0'); pm.wait_for_selector('#sheet', timeout=15000); pm.wait_for_timeout(2500)
+        if '그림자 확인' not in c2.request.get(URL + 'api/notes?team=' + pm.evaluate("CONTI.S.team.id") + '&service=' + svc_id).text():
+            fail('예배를 다시 받았더니 서버 메모가 지워짐 (noteShadow 오염)')
+        print('note shadow ok')
         print('member sync ok')
 
         # ---- 인도자 v2 발행 → 멤버 새로고침으로 반영 ----

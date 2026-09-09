@@ -65,10 +65,11 @@ def run():
         pm.goto(URL + '#/home'); pm.reload(); pm.wait_for_selector('.hd'); pm.wait_for_timeout(2000)
         pm.wait_for_selector('.todo-card', timeout=8000)
         if '일정이 열렸어요' not in pm.locator('.todo').inner_text(): fail('홈 카드에 date.opened 없음: ' + pm.locator('.todo').inner_text())
-        pm.click('.todo-card [data-act="noti-ack"]'); pm.wait_for_timeout(1200)
-        if pm.locator('.todo-card').count(): fail('확인 후에도 카드가 남음')
-        acked = [n for n in cM.request.get(URL + 'api/notifications?team=' + team).json()['notifications'] if n['type'] == 'date.opened']
-        if not acked or not acked[0]['ackAt']: fail('서버에 ack 기록 없음')
+        # §1.5 date.opened 카드는 '달력 열기' → 답하면 카드가 사라진다
+        pm.click('.todo-card [data-act="noti-go"]'); pm.wait_for_selector('.cal-cell.on', timeout=15000)
+        pm.locator('[data-cal="%s"]' % d).click(); pm.wait_for_timeout(1200)
+        pm.goto(URL + '#/home'); pm.reload(); pm.wait_for_selector('.hd', timeout=10000); pm.wait_for_timeout(2500)
+        if '일정이 열렸어요' in pm.locator('#app').inner_text(): fail('답했는데도 카드가 남음')
         print('date.opened card ok')
 
         # ---- 정기 예배 등록 → 콘티 자동 생성(초안) → 인도자 홈 카드 ----

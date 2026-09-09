@@ -236,3 +236,5 @@ create table if not exists library (
   primary key (team_id, id)
 );
 create index if not exists library_team_idx on library(team_id, updated_at desc);
+-- 통보한 사람 목록 (편성에서 빠진 사람을 알아내려면 현재 편성만으로는 알 수 없다)
+alter table service_dates add column if not exists notified jsonb not null default '[]';

@@ -32,6 +32,10 @@
     {
       "path": "/api/cron/dates",
       "schedule": "0 18 * * *"
+    },
+    {
+      "path": "/api/cron/remind",
+      "schedule": "0 1 * * *"
     }
   ]
 }

@@ -7,6 +7,7 @@ def fail(m): print('FAIL:',m); sys.exit(1)
 with sync_playwright() as p:
     b=p.chromium.launch(); c=b.new_context(viewport={'width':1240,'height':900}); pg=c.new_page()
     errs=[]; pg.on('pageerror',lambda e:errs.append(str(e))); pg.on('dialog',lambda d:d.accept())
+    pg.on('response', lambda r: print('HTTP',r.status,r.url[:70],(r.text()[:150] if r.status>=400 else '')) if r.status>=400 else None)
     pg.goto(URL); pg.wait_for_selector('#lgUser')
     pg.click('[data-act="lg-mode"][data-m="signup"]'); pg.wait_for_selector('#lgName')
     pg.fill('#lgName','하은'); pg.fill('#lgUser','bg'+tag); pg.fill('#lgPass','secret1'); pg.click('[data-act="lg-submit"]')
