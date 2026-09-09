@@ -504,6 +504,11 @@ html.dark .msgbody{background:#1C1C1C}
 .nrow .field{padding:4px 6px;font-size:13px}
 .nrow .q.sm{padding:2px 8px;font-size:12px;min-width:0}
 .m.fixed{box-shadow:0 0 0 1px var(--card),0 0 0 2px currentColor;opacity:.95}
+.chklist{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:6px}
+.chklist .chk{display:inline-flex;align-items:center;gap:5px;font-size:12.5px}
+.chklist .chk.on{color:var(--fg)}
+.chklist .chk.off,.chklist .chk.none{color:var(--faint-fg)}
+.chklist .chk .ic{width:14px;height:14px}
 .ovbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 12px;margin-bottom:10px;border-radius:var(--r-lg);background:var(--amber-soft);color:var(--amber);font-size:12.5px}
 .ovbar .hint{color:inherit;opacity:.75}
 /* ---------- 라이브러리 (A부) ---------- */
@@ -2135,6 +2140,7 @@ function libraryHTML(){
   ${lead?`<button class="btn sm ${LIB.sel.length?'pri':''}" data-act="lib-multi">${LIB.sel.length?`${LIB.sel.length}곡 선택`:'여러 곡 고르기'}</button>
    ${LIB.sel.length?`<button class="btn sm pri" data-act="lib-add-sel">${ic('plus')}예배에 넣기</button>`:''}
    <button class="btn sm" data-act="lib-receive">${ic('import')}코드로 받기</button>
+   <button class="btn sm ghost" data-act="lib-shares" title="내가 만든 코드">${ic('link')}</button>
    <button class="btn pri" data-act="lib-new">${ic('plus')}새 곡</button>`:''}</div>
  <div class="ws" style="grid-template-columns:minmax(0,1fr)"><div class="panel"><div class="pbody"><div class="libpage">
   <div class="row" style="gap:6px"><input class="field grow" id="libQ" value="${esc(LIB.q)}" placeholder="제목 · 가사 · 아티스트 · 태그 — 초성도 됩니다 (ㅇㅅㄹ)">${LIB.q?`<button class="btn sm ghost" data-act="lib-clear">지우기</button>`:''}</div>
@@ -2370,6 +2376,7 @@ function songMoreModal(s){
  modal(`<b style="font-size:17px">${esc(s.title)}</b>
   <div class="row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:14px">
    <button class="btn" id="smInfo">${ic('pen')}정보 수정</button>
+   <button class="btn" id="smShare">${ic('export')}곡 코드 만들기</button>
    <button class="btn" id="smMerge">${ic('users')}합치기…</button>
    <button class="btn" id="smArch">${ic('import')}${s.archived?'보관 해제':'보관하기'}</button>
    <button class="btn danger" id="smDel2">${ic('trash')}삭제</button>
@@ -2378,6 +2385,7 @@ function songMoreModal(s){
  $('#modal').onclick=async e=>{try{
   if(e.target.closest('[data-close]')){closeModal();return}
   if(e.target.closest('#smInfo')){closeModal();songInfoModal(s);return}
+  if(e.target.closest('#smShare')){closeModal();shareMakeModal(s);return}
   if(e.target.closest('#smMerge')){closeModal();mergeModal();return}
   if(e.target.closest('#smArch')){s.archived=!s.archived;await saveSong(s,{archived:s.archived});closeModal();
    toast(s.archived?'보관했어요 · 목록에서 빠져요':'보관을 풀었어요');render();return}
@@ -2388,6 +2396,137 @@ function songMoreModal(s){
    await api('/songs/'+s.id+'?team='+S.team.id+(s.useCount?'&force=1':''),{method:'DELETE'});
    S.songs=(S.songs||[]).filter(x=>x.id!==s.id);save();closeModal();go('library');return}
  }catch(err){toast(err.message)}}}
+
+/* ---------- 곡 공유 코드 (명세 A.7) ---------- */
+// 파일은 나가지 않는다. 악보 사진·녹음·채보 결과는 담기지 않고, 받는 쪽은 자기 악보를 올려 쓴다.
+// 두 가지 모양: 짧은 코드(1414-K7QM2X, 서버가 보관) / 자립형(1414:… , 서버 없이 통째로 들고 다님)
+const b64u=(bytes)=>{let s='';bytes.forEach(b=>s+=String.fromCharCode(b));return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')};
+const unb64u=(t)=>{const s=atob(t.replace(/-/g,'+').replace(/_/g,'/'));const a=new Uint8Array(s.length);for(let i=0;i<s.length;i++)a[i]=s.charCodeAt(i);return a};
+async function packShare(payload){
+ const raw=new TextEncoder().encode(JSON.stringify(payload));
+ if(typeof CompressionStream==='undefined')return '1414:'+b64u(raw);
+ const cs=new CompressionStream('deflate-raw');
+ const buf=await new Response(new Blob([raw]).stream().pipeThrough(cs)).arrayBuffer();
+ return '1414:'+b64u(new Uint8Array(buf))}
+async function unpackShare(text){
+ const t=String(text||'').trim().replace(/^1414:/,'');
+ const bytes=unb64u(t);
+ try{
+  if(typeof DecompressionStream==='undefined')throw new Error('no ds');
+  const ds=new DecompressionStream('deflate-raw');
+  const buf=await new Response(new Blob([bytes]).stream().pipeThrough(ds)).arrayBuffer();
+  return JSON.parse(new TextDecoder().decode(buf));
+ }catch(e){return JSON.parse(new TextDecoder().decode(bytes))}}
+const shareText=code=>/^1414:/.test(code)?code:'1414-'+code;
+// 붙여넣은 글에서 코드만 뽑는다 (카톡 문구째로 붙여넣어도 되게)
+function parseShareInput(v){
+ const t=String(v||'').trim();
+ const self=t.match(/1414:[A-Za-z0-9_-]{20,}/);if(self)return {kind:'self',code:self[0]};
+ const short=t.match(/1414-([A-HJ-NP-Z2-9]{6})/i)||t.match(/^\s*([A-HJ-NP-Z2-9]{6})\s*$/i);
+ return short?{kind:'short',code:short[1].toUpperCase()}:null}
+
+async function shareMakeModal(song){
+ let pre;try{pre=await api(`/songs/${song.id}/share-preview?team=${S.team.id}`)}catch(e){toast(e.message);return}
+ let days=30,once=false,self=false;
+ const p=pre.song,L=pre.left;
+ const yes=[['제목·별칭·아티스트',true],['원키·템포·태그',true],[`송폼${p.arr.form?'':' (없음)'}`,!!p.arr.form],
+  [`곡 메모${p.arr.songNote?'':' (없음)'}`,!!p.arr.songNote],[`고정 메모 ${p.arr.notes.length}개`,!!p.arr.notes.length],
+  [`유튜브 링크 ${p.arr.media.length}개`,!!p.arr.media.length]];
+ const no=[[`악보 사진 ${L.pieces}장`,L.pieces],[`녹음 ${L.audio}개`,L.audio],['코드 차트',L.chart],['재구성 악보',L.score]];
+ const body=()=>`<b style="font-size:17px">곡 코드 만들기</b> <span class="hint">${esc(song.title)}</span>
+  <div class="lbl">담기는 것</div>
+  <div class="chklist">${yes.map(([t,on])=>`<div class="chk ${on?'on':'off'}">${on?ic('check'):'·'}<span>${esc(t)}</span></div>`).join('')}</div>
+  <div class="lbl">담기지 않는 것 <span class="hint">파일은 코드로 나가지 않아요</span></div>
+  <div class="chklist">${no.map(([t,n])=>`<div class="chk none">×<span>${esc(t)}${n?'':' (없음)'}</span></div>`).join('')}</div>
+  <div class="hint" style="margin-top:6px">받는 팀은 자기 악보를 올리고 마커에 같은 라벨을 찍으면 고정 메모가 그 자리에 붙어요.</div>
+  <div class="lbl">기한</div><div>${[[7,'7일'],[30,'30일'],[90,'90일']].map(([d,l])=>`<button class="q ${days===d?'on':''}" data-sd="${d}">${l}</button>`).join('')}</div>
+  <div class="lbl">횟수</div><div><button class="q ${once?'':'on'}" data-su="0">무제한</button><button class="q ${once?'on':''}" data-su="1">한 팀만</button></div>
+  <div class="lbl">모양</div><div><button class="q ${self?'':'on'}" data-sf="0">짧은 코드</button><button class="q ${self?'on':''}" data-sf="1">자립형</button></div>
+  <div class="hint">${self?'서버 없이 글자 안에 다 들어 있어요. 길지만 회수는 안 됩니다.':'1414-K7QM2X 처럼 짧아요. 기한·횟수를 두고 나중에 회수할 수 있어요.'}</div>
+  <div class="row" style="margin-top:18px;justify-content:flex-end;gap:6px"><button class="btn" data-close="1">취소</button><button class="btn pri" id="shOk">${ic('export')}코드 만들기</button></div>`;
+ const show=()=>{modal(body(),{center:true});wire()};
+ const wire=()=>{$('#modal').onclick=async e=>{
+  if(e.target.closest('[data-close]')){closeModal();return}
+  const d=e.target.closest('[data-sd]');if(d){days=+d.dataset.sd;closeModal();show();return}
+  const u=e.target.closest('[data-su]');if(u){once=u.dataset.su==='1';closeModal();show();return}
+  const f=e.target.closest('[data-sf]');if(f){self=f.dataset.sf==='1';closeModal();show();return}
+  if(e.target.closest('#shOk')){
+   try{
+    let code;
+    if(self)code=await packShare({v:1,kind:'song',songs:[p],from:{team:S.team.name,at:today()}});
+    else code=(await api('/share',{method:'POST',body:{teamId:S.team.id,songId:song.id,days,maxUses:once?1:0}})).code;
+    closeModal();shareDoneModal(song,shareText(code),self,days,once)}
+   catch(err){toast(err.message)}}}};
+ show()}
+function shareDoneModal(song,code,self,days,once){
+ const kakao=`[1414] ${song.title}\n아래 코드를 1414 라이브러리 → 코드로 받기 에 붙여넣으면 곡이 들어와요.\n${code}`;
+ modal(`<b style="font-size:17px">코드가 만들어졌어요</b>
+  <div class="linkbox" style="margin-top:12px;${self?'font-size:11px':'font-size:20px;letter-spacing:.08em;text-align:center'}">${esc(code)}</div>
+  <div class="hint" style="margin-top:8px">${self?'서버 없이 이 글자 안에 다 들어 있어요.':`${days}일 뒤 만료 · ${once?'한 팀만':'무제한'} · 언제든 회수할 수 있어요`}</div>
+  <div class="row" style="margin-top:16px;gap:6px;justify-content:flex-end"><button class="btn" id="shCopy">${ic('export')}코드 복사</button><button class="btn" id="shKakao">카톡 문구 복사</button><button class="btn pri" data-close="1">닫기</button></div>`,{center:true});
+ $('#modal').onclick=async e=>{
+  if(e.target.closest('[data-close]')){closeModal();return}
+  if(e.target.closest('#shCopy')){await copyText(code);toast('복사했어요');return}
+  if(e.target.closest('#shKakao')){await copyText(kakao);toast('카톡 문구를 복사했어요');return}}}
+
+async function shareTakeModal(){
+ let got=null,parsed=null;
+ const body=()=>`<b style="font-size:17px">코드로 받기</b> <span class="hint">다른 팀이 보낸 곡을 담아요</span>
+  <div class="row" style="gap:6px;margin-top:12px"><input class="field grow mono" id="shIn" placeholder="1414-K7QM2X 또는 1414:… 붙여넣기" autocomplete="off">
+   <button class="btn" id="shGo">${ic('import')}열기</button></div>
+  <div id="shPrev">${got?prev():''}</div>`;
+ const prev=()=>{const songs=got.songs||[];
+  return `<div class="card" style="margin-top:12px">
+   <div class="hint">${esc((got.from&&got.from.team)||'')}${got.from&&got.from.at?' · '+esc(got.from.at):''}에서 보냈어요</div>
+   ${songs.map(s=>{const dup=(S.songs||[]).find(x=>matchSong(x,s.title).rank>0&&matchSong(x,s.title).rank<=2);
+    return `<div style="padding:8px 0;border-top:1px solid var(--line2)"><b>${esc(s.title)}</b>
+     <div class="hint">${[s.artist,s.arr&&s.arr.key?'키 '+s.arr.key:'',s.tempo].filter(Boolean).map(esc).join(' · ')}</div>
+     ${s.arr&&s.arr.form?`<div class="songbar" style="margin-top:6px">${esc(s.arr.form)}</div>`:''}
+     <div class="hint" style="margin-top:4px">고정 메모 ${(s.arr&&s.arr.notes||[]).length}개 · 유튜브 ${(s.arr&&s.arr.media||[]).length}개 · 악보는 안 들어와요</div>
+     ${dup?`<div class="hint" style="color:var(--amber)">이미 비슷한 곡이 있어요: ${esc(dup.title)} (${dup.useCount||0}회)</div>`:''}</div>`}).join('')}
+   <div class="row" style="margin-top:10px;justify-content:flex-end;gap:6px">
+    <button class="btn" id="shTake">${ic('plus')}라이브러리에 담기</button>
+    <button class="btn pri" id="shTakeGo">${ic('plus')}담고 예배에 넣기</button></div></div>`};
+ const show=()=>{modal(body(),{center:true});wire();const i=$('#shIn');if(i&&!got)setTimeout(()=>i.focus(),50)};
+ const open=async()=>{
+  const v=($('#shIn')||{}).value||'';const p=parseShareInput(v);
+  if(!p){toast('코드를 알아보지 못했어요');return}
+  try{
+   if(p.kind==='self'){got=await unpackShare(p.code);parsed={self:true,payload:got}}
+   else{const r=await api('/share/'+p.code);got=r.payload;parsed={self:false,code:p.code}}
+   if(!got||!Array.isArray(got.songs)||!got.songs.length)throw new Error('코드가 비어 있어요');
+   const keep=v;closeModal();show();const i2=$('#shIn');if(i2)i2.value=keep}
+  catch(e){toast(e.message||'코드를 열지 못했어요')}};
+ const take=async(goService)=>{
+  try{
+   const r=parsed.self
+    ?await api('/share/take',{method:'POST',body:{teamId:S.team.id,payload:parsed.payload}})
+    :await api('/share/'+parsed.code+'/take',{method:'POST',body:{teamId:S.team.id}});
+   S.songsAt='';await pullSongs(true);closeModal();
+   toast(`${r.songs.length}곡을 담았어요`);
+   if(goService)addToServiceSheet(r.songs.map(x=>x.songId));else go('library');render()}
+  catch(e){toast(e.message)}};
+ const wire=()=>{$('#modal').onclick=async e=>{
+  if(e.target.closest('[data-close]')){closeModal();return}
+  if(e.target.closest('#shGo')){await open();return}
+  if(e.target.closest('#shTake')){await take(false);return}
+  if(e.target.closest('#shTakeGo')){await take(true);return}};
+  const i=$('#shIn');if(i)i.onkeydown=ev=>{if(ev.key==='Enter'){ev.preventDefault();open()}}};
+ show()}
+// 내가 만든 코드 관리 (회수)
+async function shareListModal(){
+ let list=[];try{list=(await api('/shares?team='+S.team.id)).shares||[]}catch(e){toast(e.message);return}
+ modal(`<b style="font-size:17px">내가 만든 곡 코드</b>
+  <div style="margin-top:12px">${list.length?list.map(x=>{const dead=x.revokedAt||new Date(x.expiresAt)<new Date()||(x.maxUses!=null&&x.uses>=x.maxUses);
+   return `<div class="mrow ${dead?'off':''}"><span class="grow" style="min-width:0"><b class="mono">1414-${esc(x.code)}</b>
+    <div class="hint">${esc((x.titles||[]).join(', ').slice(0,60))} · ${x.uses}팀이 받음${x.maxUses?` / ${x.maxUses}`:''} · ${x.revokedAt?'회수됨':new Date(x.expiresAt).toLocaleDateString('ko-KR')+'까지'}</div></span>
+    ${dead?'':`<button class="btn sm ghost" data-shcopy="${esc(x.code)}">복사</button><button class="icon sm ghost" data-shrev="${esc(x.code)}" title="회수">${ic('x')}</button>`}</div>`}).join(''):'<div class="hint">아직 없어요</div>'}</div>
+  <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn" data-close="1">닫기</button></div>`,{center:true});
+ $('#modal').onclick=async e=>{
+  if(e.target.closest('[data-close]')){closeModal();return}
+  const c=e.target.closest('[data-shcopy]');if(c){await copyText('1414-'+c.dataset.shcopy);toast('복사했어요');return}
+  const rv=e.target.closest('[data-shrev]');if(rv){if(!confirm('이 코드를 회수할까요? 아직 안 받은 팀은 못 받아요'))return;
+   try{await api('/share/'+rv.dataset.shrev+'?team='+S.team.id,{method:'DELETE'});closeModal();shareListModal()}catch(err){toast(err.message)}}}}
 
 /* ---------- 팀 화면 (명세 B부). 홈 위 모달이던 것을 한 페이지로 ---------- */
 const TM={data:null,invites:null,at:0,open:{members:true}};   // 멤버 목록은 처음부터 펼쳐 둔다
@@ -3657,7 +3796,8 @@ document.addEventListener('click',async e=>{
    LIB.pick='multi';LIB.sel=ids.slice(0,8);render();break}
   case 'lib-multi':{LIB.pick=LIB.pick==='multi'?null:'multi';if(!LIB.pick)LIB.sel=[];render();break}
   case 'lib-add-sel':{if(!LIB.sel.length){toast('곡을 고르세요');break}addToServiceSheet(LIB.sel.slice());break}
-  case 'lib-receive':toast('공유 코드는 곧 붙습니다');break;
+  case 'lib-receive':shareTakeModal();break;
+  case 'lib-shares':shareListModal();break;
   case 'song-more':{const s2=songById(r.a);if(s2)songMoreModal(s2);break}
   case 'song-clone':{const s2=songById(r.a);if(!s2)break;
    const k=prompt('어느 키로 만들까요? (예: A)','');if(k==null)break;

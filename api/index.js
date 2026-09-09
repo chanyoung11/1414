@@ -8,6 +8,7 @@ import { putBlob, delBlobs, readUrls, presignPut, headBlob } from '../lib/blob.j
 import { ocrBands, visionConfigured } from '../lib/vision.js';
 import { transcribeSheet, transcribeScore, geminiConfigured, geminiModel, estimateUSD } from '../lib/gemini.js';
 import { norm as normSong, cho as choSong } from '../lib/song.js';
+import { randomBytes } from 'node:crypto';
 
 class HttpError extends Error { constructor(status, code, message) { super(message || code); this.status = status; this.code = code; } }
 const bad = (m) => new HttpError(400, 'bad_request', m);
@@ -1222,6 +1223,153 @@ on('POST', '/songs/merge', async ({ uid, body }) => {
   await audit(teamId, uid, 'song.merge', keep.id, { dropped: drop.id, title: drop.title });
   return { ok: true, keepId: keep.id, dropId: drop.id };
 });
+
+/* ---------- 곡 공유 코드 (명세 A.7) ---------- */
+// 파일은 담지 않는다. 악보 이미지·녹음·채보 결과는 코드에 없다.
+// 받는 쪽은 곡·편곡이 생기고 악보는 빈 상태다. 자기 악보를 올리고 마커를 찍으면
+// 라벨이 같은 고정 메모가 붙는다 (§A.6.3 규칙 그대로).
+const SHARE_ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // 헷갈리는 I O 0 1 은 뺐다
+function shareCode() {
+  const b = randomBytes(6);
+  let out = ''; for (let i = 0; i < 6; i++) out += SHARE_ALPHA[b[i] % SHARE_ALPHA.length];
+  return out;
+}
+const ytOnly = (m) => m && m.type === 'youtube' && m.url;
+// 곡 하나를 코드에 담을 모양으로 (파일 없이)
+async function sharePayloadOf(teamId, songId, arrId) {
+  const s = await one('select * from songs where id=$1 and team_id=$2 and deleted_at is null', [songId, teamId]);
+  if (!s) throw notFound('그 곡이 없어요');
+  const arrs = await q('select * from arrangements where song_id=$1 and deleted_at is null order by is_default desc, created_at asc', [s.id]);
+  const a = (arrId ? arrs.find((x) => x.id === arrId) : null) || arrs[0];
+  if (!a) throw bad('편곡이 없어요');
+  const notes = await q(`select marker_label as "label", text from arrangement_notes
+                         where arrangement_id=$1 and layer='all' order by created_at asc`, [a.id]);
+  return {
+    title: s.title, aliases: s.aliases || [], artist: s.artist || '', origKey: s.orig_key || '',
+    tempo: s.tempo || '', tags: s.tags || [],
+    arr: { name: a.name || '기본', key: a.key || '', mod: a.mod || '', form: a.form || '',
+      bpm: a.bpm || null, songNote: a.song_note || '',
+      notes: notes.map((n) => ({ label: n.label, text: n.text })),
+      media: (a.media || []).filter(ytOnly).map((m) => ({ type: 'youtube', url: m.url, name: m.name || '',
+        start: +m.start || 0, end: +m.end || 0, sessions: Array.isArray(m.sessions) ? m.sessions : [] })) },
+  };
+}
+// 만들기 전에 무엇이 담기고 무엇이 안 담기는지 보여 준다
+on('GET', '/songs/:id/share-preview', async ({ uid, params, url }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(url.searchParams.get('team'), 64);
+  await requireMember(uid, teamId, 'leader');
+  const payload = await sharePayloadOf(teamId, params.id, str(url.searchParams.get('arr'), 64));
+  const a = await one('select pieces, media, chart, score from arrangements where song_id=$1 and deleted_at is null order by is_default desc limit 1', [params.id]);
+  return { song: payload, left: {
+    pieces: ((a && a.pieces) || []).length, audio: ((a && a.media) || []).filter((m) => m && m.type !== 'youtube').length,
+    chart: !!(a && a.chart), score: !!(a && a.score) } };
+});
+on('POST', '/share', async ({ uid, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  const m = await requireMember(uid, teamId, 'leader');
+  const ids = (Array.isArray(body.songIds) ? body.songIds : [str(body.songId, 64)]).filter(Boolean).slice(0, 30);
+  if (!ids.length) throw bad('보낼 곡을 골라 주세요');
+  if (ENFORCE_PLAN && (m.plan || 'free') !== 'pro') throw new HttpError(402, 'plan_limit', '곡 코드 만들기는 Pro 예요');
+  if (ENFORCE_PLAN && ids.length > 1 && (m.plan || 'free') !== 'pro') throw new HttpError(402, 'plan_limit', '묶음 코드는 Pro 예요');
+  const songs = [];
+  for (const id of ids) songs.push(await sharePayloadOf(teamId, id, ids.length === 1 ? str(body.arrId, 64) : ''));
+  const days = [7, 30, 90].includes(+body.days) ? +body.days : 30;
+  const payload = { v: 1, kind: ids.length > 1 ? 'bundle' : 'song', songs,
+    from: { team: m.name, at: new Date().toISOString().slice(0, 10) } };
+  let code = shareCode();
+  for (let i = 0; i < 5 && await one('select code from share_codes where code=$1', [code]); i++) code = shareCode();
+  await q(`insert into share_codes(code, team_id, created_by, payload, kind, max_uses, expires_at)
+           values($1,$2,$3,$4,$5,$6, now() + ($7 || ' days')::interval)`,
+    [code, teamId, uid, JSON.stringify(payload), payload.kind, +body.maxUses > 0 ? Math.min(50, +body.maxUses) : null, String(days)]);
+  await audit(teamId, uid, 'share.create', code, { songs: ids.length });
+  return { code, kind: payload.kind, songs: songs.length, expiresInDays: days };
+});
+on('GET', '/shares', async ({ uid, url }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(url.searchParams.get('team'), 64);
+  await requireMember(uid, teamId, 'leader');
+  const rows = await q(`select code, kind, uses, max_uses as "maxUses", expires_at as "expiresAt",
+     revoked_at as "revokedAt", created_at as "createdAt", payload from share_codes
+     where team_id=$1 order by created_at desc limit 30`, [teamId]);
+  return { shares: rows.map((r) => ({ ...r, titles: ((r.payload || {}).songs || []).map((s) => s.title), payload: undefined })) };
+});
+on('DELETE', '/share/:code', async ({ uid, params, url }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(url.searchParams.get('team'), 64);
+  await requireMember(uid, teamId, 'leader');
+  const r = await q('update share_codes set revoked_at=now() where code=$1 and team_id=$2 and revoked_at is null returning code',
+    [String(params.code || '').toUpperCase(), teamId]);
+  if (!r.length) throw notFound('그 코드가 없어요');
+  return { ok: true };
+});
+// 미리보기 (받는 쪽). 담기 전에 무엇이 들어오는지 본다
+on('GET', '/share/:code', async ({ uid, params }) => {
+  if (!uid) throw noAuth();
+  const r = await one('select * from share_codes where code=$1', [String(params.code || '').toUpperCase()]);
+  if (!r) throw notFound('그런 코드가 없어요');
+  if (r.revoked_at) throw notFound('이 코드는 회수됐어요');
+  if (new Date(r.expires_at) < new Date()) throw notFound('이 코드는 기한이 지났어요');
+  if (r.max_uses != null && r.uses >= r.max_uses) throw notFound('이 코드는 이미 다 쓰였어요');
+  return { payload: r.payload, uses: r.uses, maxUses: r.max_uses, expiresAt: r.expires_at };
+});
+// 담기: 곡·편곡·고정 메모·유튜브 링크를 내 팀에 만든다
+on('POST', '/share/:code/take', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  const m = await requireMember(uid, teamId, 'leader');
+  const code = String(params.code || '').toUpperCase();
+  const r = await one('select * from share_codes where code=$1', [code]);
+  if (!r) throw notFound('그런 코드가 없어요');
+  if (r.revoked_at || new Date(r.expires_at) < new Date() || (r.max_uses != null && r.uses >= r.max_uses))
+    throw notFound('이 코드는 더 쓸 수 없어요');
+  const made = await takeSharePayload(teamId, uid, m, r.payload);
+  await q('update share_codes set uses = uses + 1 where code=$1', [code]);
+  return made;
+});
+// 자립형 코드(1414:…)는 브라우저가 풀어서 이 자리로 보낸다. 서버는 저장하지 않는다
+on('POST', '/share/take', async ({ uid, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  const m = await requireMember(uid, teamId, 'leader');
+  const p = body.payload;
+  if (!p || !Array.isArray(p.songs) || !p.songs.length) throw bad('코드를 읽지 못했어요');
+  return await takeSharePayload(teamId, uid, m, p);
+});
+async function takeSharePayload(teamId, uid, member, payload) {
+  const from = (payload.from && payload.from.team) || '';
+  const out = [];
+  if (ENFORCE_PLAN) {
+    const n = await one('select count(*)::int as n from songs where team_id=$1 and not archived and deleted_at is null', [teamId]);
+    const cap = planOf(member).songs;
+    if (n.n + payload.songs.length > cap) throw new HttpError(402, 'plan_limit', `무료는 ${cap}곡까지예요. 안 부르는 곡을 보관하면 자리가 생겨요`);
+  }
+  for (const sp of payload.songs.slice(0, 30)) {
+    const title = str(sp.title, 120) || '(제목 없음)';
+    const tn = normSong(title);
+    const s = await one(`insert into songs(team_id, title, title_norm, title_cho, aliases, artist, orig_key, tempo, tags, created_by)
+      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning *`,
+      [teamId, title, tn, choSong(tn), (strList(sp.aliases) || []), str(sp.artist, 60), str(sp.origKey, 12),
+       str(sp.tempo, 8), (strList(sp.tags) || []), uid]);
+    const ar = sp.arr || {};
+    const media = (Array.isArray(ar.media) ? ar.media : []).filter(ytOnly).slice(0, 12).map((x) => ({
+      id: randomToken(8), type: 'youtube', url: str(x.url, 300), name: str(x.name, 120),
+      start: +x.start || 0, end: +x.end || 0, sessions: strList(x.sessions) || [], notes: [] }));
+    const a = await one(`insert into arrangements(song_id, team_id, name, is_default, key, mod, form, bpm, song_note, pieces, media)
+      values($1,$2,$3,true,$4,$5,$6,$7,$8,'[]',$9) returning *`,
+      [s.id, teamId, str(ar.name, 40) || '기본', str(ar.key, 12), str(ar.mod, 12), str(ar.form, 500),
+       +ar.bpm || null, str(ar.songNote, 300), JSON.stringify(media)]);
+    for (const n of (Array.isArray(ar.notes) ? ar.notes : []).slice(0, 40)) {
+      const text = str(n.text, 60); if (!text) continue;
+      await q(`insert into arrangement_notes(arrangement_id, team_id, marker_label, layer, author_id, author_name, text)
+               values($1,$2,$3,'all',$4,$5,$6)`, [a.id, teamId, str(n.label, 8) || 'A', uid, from ? from + ' (받음)' : '', text]);
+    }
+    out.push({ songId: s.id, arrangementId: a.id, title });
+  }
+  await audit(teamId, uid, 'share.take', out.map((x) => x.songId).join(','), { from, songs: out.length });
+  return { songs: out, from };
+}
 
 /* ---------- 라이브러리: 팀이 함께 쓰는 곡 보관함 ---------- */
 const normTitle = (t) => String(t || '').toLowerCase().replace(/\([^)]*\)|\[[^\]]*\]/g, '').replace(/[\s\-–—_.,·'"“”‘’!?~]/g, '');
