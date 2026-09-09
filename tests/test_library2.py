@@ -74,6 +74,19 @@ def run():
     if not it['form']: fail('편곡의 송폼이 안 따라옴: %s' % it)
     print('add to service ok:', it)
 
+    # ---- "이 곡부터 시작": 콘티 맨 앞에 넣는다 (시안) ----
+    pg.goto(URL + '#/library/' + ids[1]); pg.wait_for_selector('.acard', timeout=10000); pg.wait_for_timeout(400)
+    pg.click('[data-arradd]'); pg.wait_for_selector('#atsGo', timeout=6000)
+    svc0 = pg.evaluate("CONTI.S.services[0].id")
+    pg.click('[data-ats="%s"]' % svc0); pg.wait_for_selector('[data-atsfirst]', timeout=5000)
+    pg.click('[data-atsfirst]'); pg.click('#atsGo')
+    pg.wait_for_selector('[data-f="item.title"]', timeout=10000); pg.wait_for_timeout(600)
+    order = pg.evaluate("CONTI.S.services.find(s=>s.id==='%s').items.map(i=>i.title)" % svc0)
+    if order[0] != '주 은혜임을': fail('"이 곡부터 시작"이 맨 앞에 안 들어감: %s' % order)
+    print('insert-first ok:', order)
+    pg.evaluate("(()=>{const s=CONTI.S.services.find(x=>x.id==='%s');s.items.shift();s.editedAt=Date.now();CONTI.save()})()" % svc0)
+    pg.wait_for_timeout(800)
+
     # ---- 발행 → 사용 이력 ----
     svc = pg.evaluate('CONTI.S.services[0].id')
     pg.click('[data-act="publish"]'); pg.wait_for_selector('#pubOnly', timeout=6000); pg.click('#pubOnly'); pg.wait_for_timeout(4000)

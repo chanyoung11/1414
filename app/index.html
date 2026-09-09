@@ -896,7 +896,7 @@ function openComposer(svc,it,o){ // o: {marker, leader, t, mediaId}
  modal(`<div class="row sb"><div class="row">${m?`<span class="mk">${esc(m.label)}</span><b style="font-size:17px">${esc(m.label)}에 메모</b><span class="pill">${esc(mods[m.label]||'섹션')}</span>`:`<b style="font-size:17px">${fmtT(o.t)}에 타임라인 메모</b>`}</div><button class="icon sm ghost" data-close="1">${ic('x')}</button></div>
   <div style="margin-top:12px">${S.team.phrases.map(p=>`<button class="q" data-p="${esc(p)}">${esc(p)}</button>`).join('')}</div>
   <div class="row" style="margin-top:4px"><input class="field grow" id="cText" placeholder="한 줄로. 24자 안에" maxlength="60" style="font-size:16px;padding:12px 14px"><span class="hint" id="cCnt">0/24</span></div>
-  ${arrOfItem(it)&&m?`<div class="lbl">언제까지</div>
+  ${arrOfItem(it)&&m?`<div class="lbl">어디에 남길까</div>
    <div id="cWhen"><button class="q ${o.leader?'on':''}" data-w2="always">이 곡에 항상</button><button class="q ${o.leader?'':'on'}" data-w2="once">이번 예배만</button></div>
    <div class="hint" id="cWhenHint">${o.leader?'이 곡을 넣는 다음 예배에도 이 자리에 따라와요.':'이 예배에서만 보여요.'}</div>`:''}
   <div class="lbl">${o.leader?'대상':'범위'}</div>
@@ -2179,7 +2179,7 @@ function libraryHTML(){
   ${lead&&LIB.dups&&LIB.dups.length?`<div class="card" style="background:var(--amber-soft);color:var(--amber)"><b>비슷한 곡이 ${LIB.dups.length}쌍 있어요</b><div class="row" style="margin-top:6px"><button class="btn sm" data-act="lib-merge">정리하기</button></div></div>`:''}
   ${plain?`
    ${all.filter(s=>s.lastUsed).length?`<div class="lbl">최근 부른 곡</div><div class="scards">${all.slice().sort((a,b)=>(b.lastUsed||'').localeCompare(a.lastUsed||'')).slice(0,8).map(card).join('')}</div>`:''}
-   ${stale.length?`<div class="lbl">오래 안 부른 곡 <span class="hint">반년 넘게</span></div><div class="scards">${stale.slice(0,8).map(card).join('')}</div>`:''}
+   ${stale.length?`<div class="lbl">오래 안 부른 곡 <span class="hint">반년 넘음 · 다시 꺼낼 만한 것</span></div><div class="scards">${stale.slice(0,8).map(card).join('')}</div>`:''}
    ${season.length?`<div class="lbl">작년 이맘때 부른 곡</div><div class="scards">${season.slice(0,8).map(card).join('')}</div>`:''}
    <div class="lbl">전체 ${all.length}곡</div>`:''}
   <div id="libList">${list.length?list.map(x=>songRow(x,{multi:LIB.pick==='multi',picked:LIB.sel.includes(x.s.id)})).join('')
@@ -2261,7 +2261,7 @@ function songHTML(s){const lead=isLeader();const d=LIB.detail||{};const arrs=s.a
 function addToServiceSheet(songIds,arrPick){
  const ids=(songIds||[]).filter(Boolean);if(!ids.length)return;
  const soon=S.services.slice().filter(sv=>!sv.date||sv.date>=today()).sort((a,b)=>(a.date||'').localeCompare(b.date||'')).slice(0,12);
- const sel={svc:soon[0]?soon[0].id:'',arr:{...(arrPick||{})},key:{}};
+ const sel={svc:soon[0]?soon[0].id:'',arr:{...(arrPick||{})},key:{},first:false};
  ids.forEach(id=>{const s=songById(id);if(s&&!sel.arr[id])sel.arr[id]=defArr(s).id});
  const body=()=>{
   const svc=svcById(sel.svc);
@@ -2279,6 +2279,7 @@ function addToServiceSheet(songIds,arrPick){
     ${arrs.length>1?`<span class="row" style="gap:4px">${arrs.map(x=>`<button class="q sm ${sel.arr[id]===x.id?'on':''}" data-atsa="${esc(id)}" data-a="${esc(x.id)}">${esc(x.name)} ${esc(x.key||'')}</button>`).join('')}</span>`:''}
     <input class="field mono" data-atsk="${esc(id)}" value="${esc(sel.key[id]!=null?sel.key[id]:(a.key||''))}" placeholder="키" style="width:70px;text-align:center"></div>`}).join('')}
   <div class="hint">키를 바꾸면 이 예배에서만 바뀌고 라이브러리는 그대로예요.</div>
+  ${svc&&(svc.items||[]).length?`<div class="row" style="margin-top:10px"><button class="q ${sel.first?'on':''}" data-atsfirst="1">이 곡부터 시작</button><span class="hint">끄면 콘티 맨 뒤에 붙어요</span></div>`:''}
   <div class="row" style="margin-top:18px;justify-content:flex-end;gap:6px"><button class="btn" data-close="1">취소</button>
    <button class="btn" id="atsMore">넣고 계속 고르기</button><button class="btn pri" id="atsGo">${ic('check')}넣고 에디터로</button></div>`};
  const show=()=>{modal(body(),{center:true});wire()};
@@ -2287,6 +2288,7 @@ function addToServiceSheet(songIds,arrPick){
   if(!svc){const name=(($('#atsName')||{}).value||'').trim();const date=(($('#atsDate')||{}).value||'')||nextSunday();
    svc=newService();svc.name=name||fmtNameC(((S.team.settings||{}).nameRule)||'{월}/{일} {이름}',date,'예배');svc.date=date;S.services.unshift(svc)}
   $$('[data-atsk]').forEach(i=>sel.key[i.dataset.atsk]=i.value.trim());
+  const added=[];
   ids.forEach(id=>{const s=songById(id);if(!s)return;const a=arrById(s,sel.arr[id]);
    const it=newItem();
    Object.assign(it,{title:s.title,mod:a.mod||'',form:a.form||'',songNote:a.songNote||'',
@@ -2295,13 +2297,15 @@ function addToServiceSheet(songIds,arrPick){
    linkItemToArr(it,s,a);
    // 키를 여기서 바꿨으면 이 예배에서만 바뀐 값이다
    const k2=sel.key[id];if(k2!=null&&k2!==''&&k2!==(a.key||'')){it.key=k2;it.ov.key=true}
-   svc.items.push(it)});
-  SEL[svc.id]=SEL[svc.id]||{};SEL[svc.id].item=svc.items[svc.items.length-1].id;
+   added.push(it)});
+  if(sel.first)svc.items.unshift(...added);else svc.items.push(...added);
+  SEL[svc.id]=SEL[svc.id]||{};SEL[svc.id].item=(added[added.length-1]||{}).id;
   touch(svc);save();closeModal();
   if(goEditor)go('edit/'+svc.id);else{LIB.sel=[];LIB.pick=null;toast(`${ids.length}곡을 ${svc.name}에 넣었어요`);render()}};
  const wire=()=>{$('#modal').onclick=async e=>{
   if(e.target.closest('[data-close]')){closeModal();return}
   const b=e.target.closest('[data-ats]');if(b){sel.svc=b.dataset.ats;closeModal();show();return}
+  if(e.target.closest('[data-atsfirst]')){sel.first=!sel.first;$$('[data-atsfirst]').forEach(x=>x.classList.toggle('on',sel.first));return}
   const a=e.target.closest('[data-atsa]');if(a){sel.arr[a.dataset.atsa]=a.dataset.a;
    const s=songById(a.dataset.atsa);const ar=arrById(s,a.dataset.a);
    const ki=$(`[data-atsk="${a.dataset.atsa}"]`);if(ki)ki.value=ar.key||'';
@@ -2597,8 +2601,9 @@ function teamHTML(){
   `<div id="tmMembers">${sorted.map(mrow).join('')}</div>
    ${lead?`<div class="row" style="margin-top:10px"><button class="btn pri" data-act="tm-invite">${ic('plus')}멤버 초대</button></div>`:''}`)}
 
- ${lead?sect('invites','초대 링크',`${(TM.invites||[]).filter(v=>!v.dead).length}개 살아 있음`,
-  `<div>${(TM.invites||[]).map(invRow).join('')||'<div class="hint">아직 없어요</div>'}</div>
+ ${lead?sect('invites','초대',`${(TM.invites||[]).filter(v=>!v.dead).length}개 살아 있음`,
+  `<div class="hint" style="margin-bottom:8px">링크를 카톡방에 올리면 이름·세션만 고르고 들어와요.</div>
+   <div>${(TM.invites||[]).map(invRow).join('')||'<div class="hint">아직 없어요</div>'}</div>
    <div class="row" style="margin-top:10px"><button class="btn" data-act="tm-invite">${ic('plus')}새 링크 만들기</button><span class="hint">역할·기한·횟수를 링크마다 다르게 줄 수 있어요</span></div>`):''}
 
  ${lead?sect('sessions','세션',`${sessions.length}개 · 순서가 편성 화면 순서예요`,
@@ -2611,14 +2616,15 @@ function teamHTML(){
    <div class="row" style="margin-top:8px;gap:6px"><input class="field grow" id="tmNewSess" placeholder="세션 추가 (예: 신디)" maxlength="8"><button class="btn sm" data-act="tm-sess-add">${ic('plus')}추가</button></div>
    <div class="row" style="margin-top:10px"><button class="btn pri" data-act="tm-sess-save">${ic('check')}세션 저장</button><span class="hint">이름을 바꾸면 멤버·편성·메모의 세션도 함께 바뀌어요</span></div>`):''}
 
- ${lead?sect('lineup','기본 편성','새 예배에 자동으로 채워져요',
+ ${lead?sect('lineup','기본 편성','새 예배를 만들면 이대로 채워져요',
   `<div id="tmDef">${sessions.map(s=>{const n=slotOf(s);const cur=defL[s]||[];
     const cands=players.filter(m=>sessOf(m).includes(s));
     return n?`<div class="mrow"><span class="grow">${esc(s)}</span><span class="row" style="gap:4px;flex-wrap:wrap">${Array.from({length:n},(_,i)=>`<select class="field" data-def="${esc(s)}" data-i="${i}" style="width:auto"><option value="">비어 있음</option>${cands.map(m=>`<option value="${esc(m.userId)}" ${cur[i]===m.userId?'selected':''}>${esc(m.name)}</option>`).join('')}</select>`).join('')}</span></div>`:''}).join('')||'<div class="hint">세션 정원을 먼저 정해 주세요</div>'}</div>
-   <div class="hint" style="margin-top:6px">그날 "안 돼요"라고 답한 사람은 자동으로 비워집니다.</div>`):''}
+   <div class="hint" style="margin-top:6px">그 주만 바꾸면 됩니다. 그날 "안 돼요"라고 답한 사람은 자동으로 비워져요.</div>`):''}
 
- ${lead?sect('service','예배 기본값','이름 규칙 · 자동 생성 · 연습 안내',
-  `<div class="lbl">콘티 이름 규칙 <span class="hint">{월} {일} {요일} {이름} · 예: ${esc(fmtNameC(st.nameRule||'{월}/{일} {이름}',today(),'주일 2부'))}</span></div>
+ ${lead?sect('service','새 예배 기본값','이름 규칙 · 자동 생성 · 연습 안내',
+  `<div class="hint" style="margin-bottom:6px">예배를 만들 때 자동으로 채워지는 값이에요.</div>
+   <div class="lbl">콘티 이름 규칙 <span class="hint">{월} {일} {요일} {이름} · 예: ${esc(fmtNameC(st.nameRule||'{월}/{일} {이름}',today(),'주일 2부'))}</span></div>
    <input class="field" id="stRule" value="${esc(st.nameRule||'{월}/{일} {이름}')}">
    <div class="lbl">콘티 자동 생성</div>
    <div class="row"><span class="hint">예배</span><input class="field mono" id="stWeeks" type="number" min="1" max="8" value="${+st.serviceAutoCreateWeeks||4}" style="width:64px;text-align:center"><span class="hint">주 전부터 홈에 예배 카드가 떠요</span></div>
@@ -2635,8 +2641,9 @@ function teamHTML(){
    <div class="row"><select class="field" id="stWord" style="width:auto">${WD.map((w,i)=>`<option value="${i}" ${(st.wordRequestDay==null?2:+st.wordRequestDay)===i?'selected':''}>${w}요일</option>`).join('')}</select>
     <label class="row" style="gap:6px"><input type="checkbox" id="stWordOn" ${st.wordRequestOn===false?'':'checked'}><span class="hint">보내기</span></label></div>`):''}
 
- ${lead?sect('phrases','상용구 · 곡 태그','메모 쓸 때 한 번에 넣는 말',
-  `<div class="lbl">상용구 <span class="hint">최대 12개 · 각 8자</span></div>
+ ${lead?sect('phrases','상용구 · 태그','',
+  `<div class="hint" style="margin-bottom:6px">메모 작성창의 칩, 라이브러리 곡 태그.</div>
+   <div class="lbl">상용구 <span class="hint">최대 12개 · 각 8자</span></div>
    <div class="chipedit" id="tmPhr">${(S.team.phrases||[]).map((x,i)=>`<span class="q on" data-phr="${i}">${esc(x)} <b data-phrdel="${i}">×</b></span>`).join('')}</div>
    <div class="row" style="gap:6px;margin-top:6px"><input class="field grow" id="tmPhrNew" placeholder="추가" maxlength="8"><button class="btn sm" data-act="tm-phr-add">${ic('plus')}</button></div>
    <div class="lbl">곡 태그 <span class="hint">최대 20개</span></div>
@@ -2707,7 +2714,7 @@ const debounce=(fn,ms)=>{let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>f
 function memberEditModal(m){const sessions=S.team.sessions||[];const cur=sessOf(m);
  modal(`<b style="font-size:17px">${esc(m.name)}</b>
   <div class="lbl">이름</div><input class="field" id="meName" value="${esc(m.name)}" maxlength="12">
-  ${m.role==='pastor'?'<div class="hint" style="margin-top:12px">목회자는 세션이 없어요.</div>':`<div class="lbl">세션 <span class="hint">여러 개 고를 수 있어요</span></div>
+  ${m.role==='pastor'?'<div class="hint" style="margin-top:12px">목회자는 세션이 없어요.</div>':`<div class="lbl">세션 <span class="hint">겸하면 여러 개 골라요</span></div>
   <div>${sessions.map(s=>`<button class="q ${cur.includes(s)?'on':''}" data-ms="${esc(s)}">${esc(s)}</button>`).join('')}</div>`}
   <div class="lbl">역할</div>
   <div>${m.role==='leader'?'<span class="pill amber">인도자</span> <span class="hint">「인도자 넘기기」로만 바꿔요</span>'
@@ -2732,7 +2739,7 @@ function memberMoreModal(m){const off=m.active===false;const meRow=m.userId===me
    ${!meRow?(off?`<button class="btn" id="mmOn">${ic('check')}다시 활성으로</button>`
      :`<button class="btn" id="mmOff">비활성으로 두기 <span class="hint">편성·알림에서만 빠져요</span></button>`):''}
    ${!meRow?`<button class="btn" id="mmReset">${ic('gear')}비밀번호 초기화</button>`:''}
-   ${!meRow?`<button class="btn danger" id="mmDel">${ic('trash')}팀에서 지우기</button>`:''}
+   ${!meRow?`<button class="btn danger" id="mmDel">${ic('trash')}팀에서 삭제</button>`:''}
   </div>
   <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" data-close="1">닫기</button></div>`,{center:true});
  const after=async(msg)=>{closeModal();await pullTeam(true);render();if(msg)toast(msg)};
