@@ -287,10 +287,12 @@ html.dark .a-ok{color:#5FBF8A}html.dark .a-maybe{color:#E9C35C}html.dark .a-no{c
 .side .foot .who{padding:2px 6px;font-size:12px;color:var(--muted-fg);display:flex;align-items:center;justify-content:space-between;gap:8px}
 .side .foot .who b{color:var(--fg);font-weight:600}
 .main{flex:1;min-width:0;display:flex;flex-direction:column;gap:16px}
-.hd{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:52px;padding:8px 18px;border:1px solid var(--border);border-radius:var(--r-lg);background:var(--card);flex-wrap:wrap}
-.hd .ttl{display:flex;align-items:baseline;gap:12px;min-width:0;flex:1 1 auto}
+.hd{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:52px;padding:8px 18px;border:1px solid var(--border);border-radius:var(--r-lg);background:var(--card)}
+.hd .ttl{display:flex;align-items:baseline;gap:12px;min-width:0;flex:1 1 auto;overflow:hidden}
 .hd .ttl h1{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.hd .ttl .date{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hd .acts{flex:0 0 auto}
+@media(max-width:640px){.hd{padding:8px 12px;gap:8px}.hd .acts>.pill{display:none}.hd .ttl .date{display:none}} /* 좁은 화면에서는 이름·날짜를 접고 버튼을 지킨다 */
 .hd h1{margin:0;font-family:"Satoshi","Pretendard Variable",sans-serif;font-size:20px;font-weight:700;letter-spacing:-.025em;white-space:nowrap}
 .hd .date{font-size:13px;color:var(--muted-fg);white-space:nowrap}
 .hd .acts{display:flex;align-items:center;gap:6px}
