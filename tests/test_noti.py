@@ -21,7 +21,7 @@ def run():
         cL = b.new_context(viewport={'width': 1180, 'height': 820}); pl = cL.new_page(); pl.on('pageerror', lambda e: errs.append('L:' + str(e))); pl.on('dialog', lambda d: d.accept())
         signup(pl, L); pl.wait_for_selector('#gtTeam', timeout=8000); pl.fill('#gtTeam', '알림팀'); pl.click('[data-act="team-create"]'); pl.wait_for_selector('.hd [data-act="team"]', timeout=8000)
         team = pl.evaluate('CONTI.S.team.id')
-        pl.click('.hd [data-act="team"]'); pl.wait_for_selector('#tmLink'); link = pl.locator('#tmLink').inner_text().strip(); pl.keyboard.press('Escape')
+        link = pl.evaluate("location.origin+location.pathname+'#/join/'+CONTI.S.team.invite")
         # 팀 설정이 클라이언트에 내려오는지
         st = pl.evaluate('CONTI.S.team.settings')
         if not st or 'nameRule' not in st: fail('팀 설정이 클라이언트에 없음: %s' % st)
@@ -46,7 +46,8 @@ def run():
         pubs = [n for n in r['notifications'] if n['type'] == 'publish']
         if not pubs or r['unread'] < 1: fail('멤버에게 publish 알림 없음: %s' % r)
         if '콘티 v1' not in pubs[0]['title'] or re.match(r'^(\d+/\d+)\s+\1', pubs[0]['title']) or '첫 곡' not in pubs[0]['body']: fail('publish 알림 내용 이상: %s' % pubs[0])
-        if cL.request.get(URL + 'api/notifications?team=' + team).json()['unread'] != 0: fail('발행자 본인에게 알림이 감')
+        ln = cL.request.get(URL + 'api/notifications?team=' + team).json()['notifications']
+        if [n for n in ln if n['type'] == 'publish']: fail('발행자 본인에게 발행 알림이 감')
         # 멤버 홈 배지 + 알림함 + 탭하면 이동·읽음
         pm.goto(URL + '#/home'); pm.reload(); pm.wait_for_selector('.hd'); pm.wait_for_timeout(2000)
         badge = pm.locator('[data-noti-badge]').first

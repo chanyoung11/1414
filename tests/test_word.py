@@ -19,7 +19,7 @@ def run():
         pl.fill('#lgName', L[2]); pl.fill('#lgUser', L[0]); pl.fill('#lgPass', L[1]); pl.click('[data-act="lg-submit"]')
         pl.wait_for_selector('#gtTeam', timeout=8000); pl.fill('#gtTeam', '말씀팀'); pl.click('[data-act="team-create"]'); pl.wait_for_selector('.hd [data-act="team"]', timeout=8000)
         team = pl.evaluate('CONTI.S.team.id')
-        pl.click('.hd [data-act="team"]'); pl.wait_for_selector('#tmLink'); link = pl.locator('#tmLink').inner_text().strip(); pl.keyboard.press('Escape')
+        link = pl.evaluate("location.origin+location.pathname+'#/join/'+CONTI.S.team.invite")
 
         cM = b.new_context(viewport={'width': 1240, 'height': 900}); pm = cM.new_page()
         pm.on('pageerror', lambda e: errs.append('M:' + str(e))); pm.on('dialog', lambda d: d.accept())

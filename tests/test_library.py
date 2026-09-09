@@ -25,7 +25,7 @@ def run():
         login(pa, L, 'signup')
         pa.wait_for_selector('#gtTeam', timeout=8000); pa.fill('#gtTeam', '라이브러리팀'); pa.click('[data-act="team-create"]'); pa.wait_for_selector('.hd [data-act="team"]', timeout=8000)
         team = pa.evaluate('CONTI.S.team.id')
-        pa.click('.hd [data-act="team"]'); pa.wait_for_selector('#tmLink'); link = pa.locator('#tmLink').inner_text().strip(); pa.keyboard.press('Escape')
+        link = pa.evaluate("location.origin+location.pathname+'#/join/'+CONTI.S.team.invite")
 
         # ---- 곡을 만들면 라이브러리에 쌓이고 서버로 올라감 ----
         pa.click('[data-act="new-svc"]'); pa.wait_for_selector('[data-f="svc.name"]'); pa.fill('[data-f="svc.name"]', '라이브러리 예배')

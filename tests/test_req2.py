@@ -26,7 +26,7 @@ def run():
         b = p.chromium.launch(); errs = []
         c1 = b.new_context(viewport={'width': 1180, 'height': 820}); pg = c1.new_page(); pg.on('pageerror', lambda e: errs.append('L:' + str(e)))
         signup(pg, LEADER); pg.wait_for_selector('#gtTeam', timeout=8000); pg.fill('#gtTeam', '요청2팀'); pg.click('[data-act="team-create"]'); pg.wait_for_selector('.hd [data-act="team"]', timeout=8000)
-        pg.click('.hd [data-act="team"]'); pg.wait_for_selector('#tmLink'); link = pg.locator('#tmLink').inner_text().strip(); pg.keyboard.press('Escape')
+        link = pg.evaluate("location.origin+location.pathname+'#/join/'+CONTI.S.team.invite")
         ocr = c1.request.get(URL + 'api/ocr').json(); print('ocr available:', ocr)
 
         # ---- 예배 + 곡 + 악보(코드 인식) ----

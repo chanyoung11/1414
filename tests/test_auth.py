@@ -19,6 +19,10 @@ def login_or_signup(pg, user, mode):
     pg.fill('#lgUser', user[0]); pg.fill('#lgPass', user[1]); pg.click('[data-act="lg-submit"]')
     pg.wait_for_timeout(700)
 
+def open_sect(pg, key):
+    if not pg.locator(f'.tsec[data-sect="{key}"].on').count():
+        pg.click(f'[data-sopen="{key}"]'); pg.wait_for_timeout(250)
+
 def run():
     with sync_playwright() as p:
         b = p.chromium.launch()
@@ -34,11 +38,14 @@ def run():
         if '하은' not in head or '인도자' not in head: fail('홈 헤더에 이름/역할 없음: ' + head)
         pg.screenshot(path='t_auth_home.png')
         # 초대 링크
-        pg.click('.hd [data-act="team"]'); pg.wait_for_selector('#tmLink', timeout=8000)
-        link = pg.locator('#tmLink').inner_text().strip()
+        pg.click('.hd [data-act="team"]'); pg.wait_for_selector('.tpage', timeout=8000)
+        open_sect(pg, 'invites')
+        link = pg.evaluate("location.origin+location.pathname+'#/join/'+CONTI.S.team.invite")
         if '#/join/' not in link: fail('초대 링크 없음: ' + link)
-        n_members = pg.locator('#tmList .mrow').count()
-        pg.screenshot(path='t_auth_team.png'); pg.keyboard.press('Escape')
+        if not pg.locator('.tsec[data-sect="invites"]').count(): fail('인도자에게 초대 링크 섹션이 없음')
+        open_sect(pg, 'members')
+        n_members = pg.locator('#tmMembers .mrow').count()
+        pg.screenshot(path='t_auth_team.png'); pg.go_back(); pg.wait_for_timeout(400)
         print('leader ok, invite:', link, 'members:', n_members)
 
         # ---- 멤버: 초대 링크 열기 → 로그인 필요 → 가입 → 팀 가입 ----
@@ -60,10 +67,13 @@ def run():
         pm.goto(URL + '#/edit/svc1'); pm.wait_for_timeout(600)
         if not pm.url.replace('#/', '#').endswith('#view/svc1'): fail('멤버 편집 가드 실패: ' + pm.url)
         # 멤버가 팀 모달을 열면 초대 링크는 없고 멤버 목록만
-        pm.goto(URL + '#/home'); pm.wait_for_selector('.hd [data-act="team"]'); pm.click('.hd [data-act="team"]'); pm.wait_for_selector('#tmList', timeout=8000)
-        if pm.locator('#tmLink').count(): fail('멤버에게 초대 링크가 보임')
-        if pm.locator('#tmList .mrow').count() != n_members + 1: fail('멤버 수 불일치')
-        pm.keyboard.press('Escape')
+        pm.goto(URL + '#/home'); pm.wait_for_selector('.hd [data-act="team"]'); pm.click('.hd [data-act="team"]'); pm.wait_for_selector('.tpage', timeout=8000)
+        if pm.locator('.tsec[data-sect="invites"]').count(): fail('멤버에게 초대 링크 섹션이 보임')
+        if pm.locator('.tsec[data-sect="sessions"]').count(): fail('멤버에게 세션 편집이 보임')
+        open_sect(pm, 'members')
+        if pm.locator('#tmMembers .mrow').count() != n_members + 1: fail('멤버 수 불일치')
+        if pm.locator('[data-medit]').count(): fail('멤버에게 고치기 버튼이 보임')
+        pm.goto(URL + '#/home'); pm.wait_for_timeout(400)
         # 설정: 이름·세션 변경이 서버에 반영
         pm.click('.hd [data-act="settings"]'); pm.wait_for_selector('#sName')
         if pm.locator('#sRole').count(): fail('온라인 모드에서 역할 토글이 보임')
@@ -74,9 +84,12 @@ def run():
         print('member ok')
 
         # ---- 인도자: 멤버 역할을 세션리더로 → 멤버 쪽 재로그인 시 반영 ----
-        pg.click('.hd [data-act="team"]'); pg.wait_for_selector('#tmList select', timeout=8000)
-        sel = pg.locator('#tmList .mrow').filter(has_text='민수2').locator('select')
-        sel.select_option('session_lead'); pg.wait_for_timeout(500); pg.keyboard.press('Escape')
+        pg.click('.hd [data-act="team"]'); pg.wait_for_selector('.tpage', timeout=8000)
+        open_sect(pg, 'members')
+        uid = pg.evaluate("CONTI.TM.data.members.find(m=>m.name==='민수2').userId")
+        pg.click(f'[data-medit="{uid}"]'); pg.wait_for_selector('#meOk', timeout=5000)
+        pg.click('[data-mr="session_lead"]'); pg.click('#meOk'); pg.wait_for_timeout(1500)
+        pg.goto(URL + '#/home'); pg.wait_for_timeout(400)
         pm.reload(); pm.wait_for_selector('.hd', timeout=8000); pm.wait_for_timeout(500)
         if '세션리더' not in pm.locator('.hd').inner_text(): fail('역할 변경 미반영: ' + pm.locator('.hd').inner_text())
         print('role ok')

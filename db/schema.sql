@@ -238,3 +238,56 @@ create table if not exists library (
 create index if not exists library_team_idx on library(team_id, updated_at desc);
 -- 통보한 사람 목록 (편성에서 빠진 사람을 알아내려면 현재 편성만으로는 알 수 없다)
 alter table service_dates add column if not exists notified jsonb not null default '[]';
+
+-- ─────────────────────────────────────────────────────────────
+-- 팀·멤버 명세 B부
+-- ─────────────────────────────────────────────────────────────
+
+-- B.9 플랜. 지금은 값만 두고 한도 검사는 하지 않는다(결제 연동 때 켠다)
+alter table teams add column if not exists plan text not null default 'free';
+alter table teams drop constraint if exists teams_plan_check;
+alter table teams add constraint teams_plan_check check (plan in ('free','pro'));
+-- B.6.2 결제 담당자. null 이면 인도자(teams.created_by)
+alter table teams add column if not exists billing_user_id uuid references users(id);
+-- B.7.1 팀 삭제는 30일 유예 뒤 크론이 실제로 지운다
+alter table teams add column if not exists deleted_at timestamptz;
+
+-- B.4.3 비활성: 편성·알림에서만 빠지고 그 사람이 쓴 것은 남는다
+alter table members add column if not exists active boolean not null default true;
+alter table members add column if not exists deactivated_at timestamptz;
+alter table members add column if not exists last_seen_at timestamptz;
+-- B.2 인도자는 팀에 정확히 1명
+create unique index if not exists one_leader_per_team on members (team_id) where role='leader' and active;
+
+-- B.3 초대 링크: 역할·만료·횟수·회수. 팀당 여러 개가 동시에 살아 있을 수 있다
+create table if not exists invites (
+  id         uuid primary key default gen_random_uuid(),
+  team_id    uuid not null references teams(id) on delete cascade,
+  code       text not null unique,
+  role       text not null default 'member' check (role in ('member','session_lead','pastor')),
+  expires_at timestamptz,                       -- null = 만료 없음
+  max_uses   int,                               -- null = 무제한
+  uses       int not null default 0,
+  created_by uuid not null references users(id),
+  created_at timestamptz not null default now(),
+  revoked_at timestamptz
+);
+create index if not exists invites_team_idx on invites(team_id, created_at desc);
+
+-- 팀마다 하나뿐이던 옛 링크를 그대로 살려 옮긴다 (카톡에 이미 뿌려둔 링크가 죽지 않게)
+insert into invites (team_id, code, role, created_by)
+select t.id, t.invite_token, 'member', t.created_by from teams t
+where t.invite_token is not null
+  and not exists (select 1 from invites i where i.code = t.invite_token);
+
+-- B.1 관리 동작만 남기는 최소 기록 (누가 인도자를 넘겼는지 같은 것)
+create table if not exists team_audit (
+  id       bigserial primary key,
+  team_id  uuid not null references teams(id) on delete cascade,
+  actor_id uuid references users(id),
+  action   text not null,
+  target   text,
+  meta     jsonb not null default '{}',
+  at       timestamptz not null default now()
+);
+create index if not exists team_audit_idx on team_audit(team_id, at desc);

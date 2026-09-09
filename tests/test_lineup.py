@@ -22,7 +22,7 @@ def run():
         pl.fill('#lgName', '하은'); pl.fill('#lgUser', 'sl' + tag); pl.fill('#lgPass', 'secret1'); pl.click('[data-act="lg-submit"]')
         pl.wait_for_selector('#gtTeam', timeout=8000); pl.fill('#gtTeam', '편성팀'); pl.click('[data-act="team-create"]'); pl.wait_for_selector('.hd [data-act="team"]', timeout=8000)
         team = pl.evaluate('CONTI.S.team.id')
-        pl.click('.hd [data-act="team"]'); pl.wait_for_selector('#tmLink'); link = pl.locator('#tmLink').inner_text().strip(); pl.keyboard.press('Escape')
+        link = pl.evaluate("location.origin+location.pathname+'#/join/'+CONTI.S.team.invite")
 
         cM, pm = mk(b, '민수', None); pm.on('pageerror', lambda e: errs.append('M:' + str(e)))
         pm.goto(link); pm.wait_for_selector('#lgUser', timeout=8000)

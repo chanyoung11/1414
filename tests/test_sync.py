@@ -25,7 +25,7 @@ def run():
         c1 = b.new_context(viewport={'width': 1180, 'height': 820}); pg = c1.new_page(); pg.on('pageerror', lambda e: errs.append('L:' + str(e)))
         signup(pg, LEADER); pg.wait_for_selector('#gtTeam', timeout=8000)
         pg.fill('#gtTeam', '동기화팀'); pg.click('[data-act="team-create"]'); pg.wait_for_selector('.hd [data-act="team"]', timeout=8000)
-        pg.click('.hd [data-act="team"]'); pg.wait_for_selector('#tmLink'); link = pg.locator('#tmLink').inner_text().strip(); pg.keyboard.press('Escape')
+        link = pg.evaluate("location.origin+location.pathname+'#/join/'+CONTI.S.team.invite")
         pg.click('[data-act="new-svc"]'); pg.wait_for_selector('[data-f="svc.name"]')
         pg.fill('[data-f="svc.name"]', '동기화 예배'); pg.click('[data-act="add-item"]'); pg.wait_for_selector('[data-f="item.title"]')
         pg.fill('[data-f="item.title"]', '우리 주 하나님'); pg.fill('[data-f="item.key"]', 'A'); pg.fill('[data-f="item.form"]', '1414 – AAB – Int(2)')

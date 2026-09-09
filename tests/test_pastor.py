@@ -18,7 +18,7 @@ def run():
         pl.fill('#lgName', '하은'); pl.fill('#lgUser', 'pl' + tag); pl.fill('#lgPass', 'secret1'); pl.click('[data-act="lg-submit"]')
         pl.wait_for_selector('#gtTeam', timeout=8000); pl.fill('#gtTeam', '말씀탭팀'); pl.click('[data-act="team-create"]'); pl.wait_for_selector('.hd [data-act="team"]', timeout=8000)
         team = pl.evaluate('CONTI.S.team.id')
-        pl.click('.hd [data-act="team"]'); pl.wait_for_selector('#tmLink'); link = pl.locator('#tmLink').inner_text().strip(); pl.keyboard.press('Escape')
+        link = pl.evaluate("location.origin+location.pathname+'#/join/'+CONTI.S.team.invite")
 
         # 예배 하나 발행 + 앞으로의 사역 날짜 하나
         pl.click('[data-act="new-svc"]'); pl.wait_for_selector('[data-f="svc.name"]'); pl.fill('[data-f="svc.name"]', '말씀탭 예배')

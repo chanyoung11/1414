@@ -12,7 +12,7 @@ with sync_playwright() as p:
     pl.fill('#lgName','하은'); pl.fill('#lgUser','hr'+tag); pl.fill('#lgPass','secret1'); pl.click('[data-act="lg-submit"]')
     pl.wait_for_selector('#gtTeam'); pl.fill('#gtTeam','히어로팀'); pl.click('[data-act="team-create"]'); pl.wait_for_selector('.hd [data-act="team"]')
     team=pl.evaluate('CONTI.S.team.id')
-    pl.click('.hd [data-act="team"]'); pl.wait_for_selector('#tmLink'); link=pl.locator('#tmLink').inner_text().strip(); pl.keyboard.press('Escape')
+    link = pl.evaluate("location.origin+location.pathname+'#/join/'+CONTI.S.team.invite")
     cM=b.new_context(viewport={'width':1240,'height':900}); pm=cM.new_page(); pm.on('dialog',lambda d:d.accept())
     pm.on('pageerror',lambda e:errs.append('M:'+str(e)))
     pm.goto(link); pm.wait_for_selector('#lgUser')

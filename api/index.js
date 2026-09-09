@@ -50,10 +50,13 @@ const memberView = (t, m) => ({
   teamId: t.id, teamName: t.name, sessions: t.sessions, phrases: t.phrases,
   invite: m.role === 'leader' ? t.invite_token : undefined,
   settings: { ...DEF_SETTINGS, ...(t.settings || {}) },
-  me: { userId: m.user_id, name: m.name, session: m.session, mySessions: mySessions(m), role: m.role, capo: +m.capo || 0 },
+  plan: t.plan || 'free',
+  billingUserId: t.billing_user_id || t.created_by,
+  deletedAt: t.deleted_at || null,
+  me: { userId: m.user_id, name: m.name, session: m.session, mySessions: mySessions(m), role: m.role, capo: +m.capo || 0, active: m.active !== false },
 });
 const teamUserIds = async (teamId, { exceptRole, except } = {}) =>
-  (await q('select user_id, role from members where team_id=$1', [teamId]))
+  (await q('select user_id, role from members where team_id=$1 and active', [teamId]))
     .filter((m) => m.role !== exceptRole && m.user_id !== except).map((m) => m.user_id);
 const mdOf = (d) => { const m = String(d || '').match(/^\d{4}-(\d{2})-(\d{2})/); return m ? `${+m[1]}/${+m[2]}` : ''; };
 // 조사 붙이기: 한글 받침과 숫자 읽는 소리를 보고 이/가, 을/를 을 고른다
@@ -67,22 +70,34 @@ function hasBatchim(s) {
 }
 const josa = (s, withB, withoutB) => `${s}${hasBatchim(s) ? withB : withoutB}`;
 async function membership(uid, teamId) {
-  return one(`select t.*, m.user_id, m.name as mname, m.session, m.sessions as msessions, m.role, m.capo from members m join teams t on t.id=m.team_id
-              where m.user_id=$1 ${teamId ? 'and m.team_id=$2' : ''} order by m.created_at asc limit 1`, teamId ? [uid, teamId] : [uid]);
+  return one(`select t.*, m.user_id, m.name as mname, m.session, m.sessions as msessions, m.role, m.capo, m.active from members m join teams t on t.id=m.team_id
+              where m.user_id=$1 ${teamId ? 'and m.team_id=$2' : ''} order by m.active desc, m.created_at asc limit 1`, teamId ? [uid, teamId] : [uid]);
 }
 const viewOf = (row) => row && memberView(row, { user_id: row.user_id, name: row.mname, session: row.session, msessions: row.msessions, role: row.role, capo: row.capo });
+// 관리 동작만 남긴다 (누가 인도자를 넘겼는지, 누구를 비활성으로 뒀는지)
+async function audit(teamId, actorId, action, target, meta) {
+  try { await q('insert into team_audit(team_id, actor_id, action, target, meta) values($1,$2,$3,$4,$5)',
+    [teamId, actorId, action, target ? String(target) : null, JSON.stringify(meta || {})]); }
+  catch (e) { console.error('audit', e.message); }
+}
 async function requireMember(uid, teamId, role) {
   const m = await membership(uid, teamId);
   if (!m) throw forbidden('이 팀의 멤버가 아니에요');
+  if (m.active === false) throw forbidden('이 팀에서 비활성 상태예요. 인도자에게 문의해 주세요');
   if (role === 'leader' && m.role !== 'leader') throw forbidden('인도자만 할 수 있어요');
   return m;
 }
 async function meView(uid) {
   const u = await one('select id, username, display_name from users where id=$1', [uid]);
   if (!u) throw noAuth();
-  const rows = await q(`select t.*, m.user_id, m.name as mname, m.session, m.sessions as msessions, m.role, m.capo from members m join teams t on t.id=m.team_id
-                        where m.user_id=$1 order by m.created_at asc`, [uid]);
-  return { user: { id: u.id, username: u.username, name: u.display_name }, team: rows[0] ? viewOf(rows[0]) : null, teams: rows.map(viewOf) };
+  q(`update members set last_seen_at=now() where user_id=$1 and (last_seen_at is null or last_seen_at < now() - interval '1 hour')`, [uid]).catch(() => {});
+  const rows = await q(`select t.*, m.user_id, m.name as mname, m.session, m.sessions as msessions, m.role, m.capo, m.active from members m join teams t on t.id=m.team_id
+                        where m.user_id=$1 order by m.active desc, m.created_at asc`, [uid]);
+  // 비활성인 팀은 목록에 넣지 않는다. 다만 그 팀뿐이면 왜 안 보이는지 알려 준다 (B.4.3)
+  const live = rows.filter((r) => r.active !== false);
+  const out = { user: { id: u.id, username: u.username, name: u.display_name }, team: live[0] ? viewOf(live[0]) : null, teams: live.map(viewOf) };
+  if (!live.length && rows.length) out.blocked = { teamName: rows[0].name };
+  return out;
 }
 function pickSession(team, s) {
   const list = team.sessions || [];
@@ -210,16 +225,21 @@ on('POST', '/teams', async ({ uid, body }) => {
   const name = str(body.name, 60), myName = str(body.myName, 40);
   if (!name) throw bad('팀 이름을 적어 주세요');
   if (!myName) throw bad('내 이름을 적어 주세요');
+  const owned = await one(`select count(*)::int as n from teams where created_by=$1 and deleted_at is null`, [uid]);
+  if (ENFORCE_PLAN && owned.n >= PLAN.free.teamsOwned) throw new HttpError(402, 'plan_limit', `무료로는 팀을 ${PLAN.free.teamsOwned}개까지 만들 수 있어요`);
   const t = await one('insert into teams(name, invite_token, created_by) values($1,$2,$3) returning *', [name, randomToken(12), uid]);
   const session = pickSession(t, str(body.session, 40) || '인도자');
-  await q('insert into members(user_id, team_id, name, session, role) values($1,$2,$3,$4,$5)', [uid, t.id, myName, session, 'leader']);
+  await q('insert into members(user_id, team_id, name, session, sessions, role) values($1,$2,$3,$4,$5,$6)', [uid, t.id, myName, session, [session], 'leader']);
+  // 만들자마자 쓸 수 있는 기본 초대 링크 하나 (역할 멤버·만료 없음·무제한)
+  await q('insert into invites(team_id, code, role, created_by) values($1,$2,$3,$4)', [t.id, t.invite_token, 'member', uid]);
   return viewOf(await membership(uid, t.id));
 });
 
 on('GET', '/teams/:id', async ({ uid, params }) => {
   if (!uid) throw noAuth();
   const m = await requireMember(uid, params.id);
-  const members = await q('select user_id as "userId", name, session, role, created_at as "joinedAt" from members where team_id=$1 order by created_at asc', [params.id]);
+  const members = await q(`select user_id as "userId", name, session, sessions as "mySessions", role, active,
+      created_at as "joinedAt", last_seen_at as "lastSeenAt" from members where team_id=$1 order by created_at asc`, [params.id]);
   const t = await one('select settings from teams where id=$1', [params.id]);
   return { ...viewOf(m), members, settings: { ...DEF_SETTINGS, ...(t && t.settings || {}) } };
 });
@@ -227,37 +247,228 @@ on('GET', '/teams/:id', async ({ uid, params }) => {
 on('PATCH', '/teams/:id', async ({ uid, params, body }) => {
   if (!uid) throw noAuth();
   await requireMember(uid, params.id, 'leader');
-  const name = str(body.name, 60), sessions = strList(body.sessions), phrases = strList(body.phrases);
+  const name = str(body.name, 30), sessions = strList(body.sessions), phrases = strList(body.phrases);
   if (sessions && !sessions.length) throw bad('세션은 하나 이상 있어야 해요');
+  if (sessions && new Set(sessions).size !== sessions.length) throw bad('같은 이름의 세션이 두 개예요');
+  if (sessions) { const t0 = await one('select plan from teams where id=$1', [params.id]);
+    checkLimit(t0, 'sessions', sessions.length - 1, (cap) => `세션은 ${cap}개까지예요`); }
+  // B.5.2 세션 이름을 바꾸면 멤버·정원·기본 편성·앞으로의 편성·메모가 함께 따라간다. 발행본은 그대로
+  const rename = body.rename && typeof body.rename === 'object' ? body.rename : null;
+  if (rename) await renameSessions(params.id, rename);
   await q(`update teams set name=coalesce(nullif($2,''), name), sessions=coalesce($3::jsonb, sessions), phrases=coalesce($4::jsonb, phrases) where id=$1`,
     [params.id, name, sessions ? JSON.stringify(sessions) : null, phrases ? JSON.stringify(phrases) : null]);
-  if (sessions) await q(`update members set session=$2 where team_id=$1 and not (session = any($3::text[]))`, [params.id, sessions[0], sessions]);
+  if (sessions) {
+    // 없어진 세션에 있던 사람은 그 세션에서만 빠진다. 세션이 하나도 안 남으면 팀의 첫 세션으로
+    const rows = await q(`select user_id, sessions, session, role from members where team_id=$1`, [params.id]);
+    for (const r of rows) {
+      if (r.role === 'pastor') continue;
+      const cur = (Array.isArray(r.sessions) && r.sessions.length ? r.sessions : [r.session]).filter(Boolean);
+      const kept = cur.filter((x) => sessions.includes(x));
+      const next = kept.length ? kept : [sessions[0]];
+      if (next.join('\u0000') !== cur.join('\u0000'))
+        await q('update members set sessions=$3, session=$4 where team_id=$1 and user_id=$2', [params.id, r.user_id, next, next[0]]);
+    }
+  }
   return viewOf(await membership(uid, params.id));
 });
 
-on('POST', '/teams/:id/invite/rotate', async ({ uid, params }) => {
+// 세션 이름 바꾸기의 연쇄. {옛이름: 새이름}
+async function renameSessions(teamId, map) {
+  const pairs = Object.entries(map).map(([a, b]) => [str(a, 40), str(b, 40)]).filter(([a, b]) => a && b && a !== b);
+  if (!pairs.length) return;
+  const at = (v) => { for (const [a, b] of pairs) if (v === a) return b; return v; };
+  for (const r of await q('select user_id, sessions, session from members where team_id=$1', [teamId])) {
+    const cur = (Array.isArray(r.sessions) && r.sessions.length ? r.sessions : [r.session]).filter(Boolean);
+    const next = cur.map(at);
+    if (next.join('\u0000') !== cur.join('\u0000'))
+      await q('update members set sessions=$3, session=$4 where team_id=$1 and user_id=$2', [teamId, r.user_id, next, next[0] || '']);
+  }
+  const t = await one('select settings from teams where id=$1', [teamId]);
+  const st = { ...(t.settings || {}) };
+  for (const key of ['slots', 'defaultLineup']) {
+    if (st[key] && typeof st[key] === 'object') {
+      const o = {}; for (const k of Object.keys(st[key])) o[at(k)] = st[key][k];
+      st[key] = o;
+    }
+  }
+  await q('update teams set settings=$2 where id=$1', [teamId, JSON.stringify(st)]);
+  // 앞으로의 편성
+  for (const r of await q(`select id, lineup from service_dates where team_id=$1 and lineup is not null and date >= (now() at time zone 'Asia/Seoul')::date`, [teamId])) {
+    const o = {}; for (const k of Object.keys(r.lineup || {})) o[at(k)] = r.lineup[k];
+    await q('update service_dates set lineup=$2 where id=$1', [r.id, JSON.stringify(o)]);
+  }
+  // 메모의 세션 태그
+  for (const [a, b] of pairs) await q(`update notes set session=$3 where team_id=$1 and session=$2`, [teamId, a, b]);
+}
+
+// B.7.1 팀 삭제: 30일 유예. 그 사이엔 전원에게 배너가 보이고 인도자가 되돌릴 수 있다
+on('DELETE', '/teams/:id', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  const m = await requireMember(uid, params.id, 'leader');
+  if (str(body && body.name, 60) !== m.name) throw bad('팀 이름을 정확히 적어 주세요');
+  await q('update teams set deleted_at=now() where id=$1', [params.id]);
+  await audit(params.id, uid, 'team.delete', params.id, {});
+  await notify(params.id, await teamUserIds(params.id), 'team.delete', params.id,
+    { title: `${m.name} 팀이 30일 뒤에 지워져요`, body: '인도자가 되돌릴 수 있어요', link: '#/team', actionable: true });
+  return { ok: true };
+});
+on('POST', '/teams/:id/undelete', async ({ uid, params }) => {
   if (!uid) throw noAuth();
   await requireMember(uid, params.id, 'leader');
-  await q('update teams set invite_token=$2 where id=$1', [params.id, randomToken(12)]);
-  return viewOf(await membership(uid, params.id));
+  await q('update teams set deleted_at=null where id=$1', [params.id]);
+  await q(`delete from notifications where team_id=$1 and type='team.delete'`, [params.id]);
+  await audit(params.id, uid, 'team.undelete', params.id, {});
+  return { ok: true };
 });
 
+/* ---------- B.3 초대 링크 ---------- */
+// 팀당 하나뿐이던 링크를 여러 개로. 링크마다 역할·만료·횟수가 다르고 따로 회수한다
+// B.9 플랜 한도. 결제가 아직 없어서 검사는 꺼 둔다 (ENFORCE_PLAN=1 이면 켜진다)
+const PLAN = {
+  free: { members: 10, pastors: 2, sessions: 10, invites: 2, teamsOwned: 1, songs: 25 },
+  pro: { members: 25, pastors: 2, sessions: 14, invites: 5, teamsOwned: Infinity, songs: Infinity },
+};
+const planOf = (t) => PLAN[(t && t.plan) || 'free'] || PLAN.free;
+const ENFORCE_PLAN = process.env.ENFORCE_PLAN === '1';
+// 한도를 넘었는지 본다. 검사가 꺼져 있으면 언제나 통과 (컬럼과 자리만 미리 만들어 둔 것)
+function checkLimit(team, key, count, msg) {
+  if (!ENFORCE_PLAN) return;
+  const cap = planOf(team)[key];
+  if (cap != null && count >= cap) throw new HttpError(402, 'plan_limit', msg(cap));
+}
+const LIVE_INVITES = { free: PLAN.free.invites, pro: PLAN.pro.invites };
+const inviteView = (r) => ({
+  id: r.id, code: r.code, role: r.role, uses: r.uses,
+  maxUses: r.max_uses, expiresAt: r.expires_at, createdAt: r.created_at,
+  revoked: !!r.revoked_at,
+  dead: !!r.revoked_at || (r.expires_at && new Date(r.expires_at) < new Date()) || (r.max_uses != null && r.uses >= r.max_uses),
+});
+on('GET', '/teams/:id/invites', async ({ uid, params }) => {
+  if (!uid) throw noAuth();
+  await requireMember(uid, params.id, 'leader');
+  const rows = await q('select * from invites where team_id=$1 order by created_at desc limit 50', [params.id]);
+  return { invites: rows.map(inviteView) };
+});
+on('POST', '/teams/:id/invites', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  const m = await requireMember(uid, params.id, 'leader');
+  const role = ['member', 'session_lead', 'pastor'].includes(str(body.role, 20)) ? str(body.role, 20) : 'member';
+  const days = [7, 30, 0].includes(+body.days) ? +body.days : 30;         // 0 = 만료 없음
+  const maxUses = +body.maxUses === 1 ? 1 : null;                          // 1회용 아니면 무제한
+  const live = await q(`select id from invites where team_id=$1 and revoked_at is null
+      and (expires_at is null or expires_at > now()) and (max_uses is null or uses < max_uses)`, [params.id]);
+  const cap = LIVE_INVITES[m.plan || 'free'] || LIVE_INVITES.free;
+  if (live.length >= cap) throw bad(`살아 있는 초대 링크는 ${cap}개까지예요. 안 쓰는 링크를 회수해 주세요`);
+  const expires = days ? new Date(Date.now() + days * 86400e3).toISOString() : null;
+  const r = await one(`insert into invites(team_id, code, role, expires_at, max_uses, created_by)
+    values($1,$2,$3,$4,$5,$6) returning *`, [params.id, randomToken(12), role, expires, maxUses, uid]);
+  await audit(params.id, uid, 'invite.create', r.id, { role, days, maxUses });
+  return { invite: inviteView(r) };
+});
+on('DELETE', '/teams/:id/invites/:inviteId', async ({ uid, params }) => {
+  if (!uid) throw noAuth();
+  await requireMember(uid, params.id, 'leader');
+  const r = await q('update invites set revoked_at=now() where team_id=$1 and id=$2 and revoked_at is null returning id', [params.id, params.inviteId]);
+  if (!r.length) throw notFound('그 링크가 없어요');
+  await audit(params.id, uid, 'invite.revoke', params.inviteId, {});
+  return { ok: true };
+});
+
+// B.4.2 멤버 고치기: 이름·세션·역할·활성. 인도자는 여기서 만들 수 없다(넘기기로만)
 on('PATCH', '/teams/:id/members/:userId', async ({ uid, params, body }) => {
   if (!uid) throw noAuth();
   await requireMember(uid, params.id, 'leader');
-  const role = str(body.role, 20);
-  if (!['leader', 'session_lead', 'member', 'pastor'].includes(role)) throw bad('역할이 이상해요');
-  if (params.userId === uid && role !== 'leader') {
-    const n = await one('select count(*)::int as n from members where team_id=$1 and role=$2', [params.id, 'leader']);
-    if (n.n <= 1) throw bad('인도자가 한 명뿐이라 역할을 내릴 수 없어요. 먼저 다른 사람을 인도자로 지정하세요');
+  const cur = await one('select * from members where team_id=$1 and user_id=$2', [params.id, params.userId]);
+  if (!cur) throw notFound('그 멤버가 없어요');
+  const t = await one('select sessions from teams where id=$1', [params.id]);
+  const teamSessions = Array.isArray(t && t.sessions) ? t.sessions : [];
+
+  if (body.role !== undefined) {
+    const role = str(body.role, 20);
+    if (!['session_lead', 'member', 'pastor'].includes(role)) throw bad('인도자는 「인도자 넘기기」로만 바꿔요');
+    if (cur.role === 'leader') throw bad('인도자는 「인도자 넘기기」로만 바꿔요');
+    if (role === 'pastor') {
+      const n = await one(`select count(*)::int as n from members where team_id=$1 and role='pastor' and user_id<>$2`, [params.id, params.userId]);
+      if (n.n >= 2) throw bad('목회자는 팀에 두 명까지예요');
+    }
+    await q('update members set role=$3 where team_id=$1 and user_id=$2', [params.id, params.userId, role]);
+    // 목회자가 되면 세션은 비운다. 목회자에서 내려오면 세션 하나는 있어야 한다
+    if (role === 'pastor') await q(`update members set sessions='{}', session='' where team_id=$1 and user_id=$2`, [params.id, params.userId]);
+    else if (cur.role === 'pastor') await q('update members set sessions=$3, session=$4 where team_id=$1 and user_id=$2',
+      [params.id, params.userId, [teamSessions[0]].filter(Boolean), teamSessions[0] || '']);
   }
-  // 목회자는 팀당 2명까지 (§0)
-  if (role === 'pastor') {
-    const n = await one(`select count(*)::int as n from members where team_id=$1 and role='pastor' and user_id<>$2`, [params.id, params.userId]);
-    if (n.n >= 2) throw bad('목회자는 팀에 두 명까지예요');
+  if (body.name !== undefined) {
+    const name = str(body.name, 12);
+    if (!name) throw bad('이름을 적어 주세요');
+    await q('update members set name=$3 where team_id=$1 and user_id=$2', [params.id, params.userId, name]);
   }
-  const r = await q('update members set role=$3 where team_id=$1 and user_id=$2 returning user_id', [params.id, params.userId, role]);
-  if (!r.length) throw notFound('그 멤버가 없어요');
+  if (body.sessions !== undefined) {
+    const role = str(body.role, 20) || cur.role;
+    const list = (strList(body.sessions) || []).filter((x) => teamSessions.includes(x));
+    if (role !== 'pastor' && !list.length) throw bad('세션을 하나 이상 골라 주세요');
+    await q('update members set sessions=$3, session=$4 where team_id=$1 and user_id=$2', [params.id, params.userId, list, list[0] || '']);
+  }
+  if (body.active !== undefined) {
+    const on = !!body.active;
+    if (!on && cur.role === 'leader') throw bad('인도자는 비활성으로 둘 수 없어요. 먼저 인도자를 넘기세요');
+    if (!on && params.userId === uid) throw bad('나를 비활성으로 둘 수는 없어요');
+    await q('update members set active=$3, deactivated_at=$4 where team_id=$1 and user_id=$2',
+      [params.id, params.userId, on, on ? null : new Date().toISOString()]);
+    if (!on) await clearFromLineups(params.id, params.userId);
+    await audit(params.id, uid, on ? 'member.activate' : 'member.deactivate', params.userId, {});
+  }
+  return { ok: true };
+});
+
+// 비활성·삭제된 사람을 앞으로의 편성에서 뺀다. 지난 발행본은 그대로 둔다
+async function clearFromLineups(teamId, userId) {
+  const rows = await q(`select id, lineup from service_dates where team_id=$1 and date >= (now() at time zone 'Asia/Seoul')::date`, [teamId]);
+  for (const r of rows) {
+    const lu = r.lineup && typeof r.lineup === 'object' ? r.lineup : null;
+    if (!lu) continue;
+    let touched = false;
+    const out = {};
+    for (const k of Object.keys(lu)) {
+      const v = Array.isArray(lu[k]) ? lu[k].filter((x) => x !== userId) : lu[k];
+      if (Array.isArray(lu[k]) && v.length !== lu[k].length) touched = true;
+      out[k] = v;
+    }
+    if (touched) await q('update service_dates set lineup=$2 where id=$1', [r.id, JSON.stringify(out)]);
+  }
+}
+
+// B.6.1 인도자 넘기기: 팀 전체가 그대로 넘어간다. 결제 담당은 따라가지 않는다
+on('POST', '/teams/:id/transfer', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  await requireMember(uid, params.id, 'leader');
+  const to = str(body.userId, 64);
+  if (!to || to === uid) throw bad('넘길 사람을 골라 주세요');
+  const target = await one('select * from members where team_id=$1 and user_id=$2', [params.id, to]);
+  if (!target) throw notFound('그 멤버가 없어요');
+  if (target.active === false) throw bad('비활성 멤버에게는 넘길 수 없어요');
+  if (target.role === 'pastor') throw bad('목회자에게는 넘길 수 없어요');
+  // 새 인도자를 먼저 세우면 유일 인덱스에 걸리니 옛 인도자를 먼저 내린다
+  await q(`update members set role='session_lead' where team_id=$1 and user_id=$2`, [params.id, uid]);
+  await q(`update members set role='leader' where team_id=$1 and user_id=$2`, [params.id, to]);
+  await q('update teams set created_by=$2 where id=$1', [params.id, to]);
+  await audit(params.id, uid, 'team.transfer', to, {});
+  const all = await teamUserIds(params.id);
+  await notify(params.id, all, 'team.transfer', to, { title: `인도자가 ${target.name}으로 바뀌었어요`, link: '#/team' });
+  return { ok: true, billingUserId: (await one('select billing_user_id, created_by from teams where id=$1', [params.id])) };
+});
+
+// B.6.2 결제 담당 넘기기. 결제 연동 전이라 값만 바뀐다
+on('POST', '/teams/:id/billing', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  const m = await requireMember(uid, params.id);
+  const t = await one('select billing_user_id, created_by from teams where id=$1', [params.id]);
+  const owner = t.billing_user_id || t.created_by;
+  if (owner !== uid) throw forbidden('결제 담당자만 넘길 수 있어요');
+  const to = str(body.userId, 64);
+  const target = await one('select name from members where team_id=$1 and user_id=$2 and active', [params.id, to]);
+  if (!target) throw notFound('그 멤버가 없어요');
+  await q('update teams set billing_user_id=$2 where id=$1', [params.id, to]);
+  await audit(params.id, uid, 'team.billing', to, {});
   return { ok: true };
 });
 
@@ -278,38 +489,108 @@ on('POST', '/teams/:id/members/:userId/reset', async ({ uid, params }) => {
   return { password: pw };
 });
 
+// B.4.3 삭제 / B.4.4 팀 나가기
+// 본인이 나가면 비활성으로 둔다(쓴 메모·지난 편성이 남게). 인도자가 내보내면 삭제하고 그 사람 메모도 지운다
 on('DELETE', '/teams/:id/members/:userId', async ({ uid, params }) => {
   if (!uid) throw noAuth();
   const m = await requireMember(uid, params.id);
   const self = params.userId === uid;
   if (!self && m.role !== 'leader') throw forbidden('인도자만 내보낼 수 있어요');
-  if (self && m.role === 'leader') {
-    const n = await one('select count(*)::int as n from members where team_id=$1 and role=$2', [params.id, 'leader']);
-    if (n.n <= 1) throw bad('인도자가 한 명뿐이라 나갈 수 없어요. 먼저 다른 사람을 인도자로 지정하세요');
+  const target = await one('select * from members where team_id=$1 and user_id=$2', [params.id, params.userId]);
+  if (!target) throw notFound('그 멤버가 없어요');
+  if (target.role === 'leader') throw bad('인도자는 먼저 「인도자 넘기기」를 해야 해요');
+  const t = await one('select billing_user_id, created_by from teams where id=$1', [params.id]);
+  if ((t.billing_user_id || t.created_by) === params.userId) throw bad('결제 담당자예요. 먼저 결제 담당을 넘겨 주세요');
+
+  await clearFromLineups(params.id, params.userId);
+  if (self) {
+    await q(`update members set active=false, deactivated_at=now() where team_id=$1 and user_id=$2`, [params.id, params.userId]);
+    await audit(params.id, uid, 'member.leave', params.userId, {});
+  } else {
+    await q('delete from notes where team_id=$1 and author_id=$2', [params.id, params.userId]).catch(() => {});
+    await q('delete from members where team_id=$1 and user_id=$2', [params.id, params.userId]);
+    await audit(params.id, uid, 'member.remove', params.userId, { name: target.name });
   }
-  await q('delete from members where team_id=$1 and user_id=$2', [params.id, params.userId]);
-  return { ok: true };
+  const leader = await one(`select user_id from members where team_id=$1 and role='leader' and active limit 1`, [params.id]);
+  if (self && leader && leader.user_id !== uid) await notify(params.id, [leader.user_id], 'member.left', params.userId,
+    { title: `${josa(target.name, '이', '가')} 팀에서 나갔어요`, link: '#/team' });
+  return { ok: true, deactivated: self };
 });
 
+// 지울 때 함께 지워지는 것을 미리 세어 보여 준다 (B.4.3 2단계 확인)
+on('GET', '/teams/:id/members/:userId/impact', async ({ uid, params }) => {
+  if (!uid) throw noAuth();
+  await requireMember(uid, params.id, 'leader');
+  const notes = await one('select count(*)::int as n from notes where team_id=$1 and author_id=$2', [params.id, params.userId]).catch(() => ({ n: 0 }));
+  const rows = await q(`select lineup from service_dates where team_id=$1 and lineup is not null`, [params.id]);
+  let slots = 0;
+  for (const r of rows) for (const k of Object.keys(r.lineup || {})) if (Array.isArray(r.lineup[k]) && r.lineup[k].includes(params.userId)) slots++;
+  return { notes: (notes && notes.n) || 0, lineupSlots: slots };
+});
+
+// 링크를 열어 보는 단계. 왜 못 쓰는지 이유를 나눠서 알려 준다
+async function inviteOf(token) {
+  const r = await one('select * from invites where code=$1', [token]);
+  if (!r) return { err: '초대 링크가 잘못됐어요' };
+  const leader = await one(`select m.name from members m where m.team_id=$1 and m.role='leader' and m.active limit 1`, [r.team_id]);
+  const who = leader ? `${leader.name}님에게` : '인도자에게';
+  if (r.revoked_at) return { err: `이 링크는 회수됐어요. ${who} 새 링크를 받으세요` };
+  if (r.expires_at && new Date(r.expires_at) < new Date()) return { err: `이 링크는 기한이 지났어요. ${who} 새 링크를 받으세요` };
+  if (r.max_uses != null && r.uses >= r.max_uses) return { err: `이 링크는 이미 다 쓰였어요. ${who} 새 링크를 받으세요` };
+  const t = await one('select * from teams where id=$1', [r.team_id]);
+  if (!t) return { err: '초대 링크가 잘못됐어요' };
+  if (t.deleted_at) return { err: '이 팀은 삭제 예정이에요' };
+  return { invite: r, team: t };
+}
 on('GET', '/invite/:token', async ({ uid, params }) => {
   if (!uid) throw noAuth();
-  const t = await one('select id, name, sessions from teams where invite_token=$1', [params.token]);
-  if (!t) throw notFound('초대 링크가 만료됐거나 잘못됐어요');
-  const n = await one('select count(*)::int as n from members where team_id=$1', [t.id]);
-  const mine = await membership(uid, t.id);
-  return { teamName: t.name, sessions: t.sessions, count: n.n, alreadyMember: !!mine };
+  const r = await inviteOf(params.token);
+  if (r.err) throw notFound(r.err);
+  const n = await one('select count(*)::int as n from members where team_id=$1 and active', [r.team.id]);
+  const mine = await membership(uid, r.team.id);
+  return { teamName: r.team.name, sessions: r.team.sessions, count: n.n, role: r.invite.role, alreadyMember: !!mine };
 });
 
 on('POST', '/invite/:token/join', async ({ uid, params, body }) => {
   if (!uid) throw noAuth();
-  const t = await one('select * from teams where invite_token=$1', [params.token]);
-  if (!t) throw notFound('초대 링크가 만료됐거나 잘못됐어요');
+  const r = await inviteOf(params.token);
+  if (r.err) throw notFound(r.err);
+  const t = r.team, inv = r.invite;
   const name = str(body.name, 40);
   if (!name) throw bad('이름을 적어 주세요');
-  const session = pickSession(t, str(body.session, 40));
-  await q(`insert into members(user_id, team_id, name, session, role) values($1,$2,$3,$4,'member')
-           on conflict (user_id, team_id) do update set name=excluded.name, session=excluded.session`, [uid, t.id, name, session]);
+  const already = await one('select role, active from members where team_id=$1 and user_id=$2', [t.id, uid]);
+  // 비활성이던 사람이 다시 들어오면 원래 역할로 되살린다 (초대 링크의 역할이 아니라)
+  if (already) {
+    await q(`update members set name=$3, active=true, deactivated_at=null where team_id=$1 and user_id=$2`, [t.id, uid, name]);
+    await q('update users set display_name=$2 where id=$1', [uid, name]);
+    if (already.active === false) await audit(t.id, uid, 'member.rejoin', uid, {});
+    return viewOf(await membership(uid, t.id));
+  }
+  const pastor = inv.role === 'pastor';
+  if (pastor) {
+    const n = await one(`select count(*)::int as n from members where team_id=$1 and role='pastor'`, [t.id]);
+    if (n.n >= 2) throw bad('목회자는 팀에 두 명까지예요');
+  } else if (ENFORCE_PLAN) {
+    const n = await one(`select count(*)::int as n from members where team_id=$1 and active and role<>'pastor'`, [t.id]);
+    const cap = planOf(t).members;
+    if (n.n >= cap) {
+      // 정원이 찼다는 것은 인도자가 알아야 한다
+      const l = await one(`select user_id from members where team_id=$1 and role='leader' and active limit 1`, [t.id]);
+      if (l) await notify(t.id, [l.user_id], 'invite.full', t.id,
+        { title: `${t.name} 정원(${cap}명)이 찼어요`, body: '누군가 초대 링크로 들어오려다 막혔어요', link: '#/team', actionable: true });
+      throw new HttpError(402, 'plan_limit', `${t.name}은 지금 ${cap}명까지예요. 인도자에게 알려 주세요`);
+    }
+  }
+  const sessions = pastor ? [] : (strList(body.sessions) || [pickSession(t, str(body.session, 40))]).filter(Boolean);
+  const session = pastor ? '' : (sessions[0] || pickSession(t, ''));
+  await q(`insert into members(user_id, team_id, name, session, sessions, role) values($1,$2,$3,$4,$5,$6)`,
+    [uid, t.id, name, session, sessions, inv.role]);
   await q('update users set display_name=$2 where id=$1', [uid, name]);
+  await q('update invites set uses = uses + 1 where id=$1', [inv.id]);
+  // 인도자에게 알림
+  const leader = await one(`select user_id from members where team_id=$1 and role='leader' and active limit 1`, [t.id]);
+  if (leader && leader.user_id !== uid) await notify(t.id, [leader.user_id], 'member.join', uid,
+    { title: `${josa(name, '이', '가')} ${pastor ? '목회자로' : (session ? session + '으로' : '멤버로')} 들어왔어요`, link: '#/team' });
   return viewOf(await membership(uid, t.id));
 });
 
@@ -593,7 +874,10 @@ on('GET', '/blobs', async ({ uid, url }) => {
   await requireMember(uid, teamId);
   const ids = str(url.searchParams.get('ids'), 4000).split(',').filter(Boolean).slice(0, 200);
   const rows = ids.length ? await q('select id, url from blobs where team_id=$1 and id = any($2::text[])', [teamId, ids]) : [];
-  return { blobs: Object.fromEntries(rows.map((r) => [r.id, r.url])) };
+  const out = { blobs: Object.fromEntries(rows.map((r) => [r.id, r.url])) };
+  // urls=1 이면 바로 읽을 수 있는 서명 URL 도 함께 (악보 다시 불러오기)
+  if (url.searchParams.get('urls') === '1') out.urls = await readUrls(rows);
+  return out;
 });
 
 // 파일 올리기 (인도자): 본문이 파일 그 자체
@@ -948,7 +1232,10 @@ on('POST', '/ocr', async ({ uid, body }) => {
 });
 
 /* ---------- §2 정기 예배 · 사역 날짜 ---------- */
-const DEF_SETTINGS = { serviceAutoCreateWeeks: 4, nameRule: '{월}/{일} {이름}', reminderDay: 25, wordRequestDay: 2, rehearsalUploadRole: 'member' };
+const DEF_SETTINGS = { serviceAutoCreateWeeks: 4, nameRule: '{월}/{일} {이름}', reminderDay: 25, reminderMonthsAhead: 3,
+  wordRequestDay: 2, wordRequestOn: true, rehearsalUploadRole: 'member', pastorCanMemo: false,
+  defaultPractice: '', defaultRehearsal: '',
+  songTags: ['경배', '찬양', '적용', '오프닝', '성탄', '부활', '수련회'] };
 const WD = ['일', '월', '화', '수', '목', '금', '토'];
 
 // 알림 (§1): 알림함에 남기고, 같은 (type, targetId, user) 키가 24시간 안에 다시 오면 갱신만(읽음 상태 유지). actionable 이면 홈 카드에 뜸
@@ -1132,6 +1419,12 @@ on('PATCH', '/teams/:id/settings', async ({ uid, params, body }) => {
   if (body.reminderDay != null) next.reminderDay = Math.max(20, Math.min(28, Math.round(+body.reminderDay)));
   if (body.wordRequestDay != null) next.wordRequestDay = Math.max(0, Math.min(6, Math.round(+body.wordRequestDay)));
   if (body.rehearsalUploadRole != null && ['member', 'session_lead', 'leader'].includes(body.rehearsalUploadRole)) next.rehearsalUploadRole = body.rehearsalUploadRole;
+  if (body.reminderMonthsAhead != null) next.reminderMonthsAhead = Math.max(1, Math.min(3, Math.round(+body.reminderMonthsAhead)));
+  if (body.wordRequestOn != null) next.wordRequestOn = !!body.wordRequestOn;
+  if (body.pastorCanMemo != null) next.pastorCanMemo = !!body.pastorCanMemo;
+  if (body.defaultPractice != null) next.defaultPractice = str(body.defaultPractice, 80);
+  if (body.defaultRehearsal != null) next.defaultRehearsal = str(body.defaultRehearsal, 80);
+  if (body.songTags != null) { const l = strList(body.songTags); if (l) next.songTags = l.slice(0, 20); }
   // §3.6 세션 정원 · 기본 편성
   const team = await one('select sessions from teams where id=$1', [params.id]);
   const list = team.sessions || [];
@@ -1144,7 +1437,7 @@ on('PATCH', '/teams/:id/settings', async ({ uid, params, body }) => {
 // 매일 03:00 크론: 13주 앞 유지
 /* ---------- §3 편성 스케줄링 ---------- */
 const AV = ['ok', 'maybe', 'no'];
-const teamMembers = (teamId) => q(`select user_id as "userId", name, session, sessions as msessions, role from members where team_id=$1 order by created_at asc`, [teamId]);
+const teamMembers = (teamId) => q(`select user_id as "userId", name, session, sessions as msessions, role from members where team_id=$1 and active order by created_at asc`, [teamId]);
 const memberSessions = (m) => (Array.isArray(m.msessions) && m.msessions.length ? m.msessions : (m.session ? [m.session] : []));
 const cleanLineup = (v, teamSessions) => (Array.isArray(v) ? v : []).slice(0, 60)
   .map((r) => ({ session: str(r && r.session, 40), memberId: str(r && r.memberId, 64), notifiedAt: r && r.notifiedAt ? String(r.notifiedAt) : null, acknowledgedAt: r && r.acknowledgedAt ? String(r.acknowledgedAt) : null }))
@@ -1354,12 +1647,22 @@ async function scheduleReminders(teamId, st) {
 on('GET', '/cron/dates', async ({ req }) => {
   // Vercel 크론은 CRON_SECRET 이 설정돼 있으면 Authorization: Bearer <secret> 를 붙여 부른다. 미설정이면 아예 막는다 (위조 가능한 헤더로는 통과 불가)
   if (!process.env.CRON_SECRET || req.headers['authorization'] !== `Bearer ${process.env.CRON_SECRET}`) throw forbidden('크론 전용');
-  const recs = await q('select * from recurring where active=true');
+  // B.7.1 삭제 예약한 지 30일이 지난 팀은 여기서 실제로 지운다 (파일까지)
+  let teamsDropped = 0;
+  for (const t of await q(`select id from teams where deleted_at is not null and deleted_at < now() - interval '30 days'`)) {
+    try {
+      const urls = (await q('select url from blobs where team_id=$1', [t.id])).map((b) => b.url);
+      if (urls.length) await delBlobs(urls);
+      await q('delete from teams where id=$1', [t.id]);   // 나머지는 on delete cascade
+      teamsDropped++;
+    } catch (e) { console.error('team drop', t.id, e); }
+  }
+  const recs = await q(`select r.* from recurring r join teams t on t.id=r.team_id where r.active=true and t.deleted_at is null`);
   let n = 0;
   for (const rec of recs) { await fillDates(rec.team_id, rec); n++; }
   // D-N주 콘티 자동 생성 (모든 팀) + 90일 지난 알림 정리 + 녹음 보관
   let created = 0;
-  for (const t of await q('select id from teams')) {
+  for (const t of await q('select id from teams where deleted_at is null')) {
     try { created += await autoCreateServices(t.id); } catch (e) { console.error('autoCreate', t.id, e); }
   }
   const purged = (await q(`delete from notifications where updated_at < now() - interval '90 days' returning id`)).length;
@@ -1377,7 +1680,7 @@ on('GET', '/cron/dates', async ({ req }) => {
     await dropBlobs(r.team_id, [r.blob_id]);
     dropped++;
   }
-  return { ok: true, recurring: n, created, purged, warned, dropped };
+  return { ok: true, recurring: n, created, purged, warned, dropped, teamsDropped };
 });
 
 // 알림 배치 (KST 10:00): 월간 스케줄 요청 · 보류 D-14 · 주간 말씀 요청 (§1.2 시각)

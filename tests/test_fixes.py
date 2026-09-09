@@ -58,10 +58,13 @@ def run():
         if not scopeA.startswith('state:' + uidA + ':' + teamX): fail('스코프 키가 계정·팀 단위가 아님: ' + scopeA)
         print('A published in X, scope', scopeA)
 
-        # ---- repairBlobs: 파일 강제 재업로드 ----
-        r = pg.evaluate('CONTI.SYNC.repairBlobs()')
-        if not r or r.get('ok', 0) < 1 or r.get('miss', 0) != 0: fail('repairBlobs 결과 이상: %s' % r)
-        print('repairBlobs', r)
+        # ---- 악보 다시 불러오기: 이 기기 캐시를 비우고 서버에서 다시 받는다 (명세 B.8) ----
+        ids = pg.evaluate("CONTI.SYNC.blobIds(CONTI.S.services[0].items)")
+        n = pg.evaluate('CONTI.SYNC.refetchBlobs()')
+        if not n or n < 1: fail('악보 다시 불러오기 결과 이상: %s' % n)
+        back = pg.evaluate("(async ids=>{for(const id of ids){if(!await CONTI.IDB.get('blobs',id))return id}return ''})(%s)" % ids)
+        if back: fail('다시 받은 뒤에도 이 기기에 없는 악보가 있음: %s' % back)
+        print('refetchBlobs', n)
 
         # ---- 로그아웃: 로컬 콘티가 화면·상태에서 사라짐 ----
         logout_ui(pg)
@@ -73,7 +76,7 @@ def run():
         teamY = make_team(pg, '스코프Y')
         if pg.evaluate('CONTI.S.services.length') != 0: fail('B 팀 홈에 A 콘티가 새어 나옴')
         if 'X팀 예배' in pg.locator('#app').inner_text(): fail('B 화면에 X팀 예배가 보임')
-        pg.click('.hd [data-act="team"]'); pg.wait_for_selector('#tmLink'); linkY = pg.locator('#tmLink').inner_text().strip(); pg.keyboard.press('Escape')
+        linkY = pg.evaluate("location.origin+location.pathname+'#/join/'+CONTI.S.team.invite")
         print('B team Y isolated; invite', linkY[-12:])
         logout_ui(pg)
 
@@ -86,7 +89,9 @@ def run():
         pg.goto(linkY); pg.wait_for_selector('#jnName', timeout=8000); pg.click('[data-act="team-join"]'); pg.wait_for_selector('.hd [data-act="team"]', timeout=8000); pg.wait_for_timeout(800)
         if pg.evaluate('CONTI.S.team.id') != teamY: fail('가입 후 현재 팀이 Y 가 아님')
         if pg.evaluate('CONTI.S.services.length') != 0: fail('Y 로 전환됐는데 X 콘티가 남아 있음 (서버로 새어 올라갈 수 있음)')
-        pg.click('.hd [data-act="team"]'); pg.wait_for_selector('[data-switch]'); pg.click('[data-switch="%s"]' % teamX); pg.wait_for_timeout(1200)
+        pg.click('.hd [data-act="team"]'); pg.wait_for_selector('.tpage', timeout=10000)
+        pg.click('[data-act="team-switch"]'); pg.wait_for_selector('[data-switch]', timeout=5000)
+        pg.click('[data-switch="%s"]' % teamX); pg.wait_for_timeout(1500)
         if pg.evaluate('CONTI.S.team.id') != teamX or pg.evaluate('CONTI.S.services.length') < 1: fail('X 로 다시 전환했는데 콘티가 없음')
         if teamX in ctx.request.get(URL + 'api/services?team=' + teamY).text() or svcX in ctx.request.get(URL + 'api/services?team=' + teamY).text(): fail('X 콘티가 Y 서버에 올라감')
         print('team switch isolated')
