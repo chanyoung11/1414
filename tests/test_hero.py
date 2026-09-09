@@ -1,0 +1,43 @@
+# §3.7 홈 히어로(다음 예배): 인도자 편성 진행 · 멤버 내 자리
+import os,sys,time,datetime
+from playwright.sync_api import sync_playwright
+URL=os.environ.get('CONTI_URL','http://localhost:8766/'); tag=str(int(time.time()))[-6:]; H={'x-conti':'1'}
+def fail(m): print('FAIL:',m); sys.exit(1)
+with sync_playwright() as p:
+    b=p.chromium.launch(); errs=[]
+    cL=b.new_context(viewport={'width':1240,'height':900}); pl=cL.new_page()
+    pl.on('pageerror',lambda e:errs.append('L:'+str(e))); pl.on('dialog',lambda d:d.accept())
+    pl.goto(URL); pl.wait_for_selector('#lgUser')
+    pl.click('[data-act="lg-mode"][data-m="signup"]'); pl.wait_for_selector('#lgName')
+    pl.fill('#lgName','하은'); pl.fill('#lgUser','hr'+tag); pl.fill('#lgPass','secret1'); pl.click('[data-act="lg-submit"]')
+    pl.wait_for_selector('#gtTeam'); pl.fill('#gtTeam','히어로팀'); pl.click('[data-act="team-create"]'); pl.wait_for_selector('.hd [data-act="team"]')
+    team=pl.evaluate('CONTI.S.team.id')
+    pl.click('.hd [data-act="team"]'); pl.wait_for_selector('#tmLink'); link=pl.locator('#tmLink').inner_text().strip(); pl.keyboard.press('Escape')
+    cM=b.new_context(viewport={'width':1240,'height':900}); pm=cM.new_page(); pm.on('dialog',lambda d:d.accept())
+    pm.on('pageerror',lambda e:errs.append('M:'+str(e)))
+    pm.goto(link); pm.wait_for_selector('#lgUser')
+    pm.click('[data-act="lg-mode"][data-m="signup"]'); pm.wait_for_selector('#lgName')
+    pm.fill('#lgName','민수'); pm.fill('#lgUser','hm'+tag); pm.fill('#lgPass','secret1'); pm.click('[data-act="lg-submit"]')
+    pm.wait_for_selector('#jnName'); pm.click('#gtSess .q:has-text("드럼")'); pm.click('[data-act="team-join"]'); pm.wait_for_selector('.hd [data-act="team"]')
+    uidM=pm.evaluate('CONTI.NET.user.id')
+    d1=(datetime.date.today()+datetime.timedelta(days=3)).isoformat()
+    cL.request.post(URL+'api/teams/%s/dates'%team,headers=H,data={'date':d1,'label':'주일 2부','time':'11:00'})
+    pl.goto(URL+'#/home'); pl.reload(); pl.wait_for_selector('.hero',timeout=15000); pl.wait_for_timeout(1200)
+    h=pl.locator('.hero').inner_text()
+    if 'D-3' not in h or '주일 2부' not in h: fail('인도자 히어로 이상: '+h)
+    if '편성 0/' not in h or '통보 전' not in h: fail('인도자 편성 요약 없음: '+h)
+    print('leader hero ok:', h.replace('\n',' ')[:70])
+    pm.goto(URL+'#/home'); pm.reload(); pm.wait_for_selector('.hero',timeout=15000); pm.wait_for_timeout(1200)
+    hm=pm.locator('.hero').inner_text()
+    if '내 자리' in hm: fail('편성 전인데 내 자리가 뜸')
+    sch=cL.request.get(URL+'api/teams/%s/schedule'%team).json()
+    did=[x for x in sch['dates'] if x['date']==d1][0]['id']
+    cL.request.put(URL+'api/teams/%s/dates/%s/lineup'%(team,did),headers=H,data={'lineup':[{'session':'드럼','memberId':uidM}]})
+    pm.reload(); pm.wait_for_selector('.hero',timeout=15000); pm.wait_for_timeout(1500)
+    hm=pm.locator('.hero').inner_text()
+    if '내 자리' not in hm or '드럼' not in hm: fail('멤버 내 자리 없음: '+hm)
+    print('member hero ok:', hm.replace('\n',' ')[:70])
+    print('errors:',errs)
+    if errs: fail('page errors')
+    b.close()
+print('HERO TEST OK')

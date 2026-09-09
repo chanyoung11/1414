@@ -232,6 +232,10 @@ html.dark .a-ok{color:#5FBF8A}html.dark .a-maybe{color:#E9C35C}html.dark .a-no{c
 .wordblock .wmemo{margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:13px}.wordblock .wmemo .pill{margin-bottom:4px}
 .wordline{display:flex;align-items:center;gap:7px;padding:9px 13px;margin-bottom:10px;border:1px solid var(--border);border-radius:var(--r-lg);background:var(--card);cursor:pointer;font-size:13px}.wordline svg{width:15px;height:15px;flex:0 0 auto;color:var(--muted-fg)}
 .reason{display:flex;align-items:flex-start;gap:6px;margin-top:6px;color:var(--muted-fg);font-size:12.5px}.reason svg{width:13px;height:13px;flex:0 0 auto;margin-top:2px}
+.hero{margin-bottom:14px;padding:14px 16px;border-radius:var(--r-xl);border:1px solid var(--border-2);background:var(--card)}
+.hero .hd2{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.hero .when{flex:0 0 auto;font-weight:800;font-size:15px;letter-spacing:-.02em;padding:5px 10px;border-radius:999px;background:var(--fg);color:var(--bg)}
+.hero b{display:block;font-size:15px;letter-spacing:-.01em}
 .todo{margin-bottom:16px}.todo-hd{display:flex;align-items:center;gap:8px;margin-bottom:8px}.todo-hd b{font-size:14px;letter-spacing:-.01em}
 .todo-card{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:var(--r-lg);background:var(--secondary);border:1px solid var(--border-2);margin-bottom:8px}.todo-card b{display:block;font-size:13.5px}
 .nrow{display:flex;align-items:flex-start;gap:10px;padding:10px 4px;border-bottom:1px solid var(--line2);cursor:pointer}.nrow .dot{width:6px;height:6px;border-radius:50%;background:var(--fg);margin-top:8px;flex:0 0 auto;opacity:0}.nrow.unread .dot{opacity:1}.nrow:not(.unread){opacity:.72}.nrow b{display:block;font-size:13.5px}
@@ -621,6 +625,7 @@ function homeHTML(){
    <header class="hd"><div class="ttl"><h1>예배</h1><span class="date">${fmtToday()}</span></div>
     <div class="acts"><span class="pill">${whoStr(m)}</span>${on?`<button class="btn sm ghost" data-act="team">${ic('users')}${esc(S.team.name||'팀')}</button>`:''}<button class="icon ghost" data-act="settings" title="설정">${ic('gear')}</button></div></header>
    <main>
+    ${heroHTML()}
     ${todoHTML()}
     <div class="metrics rise"><div class="metric"><div class="v">${S.services.length}</div><div class="l">전체 예배</div></div><div class="metric"><div class="v">${upcoming}</div><div class="l">다가오는 예배</div></div><div class="metric"><div class="v">${pubN}</div><div class="l">발행된 콘티</div></div></div>
     <div class="sect-hd rise d1"><div><h2>예배 목록</h2><p>${on?`${esc(S.team.name)} 팀 · 인도자가 발행하면 자동으로 내려와요`:'이 기기에만 저장돼요. 팀에 보내려면 내보내기 파일을 카톡으로 보내세요'}</p></div>
@@ -1170,6 +1175,26 @@ function afterCal(){let t=null,long=false;
   c.addEventListener('contextmenu',e=>e.preventDefault())})}
 function afterLineup(dateId){const d=SCH.dates.find(x=>x.id===dateId);if(!d)return;
  $('#app').onchange=async e=>{if(!e.target.dataset.lsel)return;if(await saveLineup(d))render()}}
+// 홈 히어로 (§3.7): 다음 예배 한 장. 인도자는 편성 진행, 멤버는 내 자리
+function heroHTML(){if(!online()||!S.team.id)return '';
+ const t=today();
+ const d=SCH.dates.filter(x=>x.open&&x.date>=t).sort((a,b)=>a.date.localeCompare(b.date))[0];
+ const svc=S.services.filter(s=>(s.date||'')>=t).sort((a,b)=>(a.date||'').localeCompare(b.date||''))[0];
+ const date=d?d.date:(svc&&svc.date);if(!date)return '';
+ const useSvc=svc&&(!d||svc.date<=d.date)?svc:(d&&d.serviceId?svcById(d.serviceId):null);
+ const name=useSvc?svcName(useSvc):(d?`${fmtDate(d.date).md} ${d.label}`:'');
+ const dd=fmtDate(date);const days=Math.round((new Date(date+'T00:00:00')-new Date(t+'T00:00:00'))/86400000);
+ const when=days===0?'오늘':days===1?'내일':`D-${days}`;
+ const lineup=(d&&d.lineup)||[];
+ let side='';
+ if(isLeader()){const st=S.team.settings||{};const slots=st.slots||{};
+  const total=S.team.sessions.reduce((a,s)=>a+(slots[s]!=null?slots[s]:(s==='싱어'?3:1)),0);
+  const filled=lineup.filter(r=>r.memberId).length;const notified=lineup.some(r=>r.notifiedAt);
+  side=d?`<span class="pill">편성 ${filled}/${total} · ${notified?'통보함':'통보 전'}</span><button class="btn sm" data-act="lineup" data-id="${esc(d.id)}">${ic('users')}편성</button>`:'';
+ }else if(!isPastor()){const mine=lineup.filter(r=>r.memberId===me().userId).map(r=>r.session);
+  side=mine.length?`<span class="pill">내 자리 · ${esc(mine.join('·'))}</span>`:(lineup.length?'<span class="pill">이번 주는 쉬어요</span>':'');}
+ return `<div class="hero rise"><div class="hd2"><span class="when">${when}</span><div class="grow"><b>${esc(name)}</b><div class="hint">${esc(dd.md)} (${esc(dd.w)})${d&&d.time?' · '+esc(d.time):''}</div></div>
+  <span class="row" style="gap:8px;flex-wrap:wrap">${side}${useSvc&&useSvc.published?`<button class="btn sm pri" data-act="view-svc" data-id="${esc(useSvc.id)}">${ic('eye')}콘티</button>`:(isLeader()&&useSvc?`<button class="btn sm pri" data-act="edit-svc" data-id="${esc(useSvc.id)}">${ic('pen')}콘티 채우기</button>`:'')}</span></div></div>`}
 function todoCards(){const cards=[];
  if(isLeader()&&online()){const weeks=+(S.team.settings&&S.team.settings.serviceAutoCreateWeeks)||4;const lim=new Date();lim.setDate(lim.getDate()+weeks*7);const limIso=lim.toISOString().slice(0,10);const t=today();
   S.services.filter(s=>!s.published&&!s.items.length&&(s.date||'')>=t&&(s.date||'')<=limIso).sort((a,b)=>(a.date||'').localeCompare(b.date||'')).forEach(s=>cards.push({icon:'pen',title:`${fmtDate(s.date).md} ${svcName(s)} 콘티가 비어 있어요`,body:'곡을 채우고 발행하세요',btn:'편집',act:'edit-svc',arg:s.id}))}
@@ -1917,8 +1942,8 @@ async function render(){
   if(r.name!=='lineup'&&r.a&&/^\d{4}-\d{2}$/.test(r.a))SCH.month=r.a;
   const need=!SCH.at||(r.name!=='lineup'&&SCH.month!==(r.a&&/^\d{4}-\d{2}$/.test(r.a)?r.a:SCH.month));
   const missing=r.name==='lineup'&&!SCH.dates.some(x=>x.id===r.a);   // 방금 생긴 날짜면 캐시에 없으니 다시 받는다
-  if(!SCH.at||missing){app.innerHTML=`<div class="empty" style="margin:40px auto;max-width:420px"><b>일정을 받는 중…</b></div>`;await pullSchedule(SCH.month||monthKey(),true)}
-  else if(!same)pullSchedule(SCH.month||monthKey()).then(ch=>{if(ch&&/^(cal|sched|lineup)$/.test(route().name))render()});
+  if(!SCH.at||missing||!SCH.dates.length){app.innerHTML=`<div class="empty" style="margin:40px auto;max-width:420px"><b>일정을 받는 중…</b></div>`;await pullSchedule(SCH.month||monthKey(),true)}
+  else if(!same)pullSchedule(SCH.month||monthKey(),true).then(ch=>{if(ch&&/^(cal|sched|lineup)$/.test(route().name))render()});   // 화면에 들어올 때는 캐시를 무시하고 다시 받는다
   if(r.name==='sched'&&!isLeader())return go('cal');
   if(r.name==='lineup'&&!isLeader())return go('cal');
   app.innerHTML=r.name==='cal'?calHTML():r.name==='sched'?schedHTML():lineupHTML(r.a);
@@ -1926,6 +1951,7 @@ async function render(){
   restoreScroll();return}
  app.innerHTML=homeHTML();
  if(online()&&S.team.id&&NET.user&&Date.now()-NOTI.at>8000)refreshNoti();
+ if(online()&&S.team.id&&NET.user)pullSchedule(monthKey()).then(ch=>{if(ch&&route().name==='home')render()});
  if(online()&&!same)SYNC.pullServices().then(ch=>{if(ch&&route().name==='home')render()});
 }
 async function preload(svc){const ids=[];const items=(svc.published?svc.published.items:svc.items).concat(svc.items);items.forEach(it=>(it.pieces||[]).forEach(p=>ids.push(p.blob)));await Promise.all([...new Set(ids)].map(blobURL))}
