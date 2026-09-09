@@ -181,6 +181,23 @@ html.dark .songbar::placeholder{color:rgba(10,10,10,.5)}
 .grip svg.ic{width:14px;height:14px}
 .list-item.dragging{background:var(--card);opacity:.95;box-shadow:0 12px 32px rgba(0,0,0,.25);border-color:var(--border)}
 .list-item.dragging .grip{cursor:grabbing}
+/* 코드 차트 */
+.chart{font-size:13px}
+.chart .chd{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.chart .pill.amber{background:var(--warning-soft);color:var(--warning);font-weight:700}
+.csec{margin-bottom:12px}
+.cshd{display:flex;align-items:center;gap:6px;margin-bottom:4px}.cshd b{font-size:12.5px;letter-spacing:.02em;color:var(--muted-fg)}
+.cbars{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:0;border-left:1px solid var(--border-2)}
+.cbar{border-right:1px solid var(--border-2);border-bottom:1px solid var(--line2);padding:6px 8px;min-height:44px}
+.cch{font-family:"Geist Mono",ui-monospace,"SF Mono",Menlo,monospace;font-weight:700;font-size:14px;letter-spacing:-.01em;display:flex;gap:8px;flex-wrap:wrap}
+.cc{cursor:default}[data-cc]{cursor:pointer;border-radius:4px;padding:0 2px}[data-cc]:hover{background:var(--muted)}
+.cc.dim{color:var(--faint-fg);font-weight:400}
+.clr{margin-top:3px;font-size:12px;color:var(--muted-fg);line-height:1.35}
+.chart.big{font-size:16px}.chart.big .cch{font-size:20px}.chart.big .clr{font-size:14px}.chart.big .cbars{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}
+.cwrap{margin-top:10px;border:1px solid var(--border);border-radius:var(--r-lg);padding:8px 12px;background:var(--card)}
+.cwrap summary{cursor:pointer;font-size:12.5px;color:var(--muted-fg);list-style:none}.cwrap summary::-webkit-details-marker{display:none}
+.cwrap summary::before{content:'▸ ';}.cwrap[open] summary::before{content:'▾ ';}
+.cwrap[open] summary{margin-bottom:8px}
 /* §4.2 말씀 탭 */
 .wgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:16px;align-items:start}
 @media(max-width:860px){.wgrid{grid-template-columns:minmax(0,1fr)}}
@@ -684,6 +701,7 @@ function itemEditorHTML(svc,it){const sel=SEL[svc.id]||(SEL[svc.id]={});
   <input class="field" data-f="item.songNote" placeholder="전체적으로 밝게, 템포 서두르지 않기" value="${esc(it.songNote)}">
   <div class="lbl">이 곡을 여기 둔 이유 <span class="hint">선택 · 콘티 보기 곡 카드에 한 줄로</span></div>
   <input class="field" data-f="item.reason" placeholder="“은혜를 세어보라”는 구절과 이어지는 곡이라 여기 뒀어요" value="${esc(it.reason||'')}">
+  ${it.chart?`<div class="lbl">코드 차트 <span class="hint">채보 결과 · 코드를 탭하면 고쳐요</span></div>${chartHTML(it,{edit:true})}`:''}
   <div class="lbl">섹션 메모 <span class="hint">${it.notes.length}개 · 악보 패널의 "메모" 도구로 마커를 탭</span></div>
   <div class="small">${it.notes.map(n=>`<div class="row" style="padding:3px 0"><span class="mk" style="width:24px;height:24px;font-size:11px">${esc((markerOf(it,n.marker)||{}).label||'?')}</span>${noteChip(n)}<span class="hint">${esc(n.session||'전체')}</span><button class="icon sm ghost" data-act="del-note" data-id="${n.id}">${ic('x')}</button></div>`).join('')||'<span class="hint">없음</span>'}</div>
  </div>`;
@@ -707,6 +725,7 @@ function viewerHTML(svc){
     ${it.reason?`<div class="reason">${ic('note')}<span>${esc(it.reason)}</span></div>`:''}
     ${rehItemNotes(svc,it.id)}
     ${it.form?`<div class="songbar" style="margin-top:10px">${esc(it.form)}</div>`:''}
+    ${it.chart?`<details class="cwrap"><summary>코드 차트 보기</summary>${chartHTML(it,{play:true})}</details>`:''}
     <div class="row" style="align-items:flex-start;gap:14px;margin-top:12px">${it.pieces[0]?`<div class="thumb" style="background-image:url('${url(it.pieces[0].blob)}')"></div>`:''}
      <div class="grow small">${visMedia(it,sess).map(md=>`<div class="row" style="margin-bottom:4px"><span class="icon sm ${md.type==='youtube'?'ytc':'micc'}">${ic(md.type==='youtube'?'yt':'mic')}</span>${mdSess(md).length?`<span class="tag">${esc(mdTag(md))}</span>`:''}<span class="grow muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(md.name||md.url)}${md.type==='youtube'&&(md.start||md.end)?` <span class="pill">${fmtT(md.start||0)}–${md.end?fmtT(md.end):'끝'}</span>`:''}</span>${md.type==='youtube'?`<a class="btn sm ghost" href="https://youtu.be/${ytId(md.url)}?t=${md.start||0}" target="_blank" rel="noopener">${ic('open')}열기</a>`:''}</div>
       ${(live.media.find(x=>x.id===md.id)||md).notes.filter(n=>noteVisible(n,ctx)).sort((a,b)=>a.t-b.t).map(n=>`<div class="tl" ${md.type==='youtube'?`data-act="ytopen" data-url="https://youtu.be/${ytId(md.url)}?t=${Math.round(n.t)}"`:''}><span class="t">${fmtT(n.t)}</span>${n.session?`<span class="tag">${esc(n.session)}</span>`:n.layer==='leader'?'<span class="tag">전체</span>':'<span class="tag me">나</span>'}<span>${esc(n.text)}</span></div>`).join('')}`).join('')||'<span class="hint">미디어 없음</span>'}</div></div>
@@ -746,7 +765,8 @@ function playHTML(svc,idx){
     </div></div>
   </div>
   <div class="gutter" title="드래그해서 폭 조절"></div>
-  <div class="panel" id="sheetpanel">${ptab('악보',`${it.pieces.length}조각`,`<span class="hint">마커 탭 = 메모</span><span class="row" style="gap:2px;margin-left:8px"><button class="icon sm ghost" data-act="zoom" data-d="-1" title="악보 작게">${ic('down')}</button><span class="hint zoomlbl" style="min-width:36px;text-align:center">${Math.round((PL.zoom||1)*100)}%</span><button class="icon sm ghost" data-act="zoom" data-d="1" title="악보 크게">${ic('up')}</button></span>`)}<div class="stagebar"><span class="stagelogo">${logoSymbol(20)}</span><button class="sbtn" data-act="zoom" data-d="-1" title="작게">${ic('down')}</button><span class="zoomlbl" style="font-size:11px;opacity:.8">${Math.round((PL.zoom||1)*100)}%</span><button class="sbtn" data-act="zoom" data-d="1" title="크게">${ic('up')}</button><button class="sbtn" data-act="pn" data-d="-1" ${prev?'':'disabled'}>${ic('left')}</button><span class="stagetitle">${idx+1}. ${esc(it.title||'')}${k?' / '+esc(k):''}</span><button class="sbtn" data-act="pn" data-d="1" ${next?'':'disabled'}>${ic('right')}</button><span class="stageform">${esc(it.form||'')}</span>${it.songNote?`<span class="stagenote">${esc(it.songNote)}</span>`:''}<span class="grow"></span><button class="sbtn" data-act="stage" title="무대 모드 끝내기">${ic('x')}</button></div><div class="sheetwrap" id="sheetwrap"><div class="sheet" id="sheet"></div></div></div>
+  ${it.chart&&PL.chart?`<div class="panel" id="chartpanel">${ptab('코드 차트','',`<button class="btn sm" data-act="chart-tab">${ic('music')}악보로</button>`)}<div class="pbody">${chartHTML(it,{play:true,big:PL.stage})}</div></div>`:''}
+  <div class="panel" id="sheetpanel" ${it.chart&&PL.chart?'hidden':''}>${ptab('악보',`${it.pieces.length}조각`,`${it.chart?`<button class="btn sm" data-act="chart-tab">${ic('list')}차트로</button>`:''}<span class="hint">마커 탭 = 메모</span><span class="row" style="gap:2px;margin-left:8px"><button class="icon sm ghost" data-act="zoom" data-d="-1" title="악보 작게">${ic('down')}</button><span class="hint zoomlbl" style="min-width:36px;text-align:center">${Math.round((PL.zoom||1)*100)}%</span><button class="icon sm ghost" data-act="zoom" data-d="1" title="악보 크게">${ic('up')}</button></span>`)}<div class="stagebar"><span class="stagelogo">${logoSymbol(20)}</span><button class="sbtn" data-act="zoom" data-d="-1" title="작게">${ic('down')}</button><span class="zoomlbl" style="font-size:11px;opacity:.8">${Math.round((PL.zoom||1)*100)}%</span><button class="sbtn" data-act="zoom" data-d="1" title="크게">${ic('up')}</button><button class="sbtn" data-act="pn" data-d="-1" ${prev?'':'disabled'}>${ic('left')}</button><span class="stagetitle">${idx+1}. ${esc(it.title||'')}${k?' / '+esc(k):''}</span><button class="sbtn" data-act="pn" data-d="1" ${next?'':'disabled'}>${ic('right')}</button><span class="stageform">${esc(it.form||'')}</span>${it.songNote?`<span class="stagenote">${esc(it.songNote)}</span>`:''}<span class="grow"></span><button class="sbtn" data-act="stage" title="무대 모드 끝내기">${ic('x')}</button></div><div class="sheetwrap" id="sheetwrap"><div class="sheet" id="sheet"></div></div></div>
  </div>`;
 }
 
@@ -849,6 +869,43 @@ function messageSheet(svc,first){const pub=pubOrDraft(svc);if(!hasNote(svc))retu
  $('#modal').onclick=e=>{if(e.target.closest('#msgMore')){$('#msgBody').classList.remove('clamp');$('#msgMore').remove();return}
   if(e.target.closest('#msgOk')||e.target.closest('[data-close]')||e.target.classList.contains('ov')){done();closeModal()}};
 }
+/* ---------- 코드 차트 (채보 결과 보기·고치기) ---------- */
+// 차트가 적힌 원래 키에서 연주 키로 옮길 반음 수. 카포를 쓰면 잡는 자리 기준으로 더 내린다
+function chartOffset(item,forPlay){const a=keySemi(item.key),b=keySemi(item.chart&&item.chart.key);
+ let d=(a==null||b==null)?0:a-b;while(d>6)d-=12;while(d<-6)d+=12;
+ return d-(forPlay?(+me().capo||0):0)}
+const chartBars=sec=>(sec&&sec.bars)||[];
+function chartHTML(item,opts){const ch=item.chart;if(!ch||!ch.sections||!ch.sections.length)return '';
+ const o=opts||{};const off=chartOffset(item,o.play);const showKey=item.key||ch.key||'';
+ const tr=c=>off?transposeChord(c,off,showKey):c;
+ const secs=ch.sections.map((sec,si)=>{const bars=chartBars(sec);
+  return `<div class="csec"><div class="cshd"><b>${esc(sec.name||'?')}</b>${sec.repeat?`<span class="pill">x${sec.repeat}</span>`:''}</div>
+   <div class="cbars">${bars.map((b,bi)=>`<div class="cbar"><div class="cch">${(b.chords||[]).length?(b.chords||[]).map((c,ci)=>`<span class="cc" ${o.edit?`data-cc="${si}.${bi}.${ci}"`:''}>${esc(tr(c))}</span>`).join(' '):`<span class="cc dim" ${o.edit?`data-cc="${si}.${bi}.0"`:''}>·</span>`}</div>${b.lyric?`<div class="clr">${esc(b.lyric)}</div>`:''}</div>`).join('')}</div></div>`}).join('');
+ return `<div class="chart ${o.big?'big':''}">
+  <div class="chd"><span class="pill">${esc(showKey||'?')}</span>${ch.timeSignature?`<span class="hint">${esc(ch.timeSignature)}</span>`:''}${ch.tempo?`<span class="hint">${ch.tempo}bpm</span>`:''}
+   ${off?`<span class="pill amber">${off>0?'+':''}${off}</span>`:''}${o.play&&+me().capo?`<span class="pill">카포 ${+me().capo}</span>`:''}
+   ${ch.key&&item.key&&ch.key!==item.key?`<span class="hint">악보 ${esc(ch.key)} → 연주 ${esc(item.key)}</span>`:''}
+   <span class="grow"></span>${o.edit?`<button class="btn sm ghost" data-act="chart-del">${ic('trash')}차트 지우기</button>`:''}</div>
+  ${ch.form?`<div class="songbar" style="margin-bottom:8px">${esc(ch.form)}</div>`:''}
+  ${secs}${ch.notes?`<div class="hint" style="margin-top:8px">채보 메모: ${esc(ch.notes)}</div>`:''}</div>`}
+// 코드 한 칸 고치기 (원래 키 기준으로 저장한다 — 전조는 볼 때 계산)
+function chartCellModal(svc,item,path){const [si,bi,ci]=path.split('.').map(Number);
+ const sec=item.chart.sections[si];const bar=chartBars(sec)[bi];if(!bar)return;
+ const cur=(bar.chords||[])[ci]||'';const off=chartOffset(item,false);const showKey=item.key||item.chart.key||'';
+ modal(`<b style="font-size:17px">코드 고치기</b><div class="hint" style="margin-top:4px">[${esc(sec.name||'')}] ${bi+1}번째 마디${off?` · 저장은 악보 키(${esc(item.chart.key||'?')}) 기준이에요`:''}</div>
+  <input class="field mono" id="ccIn" value="${esc(cur)}" placeholder="G / Bm7 / A9/C#" style="margin-top:10px;font-size:16px">
+  ${off?`<div class="hint" style="margin-top:6px">연주 키에서는 <b id="ccPrev">${esc(cur?transposeChord(cur,off,showKey):'')}</b> 로 보여요</div>`:''}
+  <div class="row" style="margin-top:16px;justify-content:space-between"><button class="btn ghost danger" id="ccDel">이 코드 지우기</button>
+   <span class="row" style="gap:8px"><button class="btn" data-close="1">취소</button><button class="btn pri" id="ccOk">${ic('check')}저장</button></span></div>`,{center:true});
+ const inp=$('#ccIn');setTimeout(()=>{inp.focus();inp.select()},50);
+ inp.oninput=()=>{const p=$('#ccPrev');if(p)p.textContent=inp.value.trim()?transposeChord(inp.value.trim(),off,showKey):''};
+ const apply=list=>{bar.chords=list;item.chart.edited=true;touch(svc);syncLib(item);save();closeModal();render()};
+ $('#modal').onclick=e=>{
+  if(e.target.closest('[data-close]')){closeModal();return}
+  if(e.target.closest('#ccDel')){const l=(bar.chords||[]).slice();l.splice(ci,1);apply(l);return}
+  if(e.target.closest('#ccOk')){const v=inp.value.trim();const l=(bar.chords||[]).slice();
+   if(!v)l.splice(ci,1);else l[ci]=v;apply(l.filter(Boolean));return}}}
+
 /* ---------- §4.2 말씀 탭 (목회자·인도자) ---------- */
 const WORDS={list:[],role:'',at:0};
 async function pullWords(force){if(!online()||!S.team.id)return false;
@@ -1308,7 +1365,7 @@ function libraryPicker(svc){
  if(!S.library.length){toast('라이브러리가 비어 있어요');return}
  modal(`<b style="font-size:17px">라이브러리에서 추가</b><input class="field" id="libQ" placeholder="제목 검색" style="margin:10px 0"><div id="libList">${S.library.map(s=>`<div class="list-item" data-lib="${esc(s.id)}"><span class="icon sm" style="background:var(--panel2)">${ic('music')}</span><span class="grow" style="font-weight:600">${esc(s.title)}</span><span class="k">${esc(s.key)} · 조각 ${s.pieces.length} · 마커 ${s.pieces.reduce((n,p)=>n+p.markers.length,0)}</span></div>`).join('')}</div>`,{center:true});
  $('#libQ').oninput=e=>{const q=e.target.value.trim();$$('#libList .list-item').forEach(li=>{const s=S.library.find(x=>x.id===li.dataset.lib);li.style.display=!q||s.title.includes(q)?'':'none'})};
- $('#modal').onclick=e=>{const li=e.target.closest('[data-lib]');if(!li)return;const s=S.library.find(x=>x.id===li.dataset.lib);const it=newItem();Object.assign(it,{title:s.title,key:s.key,mod:s.mod||'',form:s.form,songNote:s.songNote||'',pieces:clone(s.pieces),media:clone(s.media),libId:s.id});
+ $('#modal').onclick=e=>{const li=e.target.closest('[data-lib]');if(!li)return;const s=S.library.find(x=>x.id===li.dataset.lib);const it=newItem();Object.assign(it,{title:s.title,key:s.key,mod:s.mod||'',form:s.form,songNote:s.songNote||'',pieces:clone(s.pieces),media:clone(s.media),chart:s.chart?clone(s.chart):undefined,libId:s.id});
   it.pieces.forEach(p=>{p.id=uid();p.markers.forEach(mk=>mk.id=uid());(p.hls||[]).forEach(h=>h.id=uid())});it.media.forEach(m=>{m.id=uid();m.notes=[]});
   svc.items.push(it);SEL[svc.id]={item:it.id,tool:'marker'};touch(svc);save();closeModal();render()};
 }
@@ -1779,7 +1836,7 @@ function omrModal(svc,it,songs,r){
    if(s.title&&!it.title)it.title=s.title;if(s.key&&!it.key)it.key=s.key;
    if(s.form&&(!it.form||confirm('송폼을 채보 결과로 바꿀까요?\n'+s.form)))it.form=s.form;
    it.chart={at:Date.now(),model:r.model||'',title:s.title,key:s.key,timeSignature:s.timeSignature,tempo:s.tempo,form:s.form,sections:s.sections,notes:s.notes||null};
-   touch(svc);save();closeModal();render();toast('곡 정보에 넣었어요');return}
+   touch(svc);syncLib(it);save();closeModal();render();toast('곡 정보에 넣었어요 · 아래에서 코드를 고칠 수 있어요');return}
  };
 }
 async function recognizeChords(svc,it,piece){if(!online()||!isLeader()||!piece)return;piece.ocr='pending';piece.ocrErr='';save();if(route().name==='edit')drawEditorSheet(svc);
@@ -2050,7 +2107,7 @@ function afterEditor(svc){
  window.onresize=()=>{if(route().name==='edit')drawEditorSheet(svc)};
 }
 function touch(svc){if(svc.published&&svc.version<=svc.published.version)svc.version=svc.published.version+1;svc.editedAt=Date.now()}
-function syncLib(it){if(!it.title)return;let s=S.library.find(x=>x.id===it.libId)||(!it.libId&&normTitle(it.title)?S.library.find(x=>normTitle(x.title)===normTitle(it.title)):null);const snap={id:s?s.id:(it.libId||uid()),title:it.title,key:it.key,mod:it.mod||'',form:it.form,pieces:clone(it.pieces),media:clone(it.media).map(m=>({...m,notes:[]})),songNote:it.songNote};it.libId=snap.id;if(s)Object.assign(s,snap);else S.library.push(snap)}
+function syncLib(it){if(!it.title)return;let s=S.library.find(x=>x.id===it.libId)||(!it.libId&&normTitle(it.title)?S.library.find(x=>normTitle(x.title)===normTitle(it.title)):null);const snap={id:s?s.id:(it.libId||uid()),chart:it.chart?clone(it.chart):undefined,title:it.title,key:it.key,mod:it.mod||'',form:it.form,pieces:clone(it.pieces),media:clone(it.media).map(m=>({...m,notes:[]})),songNote:it.songNote};it.libId=snap.id;if(s)Object.assign(s,snap);else S.library.push(snap)}
 /* ---------- composer ---------- */
 /* ---------- publish ---------- */
 function kakaoText(svc){
@@ -2082,7 +2139,7 @@ function ytCmd(func,args){if(!P.yt)return;try{P.yt.contentWindow.postMessage(JSO
 window.addEventListener('message',e=>{if(!P.yt||e.source!==P.yt.contentWindow)return;let d;try{d=typeof e.data==='string'?JSON.parse(e.data):e.data}catch{return}
  if(d.event==='onReady'||d.event==='initialDelivery'){P.ytReady=true}
  if(d.event==='infoDelivery'&&d.info){if(d.info.currentTime!=null){P.t=d.info.currentTime}if(d.info.duration)P.dur=d.info.duration;if(d.info.playerState!=null)P.playing=d.info.playerState===1;updateTL()}});
-let PL={svc:null,idx:0,mi:0,stage:false,zoom:+(lsGet('conti-zoom')||1)||1,f:{leader:true,session:true,mine:true,chords:true},session:null};
+let PL={svc:null,idx:0,mi:0,stage:false,chart:!!lsGet('conti-chart'),zoom:+(lsGet('conti-zoom')||1)||1,f:{leader:true,session:true,mine:true,chords:true},session:null};
 // 인쇄: A4 세로, 곡마다 한 장 — 번호·제목·키·송폼 헤더 + 악보(메모 띠·전조 코드 포함)
 async function printService(svc){const pub=pubOrDraft(svc);const my=me();await preload(svc);
  const ctx={mode:'play',session:my.session,f:{leader:true,session:true,mine:true,chords:true}};
@@ -2192,6 +2249,10 @@ document.addEventListener('keydown',e=>{
  else if(PL.stage&&(e.key==='PageDown'||e.key==='PageUp')){e.preventDefault();navSong(e.key==='PageDown'?1:-1)}
 });
 document.addEventListener('click',async e=>{
+ // 코드 차트 셀 탭 → 고치기 (편집기에서만)
+ const cc=e.target.closest('[data-cc]');
+ if(cc&&!cc.closest('#modal')){const r0=route();const s0=svcById(r0.a);const it0=s0&&curItem(s0);
+  if(s0&&it0&&it0.chart&&r0.name==='edit'){chartCellModal(s0,it0,cc.dataset.cc);return}}
  const el=e.target.closest('[data-act]');if(!el||el.closest('#modal'))return;const act=el.dataset.act;const r=route();const svc=svcById(el.dataset.id||r.a);
  switch(act){
   case 'home':go('home');break;
@@ -2203,6 +2264,9 @@ document.addEventListener('click',async e=>{
    $('#modal').onclick=ev=>{const b=ev.target.closest('[data-m]');if(!b)return;closeModal();if(b.dataset.m==='lib'){libraryModal();return}const proxy=document.querySelector(`.more-hide [data-act="${b.dataset.m}"]`);if(proxy)proxy.click()};break}
   case 'nav-lib':libraryModal();break;
   case 'inbox':inboxModal();break;
+  case 'chart-tab':{PL.chart=!PL.chart;try{localStorage.setItem('conti-chart',PL.chart?'1':'')}catch(e2){}render();break}
+  case 'chart-del':{const s2=svcById(route().a);const it2=s2&&curItem(s2);if(!it2||!it2.chart)break;
+   if(!confirm('이 곡의 코드 차트를 지울까요? 악보와 마커는 그대로예요.'))return;delete it2.chart;touch(s2);syncLib(it2);save();render();break}
   case 'reh-add':{const s2=svcById(route().a);if(s2)rehAddModal(s2);break}
   case 'reh-menu':{const s2=svcById(route().a);const r2=(REH.bySvc[s2&&s2.id]||[]).find(x=>x.id===el.dataset.id);if(s2&&r2)rehMenu(s2,r2);break}
   case 'reh-play':{const s2=svcById(route().a);const r2=(REH.bySvc[s2&&s2.id]||[]).find(x=>x.id===el.dataset.id);if(s2&&r2)rehPlayer(s2,r2);break}
