@@ -2028,10 +2028,13 @@ let SEL={};// editor selection: {sid:{item,tool}}
 const SCROLL={};function keepScroll(){SCROLL.sheet=($('#sheetwrap')||{}).scrollTop||0;SCROLL.bodies=$$('.pbody').map(b=>b.scrollTop)}
 function restoreScroll(){const sw=$('#sheetwrap');if(sw&&SCROLL.sheet)sw.scrollTop=SCROLL.sheet;$$('.pbody').forEach((b,i)=>{if(SCROLL.bodies&&SCROLL.bodies[i])b.scrollTop=SCROLL.bodies[i]})}
 let lastRoute='';
+// 화면 그리기는 중간에 서버를 기다린다. 그 사이 다른 화면으로 옮겨갔으면 늦게 끝난 쪽이 덮어쓰지 않도록 표를 확인한다
+let RENDER_SEQ=0;
 async function render(){
+ const my=++RENDER_SEQ;const stale=()=>my!==RENDER_SEQ;
  const r=route();const app=$('#app');app.classList.remove('stage');const same=lastRoute===location.hash;lastRoute=location.hash;if(same)keepScroll();else{SCROLL.sheet=0;SCROLL.bodies=null}
  // §4.6 목회자 링크: 로그인 없이 여는 페이지
- if(r.name==='word-link'&&r.a){app.innerHTML='<div class="empty" style="margin:40px auto;max-width:420px"><b>여는 중…</b></div>';app.innerHTML=await wordLinkHTML(r.a);afterWordLink(r.a);return}
+ if(r.name==='word-link'&&r.a){app.innerHTML='<div class="empty" style="margin:40px auto;max-width:420px"><b>여는 중…</b></div>';const h=await wordLinkHTML(r.a);if(stale())return;app.innerHTML=h;afterWordLink(r.a);return}
  if(online()){
   if(!NET.user){app.innerHTML=loginHTML();afterGate();return}
   if(r.name==='join'){app.innerHTML=joinHTML(r.a);afterGate();return}
@@ -2041,23 +2044,27 @@ async function render(){
  if(r.name!=='view')VF.draft=false;
  if(/^(edit|view|play)$/.test(r.name)){let svc=svcById(r.a);
   if(!svc&&online()){app.innerHTML=`<div class="empty" style="margin:40px auto;max-width:420px"><b>콘티를 받는 중…</b>팀 서버에서 발행본을 내려받고 있어요.</div>`;try{svc=await SYNC.pullService(r.a)}catch(e){toast(e.message)}}
+  if(stale())return;
   if(!svc)return go('home');
   if(online()&&(!same||!SYNC.pulledAt[svc.id]))await SYNC.pullNotes(svc);
+  if(stale())return;
   if(online()&&!same){try{const wd=await api('/services/'+svc.id+'/word?team='+S.team.id);
    if(!WORD_DIRTY)svc.word=wd.word||null;   // 편집 중이면 덮어쓰지 않는다
    if(wd.readRev){S.readRev=S.readRev||{};S.readRev[svc.id]=Math.max(S.readRev[svc.id]||0,wd.readRev)}}catch(e){}}
+  if(stale())return;
   if(online()&&r.name==='view'&&!REH.at[svc.id])await pullRehearsals(svc.id);
   else if(online()&&r.name==='view'&&!same)pullRehearsals(svc.id).then(ch=>{if(ch&&route().name==='view')render()});
   if(online()&&r.name==='view'&&!SCH.at)pullSchedule(monthKey(),true).catch(()=>{});
   await preload(svc);
-  if(r.name==='edit'){if(online()&&!same&&isLeader()){try{await SYNC.pullDraft(svc)}catch(e){}}app.innerHTML=editorHTML(svc);afterEditor(svc);restoreScroll();return}
-  if(r.name==='view'){app.innerHTML=viewerHTML(svc);if(!same&&msgUnread(svc))setTimeout(()=>messageSheet(svc,true),150);return}
+  if(stale())return;
+  if(r.name==='edit'){if(online()&&!same&&isLeader()){try{await SYNC.pullDraft(svc)}catch(e){}}if(stale())return;app.innerHTML=editorHTML(svc);afterEditor(svc);restoreScroll();return}
+  if(r.name==='view'){app.innerHTML=viewerHTML(svc);restoreScroll();if(!same&&msgUnread(svc))setTimeout(()=>{if(!stale())messageSheet(svc,true)},150);return}
   app.innerHTML=playHTML(svc,+r.b||0);afterPlay(svc,+r.b||0);restoreScroll();return}
  // §4.2 말씀 탭 (목회자·인도자)
  if(r.name==='word'){
   if(!online()||!S.team.id)return go('home');
   if(!isLeader()&&!isPastor())return go('home');
-  if(!WORDS.at){app.innerHTML='<div class="empty" style="margin:40px auto;max-width:420px"><b>말씀을 받는 중…</b></div>';await pullWords(true)}
+  if(!WORDS.at){app.innerHTML='<div class="empty" style="margin:40px auto;max-width:420px"><b>말씀을 받는 중…</b></div>';await pullWords(true);if(stale())return}
   else if(!same)pullWords().then(ch=>{if(ch&&route().name==='word')render()});
   app.innerHTML=wordTabHTML(r.a);
   $$('[data-wsel]').forEach(el2=>el2.onclick=()=>go('word/'+el2.dataset.wsel));
@@ -2068,7 +2075,7 @@ async function render(){
   if(r.name!=='lineup'&&r.a&&/^\d{4}-\d{2}$/.test(r.a))SCH.month=r.a;
   const need=!SCH.at||(r.name!=='lineup'&&SCH.month!==(r.a&&/^\d{4}-\d{2}$/.test(r.a)?r.a:SCH.month));
   const missing=r.name==='lineup'&&!SCH.dates.some(x=>x.id===r.a);   // 방금 생긴 날짜면 캐시에 없으니 다시 받는다
-  if(!SCH.at||missing||!SCH.dates.length){app.innerHTML=`<div class="empty" style="margin:40px auto;max-width:420px"><b>일정을 받는 중…</b></div>`;await pullSchedule(SCH.month||monthKey(),true)}
+  if(!SCH.at||missing||!SCH.dates.length){app.innerHTML=`<div class="empty" style="margin:40px auto;max-width:420px"><b>일정을 받는 중…</b></div>`;await pullSchedule(SCH.month||monthKey(),true);if(stale())return}
   else if(!same)pullSchedule(SCH.month||monthKey(),true).then(ch=>{if(ch&&/^(cal|sched|lineup)$/.test(route().name))render()});   // 화면에 들어올 때는 캐시를 무시하고 다시 받는다
   if(r.name==='sched'&&!isLeader())return go('cal');
   if(r.name==='lineup'&&!isLeader())return go('cal');

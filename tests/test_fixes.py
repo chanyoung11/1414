@@ -127,6 +127,16 @@ def run():
         if pg.evaluate('CONTI.S.services.find(s=>s.id===%s).name' % json.dumps(svcX)) != 'X팀 예배(파일)': fail('확인창 수락 시 덮어쓰기가 안 됨')
         print('import safety ok', len(ids), 'services')
 
+        # ---- 느린 화면이 나중에 그려져 이동한 화면을 덮지 않는지 (render 경쟁) ----
+        pg.goto(URL + '#/home'); pg.wait_for_selector('.hd', timeout=10000)
+        pg.route('**/api/services/**', lambda route: (time.sleep(2.5), route.continue_()))
+        pg.evaluate("location.hash='#/view/' + %s" % json.dumps(svcX)); pg.wait_for_timeout(300)
+        pg.evaluate("location.hash='#/home'"); pg.wait_for_timeout(5000)
+        pg.unroute('**/api/services/**')
+        if pg.locator('.hd').count() == 0: fail('홈으로 갔는데 느린 콘티 화면이 덮어씀: ' + pg.locator('#app').inner_html()[:120])
+        if not pg.url.endswith('#/home'): fail('주소가 홈이 아님: ' + pg.url)
+        print('render race ok')
+
         # ---- 크론 인증 ----
         cr = ctx.request.get(URL + 'api/cron/dates', headers={'x-vercel-cron': '1'})
         if cr.status != 403: fail('위조 크론 헤더가 통과함: %s' % cr.status)
