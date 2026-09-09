@@ -503,6 +503,9 @@ html.dark .msgbody{background:#1C1C1C}
 .nrow{display:flex;gap:5px;align-items:center;padding:4px 0;border-bottom:1px solid var(--line2);flex-wrap:wrap}
 .nrow .field{padding:4px 6px;font-size:13px}
 .nrow .q.sm{padding:2px 8px;font-size:12px;min-width:0}
+.m.fixed{box-shadow:0 0 0 1px var(--card),0 0 0 2px currentColor;opacity:.95}
+.ovbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 12px;margin-bottom:10px;border-radius:var(--r-lg);background:var(--amber-soft);color:var(--amber);font-size:12.5px}
+.ovbar .hint{color:inherit;opacity:.75}
 /* ---------- 라이브러리 (A부) ---------- */
 .libpage{max-width:900px;margin:0 auto;padding:4px 0 40px}
 .filters{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px}
@@ -746,8 +749,15 @@ function editorHTML(svc){
   </div>
  </div>`;
 }
+// 명세 A.1.2: 예배에서 고친 값이 있으면 알려 주고, 곡에 반영하거나 되돌릴 수 있게
+function ovBarHTML(it){const keys=ovKeys(it);if(!keys.length||!arrOfItem(it))return '';
+ const L={key:'키',mod:'전조',form:'송폼',songNote:'곡 메모',pieces:'악보',media:'미디어',chart:'코드 차트',score:'악보 데이터'};
+ return `<div class="ovbar"><span class="grow">라이브러리 편곡과 다름 <span class="hint">${keys.map(k=>L[k]||k).join(' · ')}</span></span>
+  <button class="btn sm" data-act="ov-apply">${ic('check')}곡에 반영</button><button class="btn sm ghost" data-act="ov-revert">되돌리기</button></div>`}
+function paintOvBar(it){const box=$('#ovbar');if(box)box.innerHTML=ovBarHTML(it)}
 function itemEditorHTML(svc,it){const sel=SEL[svc.id]||(SEL[svc.id]={});
  return `<div>
+  <div id="ovbar">${ovBarHTML(it)}</div>
   <div class="row" style="gap:10px"><label class="titlewrap grow"><input class="titlein big" data-f="item.title" placeholder="곡 제목" value="${esc(it.title)}"><span class="penic">${ic('pen')}</span></label><button class="icon sm ghost" data-act="del-item" data-id="${it.id}" title="콘티에서 빼기">${ic('trash')}</button></div>
   <div class="row" style="margin-top:10px;gap:8px"><input class="pillin" data-f="item.key" placeholder="키" value="${esc(it.key)}"><span class="muted">–</span><input class="pillin" data-f="item.mod" placeholder="전조" value="${esc(it.mod||'')}"><span class="hint">곡 안에서 전조하면 전조 키에 (예: G – A)</span></div>
   <div class="lbl">송폼 <span class="hint">지금 쓰는 표기 그대로 한 줄</span></div>
@@ -875,10 +885,15 @@ function openComposer(svc,it,o){ // o: {marker, leader, t, mediaId}
  const m=o.marker?markerOf(it,o.marker):null;const mods=modsFor(it.form);
  const sessions=S.team.sessions;const my=me();
  let scope=o.leader?'all':'mine';let target=o.leader?'':my.session;
+ // 명세 A.6: 인도자는 "이 곡에 항상"이 기본, 멤버는 "이번 예배만"이 기본
+ let when=o.leader?'always':'once';
  const media=o.mediaId?it.media.find(x=>x.id===o.mediaId):null;
  modal(`<div class="row sb"><div class="row">${m?`<span class="mk">${esc(m.label)}</span><b style="font-size:17px">${esc(m.label)}에 메모</b><span class="pill">${esc(mods[m.label]||'섹션')}</span>`:`<b style="font-size:17px">${fmtT(o.t)}에 타임라인 메모</b>`}</div><button class="icon sm ghost" data-close="1">${ic('x')}</button></div>
   <div style="margin-top:12px">${S.team.phrases.map(p=>`<button class="q" data-p="${esc(p)}">${esc(p)}</button>`).join('')}</div>
   <div class="row" style="margin-top:4px"><input class="field grow" id="cText" placeholder="한 줄로. 24자 안에" maxlength="60" style="font-size:16px;padding:12px 14px"><span class="hint" id="cCnt">0/24</span></div>
+  ${arrOfItem(it)&&m?`<div class="lbl">언제까지</div>
+   <div id="cWhen"><button class="q ${o.leader?'on':''}" data-w2="always">이 곡에 항상</button><button class="q ${o.leader?'':'on'}" data-w2="once">이번 예배만</button></div>
+   <div class="hint" id="cWhenHint">${o.leader?'이 곡을 넣는 다음 예배에도 이 자리에 따라와요.':'이 예배에서만 보여요.'}</div>`:''}
   <div class="lbl">${o.leader?'대상':'범위'}</div>
   <div>${o.leader?`<button class="q ${target===''?'on':''}" data-s="">전체</button>`+sessions.filter(s=>s!=='인도자').map(s=>`<button class="q ${target===s?'on':''}" data-s="${esc(s)}">${esc(s)}</button>`).join('')
    :`<button class="q on" data-sc="mine">나만</button><button class="q" data-sc="session">${esc(my.session)}에 공유</button>`}</div>
@@ -891,10 +906,21 @@ function openComposer(svc,it,o){ // o: {marker, leader, t, mediaId}
   const pb=e.target.closest('[data-p]');if(pb){const p=pb.dataset.p;inp.value=inp.value?inp.value+' '+p:p;inp.dispatchEvent(new Event('input'));return}
   const sb=e.target.closest('[data-s]');if(sb){target=sb.dataset.s;$$('[data-s]').forEach(b=>b.classList.toggle('on',b.dataset.s===target));return}
   const scb=e.target.closest('[data-sc]');if(scb){scope=scb.dataset.sc;$$('[data-sc]').forEach(b=>b.classList.toggle('on',b.dataset.sc===scope));return}
+  const wb=e.target.closest('[data-w2]');if(wb){when=wb.dataset.w2;$$('[data-w2]').forEach(b=>b.classList.toggle('on',b.dataset.w2===when));
+   const h=$('#cWhenHint');if(h)h.textContent=when==='always'?'이 곡을 넣는 다음 예배에도 이 자리에 따라와요.':'이 예배에서만 보여요.';return}
   if(e.target.closest('#cSave')){const text=inp.value.trim();if(!text){inp.focus();return}
    const layer=o.leader?'leader':(scope==='session'?'session':'mine');const session=o.leader?(target||null):(scope==='session'?my.session:null);
    const note={id:uid(),layer,session,text,author:o.leader?'인도자':(my.name||'나'),at:Date.now()};
    const tSec=$('#cTime')?parseT($('#cTime').value):Math.round(o.t||0);
+   const arr=arrOfItem(it);
+   if(m&&when==='always'&&arr){   // 편곡에 붙여 다음 예배에도 따라오게 (명세 A.6.2)
+    api('/arrangements/'+arr.id+'/notes',{method:'POST',body:{teamId:S.team.id,markerLabel:m.label,
+     layer:layer==='leader'?'all':layer,session:session||undefined,text}})
+     .then(r=>{arr.notes=(arr.notes||[]).concat(r.note);save();LIB.detail=null})
+     .catch(err=>{toast('고정 메모를 저장하지 못했어요: '+err.message);it.notes.push({...note,marker:m.id});save()});
+    closeModal();toast('이 곡에 항상 남겨요');
+    if(route().name==='edit')render();else{redrawPlay();P.resumeIfPaused()}
+    return}
    if(m){it.notes.push({...note,marker:m.id});const also=$('#cAlsoT');if(also&&also.checked&&media)media.notes.push({...note,id:uid(),t:tSec,marker:m.id})}
    else if(media){media.notes.push({...note,t:tSec})}
    save();closeModal();toast('메모 저장');
@@ -1487,7 +1513,7 @@ function publishModal(svc){
   const only=e.target.closest('#pubOnly'),withFile=e.target.closest('#pubOk');if(only||withFile){if(WORD_DIRTY){clearTimeout(WORD_T);await saveWord(svc)}if(!(svc.name||'').trim()){svc.name=svcName(svc);const ti=$('.titlein');if(ti)ti.value=svc.name}const prevPub=svc.published,prevVer=svc.version,prevRev=svc.messageRev;const msg=(svc.message||'').trim();const prevMsg=svc.published?(svc.published.message||''):'';const wk=w=>w?[w.passage,w.title,w.line,w.memo,w.memoPublic?1:0].map(x=>String(x==null?'':x)).join(''):'';if(msg!==prevMsg||wk(svc.word)!==wk(svc.published&&svc.published.word))svc.messageRev=(svc.messageRev||0)+1;
    // 발행본에는 개인·세션 메모를 담지 않는다(메모는 서버에서 권한대로 따로 내려감). 말씀 메모도 뺀다
    const pubWord=svc.word?{...clone(svc.word),memo:svc.word.memoPublic?(svc.word.memo||''):''}:null;
-   svc.published={version:nextV,at:Date.now(),name:svc.name,date:svc.date,notice:svc.notice,message:msg,messageRev:svc.messageRev||0,word:pubWord,author:me().name||'인도자',items:clone(svc.items).map(it=>({...it,notes:undefined,media:(it.media||[]).map(m=>({...m,notes:undefined}))}))};S.readRev=S.readRev||{};S.readRev[svc.id]=svc.messageRev||0;save();closeModal();
+   svc.published={version:nextV,at:Date.now(),name:svc.name,date:svc.date,notice:svc.notice,message:msg,messageRev:svc.messageRev||0,word:pubWord,author:me().name||'인도자',items:clone(svc.items).map(it=>({...it,notes:undefined,fixedNotes:frozenFixed(it),media:(it.media||[]).map(m=>({...m,notes:undefined}))}))};S.readRev=S.readRev||{};S.readRev[svc.id]=svc.messageRev||0;save();closeModal();
    if(online()){toast('팀 서버에 올리는 중…');try{await SYNC.pushPublish(svc);toast('v'+nextV+' 발행 · 팀에 공유됐어요')}catch(err){if(err.code==='version_conflict'){svc.published=prevPub;svc.version=prevVer;svc.messageRev=prevRev;save();alert(err.message);try{await SYNC.pullService(svc.id)}catch(e2){}}else{svc.pubPending=true;save();toast('서버에 못 올렸어요. 홈에서 "서버에 다시 올리기"로 다시 시도하세요')}}}else toast('v'+nextV+' 발행');
    if(withFile)await exportJSON(svc.id);render()}
  };
@@ -1568,9 +1594,10 @@ function libraryPicker(svc){
   const it=newItem();
   Object.assign(it,{title:sg.title,key:a.key||'',mod:a.mod||'',form:a.form||'',songNote:a.songNote||'',
    pieces:clone(a.pieces||[]),media:clone(a.media||[]),chart:a.chart?clone(a.chart):undefined,
-   score:a.score?clone(a.score):undefined,songId:sg.id,arrId:a.id,libId:a.id});
+   score:a.score?clone(a.score):undefined});
   it.pieces.forEach(p=>{p.id=uid();(p.markers||[]).forEach(mk=>mk.id=uid());(p.hls||[]).forEach(h=>h.id=uid())});
   it.media.forEach(m=>{m.id=uid();m.notes=[]});
+  if(online()&&songById(sg.id))linkItemToArr(it,sg,a);else it.libId=a.id;
   svc.items.push(it);SEL[svc.id]={item:it.id,tool:'marker'};touch(svc);save();closeModal();render()};
 }
 
@@ -1921,7 +1948,7 @@ async function pullSongs(force){if(!online()||!S.team.id)return false;
   if(i<0){S.songs.push(s);changed=true}
   else if(!S.songs[i].dirty){S.songs[i]=s;changed=true}});
  (r.deleted||[]).forEach(id=>{const i=(S.songs||[]).findIndex(x=>x.id===id);if(i>=0){S.songs.splice(i,1);changed=true}});
- S.songsAt=r.now||S.songsAt;LIB.at=Date.now();if(changed)save();
+ S.songsAt=r.now||S.songsAt;LIB.at=Date.now();if(changed){refreshFromArr();save()}
  await songURLs();
  return changed}
 // 목록 썸네일은 url() 로 그리는데 그건 캐시만 본다. 미리 만들어 둔다
@@ -1944,6 +1971,78 @@ const arrSnap=(x)=>({key:x.key||'',mod:x.mod||'',form:x.form||'',songNote:x.song
  pieces:clone(x.pieces||[]),media:clone(x.media||[]).map(m=>({...m,notes:[]})),
  chart:x.chart||null,score:x.score||null});
 const sameSnap=(a,b)=>JSON.stringify(arrSnap(a))===JSON.stringify(b);
+/* 참조와 덮어쓰기 (명세 A.1.2)
+   예배의 곡은 편곡을 참조한다. 예배 안에서 고친 값만 it.ov 에 표시해 두고,
+   표시가 없는 값은 편곡이 바뀌면 따라 바뀐다. 발행본은 합쳐진 값을 그대로 담는다.
+   다만 편곡 쪽이 비어 있으면(처음 만드는 곡) 덮어쓰기로 치지 않고 편곡에 그대로 써 넣는다 —
+   새 곡의 악보·송폼을 콘티에서 처음 채우는 흐름을 막지 않으려고. */
+const OV_FIELDS=['key','mod','form','songNote','pieces','media','chart','score'];
+const ovEmpty=v=>Array.isArray(v)?!v.length:!v;
+// 라이브러리에서 넣을 때 조각·미디어의 id 를 새로 매기므로, 견줄 때는 id 와 메모를 뺀다
+const OV_STRIP=new Set(['id','notes','ocr','ocrErr','ocrMode']);
+function ovClean(v){
+ if(Array.isArray(v))return v.map(ovClean);
+ if(v&&typeof v==='object'){const o={};Object.keys(v).sort().forEach(k=>{if(!OV_STRIP.has(k))o[k]=ovClean(v[k])});return o}
+ return v===undefined?null:v}
+const ovSame=(a,b)=>JSON.stringify(ovClean(a==null?null:a))===JSON.stringify(ovClean(b==null?null:b));
+const ovOf=it=>(it&&it.ov)||{};
+const ovKeys=it=>Object.keys(ovOf(it)).filter(k=>ovOf(it)[k]);
+const arrOfItem=it=>{const sg=it&&it.songId?songById(it.songId):null;
+ return sg&&it.arrId?(sg.arrangements||[]).find(a=>a.id===it.arrId):null};
+// 값 하나의 짧은 지문. 마지막으로 맞춰 둔 편곡 값을 기억해 두려고 (it.bs)
+function ovSig(v){const t=JSON.stringify(ovClean(v==null?null:v));let h=2166136261;
+ for(let i=0;i<t.length;i++){h^=t.charCodeAt(i);h=Math.imul(h,16777619)}
+ return (h>>>0).toString(36)}
+const arrVal=(a,k)=>k==='pieces'||k==='media'?(a[k]||[]):(a[k]||(k==='chart'||k==='score'?null:''));
+// 편곡이 바뀌면 예배에서 안 고친 값만 따라 바꾼다. 세 갈래로 본다:
+//   예배 쪽이 마지막으로 맞춘 값과 다르면 → 예배에서 고친 것 (덮어쓰기로 표시)
+//   편곡 쪽이 마지막으로 맞춘 값과 다르면 → 라이브러리에서 고친 것 (따라 바꾼다)
+function refreshFromArr(){let changed=false;
+ for(const sv of S.services){for(const it of (sv.items||[])){
+  const a=arrOfItem(it);if(!a)continue;
+  it.bs=it.bs||{};it.ov=it.ov||{};
+  for(const k of OV_FIELDS){
+   const av=arrVal(a,k);const sArr=ovSig(av),sCur=ovSig(it[k]);
+   if(it.bs[k]==null){it.bs[k]=sArr;if(sCur!==sArr&&!ovEmpty(av)){it.ov[k]=true;changed=true}continue}
+   if(sCur!==it.bs[k]){if(!ovEmpty(av)&&!it.ov[k]){it.ov[k]=true;changed=true}continue}
+   if(sArr===it.bs[k])continue;
+   // 조각·미디어를 통째로 갈아 끼우면 id 가 바뀌어 메모가 붙은 마커가 끊긴다.
+   // 갯수가 같으면 id 는 두고 안쪽만 맞춘다
+   const nv=clone(av);
+   if((k==='pieces'||k==='media')&&Array.isArray(it[k])&&it[k].length===nv.length){
+    nv.forEach((x,i)=>{const keepId=it[k][i].id;const keepNotes=it[k][i].notes;
+     nv[i]={...x,id:keepId,...(k==='media'?{notes:keepNotes||[]}:{})}});
+   }
+   it[k]=nv;it.bs[k]=sArr;changed=true}}}
+ if(changed)save();
+ return changed}
+// 예배에서 고친 값을 편곡에 밀어 넣는다 ("곡에 반영")
+async function applyToArr(svc,it){
+ const a=arrOfItem(it);if(!a){toast('라이브러리에 연결된 곡이 아니에요');return}
+ const keys=ovKeys(it);if(!keys.length)return;
+ const body={};keys.forEach(k=>body[k]=k==='media'?clone(it[k]||[]).map(m=>({...m,notes:[]})):clone(it[k]));
+ try{await api('/arrangements/'+a.id,{method:'PATCH',body:{teamId:S.team.id,...body}});
+  Object.assign(a,body);it.ov={};it.bs=it.bs||{};keys.forEach(k=>it.bs[k]=ovSig(arrVal(a,k)));
+  touch(svc);save();refreshFromArr();render();toast('라이브러리 곡에 반영했어요')}
+ catch(e){toast(e.message)}}
+// 편곡 값으로 되돌린다 ("되돌리기")
+function revertToArr(svc,it){
+ const a=arrOfItem(it);if(!a)return;
+ it.ov={};it.bs=it.bs||{};
+ OV_FIELDS.forEach(k=>{it[k]=clone(arrVal(a,k));it.bs[k]=ovSig(arrVal(a,k))});
+ touch(svc);save();render();toast('라이브러리 곡의 값으로 되돌렸어요')}
+// 예배에서 값을 고쳤을 때 부른다. 편곡 쪽이 비어 있으면 덮어쓰기로 치지 않는다
+function linkItemToArr(it,sg,a){
+ it.songId=sg.id;it.arrId=a.id;it.libId=a.id;it.ov={};it.bs={};
+ OV_FIELDS.forEach(k=>it.bs[k]=ovSig(arrVal(a,k)));
+ return it}
+function markOverride(it,k){
+ if(!it||!OV_FIELDS.includes(k))return;
+ const a=arrOfItem(it);if(!a)return;
+ const av=arrVal(a,k);it.ov=it.ov||{};it.bs=it.bs||{};
+ if(ovEmpty(av)){delete it.ov[k];return}   // 편곡이 비어 있으면 그대로 편곡에 써 넣는다
+ if(ovSig(it[k])===ovSig(av)){delete it.ov[k];it.bs[k]=ovSig(av)}else it.ov[k]=true}
+
 // 콘티에서 고친 것을 라이브러리 편곡에 반영한다. 글자마다 부르면 같은 곡이 여러 번 만들어지므로
 // 라이브러리 올리기와 같은 디바운스 자리에서 한 번에 민다
 let PUSH_SONGS=false;
@@ -1957,12 +2056,21 @@ async function pushSongs(){
     const snap=arrSnap(it);
     if(it.arrId){
      const sg=songById(it.songId);const a=sg&&(sg.arrangements||[]).find(x=>x.id===it.arrId);
-     if(!a||sameSnap(a,snap))continue;
-     try{await api('/arrangements/'+it.arrId,{method:'PATCH',body:{teamId:S.team.id,...snap}});Object.assign(a,snap);changed=true}
+     if(!a)continue;
+     // 편곡이 아직 비어 있는 값만 채운다. 예배에서 고친 값(ov)은 "곡에 반영"을 눌러야 올라간다
+     const body={};const ov=ovOf(it);it.bs=it.bs||{};
+     for(const k of OV_FIELDS){
+      if(ov[k])continue;
+      const av=arrVal(a,k);
+      if(ovEmpty(av)&&!ovEmpty(snap[k])&&ovSig(av)!==ovSig(snap[k]))body[k]=snap[k];
+      else if(!ovEmpty(av)&&ovSig(av)!==ovSig(snap[k])){it.ov=it.ov||{};it.ov[k]=true;changed=true}}
+     if(!Object.keys(body).length)continue;
+     try{await api('/arrangements/'+it.arrId,{method:'PATCH',body:{teamId:S.team.id,...body}});
+      Object.assign(a,body);Object.keys(body).forEach(k=>it.bs[k]=ovSig(arrVal(a,k)));changed=true}
      catch(e){if(e.status===404){delete it.arrId;delete it.songId}else console.warn('arr push',e.message)}
     }else{
      try{const r=await api('/songs',{method:'POST',body:{teamId:S.team.id,title:it.title,origKey:it.key||'',...snap}});
-      S.songs.push(r.song);it.songId=r.song.id;it.arrId=(r.song.arrangements[0]||{}).id;it.libId=it.arrId;changed=true}
+      S.songs.push(r.song);linkItemToArr(it,r.song,r.song.arrangements[0]||{});changed=true}
      catch(e){console.warn('song create',e.message);return false}
     }
    }
@@ -2060,8 +2168,11 @@ function libraryHTML(){
 /* ---------- 곡 상세 ---------- */
 async function pullSong(id){if(!online()||!S.team.id)return null;
  try{const r=await api('/songs/'+id+'?team='+S.team.id);await SYNC.fetchBlobs(r.blobs);
-  scrubIds(r.song);const i=(S.songs||[]).findIndex(x=>x.id===id);
-  if(i>=0)S.songs[i]={...S.songs[i],...r.song};else S.songs.push(r.song);save();await songURLs();
+  scrubIds(r.song);
+  // 상세는 고정 메모를 따로 내려준다. 편곡에 도로 붙여야 콘티 화면에서도 띠에 그려진다
+  (r.song.arrangements||[]).forEach(a=>{a.notes=(r.notes||[]).filter(n=>n.arrangementId===a.id)});
+  const i=(S.songs||[]).findIndex(x=>x.id===id);
+  if(i>=0)S.songs[i]={...S.songs[i],...r.song};else S.songs.push(r.song);save();refreshFromArr();await songURLs();
   LIB.detail={...r,at:Date.now()};return LIB.detail}
  catch(e){toast(e.message);return null}}
 function songHTML(s){const lead=isLeader();const d=LIB.detail||{};const arrs=s.arrangements||[];
@@ -2157,10 +2268,12 @@ function addToServiceSheet(songIds,arrPick){
   $$('[data-atsk]').forEach(i=>sel.key[i.dataset.atsk]=i.value.trim());
   ids.forEach(id=>{const s=songById(id);if(!s)return;const a=arrById(s,sel.arr[id]);
    const it=newItem();
-   Object.assign(it,{title:s.title,key:sel.key[id]!=null&&sel.key[id]!==''?sel.key[id]:(a.key||''),mod:a.mod||'',
-    form:a.form||'',songNote:a.songNote||'',pieces:clone(a.pieces||[]),media:clone(a.media||[]),
-    chart:a.chart?clone(a.chart):undefined,score:a.score?clone(a.score):undefined,
-    songId:s.id,arrId:a.id,libId:a.id});
+   Object.assign(it,{title:s.title,mod:a.mod||'',form:a.form||'',songNote:a.songNote||'',
+    key:a.key||'',pieces:clone(a.pieces||[]),media:clone(a.media||[]),
+    chart:a.chart?clone(a.chart):undefined,score:a.score?clone(a.score):undefined});
+   linkItemToArr(it,s,a);
+   // 키를 여기서 바꿨으면 이 예배에서만 바뀐 값이다
+   const k2=sel.key[id];if(k2!=null&&k2!==''&&k2!==(a.key||'')){it.key=k2;it.ov.key=true}
    svc.items.push(it)});
   SEL[svc.id]=SEL[svc.id]||{};SEL[svc.id].item=svc.items[svc.items.length-1].id;
   touch(svc);save();closeModal();
@@ -3051,6 +3164,21 @@ function ytStart(u){const m=(u||'').match(/[?&#]t=(\d+)/);return m?+m[1]:0}
 
 /* ---------- notes ---------- */
 function notesOfMarker(item,mid){return (item.notes||[]).filter(n=>n.marker===mid)}
+// 발행할 때 그 시점의 고정 메모를 굳혀 둔다
+function frozenFixed(it){const a=arrOfItem(it);return a&&(a.notes||[]).length?clone(a.notes):undefined}
+// 편곡에 붙은 고정 메모 중 이 마커와 라벨이 같은 것. 라벨은 정확히 일치해야 한다 (A≠A1)
+// 발행본에는 발행 시점의 것이 굳어 있으니 그것을 먼저 본다
+function fixedNotesOf(item,mid,ctx){
+ const a=item.fixedNotes?{notes:item.fixedNotes}:arrOfItem(item);
+ if(!a||!(a.notes||[]).length)return [];
+ const m=markerOf(item,mid);if(!m)return [];
+ return a.notes.filter(n=>n.markerLabel===m.label).map(n=>({
+  id:'fx-'+n.id,layer:n.layer==='all'?'leader':n.layer,session:n.session||null,
+  text:n.text,author:n.authorName||'',fixed:true,authorId:n.authorId}))
+  .filter(n=>{if(!ctx||ctx.mode==='edit')return true;
+   if(n.layer==='leader')return ctx.f.leader&&(!n.session||n.session===ctx.session);
+   if(n.layer==='session')return ctx.f.session&&n.session===ctx.session;
+   return ctx.f.mine&&n.authorId===(NET.user||{}).id})}
 function noteVisible(n,ctx){ // ctx: {mode:'edit'|'play', session, f:{leader,session,mine}}
  if(ctx.mode==='edit')return true;
  const my=me().name;
@@ -3059,7 +3187,8 @@ function noteVisible(n,ctx){ // ctx: {mode:'edit'|'play', session, f:{leader,ses
  if(n.layer==='mine')return ctx.f.mine&&n.author===my;
  return false;
 }
-function noteChip(n){const all=n.layer==='leader'&&!n.session;const who=n.layer==='leader'?(n.session||'전체'):n.layer==='session'?(n.session||'세션'):'나';return `<span class="m ${n.layer}${all?' all':''}" data-note="${n.id}" title="${esc(n.text)}"><span class="who">${esc(who)}</span>${esc(n.text)}</span>`}
+function noteChip(n){const all=n.layer==='leader'&&!n.session;const who=n.layer==='leader'?(n.session||'전체'):n.layer==='session'?(n.session||'세션'):'나';
+ return `<span class="m ${n.layer}${all?' all':''}${n.fixed?' fixed':''}" data-note="${n.id}" title="${esc(n.text)}${n.fixed?' — 이 곡에 항상':''}"><span class="who">${esc(who)}</span>${esc(n.text)}</span>`}
 
 /* ---------- sheet renderer ---------- */
 function sheetHTML(item,W,ctx){
@@ -3067,7 +3196,7 @@ function sheetHTML(item,W,ctx){
  const pieces=item.pieces||[];
  pieces.forEach((p,pi)=>{
   const s=W/p.w;const notesBy={};
-  (p.markers||[]).forEach(m=>{notesBy[m.id]=notesOfMarker(item,m.id).filter(n=>noteVisible(n,ctx))});
+  (p.markers||[]).forEach(m=>{notesBy[m.id]=fixedNotesOf(item,m.id,ctx).concat(notesOfMarker(item,m.id).filter(n=>noteVisible(n,ctx)))});
   const stripMarkers=(p.markers||[]).filter(m=>m.cut!=null&&notesBy[m.id].length>0).sort((a,b)=>a.cut-b.cut);
   const bounds=[0,...stripMarkers.map(m=>m.cut),p.h];
   html+=`<div class="piece" data-piece="${p.id}">`;
@@ -3252,7 +3381,8 @@ function afterEditor(svc){
    clearTimeout(WORD_T);WORD_T=setTimeout(()=>saveWord(svc),900);const s=$('#wSaved');if(s)s.textContent='저장 중…';return}
   const f=e.target.dataset.f;if(!f)return;const it=curItem(svc);
   if(f==='svc.name')svc.name=e.target.value;else if(f==='svc.date')svc.date=e.target.value;else if(f==='svc.notice')svc.notice=e.target.value;else if(f==='svc.message'){svc.message=e.target.value;autoGrow(e.target)}
-  else if(it){const k=f.split('.')[1];it[k]=e.target.value;if(k==='form'){$('#formchips').innerHTML=chipsHTML(it.form,'t');autoGrow(e.target)}if(k==='title'){const tab=$$('.ptab .tab').find(t=>t.textContent==='곡 편집');const sub=tab&&tab.parentElement.querySelector('.sub');if(sub)sub.textContent=it.title||'(제목 없음)'}if(k==='key')drawEditorSheet(svc);if(k==='title'||k==='key'||k==='mod'){const li=$$('.list-item').find(l=>l.dataset.id===it.id);if(li){const t=li.querySelector('.grow'),k=li.querySelector('.k');if(t)t.textContent=it.title||'(제목 없음)';if(k)k.textContent=keyStr(it)}}syncLib(it)}
+  else if(it){const k=f.split('.')[1];it[k]=e.target.value;if(k==='form'){$('#formchips').innerHTML=chipsHTML(it.form,'t');autoGrow(e.target)}if(k==='title'){const tab=$$('.ptab .tab').find(t=>t.textContent==='곡 편집');const sub=tab&&tab.parentElement.querySelector('.sub');if(sub)sub.textContent=it.title||'(제목 없음)'}if(k==='key')drawEditorSheet(svc);if(k==='title'||k==='key'||k==='mod'){const li=$$('.list-item').find(l=>l.dataset.id===it.id);if(li){const t=li.querySelector('.grow'),k=li.querySelector('.k');if(t)t.textContent=it.title||'(제목 없음)';if(k)k.textContent=keyStr(it)}}
+   markOverride(it,k);paintOvBar(it);syncLib(it)}
   svc.version=Math.max(svc.version,(svc.published?svc.published.version:0));touch(svc);save()};
  app.onchange=async e=>{
   if(e.target.dataset.md){const it=curItem(svc);const md=it&&it.media.find(x=>x.id===e.target.dataset.id);if(!md)return;const v=e.target.value.trim();md[e.target.dataset.md]=v?parseT(v):0;if(md.end&&md.start&&md.end<=md.start){md.end=0;e.target.value='';toast('끝은 시작보다 뒤여야 해요')}touch(svc);save();syncLib(it);return}
@@ -3513,6 +3643,12 @@ document.addEventListener('click',async e=>{
   case 'team':go('team');break;
   /* ---- 라이브러리 (A부) ---- */
   case 'lib-back':go('library');break;
+  case 'ov-apply':{const sv=svcById(r.a);const it=curItem(sv);if(!it)break;
+   if(!confirm('이 곡을 쓰는 다른 미발행 예배에도 반영돼요. 계속할까요?'))break;
+   await applyToArr(sv,it);break}
+  case 'ov-revert':{const sv=svcById(r.a);const it=curItem(sv);if(!it)break;
+   if(!confirm('이 예배에서 고친 것을 버리고 라이브러리 값으로 되돌릴까요?'))break;
+   revertToArr(sv,it);break}
   case 'lib-clear':LIB.q='';render();break;
   case 'lib-new':newSongModal(false);break;
   case 'lib-merge':mergeModal();break;
@@ -3709,7 +3845,7 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
  if(!online()&&!me().name){setTimeout(()=>{render();settingsModal()},0)}else render();
  if(online()&&S.team.id){SYNC.pullServices().then(ch=>{if(ch)render()});SYNC.pullLibrary()}
  probeOmr();startNotiPoll();
- window.CONTI={LIB,pullSongs,pushSongs,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go};
+ window.CONTI={fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go};
 })();
 })();
 </script>

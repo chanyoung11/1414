@@ -987,8 +987,13 @@ on('GET', '/songs', async ({ uid, url }) => {
     : await q('select * from songs where team_id=$1 order by updated_at asc', [teamId]);
   const arrs = await q('select * from arrangements where team_id=$1 and deleted_at is null order by is_default desc, created_at asc', [teamId]);
   const stats = await songStats(teamId);
+  const fixed = arrs.length ? await q(`select id, arrangement_id as "arrangementId", marker_label as "markerLabel", layer, session,
+      author_id as "authorId", author_name as "authorName", text from arrangement_notes where arrangement_id = any($1::uuid[])`,
+    [arrs.map((a) => a.id)]) : [];
+  const notesBy = {};
+  for (const n of fixed) (notesBy[n.arrangementId] = notesBy[n.arrangementId] || []).push(n);
   const byId = {};
-  for (const a of arrs) (byId[a.song_id] = byId[a.song_id] || []).push(arrView(a));
+  for (const a of arrs) (byId[a.song_id] = byId[a.song_id] || []).push({ ...arrView(a), notes: notesBy[a.id] || [] });
   const ids = [...new Set(arrs.flatMap(arrBlobIds))];
   const blobs = ids.length ? await q('select id, url, pathname from blobs where team_id=$1 and id = any($2::text[])', [teamId, ids]) : [];
   return {
