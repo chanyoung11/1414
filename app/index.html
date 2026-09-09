@@ -1104,7 +1104,7 @@ function rehMenu(svc,r){
  }catch(err){toast(err.message)}}}
 
 /* ---------- §3 편성 스케줄링: 내 일정(달력) · 편성 표 · 그날 편성 ---------- */
-const SCH={dates:[],availability:[],members:[],role:'',month:'',at:0,onlyUnset:false};
+const SCH={dates:[],availability:[],members:[],role:'',month:'',at:0,onlyUnset:false,seq:0};
 const AVN={unset:{sym:'·',cls:'a-unset',label:'미선택'},ok:{sym:'●',cls:'a-ok',label:'가능'},maybe:{sym:'◐',cls:'a-maybe',label:'보류'},no:{sym:'○',cls:'a-no',label:'불가능'}};
 const AVNEXT={unset:'ok',ok:'maybe',maybe:'no',no:'unset'};
 const monthKey=d=>String(d||today()).slice(0,7);
@@ -1119,7 +1119,11 @@ async function pullSchedule(month,force){const k=month||SCH.month||monthKey();
  if(!online()||!S.team.id)return false;
  if(!force&&SCH.month===k&&Date.now()-SCH.at<15000)return false;
  const [a]=monthRange(monthAdd(k,-1)),[,b]=monthRange(monthAdd(k,2));
- try{const r=await api(`/teams/${S.team.id}/schedule?from=${a}&to=${b}`);SCH.dates=r.dates||[];SCH.availability=r.availability||[];SCH.members=r.members||[];SCH.role=r.role||'';SCH.month=k;SCH.at=Date.now();return true}catch(e){toast(e.message);return false}}
+ const seq=SCH.seq;   // 받는 동안 내가 뭔가 저장했으면, 오래된 응답으로 덮지 않는다
+ try{const r=await api(`/teams/${S.team.id}/schedule?from=${a}&to=${b}`);
+  if(seq!==SCH.seq)return false;
+  SCH.dates=r.dates||[];SCH.availability=r.availability||[];SCH.members=r.members||[];SCH.role=r.role||'';SCH.month=k;SCH.at=Date.now();return true}
+ catch(e){toast(e.message);return false}}
 // 내 일정 달력 (§3.2). 이번 달 ~ +2개월, 사역 날짜만 활성
 function calHTML(){const k=SCH.month||monthKey();const me0=me();const lead=isLeader();
  const [y,mo]=k.split('-').map(Number);const first=new Date(Date.UTC(y,mo-1,1));const days=new Date(Date.UTC(y,mo,0)).getUTCDate();const pad=first.getUTCDay();
@@ -1148,7 +1152,7 @@ function calHTML(){const k=SCH.month||monthKey();const me0=me();const lead=isLea
    <div class="cal-leg">${Object.entries(AVN).map(([k2,v])=>`<span class="${v.cls}"><i>${v.sym}</i>${v.label}</span>`).join('')}<span class="hint">탭할 때마다 바뀌어요 · 보류·불가능은 꾹 눌러 메모</span></div>
   </main></div>
   <nav class="bnav"><button data-act="home">${ic('home')}예배</button><button data-act="inbox" style="position:relative">${ic('bell')}알림<i class="bdot" data-noti-dot ${NOTI.unread?'':'hidden'}></i></button><button class="on" data-act="cal">${ic('list')}일정</button>${isLeader()?`<button data-act="sched">${ic('users')}편성</button>`:''}</nav>`}
-async function setAv(date,state,memo){const me0=me();const prev=SCH.availability.find(a=>a.userId===me0.userId&&a.date===date);const before=prev?{...prev}:null;
+async function setAv(date,state,memo){SCH.seq++;const me0=me();const prev=SCH.availability.find(a=>a.userId===me0.userId&&a.date===date);const before=prev?{...prev}:null;
  SCH.availability=SCH.availability.filter(a=>!(a.userId===me0.userId&&a.date===date));
  if(state!=='unset')SCH.availability.push({userId:me0.userId,date,state,memo:memo!==undefined?memo:(before?before.memo:'')});
  render();
@@ -1214,7 +1218,7 @@ function lineupHTML(dateId){const d=SCH.dates.find(x=>x.id===dateId);
    <div class="row sb" style="margin-top:18px;gap:10px;flex-wrap:wrap"><span class="hint">${total}자리 중 ${filled}명 배정${notified&&changed?' · 통보 후 변경 있음':''}</span>
     <span class="row" style="gap:8px"><button class="btn sm" data-act="lkakao">${ic('export')}카톡용 복사</button><button class="btn pri" data-act="lnotify" ${notified&&!changed?'disabled':''}>${ic('send')}${notified?'변경 통보':'통보하기'}</button></span></div>
   </main></div></div>`}
-async function saveLineup(d){const sels=$$('[data-lsel]');const out=[];const seen=new Set();
+async function saveLineup(d){SCH.seq++;const sels=$$('[data-lsel]');const out=[];const seen=new Set();
  sels.forEach(s=>{const sess=s.dataset.lsel;const k=sess+':'+s.value;
   if(s.value&&seen.has(k)){s.value='';toast('같은 세션에 같은 사람을 두 번 넣을 수 없어요')}   // 한 세션에 중복 배정 방지
   else if(s.value)seen.add(k);
