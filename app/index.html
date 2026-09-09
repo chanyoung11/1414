@@ -2005,6 +2005,8 @@ const arrVal=(a,k)=>k==='pieces'||k==='media'?(a[k]||[]):(a[k]||(k==='chart'||k=
 function refreshFromArr(){let changed=false;
  for(const sv of S.services){for(const it of (sv.items||[])){
   const a=arrOfItem(it);if(!a)continue;
+  // 편곡이 그대로면 견줄 것이 없다. 예배 쪽 수정은 markOverride·pushSongs 가 잡는다
+  if(it.bs&&it.arrAt&&it.arrAt===a.updatedAt)continue;
   it.bs=it.bs||{};it.ov=it.ov||{};
   for(const k of OV_FIELDS){
    const av=arrVal(a,k);const sArr=ovSig(av),sCur=ovSig(it[k]);
@@ -2018,7 +2020,8 @@ function refreshFromArr(){let changed=false;
     nv.forEach((x,i)=>{const keepId=it[k][i].id;const keepNotes=it[k][i].notes;
      nv[i]={...x,id:keepId,...(k==='media'?{notes:keepNotes||[]}:{})}});
    }
-   it[k]=nv;it.bs[k]=sArr;changed=true}}}
+   it[k]=nv;it.bs[k]=sArr;changed=true}
+  it.arrAt=a.updatedAt}}
  if(changed)save();
  return changed}
 // 예배에서 고친 값을 편곡에 밀어 넣는다 ("곡에 반영")
@@ -2027,18 +2030,19 @@ async function applyToArr(svc,it){
  const keys=ovKeys(it);if(!keys.length)return;
  const body={};keys.forEach(k=>body[k]=k==='media'?clone(it[k]||[]).map(m=>({...m,notes:[]})):clone(it[k]));
  try{await api('/arrangements/'+a.id,{method:'PATCH',body:{teamId:S.team.id,...body}});
-  Object.assign(a,body);it.ov={};it.bs=it.bs||{};keys.forEach(k=>it.bs[k]=ovSig(arrVal(a,k)));
+  Object.assign(a,body);a.updatedAt=new Date().toISOString();
+  it.ov={};it.bs=it.bs||{};it.arrAt=a.updatedAt;keys.forEach(k=>it.bs[k]=ovSig(arrVal(a,k)));
   touch(svc);save();refreshFromArr();render();toast('라이브러리 곡에 반영했어요')}
  catch(e){toast(e.message)}}
 // 편곡 값으로 되돌린다 ("되돌리기")
 function revertToArr(svc,it){
  const a=arrOfItem(it);if(!a)return;
- it.ov={};it.bs=it.bs||{};
+ it.ov={};it.bs=it.bs||{};it.arrAt=a.updatedAt;
  OV_FIELDS.forEach(k=>{it[k]=clone(arrVal(a,k));it.bs[k]=ovSig(arrVal(a,k))});
  touch(svc);save();render();toast('라이브러리 곡의 값으로 되돌렸어요')}
 // 예배에서 값을 고쳤을 때 부른다. 편곡 쪽이 비어 있으면 덮어쓰기로 치지 않는다
 function linkItemToArr(it,sg,a){
- it.songId=sg.id;it.arrId=a.id;it.libId=a.id;it.ov={};it.bs={};
+ it.songId=sg.id;it.arrId=a.id;it.libId=a.id;it.ov={};it.bs={};it.arrAt=a.updatedAt;
  OV_FIELDS.forEach(k=>it.bs[k]=ovSig(arrVal(a,k)));
  return it}
 function markOverride(it,k){
@@ -2052,10 +2056,14 @@ function markOverride(it,k){
 // 라이브러리 올리기와 같은 디바운스 자리에서 한 번에 민다
 let PUSH_SONGS=false;
 async function pushSongs(){
- if(!online()||!isLeader()||!S.team.id||PUSH_SONGS)return false;
+ if(!online()||!isLeader()||!S.team.id)return false;
+ // 이미 밀고 있으면 그냥 돌아가지 말고 끝난 뒤 한 번 더 부른다 (그 사이 고친 것이 묻히지 않게)
+ if(PUSH_SONGS){clearTimeout(pushSongs.retry);pushSongs.retry=setTimeout(pushSongs,1200);return false}
  PUSH_SONGS=true;let changed=false;
  try{
-  for(const sv of S.services){
+  // 손댄 콘티만 본다. 전부 훑으면 콘티가 쌓일수록 저장할 때마다 조각을 통째로 복사하게 된다
+  const todo=S.services.filter(sv=>(sv.editedAt||0)!==(sv.songsPushedAt||0)||(sv.items||[]).some(it=>!it.arrId&&(it.title||'').trim()));
+  for(const sv of todo){
    for(const it of (sv.items||[])){
     if(!(it.title||'').trim())continue;
     const snap=arrSnap(it);
@@ -2071,16 +2079,23 @@ async function pushSongs(){
       else if(!ovEmpty(av)&&ovSig(av)!==ovSig(snap[k])){it.ov=it.ov||{};it.ov[k]=true;changed=true}}
      if(!Object.keys(body).length)continue;
      try{await api('/arrangements/'+it.arrId,{method:'PATCH',body:{teamId:S.team.id,...body}});
-      Object.assign(a,body);Object.keys(body).forEach(k=>it.bs[k]=ovSig(arrVal(a,k)));changed=true}
+      Object.assign(a,body);a.updatedAt=new Date().toISOString();
+      it.arrAt=a.updatedAt;Object.keys(body).forEach(k=>it.bs[k]=ovSig(arrVal(a,k)));changed=true}
      catch(e){if(e.status===404){delete it.arrId;delete it.songId}else console.warn('arr push',e.message)}
     }else{
+     // 제목이 같은 곡이 이미 있으면 새로 만들지 않고 그 곡에 잇는다.
+     // (이행 전에 만든 콘티가 기기에 남아 있다가 올라오면 같은 곡이 두 번 생긴다)
+     const tn=nrm(it.title);
+     const hit=(S.songs||[]).find(x=>!x.archived&&(x.titleNorm||nrm(x.title))===tn&&(x.arrangements||[]).length);
+     if(hit){linkItemToArr(it,hit,defArr(hit));changed=true;continue}
      try{const r=await api('/songs',{method:'POST',body:{teamId:S.team.id,title:it.title,origKey:it.key||'',...snap}});
       S.songs.push(r.song);linkItemToArr(it,r.song,r.song.arrangements[0]||{});changed=true}
      catch(e){console.warn('song create',e.message);return false}
     }
    }
   }
-  if(changed)save();
+  todo.forEach(sv=>{sv.songsPushedAt=sv.editedAt||0});
+  if(changed||todo.length)save();
  }finally{PUSH_SONGS=false}
  return changed}
 

@@ -89,6 +89,19 @@ def run():
     if draft != '바뀐 송폼': fail('초안은 따라와야 함: %r' % draft)
     print('published snapshot frozen ok')
 
+    # ---- 같은 제목의 곡이 두 번 만들어지지 않는다 (이행 전 콘티가 기기에 남아 있던 경우) ----
+    n0 = pg.evaluate("CONTI.S.songs.filter(s=>!s.archived).length")
+    pg.goto(URL + '#/edit/' + s2); pg.wait_for_selector('[data-f="item.title"]', timeout=10000); pg.wait_for_timeout(500)
+    pg.evaluate("""(()=>{const sv=CONTI.S.services.find(x=>x.id===CONTI.route().a);
+      const it=JSON.parse(JSON.stringify(sv.items[0]));it.id='dup1';delete it.songId;delete it.arrId;delete it.ov;delete it.bs;delete it.arrAt;
+      sv.items.push(it);sv.editedAt=Date.now();CONTI.save()})()""")
+    pg.wait_for_timeout(6000)   # 3초 디바운스 + 밀기
+    n1 = pg.evaluate("CONTI.S.songs.filter(s=>!s.archived).length")
+    if n1 != n0: fail('제목이 같은데 곡이 또 만들어짐: %d → %d' % (n0, n1))
+    linked = pg.evaluate("CONTI.S.services.find(x=>x.id==='%s').items.find(i=>i.id==='dup1').arrId" % s2)
+    if not linked: fail('있는 곡에 안 이어짐')
+    print('no duplicate song ok')
+
     if errs: fail('페이지 오류:\n' + '\n'.join(errs[:6]))
     print('PASS test_override')
     b.close()
