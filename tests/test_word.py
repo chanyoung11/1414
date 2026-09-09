@@ -70,7 +70,8 @@ def run():
         # ---- 말씀만 바꿔 재발행 → 점 + 다시 한 번 ----
         pl.goto(URL + '#/edit/' + svc_id); pl.wait_for_selector('[data-w="line"]', timeout=10000)
         pl.fill('[data-w="line"]', '은혜를 세어보는 예배 (수정)')
-        pl.wait_for_function("document.querySelector('#wSaved') && document.querySelector('#wSaved').textContent==='저장됨'", timeout=10000)
+        pl.wait_for_function("CONTI.S.services[0].word && CONTI.S.services[0].word.line.includes('수정')", timeout=10000)
+        pl.wait_for_timeout(1500)
         pl.click('[data-act="publish"]'); pl.wait_for_selector('#pubOnly'); pl.click('#pubOnly'); pl.wait_for_timeout(5000)
         rev2 = pl.evaluate('CONTI.S.services[0].messageRev')
         if rev2 <= rev1: fail('말씀만 바뀌었는데 noteRev 가 안 오름: %s → %s' % (rev1, rev2))

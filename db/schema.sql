@@ -212,3 +212,14 @@ create table if not exists rehearsals (
 );
 create index if not exists rehearsals_svc_idx on rehearsals(team_id, service_id, created_at desc);
 alter table rehearsals add column if not exists notes jsonb not null default '[]';
+
+-- §4.6 목회자 링크: 로그인 없이 말씀을 보내는 1회용 링크 (7일)
+create table if not exists word_links (
+  token      text primary key,
+  team_id    uuid not null references teams(id) on delete cascade,
+  service_id text not null,
+  created_by uuid references users(id),
+  expires_at timestamptz not null,
+  used_at    timestamptz,
+  created_at timestamptz not null default now()
+);

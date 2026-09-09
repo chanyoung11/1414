@@ -181,6 +181,13 @@ html.dark .songbar::placeholder{color:rgba(10,10,10,.5)}
 .grip svg.ic{width:14px;height:14px}
 .list-item.dragging{background:var(--card);opacity:.95;box-shadow:0 12px 32px rgba(0,0,0,.25);border-color:var(--border)}
 .list-item.dragging .grip{cursor:grabbing}
+/* §4.2 말씀 탭 */
+.wgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:16px;align-items:start}
+@media(max-width:860px){.wgrid{grid-template-columns:minmax(0,1fr)}}
+.wrow{display:flex;align-items:center;gap:12px;padding:10px;border-radius:var(--r-lg);border:1px solid transparent;cursor:pointer}
+.wrow:hover{background:var(--muted)}.wrow.on{border-color:var(--fg);background:var(--muted)}.wrow.past{opacity:.55}
+.wrow .wd{width:44px;text-align:center;flex:0 0 auto}.wrow .wd b{display:block;font-size:14px}.wrow .wd span{font-size:11px;color:var(--muted-fg)}
+.wrow b{display:block;font-size:13.5px}
 /* §5 합주 녹음 */
 .rehrow{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line2);cursor:pointer}.rehrow:last-child{border-bottom:0}.rehrow b{display:block;font-size:13.5px}
 .rhprog{position:relative;height:8px;border-radius:999px;background:var(--muted);margin-top:14px;cursor:pointer;overflow:visible}
@@ -596,6 +603,7 @@ function homeHTML(){
   ${on?`<button class="navi" data-act="inbox">${ic('bell')}알림<span class="cnt badge-n" data-noti-badge ${NOTI.unread?'':'hidden'}>${NOTI.unread||''}</span></button>`:''}
   ${on&&!isPastor()?`<button class="navi" data-act="cal">${ic('list')}내 일정</button>`:''}
   ${on&&lead?`<button class="navi" data-act="sched">${ic('users')}편성</button>`:''}
+  ${on&&(lead||isPastor())?`<button class="navi" data-act="word">${ic('note')}말씀</button>`:''}
   ${lead?`<button class="navi" data-act="nav-lib">${ic('music')}라이브러리<span class="cnt">${S.library.length}</span></button>`:''}
   ${on?`<button class="navi" data-act="team">${ic('users')}팀<span class="cnt">${esc(S.team.name||'')}</span></button>`:''}
   <div class="sect">계정</div>
@@ -817,10 +825,10 @@ function wordCardHTML(svc){const w=svc.word;const locked=hasWord(w)&&w.from&&w.f
   ${locked?`${wordBlockHTML(w,{lock:true})}<div class="row" style="margin-top:6px"><button class="btn sm ghost" data-act="word-req">수정 요청</button></div>`
    :`<div class="row" style="gap:8px"><input class="field" data-w="passage" placeholder="시편 103:1-5" value="${esc((w&&w.passage)||'')}" style="width:180px"><input class="field grow" data-w="title" placeholder="잊지 말아야 할 은혜" value="${esc((w&&w.title)||'')}"></div>
     <input class="field" data-w="line" placeholder="받은 은혜를 세어보는 예배" value="${esc((w&&w.line)||'')}" style="margin-top:6px">
-    <div class="row" style="margin-top:6px"><span class="hint" id="wSaved">${hasWord(w)?'저장됨':'적으면 자동 저장돼요'}</span></div>`}`}
-let WORD_T;
+    <div class="row" style="margin-top:6px"><span class="hint" id="wSaved">${hasWord(w)?'저장됨':'적으면 자동 저장돼요'}</span><span class="grow"></span><button class="btn sm ghost" data-act="word-link">${ic('export')}목사님께 링크 보내기</button></div>`}`}
+let WORD_T,WORD_DIRTY=false;   // DIRTY: 아직 서버에 안 올라간 편집이 있음 → 서버 값으로 덮어쓰지 않는다
 async function saveWord(svc){if(!online()||!S.team.id||!svc)return;
- try{const r=await api('/services/'+svc.id+'/word',{method:'PUT',body:{teamId:S.team.id,word:svc.word||{}}});svc.word=r.word||svc.word;touch(svc);save();const s=$('#wSaved');if(s)s.textContent='저장됨'}
+ try{const r=await api('/services/'+svc.id+'/word',{method:'PUT',body:{teamId:S.team.id,word:svc.word||{}}});svc.word=r.word||svc.word;WORD_DIRTY=false;touch(svc);save();const s=$('#wSaved');if(s)s.textContent='저장됨'}
  catch(e){const s=$('#wSaved');if(s)s.textContent='저장 실패 — 다시 시도할게요';toast(e.message)}}
 const noteRev=svc=>{const pub=svc.published;return pub?(pub.messageRev||0):0};
 const hasNote=svc=>{const pub=pubOrDraft(svc);return !!((pub&&pub.message)||hasWord(svc.word))};
@@ -836,6 +844,62 @@ function messageSheet(svc,first){const pub=pubOrDraft(svc);if(!hasNote(svc))retu
  $('#modal').onclick=e=>{if(e.target.closest('#msgMore')){$('#msgBody').classList.remove('clamp');$('#msgMore').remove();return}
   if(e.target.closest('#msgOk')||e.target.closest('[data-close]')||e.target.classList.contains('ov')){done();closeModal()}};
 }
+/* ---------- §4.2 말씀 탭 (목회자·인도자) ---------- */
+const WORDS={list:[],role:'',at:0};
+async function pullWords(force){if(!online()||!S.team.id)return false;
+ if(!force&&Date.now()-WORDS.at<15000)return false;
+ try{const r=await api('/words?team='+S.team.id);WORDS.list=r.services||[];WORDS.role=r.role||'';WORDS.at=Date.now();return true}catch(e){toast(e.message);return false}}
+function wordTabHTML(sel){const list=WORDS.list;const cur=list.find(x=>x.serviceId===sel)||list.find(x=>!x.past&&!hasWord(x.word))||list.find(x=>!x.past)||list[0];
+ const row=s=>`<div class="wrow ${cur&&s.serviceId===cur.serviceId?'on':''} ${s.past?'past':''}" data-wsel="${esc(s.serviceId||s.dateId)}">
+  <div class="wd"><b>${esc(fmtDate(s.date).md)}</b><span>${esc(fmtDate(s.date).w)}</span></div>
+  <div class="grow"><b>${esc(s.name)}</b><div class="hint">${hasWord(s.word)?esc([s.word.passage,s.word.title].filter(Boolean).join(' · ')):'아직 입력 전'}</div></div>
+  <span class="badge ${s.past?'neutral':(hasWord(s.word)?'ok':'warn')}">${s.past?'지남 · 읽기만':(hasWord(s.word)?'입력됨':'미입력')}</span></div>`;
+ const w=cur&&cur.word;const ro=!cur||cur.past||!cur.serviceId;
+ return `<div class="shell"><div class="main">
+  <header class="hd"><div class="ttl"><h1>말씀</h1><span class="date">본문·제목·한 줄은 팀 전체에, 메모는 토글에 따라</span></div>
+   <div class="acts"><button class="icon ghost" data-act="home">${ic('back')}</button></div></header>
+  <main><div class="wgrid">
+   <div class="card"><b>다가오는 예배</b><div class="hint">콘티가 있는 것 + 4주 안 사역 날짜</div>
+    <div style="margin-top:10px">${list.length?list.map(row).join(''):'<div class="empty">열린 예배가 없어요</div>'}</div></div>
+   ${cur?`<div class="card"><div class="row sb"><b>${esc(cur.name)}</b>${ro?'<span class="pill">읽기만</span>':`<label class="row" style="gap:6px;font-size:12.5px"><input type="checkbox" id="wpPub" ${w&&w.memoPublic?'checked':''}>팀 전체에 메모 공개</label>`}</div>
+    <div class="lbl">본문 <span class="hint">항상 전체 공개</span></div><input class="field" id="wpPassage" placeholder="시편 103:1-5" value="${esc((w&&w.passage)||'')}" ${ro?'disabled':''}>
+    <div class="lbl">제목</div><input class="field" id="wpTitle" placeholder="잊지 말아야 할 은혜" value="${esc((w&&w.title)||'')}" ${ro?'disabled':''}>
+    <div class="lbl">한 줄</div><input class="field" id="wpLine" placeholder="받은 은혜를 세어보는 예배" value="${esc((w&&w.line)||'')}" ${ro?'disabled':''}>
+    <div class="lbl">메모 <span class="hint">${w&&w.memoPublic?'전체에게 보여요':'인도자에게만 보여요'}</span></div><textarea class="field" id="wpMemo" rows="4" ${ro?'disabled':''}>${esc((w&&w.memo)||'')}</textarea>
+    ${ro?'':`<div class="row" style="margin-top:12px;justify-content:flex-end;gap:8px"><span class="hint" id="wpState"></span><button class="btn pri" data-act="word-save" data-id="${esc(cur.serviceId)}">${ic('check')}저장</button></div>`}
+    ${w&&w.from&&w.from.name?`<div class="hint" style="margin-top:8px">${esc(w.from.name)}${w.updatedAt?' · '+fmtRel(w.updatedAt):''}</div>`:''}</div>`
+   :'<div class="card"><div class="empty">왼쪽에서 예배를 골라 주세요</div></div>'}
+  </div></main></div>
+  <nav class="bnav"><button data-act="home">${ic('home')}예배</button><button data-act="inbox" style="position:relative">${ic('bell')}알림<i class="bdot" data-noti-dot ${NOTI.unread?'':'hidden'}></i></button><button class="on" data-act="word">${ic('note')}말씀</button></nav>`}
+// §4.6 목회자 링크 페이지 (로그인 없음)
+async function wordLinkHTML(token){let d;
+ try{d=await api('/word-link/'+encodeURIComponent(token))}
+ catch(e){return `<div class="auth"><div class="auth-main"><div class="auth-box"><div class="auth-card"><div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div><h1>링크를 열 수 없어요</h1><p class="sub">${esc(e.message)}</p></div></div></div></div>`}
+ const dd=d.date?fmtDate(d.date):null;
+ return `<div class="auth"><div class="auth-main"><div class="auth-box"><div class="auth-card">
+  <div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div>
+  <h1>${esc(d.serviceName)}</h1><p class="sub">${esc(d.teamName)}${d.leaderName?' · '+esc(d.leaderName)+' 인도자':''}가 요청했어요. 이번 주 말씀을 알려주세요.</p>
+  <div class="lbl">이름</div><input class="field" id="wlName" placeholder="김OO 목사님" value="${esc(lsGet('conti-wl-name')||'')}">
+  <div class="lbl">본문 <span class="hint">필수</span></div><input class="field" id="wlPassage" placeholder="시편 103:1-5">
+  <div class="lbl">제목</div><input class="field" id="wlTitle" placeholder="잊지 말아야 할 은혜">
+  <div class="lbl">한 줄</div><input class="field" id="wlLine" placeholder="받은 은혜를 세어보는 예배">
+  <div class="lbl">메모 <span class="hint">인도자에게만 보여요</span></div><textarea class="field" id="wlMemo" rows="3" placeholder="선택"></textarea>
+  <div class="err" id="wlErr"></div>
+  <button class="btn pri" id="wlSend" style="width:100%;margin-top:14px">보내기</button>
+  <p class="sub" style="text-align:center;margin-top:10px">보내면 이 링크는 닫혀요. 고치려면 인도자에게 새 링크를 받으세요.</p>
+ </div></div></div></div>`}
+function afterWordLink(token){
+ const send=$('#wlSend');if(!send)return;   // 만료·사용된 링크는 안내만 보여준다
+ send.onclick=async()=>{const btn=$('#wlSend');const err=$('#wlErr');err.textContent='';
+  const name=$('#wlName').value.trim(),passage=$('#wlPassage').value.trim();
+  if(!name){err.textContent='이름을 적어 주세요';return}
+  if(!passage){err.textContent='본문을 적어 주세요';return}
+  btn.disabled=true;btn.textContent='보내는 중…';
+  try{await api('/word-link/'+encodeURIComponent(token),{method:'POST',body:{name,passage,title:$('#wlTitle').value.trim(),line:$('#wlLine').value.trim(),memo:$('#wlMemo').value.trim()}});
+   try{localStorage.setItem('conti-wl-name',name)}catch(e){}
+   $('#app').innerHTML=`<div class="auth"><div class="auth-main"><div class="auth-box"><div class="auth-card"><div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div><h1>보냈어요</h1><p class="sub">인도자에게 전달됐습니다. 감사합니다.</p></div></div></div></div>`}
+  catch(e){err.textContent=e.message;btn.disabled=false;btn.textContent='보내기'}}}
+
 /* ---------- §5 합주 녹음 ---------- */
 const REH={bySvc:{},urls:{},at:{}};
 const canUploadReh=()=>{const st=S.team.settings||{};const rank={member:0,session_lead:1,pastor:-1,leader:2};return (rank[me().role]||0)>=(rank[st.rehearsalUploadRole||'member']||0)&&!isPastor()};
@@ -1109,7 +1173,7 @@ function afterLineup(dateId){const d=SCH.dates.find(x=>x.id===dateId);if(!d)retu
 function todoCards(){const cards=[];
  if(isLeader()&&online()){const weeks=+(S.team.settings&&S.team.settings.serviceAutoCreateWeeks)||4;const lim=new Date();lim.setDate(lim.getDate()+weeks*7);const limIso=lim.toISOString().slice(0,10);const t=today();
   S.services.filter(s=>!s.published&&!s.items.length&&(s.date||'')>=t&&(s.date||'')<=limIso).sort((a,b)=>(a.date||'').localeCompare(b.date||'')).forEach(s=>cards.push({icon:'pen',title:`${fmtDate(s.date).md} ${svcName(s)} 콘티가 비어 있어요`,body:'곡을 채우고 발행하세요',btn:'편집',act:'edit-svc',arg:s.id}))}
- notiActionable().forEach(n=>cards.push({icon:NOTI_ICON[n.type]||'note',title:n.title,body:n.body,btn:'확인',act:'noti-ack',arg:n.id}));
+ notiActionable().filter(n=>notiOn(n.type)).forEach(n=>cards.push({icon:NOTI_ICON[n.type]||'note',title:n.title,body:n.body,btn:'확인',act:'noti-ack',arg:n.id}));
  return cards}
 function todoHTML(){const cards=todoCards();if(!cards.length)return '';
  return `<div class="todo rise"><div class="todo-hd"><b>지금 할 일</b><span class="pill">${cards.length}</span></div>${cards.slice(0,3).map(c=>`<div class="todo-card"><span class="icon sm">${ic(c.icon)}</span><div class="grow"><b>${esc(c.title)}</b>${c.body?`<div class="hint">${esc(c.body)}</div>`:''}</div><button class="btn sm pri" data-act="${c.act}" data-id="${esc(c.arg)}">${esc(c.btn)}</button></div>`).join('')}${cards.length>3?`<button class="btn sm ghost" data-act="inbox">+${cards.length-3} 더 보기</button>`:''}</div>`}
@@ -1165,7 +1229,7 @@ function publishModal(svc){
   <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" id="kkCopy">텍스트 복사</button>${online()?`<button class="btn pri" id="pubOnly">${ic('send')}발행하고 팀에 공유</button>`:`<button class="btn" id="pubOnly">${ic('check')}발행만</button><button class="btn pri" id="pubOk">${ic('send')}발행 + 파일 내보내기</button>`}</div>`);
  $('#modal').onclick=async e=>{
   if(e.target.closest('#kkCopy')){try{await navigator.clipboard.writeText($('#kk').value);toast('복사됨')}catch{$('#kk').select();document.execCommand('copy');toast('복사됨')}}
-  const only=e.target.closest('#pubOnly'),withFile=e.target.closest('#pubOk');if(only||withFile){if(!(svc.name||'').trim()){svc.name=svcName(svc);const ti=$('.titlein');if(ti)ti.value=svc.name}const prevPub=svc.published,prevVer=svc.version,prevRev=svc.messageRev;const msg=(svc.message||'').trim();const prevMsg=svc.published?(svc.published.message||''):'';const wk=w=>w?[w.passage,w.title,w.line,w.memo,w.memoPublic?1:0].map(x=>String(x==null?'':x)).join(''):'';if(msg!==prevMsg||wk(svc.word)!==wk(svc.published&&svc.published.word))svc.messageRev=(svc.messageRev||0)+1;
+  const only=e.target.closest('#pubOnly'),withFile=e.target.closest('#pubOk');if(only||withFile){if(WORD_DIRTY){clearTimeout(WORD_T);await saveWord(svc)}if(!(svc.name||'').trim()){svc.name=svcName(svc);const ti=$('.titlein');if(ti)ti.value=svc.name}const prevPub=svc.published,prevVer=svc.version,prevRev=svc.messageRev;const msg=(svc.message||'').trim();const prevMsg=svc.published?(svc.published.message||''):'';const wk=w=>w?[w.passage,w.title,w.line,w.memo,w.memoPublic?1:0].map(x=>String(x==null?'':x)).join(''):'';if(msg!==prevMsg||wk(svc.word)!==wk(svc.published&&svc.published.word))svc.messageRev=(svc.messageRev||0)+1;
    svc.published={version:nextV,at:Date.now(),name:svc.name,date:svc.date,notice:svc.notice,message:msg,messageRev:svc.messageRev||0,word:svc.word?clone(svc.word):null,author:me().name||'인도자',items:clone(svc.items).map(it=>({...it,notes:undefined}))};S.readRev=S.readRev||{};S.readRev[svc.id]=svc.messageRev||0;save();closeModal();
    if(online()){toast('팀 서버에 올리는 중…');try{await SYNC.pushPublish(svc);toast('v'+nextV+' 발행 · 팀에 공유됐어요')}catch(err){if(err.code==='version_conflict'){svc.published=prevPub;svc.version=prevVer;svc.messageRev=prevRev;save();alert(err.message);try{await SYNC.pullService(svc.id)}catch(e2){}}else toast('발행은 됐지만 서버 업로드 실패: '+err.message)}}else toast('v'+nextV+' 발행');
    if(withFile)await exportJSON(svc.id);render()}
@@ -1184,8 +1248,11 @@ function settingsModal(){
   <div class="lbl">기타 카포 <span class="hint">0이면 없음. 내 화면의 빨간 코드가 카포만큼 더 내려가요</span></div><div class="row"><input class="field mono" id="sCapo" type="number" min="0" max="9" value="${+m.capo||0}" style="width:90px;text-align:center"><span class="hint">프렛</span></div>
   ${on?`<div class="lbl">비밀번호 바꾸기 <span class="hint">비워 두면 그대로</span></div><div class="row"><input class="field" id="sPw0" type="password" autocomplete="current-password" placeholder="현재 비밀번호"><input class="field" id="sPw1" type="password" autocomplete="new-password" placeholder="새 비밀번호 6자 이상"></div>`:''}
   ${on?`<div class="lbl">복구 코드 <span class="hint">비밀번호를 잊었을 때 쓰는 12자. 한 번만 보여주니 안전한 곳에 적어 두세요</span></div><div class="row"><span class="hint" id="sRcState">${NET.user&&NET.user.hasRecovery?'발급됨':'아직 없음'}</span><button class="btn sm" id="sRc">${NET.user&&NET.user.hasRecovery?'새로 발급':'발급'}</button></div>`:''}
+  ${on?`<div class="lbl">알림 <span class="hint">알림함은 끌 수 없어요. 여기서 끄면 이 기기 알림만 꺼져요</span></div>
+  <div id="sNoti">${Object.entries(NOTI_LABEL).map(([k,v])=>`<label class="mrow" style="cursor:pointer"><span class="grow">${esc(v)}</span><input type="checkbox" data-noti="${k}" ${notiOn(k)?'checked':''}></label>`).join('')}</div>`:''}
   <div class="err" id="sErr"></div>
-  <div class="row" style="margin-top:12px;justify-content:space-between"><span class="row"><button class="btn ghost danger" id="sReset">${on?'이 기기 데이터 지우기':'전체 초기화'}</button>${on?`<button class="btn ghost" id="sLogout">로그아웃</button>`:''}</span><button class="btn pri" id="sOk">${ic('check')}저장</button></div>`,{center:true});
+  <div class="row" style="margin-top:12px;justify-content:space-between"><span class="row"><button class="btn ghost danger" id="sReset">${on?'이 기기 데이터 지우기':'전체 초기화'}</button>${on?`<button class="btn ghost" id="sLogout">로그아웃</button>`:''}</span><button class="btn pri" id="sOk">${ic('check')}저장</button></div>
+  ${on?`<div class="row" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line2)"><span class="hint grow">계정을 지우면 되돌릴 수 없어요</span><button class="btn sm ghost danger" id="sDel">계정 삭제</button></div>`:''}`,{center:true});
  let sess=m.session,role=m.role;let extra=(m.mySessions||[]).filter(x=>x!==m.session);const mySessNow=()=>[sess,...extra.filter(x=>x!==sess)];
  $('#modal').onclick=async e=>{
   const sb=e.target.closest('[data-s]');if(sb){sess=sb.dataset.s;extra=extra.filter(x=>x!==sess);
@@ -1206,6 +1273,8 @@ function settingsModal(){
   if(e.target.closest('#sRc')){try{const r=await api('/auth/recovery',{method:'POST'});if(NET.user)NET.user.hasRecovery=true;closeModal();
     modal(`<b style="font-size:17px">복구 코드</b><div class="hint" style="margin-top:4px">이 화면을 닫으면 다시 볼 수 없어요. 메모장이나 비밀번호 앱에 저장해 두세요. 비밀번호를 잊으면 로그인 화면의 "비밀번호를 잊었어요"에서 씁니다.</div><div class="linkbox" style="margin-top:12px;font-size:20px;letter-spacing:.08em;text-align:center">${esc(r.code)}</div><div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" id="rcCopy">복사</button><button class="btn pri" id="rcClose">저장했어요</button></div>`,{center:true});
     $('#modal').onclick=async ev=>{if(ev.target.closest('#rcCopy')){await copyText(r.code);toast('복사했어요')}if(ev.target.closest('#rcClose')){closeModal()}}}catch(err){$('#sErr').textContent=err.message}return}
+  const nb=e.target.closest('[data-noti]');if(nb){setNotiOn(nb.dataset.noti,nb.checked);return}
+  if(e.target.closest('#sDel')){closeModal();deleteAccountModal();return}
   if(e.target.closest('#sLogout')){closeModal();doGate('logout')}
   if(e.target.closest('#sReset')){if(confirm(on?'이 기기에 저장된 콘티·악보·메모를 지웁니다. 계정은 그대로예요. 계속할까요?':'모든 데이터를 지웁니다. 계속할까요?')){indexedDB.deleteDatabase('conti-v1');location.reload()}}
  };
@@ -1289,6 +1358,34 @@ function startNotiPoll(){clearInterval(NOTI.timer);NOTI.timer=setInterval(()=>{i
  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&online()&&Date.now()-NOTI.at>10000)refreshNoti()})}
 function updateBadges(){$$('[data-noti-badge]').forEach(b=>{b.textContent=NOTI.unread||'';b.hidden=!NOTI.unread});$$('[data-noti-dot]').forEach(b=>{b.hidden=!NOTI.unread})}
 const notiActionable=()=>NOTI.list.filter(n=>n.actionable&&!n.ackAt&&(!n.expiresAt||new Date(n.expiresAt)>new Date()));
+// 알림 설정 (§7): 종류별 켜고 끄기. 알림함은 끌 수 없고, 여기서 끄면 홈 카드·푸시에서 빠진다
+const NOTI_LABEL={publish:'콘티 발행',
+ 'lineup.notify':'편성 통보','lineup.changed':'편성 변경',
+ 'avail.request':'월간 스케줄 요청','avail.maybe':'보류 확인','avail.conflict':'편성된 사람이 불가능으로 바꿈',
+ 'date.opened':'사역 날짜 열림','date.closed':'사역 날짜 닫힘',
+ 'word.request':'말씀 요청','word.received':'말씀 도착','note.updated':'인도자의 글 변경',
+ 'rehearsal.uploaded':'연습 녹음 올라옴','rehearsal.expiring':'녹음 삭제 예정'};
+function notiPrefs(){try{return JSON.parse(lsGet('conti-noti')||'{}')}catch(e){return {}}}
+const notiOn=t=>notiPrefs()[t]!==false;
+function setNotiOn(t,on){const p=notiPrefs();if(on)delete p[t];else p[t]=false;try{localStorage.setItem('conti-noti',JSON.stringify(p))}catch(e){}
+ NOTI.sig='';updateBadges();if(route().name==='home')render()}
+function deleteAccountModal(){
+ modal(`<b style="font-size:17px">계정 삭제</b><div class="hint" style="margin-top:6px">이 계정과 내가 쓴 메모가 지워져요. 되돌릴 수 없습니다.<br>내가 인도자인 팀은 <b>먼저 다른 사람을 인도자로 지정</b>하거나 팀을 지워야 해요.</div>
+  <div class="lbl">확인을 위해 아이디를 적어 주세요 <span class="hint">${esc((NET.user&&NET.user.username)||'')}</span></div>
+  <input class="field" id="daUser" autocapitalize="none" spellcheck="false" placeholder="${esc((NET.user&&NET.user.username)||'')}">
+  <div class="lbl">비밀번호</div><input class="field" id="daPw" type="password" autocomplete="current-password">
+  <div class="err" id="daErr"></div>
+  <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" data-close="1">취소</button><button class="btn ghost danger" id="daGo">${ic('trash')}영구 삭제</button></div>`,{center:true});
+ $('#modal').onclick=async e=>{
+  if(e.target.closest('[data-close]')){closeModal();return}
+  if(e.target.closest('#daGo')){const err=$('#daErr');err.textContent='';
+   if($('#daUser').value.trim()!==((NET.user&&NET.user.username)||'')){err.textContent='아이디가 맞지 않아요';return}
+   if(!confirm('정말 지울까요? 되돌릴 수 없어요.'))return;
+   try{await api('/auth/delete',{method:'POST',body:{username:$('#daUser').value.trim(),password:$('#daPw').value}});
+    NET.user=null;NET.teams=[];await switchScope(scopeKey('',''));S.team=Object.assign(DEF_TEAM(),{id:'',invite:''});save();
+    try{indexedDB.deleteDatabase('conti-v1')}catch(e2){}
+    closeModal();location.hash='#/home';location.reload()}
+   catch(e2){err.textContent=e2.message}}}}
 const online=()=>NET.server===true;
 const RL={leader:'인도자',session_lead:'세션리더',member:'멤버',pastor:'목회자'};
 const isPastor=()=>me().role==='pastor';   // 목회자: 세션 없음, 편성·라이브러리 편집 없음, 말씀을 쓴다 (§0)
@@ -1782,6 +1879,8 @@ function restoreScroll(){const sw=$('#sheetwrap');if(sw&&SCROLL.sheet)sw.scrollT
 let lastRoute='';
 async function render(){
  const r=route();const app=$('#app');app.classList.remove('stage');const same=lastRoute===location.hash;lastRoute=location.hash;if(same)keepScroll();else{SCROLL.sheet=0;SCROLL.bodies=null}
+ // §4.6 목회자 링크: 로그인 없이 여는 페이지
+ if(r.name==='word-link'&&r.a){app.innerHTML='<div class="empty" style="margin:40px auto;max-width:420px"><b>여는 중…</b></div>';app.innerHTML=await wordLinkHTML(r.a);afterWordLink(r.a);return}
  if(online()){
   if(!NET.user){app.innerHTML=loginHTML();afterGate();return}
   if(r.name==='join'){app.innerHTML=joinHTML(r.a);afterGate();return}
@@ -1793,6 +1892,9 @@ async function render(){
   if(!svc&&online()){app.innerHTML=`<div class="empty" style="margin:40px auto;max-width:420px"><b>콘티를 받는 중…</b>팀 서버에서 발행본을 내려받고 있어요.</div>`;try{svc=await SYNC.pullService(r.a)}catch(e){toast(e.message)}}
   if(!svc)return go('home');
   if(online()&&(!same||!SYNC.pulledAt[svc.id]))await SYNC.pullNotes(svc);
+  if(online()&&!same){try{const wd=await api('/services/'+svc.id+'/word?team='+S.team.id);
+   if(!WORD_DIRTY)svc.word=wd.word||null;   // 편집 중이면 덮어쓰지 않는다
+   if(wd.readRev){S.readRev=S.readRev||{};S.readRev[svc.id]=Math.max(S.readRev[svc.id]||0,wd.readRev)}}catch(e){}}
   if(online()&&r.name==='view'&&!REH.at[svc.id])await pullRehearsals(svc.id);
   else if(online()&&r.name==='view'&&!same)pullRehearsals(svc.id).then(ch=>{if(ch&&route().name==='view')render()});
   if(online()&&r.name==='view'&&!SCH.at)pullSchedule(monthKey(),true).catch(()=>{});
@@ -1800,6 +1902,15 @@ async function render(){
   if(r.name==='edit'){if(online()&&!same&&isLeader()){try{await SYNC.pullDraft(svc)}catch(e){}}app.innerHTML=editorHTML(svc);afterEditor(svc);restoreScroll();return}
   if(r.name==='view'){app.innerHTML=viewerHTML(svc);if(!same&&msgUnread(svc))setTimeout(()=>messageSheet(svc,true),150);return}
   app.innerHTML=playHTML(svc,+r.b||0);afterPlay(svc,+r.b||0);restoreScroll();return}
+ // §4.2 말씀 탭 (목회자·인도자)
+ if(r.name==='word'){
+  if(!online()||!S.team.id)return go('home');
+  if(!isLeader()&&!isPastor())return go('home');
+  if(!WORDS.at){app.innerHTML='<div class="empty" style="margin:40px auto;max-width:420px"><b>말씀을 받는 중…</b></div>';await pullWords(true)}
+  else if(!same)pullWords().then(ch=>{if(ch&&route().name==='word')render()});
+  app.innerHTML=wordTabHTML(r.a);
+  $$('[data-wsel]').forEach(el2=>el2.onclick=()=>go('word/'+el2.dataset.wsel));
+  restoreScroll();return}
  // §3 편성 화면들 (온라인 전용)
  if(/^(cal|sched|lineup)$/.test(r.name)){
   if(!online()||!S.team.id)return go('home');
@@ -1864,7 +1975,7 @@ function afterEditor(svc){
  const app=$('#app');
  // field bindings
  app.oninput=e=>{const wf=e.target.dataset.w;if(wf){ // 말씀 (§4.3): 콘티와 따로 저장돼 저장 즉시 전원에게 보인다
-   svc.word=Object.assign({passage:'',title:'',line:'',memo:'',memoPublic:false},svc.word,{[wf]:e.target.value});save();
+   svc.word=Object.assign({passage:'',title:'',line:'',memo:'',memoPublic:false},svc.word,{[wf]:e.target.value});WORD_DIRTY=true;save();
    clearTimeout(WORD_T);WORD_T=setTimeout(()=>saveWord(svc),900);const s=$('#wSaved');if(s)s.textContent='저장 중…';return}
   const f=e.target.dataset.f;if(!f)return;const it=curItem(svc);
   if(f==='svc.name')svc.name=e.target.value;else if(f==='svc.date')svc.date=e.target.value;else if(f==='svc.notice')svc.notice=e.target.value;else if(f==='svc.message'){svc.message=e.target.value;autoGrow(e.target)}
@@ -2069,6 +2180,17 @@ document.addEventListener('click',async e=>{
   case 'reh-add':{const s2=svcById(route().a);if(s2)rehAddModal(s2);break}
   case 'reh-menu':{const s2=svcById(route().a);const r2=(REH.bySvc[s2&&s2.id]||[]).find(x=>x.id===el.dataset.id);if(s2&&r2)rehMenu(s2,r2);break}
   case 'reh-play':{const s2=svcById(route().a);const r2=(REH.bySvc[s2&&s2.id]||[]).find(x=>x.id===el.dataset.id);if(s2&&r2)rehPlayer(s2,r2);break}
+  case 'word':go('word');break;
+  case 'word-save':{const id=el.dataset.id;const st=$('#wpState');if(st)st.textContent='저장 중…';
+   try{const r2=await api('/services/'+id+'/word',{method:'PUT',body:{teamId:S.team.id,word:{passage:$('#wpPassage').value.trim(),title:$('#wpTitle').value.trim(),line:$('#wpLine').value.trim(),memo:$('#wpMemo').value.trim(),memoPublic:!!($('#wpPub')&&$('#wpPub').checked)}}});
+    const it=WORDS.list.find(x=>x.serviceId===id);if(it)it.word=r2.word;const sv=svcById(id);if(sv)sv.word=r2.word;
+    if(st)st.textContent='저장했어요';toast('저장했어요');render()}
+   catch(e){if(st)st.textContent='저장 실패';toast(e.message)}break}
+  case 'word-link':{const svc2=svcById(route().a);if(!svc2)break;
+   try{const r2=await api('/services/'+svc2.id+'/word-link',{method:'POST',body:{teamId:S.team.id}});
+    const url2=location.origin+location.pathname+'#/word-link/'+r2.token;
+    await copyText(`[${r2.serviceName}] 말씀을 알려주세요\n아래 링크에 적어 주시면 찬양팀에 전달돼요. (7일 안에, 한 번만)\n${url2}`);
+    toast('링크와 카톡 문구를 복사했어요')}catch(e){toast(e.message)}break}
   case 'cal':go('cal');break;
   case 'sched':go('sched');break;
   case 'lineup':go('lineup/'+el.dataset.id);break;

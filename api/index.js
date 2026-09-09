@@ -123,6 +123,34 @@ on('POST', '/auth/login', async ({ req, body }) => {
 
 on('POST', '/auth/logout', async ({ req }) => ({ data: { ok: true }, headers: { 'Set-Cookie': clearSessionCookie(req) } }));
 
+// 계정 삭제 (§7): 아이디·비밀번호로 두 번 확인. 인도자로 남아 있는 팀이 있으면 먼저 넘기게 한다
+on('POST', '/auth/delete', async ({ req, uid, body }) => {
+  if (!uid) throw noAuth();
+  const u = await one('select id, username, password_hash from users where id=$1', [uid]);
+  if (!u) throw noAuth();
+  if (str(body.username, 40).toLowerCase() !== u.username) throw bad('아이디가 맞지 않아요');
+  if (!verifyPassword(String(body.password || ''), u.password_hash)) throw new HttpError(401, 'bad_login', '비밀번호가 맞지 않아요');
+  const stuck = await q(`select t.name from members m join teams t on t.id=m.team_id
+                         where m.user_id=$1 and m.role='leader'
+                           and (select count(*) from members m2 where m2.team_id=m.team_id and m2.role='leader') = 1
+                           and (select count(*) from members m3 where m3.team_id=m.team_id) > 1`, [uid]);
+  if (stuck.length) throw bad(`${stuck.map((r) => r.name).join(', ')} 팀의 인도자예요. 다른 사람을 인도자로 지정한 뒤 다시 시도해 주세요`);
+  // 혼자 있는 팀은 팀째로 지운다 (파일·콘티·알림은 외래키 cascade)
+  const solo = await q(`select m.team_id from members m where m.user_id=$1 and (select count(*) from members m2 where m2.team_id=m.team_id) = 1`, [uid]);
+  for (const t of solo) {
+    const rows = await q('select url from blobs where team_id=$1', [t.team_id]);
+    await q('delete from teams where id=$1', [t.team_id]);
+    await delBlobs(rows.map((r) => r.url));
+  }
+  await q('delete from notes where author_id=$1', [uid]);
+  // '누가 했는지'만 가리키는 칸은 비운다 (지운 계정을 참조하면 삭제가 막히므로)
+  for (const [t, c] of [['services', 'updated_by'], ['drafts', 'updated_by'], ['service_words', 'updated_by'], ['rehearsals', 'uploaded_by'], ['word_links', 'created_by']]) {
+    try { await q(`update ${t} set ${c}=null where ${c}=$1`, [uid]); } catch (e) { console.error('null out', t, e.message); }
+  }
+  await q('delete from users where id=$1', [uid]);
+  return { data: { ok: true }, headers: { 'Set-Cookie': clearSessionCookie(req) } };
+});
+
 on('POST', '/auth/password', async ({ req, uid, body }) => {
   if (!uid) throw noAuth();
   const cur = String(body.current || ''), next = String(body.next || '');
@@ -316,6 +344,16 @@ function wordView(w, m) {
 }
 const wordKey = (w) => w ? [w.passage, w.title, w.line, w.memo, w.memoPublic ? 1 : 0].map((x) => String(x == null ? '' : x)).join('') : '';
 
+// 말씀만 가볍게 (편집기·콘티 보기 진입 때). 발행본이 없어도 된다
+on('GET', '/services/:id/word', async ({ uid, url, params }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(url.searchParams.get('team'), 64);
+  const m = await requireMember(uid, teamId);
+  const w = await one('select word from service_words where team_id=$1 and service_id=$2', [teamId, params.id]);
+  const rd = await one('select rev from service_reads where team_id=$1 and service_id=$2 and user_id=$3', [teamId, params.id, uid]);
+  return { word: wordView(w && w.word, m), readRev: rd ? rd.rev : 0 };
+});
+
 // 말씀 저장 (§4.2·§4.3): 인도자는 직접 입력, 목회자는 말씀 탭에서. 저장 즉시 전원에게 보인다
 on('PUT', '/services/:id/word', async ({ uid, params, body }) => {
   if (!uid) throw noAuth();
@@ -343,6 +381,94 @@ on('PUT', '/services/:id/word', async ({ uid, params, body }) => {
     } catch (e) { console.error('notify word.received', e); }
   }
   return { ok: true, word: wordView(word, m) };
+});
+
+// §4.2 말씀 탭: 목회자·인도자가 볼 다가오는 예배 목록 (콘티 있는 것 + 4주 안 사역 날짜)
+on('GET', '/words', async ({ uid, url }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(url.searchParams.get('team'), 64);
+  const m = await requireMember(uid, teamId);
+  if (m.role !== 'leader' && m.role !== 'pastor') throw forbidden('인도자와 목회자만 볼 수 있어요');
+  const rows = await q(`select sd.id as "dateId", sd.date::text as date, sd.label, sd.service_id as "serviceId", w.word
+                        from service_dates sd left join service_words w on w.team_id=sd.team_id and w.service_id=sd.service_id
+                        where sd.team_id=$1 and sd.open and sd.date >= current_date - interval '30 days'
+                          and sd.date < current_date + interval '28 days'
+                        order by sd.date asc`, [teamId]);
+  const svcNames = Object.fromEntries((await q('select id, name from services where team_id=$1', [teamId])).map((r) => [r.id, r.name]));
+  const drafts = Object.fromEntries((await q('select id, doc from drafts where team_id=$1', [teamId])).map((r) => [r.id, r.doc && r.doc.name]));
+  return {
+    services: rows.map((r) => ({
+      dateId: r.dateId, date: r.date, label: r.label, serviceId: r.serviceId,
+      name: (r.serviceId && (svcNames[r.serviceId] || drafts[r.serviceId])) || `${mdOf(r.date)} ${r.label}`,
+      past: r.date < new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10),
+      word: wordView(r.word, m),
+    })),
+    role: m.role,
+  };
+});
+
+// §4.6 목회자 링크 만들기 (인도자)
+on('POST', '/services/:id/word-link', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  const m = await requireMember(uid, teamId, 'leader');
+  const token = randomToken(18);
+  const expires = new Date(Date.now() + 7 * 86400000);
+  await q('insert into word_links(token, team_id, service_id, created_by, expires_at) values($1,$2,$3,$4,$5)', [token, teamId, params.id, uid, expires]);
+  const svc = await one('select name, date::text as date from services where team_id=$1 and id=$2', [teamId, params.id]);
+  const d = await one('select date::text as date, label from service_dates where team_id=$1 and service_id=$2', [teamId, params.id]);
+  const name = (svc && svc.name) || (d ? `${mdOf(d.date)} ${d.label}` : '예배');
+  return { token, expiresAt: expires, teamName: m.name, leaderName: m.mname, serviceName: name };
+});
+
+// 링크 페이지: 로그인 없이 열고 한 번만 제출
+on('GET', '/word-link/:token', async ({ params }) => {
+  const l = await one('select w.*, t.name as "teamName" from word_links w join teams t on t.id=w.team_id where w.token=$1', [str(params.token, 64)]);
+  if (!l) throw notFound('링크가 없어요');
+  if (l.used_at) throw new HttpError(410, 'used', '이미 보낸 링크예요. 고치려면 인도자에게 새 링크를 받아 주세요');
+  if (new Date(l.expires_at) < new Date()) throw new HttpError(410, 'expired', '만료된 링크예요. 인도자에게 새 링크를 받아 주세요');
+  const svc = await one('select name, date::text as date from services where team_id=$1 and id=$2', [l.team_id, l.service_id]);
+  const d = await one('select date::text as date, label from service_dates where team_id=$1 and service_id=$2', [l.team_id, l.service_id]);
+  const leader = await one(`select name from members where team_id=$1 and role='leader' order by created_at asc limit 1`, [l.team_id]);
+  return {
+    teamName: l.teamName, leaderName: leader ? leader.name : '',
+    serviceName: (svc && svc.name) || (d ? `${mdOf(d.date)} ${d.label}` : '예배'),
+    date: (svc && svc.date) || (d && d.date) || null,
+  };
+});
+on('POST', '/word-link/:token', async ({ params, body }) => {
+  const token = str(params.token, 64);
+  const l = await one('select * from word_links where token=$1', [token]);
+  if (!l) throw notFound('링크가 없어요');
+  if (l.used_at) throw new HttpError(410, 'used', '이미 보낸 링크예요');
+  if (new Date(l.expires_at) < new Date()) throw new HttpError(410, 'expired', '만료된 링크예요');
+  const name = str(body.name, 40); if (!name) throw bad('이름을 적어 주세요');
+  const passage = str(body.passage, 60); if (!passage) throw bad('본문을 적어 주세요');
+  const word = {
+    passage, title: str(body.title, 40), line: str(body.line, 80),
+    memo: str(body.memo, 1000), memoPublic: false,
+    from: { type: 'link', name }, receivedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+  };
+  await q(`insert into service_words(team_id, service_id, word, updated_at) values($1,$2,$3,now())
+           on conflict (team_id, service_id) do update set word=excluded.word, updated_at=now()`, [l.team_id, l.service_id, JSON.stringify(word)]);
+  await q('update word_links set used_at=now() where token=$1', [token]);
+  try {
+    const leaders = (await q(`select user_id from members where team_id=$1 and role='leader'`, [l.team_id])).map((r) => r.user_id);
+    await notify(l.team_id, leaders, 'word.received', l.service_id, { title: `${josa(name, '이', '가')} 말씀을 보냈어요`, body: [passage, word.title].filter(Boolean).join(' · '), link: '#/edit/' + l.service_id });
+  } catch (e) { console.error('notify word-link', e); }
+  return { ok: true };
+});
+
+// §4.3 "수정 요청": 목회자에게 word.request 즉시 1회
+on('POST', '/services/:id/word-request', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  await requireMember(uid, teamId, 'leader');
+  const pastors = (await q(`select user_id from members where team_id=$1 and role='pastor'`, [teamId])).map((r) => r.user_id);
+  if (!pastors.length) throw bad('팀에 목회자가 없어요. 링크로 보내 주세요');
+  const svc = await one('select name from services where team_id=$1 and id=$2', [teamId, params.id]);
+  await notify(teamId, pastors, 'word.request', params.id, { title: '말씀을 다시 봐 주세요', body: (svc && svc.name) || '', link: '#/word', actionable: true });
+  return { ok: true, sent: pastors.length };
 });
 
 // §4.5 예배 노트: 어디까지 읽었는지 (기기 + 서버)
