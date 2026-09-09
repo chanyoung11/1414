@@ -394,3 +394,18 @@ create table if not exists share_codes (
   created_at timestamptz not null default now()
 );
 create index if not exists share_team_idx on share_codes(team_id, created_at desc);
+
+-- 유료 AI 호출(채보·OCR·악보) 사용량. 팀·날짜별로 세어 하루 한도를 건다.
+-- 아무나 가입해 팀을 만들면 곧바로 Gemini 를 무한히 부를 수 있었다
+create table if not exists ai_usage (
+  team_id  uuid not null references teams(id) on delete cascade,
+  day      date not null,
+  kind     text not null,                    -- omr | score | ocr
+  calls    int  not null default 0,
+  tokens   bigint not null default 0,
+  primary key (team_id, day, kind)
+);
+
+-- 코드로 받은 곡의 출처 (명세 A.7.3: '코드로 받음 · {팀명}' 배지 30일)
+alter table songs add column if not exists from_team text;
+alter table songs add column if not exists from_at   timestamptz;

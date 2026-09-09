@@ -98,6 +98,39 @@ def run():
     if ss[0] != '드럼셋': fail('세션 이름이 안 바뀜: %s' % ss)
     print('session rename ok:', ss[0])
 
+    # ---- 세션 이름을 바꿔도 앞으로의 편성이 살아 있어야 한다 (배열을 객체로 덮던 버그) ----
+    import json as _j
+    dates = c1.request.get(URL + 'api/teams/%s/dates' % L.evaluate('CONTI.S.team.id'), headers={'x-conti':'1'}).json()
+    tid = L.evaluate('CONTI.S.team.id')
+    c1.request.post(URL + 'api/teams/%s/dates' % tid, headers={'x-conti':'1'},
+                    data={'date': '2027-01-03', 'label': '편성테스트', 'time': '11:00'})
+    dl = c1.request.get(URL + 'api/teams/%s/dates' % tid, headers={'x-conti':'1'}).json()['dates']
+    did = [d for d in dl if d['label'] == '편성테스트'][0]['id']
+    c1.request.put(URL + 'api/teams/%s/dates/%s/lineup' % (tid, did), headers={'x-conti':'1'},
+                   data={'lineup': [{'session': '드럼셋', 'memberId': uid}]})
+    L.reload(); L.wait_for_selector('.tpage', timeout=10000); L.wait_for_timeout(800)
+    open_sect(L, 'sessions')
+    L.fill('[data-sname="0"]', '드럼세트')
+    L.click('[data-act="tm-sess-save"]'); L.wait_for_timeout(2500)
+    def lineup_of():
+        sch = c1.request.get(URL + 'api/teams/%s/schedule?month=2027-01' % tid, headers={'x-conti':'1'}).json()
+        row = [d for d in sch['dates'] if d['id'] == did]
+        return row[0].get('lineup') if row else None
+    lu = lineup_of()
+    if not isinstance(lu, list): fail('편성이 배열이 아니게 됨: %r' % lu)
+    if not lu or lu[0]['session'] != '드럼세트': fail('세션 이름 변경이 편성에 안 따라옴: %s' % lu)
+    if lu[0]['memberId'] != uid: fail('편성된 사람이 사라짐: %s' % lu)
+    print('lineup survives session rename ok:', lu[0]['session'])
+
+    # ---- 비활성으로 두면 앞으로의 편성에서 빠진다 ----
+    L.click(f'[data-mmore="{uid}"]'); L.wait_for_selector('#mmOff', timeout=5000)
+    L.click('#mmOff'); L.wait_for_timeout(2000)
+    lu2 = lineup_of() or []
+    if any(x.get('memberId') == uid for x in lu2): fail('비활성인데 편성에 남음: %s' % lu2)
+    print('deactivate clears lineup ok')
+    L.click(f'[data-mmore="{uid}"]'); L.wait_for_selector('#mmOn', timeout=5000)
+    L.click('#mmOn'); L.wait_for_timeout(1500)
+
     # ---- 인도자 넘기기 ----
     open_sect(L, 'team')
     L.click('[data-act="tm-transfer"]'); L.wait_for_selector('[data-tu]', timeout=5000)

@@ -82,7 +82,7 @@ try {
         }
         if (it.arrId !== m.arrId) { it.arrId = m.arrId; it.songId = m.songId; touched = true; }
       }
-      if (touched) await q('update services set doc=$2 where id=$1', [sv.id, JSON.stringify(doc)]);
+      if (touched) await q('update services set doc=$2 where id=$1 and team_id=$3', [sv.id, JSON.stringify(doc), t.id]);
 
       // 사용 이력 (발행본만)
       const last = items.length - 1;

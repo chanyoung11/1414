@@ -82,6 +82,24 @@ async function audit(teamId, actorId, action, target, meta) {
     [teamId, actorId, action, target ? String(target) : null, JSON.stringify(meta || {})]); }
   catch (e) { console.error('audit', e.message); }
 }
+// 유료 AI 호출 한도. 하루 팀당 이만큼까지. ENFORCE_PLAN 과 무관하게 늘 켜 둔다 —
+// 이건 요금제가 아니라 비용 사고를 막는 안전장치다
+const AI_DAILY = { omr: 60, score: 400, ocr: 300 };
+async function aiGuard(teamId, kind) {
+  const cap = +process.env['AI_DAILY_' + kind.toUpperCase()] || AI_DAILY[kind] || 100;
+  const row = await one(`select calls from ai_usage where team_id=$1 and day=(now() at time zone 'Asia/Seoul')::date and kind=$2`, [teamId, kind]);
+  if (row && row.calls >= cap) throw new HttpError(429, 'ai_quota', `오늘 ${kind === 'ocr' ? '코드 인식' : '채보'} 한도(${cap}회)를 다 썼어요. 내일 다시 해 주세요`);
+}
+async function aiCount(teamId, kind, tokens) {
+  await q(`insert into ai_usage(team_id, day, kind, calls, tokens)
+           values($1,(now() at time zone 'Asia/Seoul')::date,$2,1,$3)
+           on conflict (team_id, day, kind) do update set calls = ai_usage.calls + 1, tokens = ai_usage.tokens + excluded.tokens`,
+    [teamId, kind, Math.max(0, +tokens || 0)]).catch((e) => console.error('aiCount', e.message));
+}
+const teamSettings = async (teamId) => {
+  const t = await one('select settings from teams where id=$1', [teamId]);
+  return { ...DEF_SETTINGS, ...((t && t.settings) || {}) };
+};
 async function requireMember(uid, teamId, role) {
   const m = await membership(uid, teamId);
   if (!m) throw forbidden('이 팀의 멤버가 아니에요');
@@ -110,7 +128,7 @@ function pickSession(team, s) {
 const routes = [];
 const on = (method, pattern, fn) => routes.push({ method, re: new RegExp('^' + pattern.replace(/:(\w+)/g, '(?<$1>[^/]+)') + '$'), fn });
 
-on('GET', '/health', async () => ({ ok: true, app: 'conti' }));
+on('GET', '/health', async () => ({ ok: true, app: 'conti', enforcePlan: ENFORCE_PLAN }));
 
 on('POST', '/auth/signup', async ({ req, body }) => {
   const username = str(body.username, 40).toLowerCase(), password = String(body.password || ''), name = str(body.name, 40);
@@ -122,18 +140,20 @@ on('POST', '/auth/signup', async ({ req, body }) => {
   return { data: await meView(u.id), headers: { 'Set-Cookie': sessionCookie(req, u.id) } };
 });
 
+const clientIp = (req) => String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim().slice(0, 45) || '-';
 on('POST', '/auth/login', async ({ req, body }) => {
   const username = str(body.username, 40).toLowerCase(), password = String(body.password || '');
+  const lockKey = username + '|' + clientIp(req);
   try {
-    const la = await one('select n, last from login_attempts where username=$1', [username]);
+    const la = await one('select n, last from login_attempts where username=$1', [lockKey]);
     if (la && la.n >= 8 && Date.now() - new Date(la.last).getTime() < 15 * 60 * 1000) throw new HttpError(429, 'locked', '로그인 시도가 너무 많아요. 15분 뒤에 다시 해 주세요');
   } catch (e) { if (e instanceof HttpError) throw e; }
   const u = await one('select id, password_hash from users where username=$1', [username]);
   if (!u || !verifyPassword(password, u.password_hash)) {
-    try { await q(`insert into login_attempts(username, n, last) values($1, 1, now()) on conflict (username) do update set n = case when login_attempts.last < now() - interval '15 minutes' then 1 else login_attempts.n + 1 end, last = now()`, [username]); } catch (e) {}
+    try { await q(`insert into login_attempts(username, n, last) values($1, 1, now()) on conflict (username) do update set n = case when login_attempts.last < now() - interval '15 minutes' then 1 else login_attempts.n + 1 end, last = now()`, [lockKey]); } catch (e) {}
     throw new HttpError(401, 'bad_login', '아이디 또는 비밀번호가 맞지 않아요');
   }
-  try { await q('delete from login_attempts where username=$1', [username]); } catch (e) {}
+  try { await q('delete from login_attempts where username=$1', [lockKey]); } catch (e) {}
   await q('update users set last_login_at=now() where id=$1', [u.id]);
   return { data: await meView(u.id), headers: { 'Set-Cookie': sessionCookie(req, u.id) } };
 });
@@ -210,12 +230,14 @@ on('PATCH', '/me', async ({ uid, body }) => {
   if (!uid) throw noAuth();
   const teamId = str(body.teamId, 64);
   const m = await requireMember(uid, teamId);
-  const name = str(body.name, 40) || m.mname, session = pickSession(m, str(body.session, 40) || m.session);
+  const name = str(body.name, 40) || m.mname;
+  // 목회자는 세션이 없다. 이름만 바꿔도 첫 세션이 배정되던 것을 막는다
+  const session = m.role === 'pastor' ? '' : pickSession(m, str(body.session, 40) || m.session);
   const capo = body.capo == null ? (+m.capo || 0) : Math.max(0, Math.min(9, Math.round(+body.capo) || 0));
   // 겸임 세션 (§3): 팀 세션 목록에 있는 것만, 대표 세션은 항상 포함
   const asked = strList(body.mySessions);
-  const sessions = asked
-    ? [...new Set([session, ...asked])].filter((s) => s && (m.sessions || []).includes(s))
+  const sessions = m.role === 'pastor' ? []
+    : asked ? [...new Set([session, ...asked])].filter((s) => s && (m.sessions || []).includes(s))
     : mySessions(m);
   await q('update members set name=$3, session=$4, capo=$5, sessions=$6 where user_id=$1 and team_id=$2', [uid, teamId, name, session, capo, sessions]);
   await q('update users set display_name=$2 where id=$1', [uid, name]);
@@ -260,6 +282,24 @@ on('PATCH', '/teams/:id', async ({ uid, params, body }) => {
   await q(`update teams set name=coalesce(nullif($2,''), name), sessions=coalesce($3::jsonb, sessions), phrases=coalesce($4::jsonb, phrases) where id=$1`,
     [params.id, name, sessions ? JSON.stringify(sessions) : null, phrases ? JSON.stringify(phrases) : null]);
   if (sessions) {
+    // 없어진 세션의 정원·기본 편성 자리도 지운다. 안 그러면 없는 세션이 계속 자동 편성된다
+    const t2 = await one('select settings from teams where id=$1', [params.id]);
+    const st2 = { ...((t2 && t2.settings) || {}) };
+    let cut = false;
+    for (const key of ['slots', 'defaultLineup']) {
+      if (!st2[key] || typeof st2[key] !== 'object') continue;
+      const o = {};
+      for (const k of Object.keys(st2[key])) { if (sessions.includes(k)) o[k] = st2[key][k]; else cut = true; }
+      st2[key] = o;
+    }
+    // 정원을 줄였으면 기본 편성의 넘치는 자리도 뒤에서부터 자른다
+    if (st2.defaultLineup && typeof st2.defaultLineup === 'object') {
+      for (const k of Object.keys(st2.defaultLineup)) {
+        const n = st2.slots && st2.slots[k] != null ? +st2.slots[k] : (k === '싱어' ? 3 : 1);
+        if (Array.isArray(st2.defaultLineup[k]) && st2.defaultLineup[k].length > n) { st2.defaultLineup[k] = st2.defaultLineup[k].slice(0, n); cut = true; }
+      }
+    }
+    if (cut) await q('update teams set settings=$2 where id=$1', [params.id, JSON.stringify(st2)]);
     // 없어진 세션에 있던 사람은 그 세션에서만 빠진다. 세션이 하나도 안 남으면 팀의 첫 세션으로
     const rows = await q(`select user_id, sessions, session, role from members where team_id=$1`, [params.id]);
     for (const r of rows) {
@@ -294,13 +334,24 @@ async function renameSessions(teamId, map) {
     }
   }
   await q('update teams set settings=$2 where id=$1', [teamId, JSON.stringify(st)]);
-  // 앞으로의 편성
-  for (const r of await q(`select id, lineup from service_dates where team_id=$1 and lineup is not null and date >= (now() at time zone 'Asia/Seoul')::date`, [teamId])) {
-    const o = {}; for (const k of Object.keys(r.lineup || {})) o[at(k)] = r.lineup[k];
-    await q('update service_dates set lineup=$2 where id=$1', [r.id, JSON.stringify(o)]);
+  // 앞으로의 편성. lineup 은 [{session, memberId, …}] 배열이라 원소의 session 만 바꾼다
+  for (const r of await q(`select id, lineup from service_dates where team_id=$1 and date >= (now() at time zone 'Asia/Seoul')::date`, [teamId])) {
+    if (!Array.isArray(r.lineup) || !r.lineup.length) continue;
+    const next = r.lineup.map((x) => (x && at(x.session) !== x.session ? { ...x, session: at(x.session) } : x));
+    if (next.some((x, i) => x !== r.lineup[i])) await q('update service_dates set lineup=$2 where id=$1', [r.id, JSON.stringify(next)]);
   }
-  // 메모의 세션 태그
-  for (const [a, b] of pairs) await q(`update notes set session=$3 where team_id=$1 and session=$2`, [teamId, a, b]);
+  // 메모의 세션 태그 (예배 메모 · 고정 메모)
+  for (const [a, b] of pairs) {
+    await q(`update notes set session=$3 where team_id=$1 and session=$2`, [teamId, a, b]);
+    await q(`update arrangement_notes set session=$3 where team_id=$1 and session=$2`, [teamId, a, b]);
+  }
+  // 편곡 미디어의 대상 세션
+  for (const r of await q(`select id, media from arrangements where team_id=$1 and deleted_at is null`, [teamId])) {
+    const md = Array.isArray(r.media) ? r.media : [];
+    if (!md.some((m) => Array.isArray(m && m.sessions) && m.sessions.some((x) => at(x) !== x))) continue;
+    await q('update arrangements set media=$2 where id=$1',
+      [r.id, JSON.stringify(md.map((m) => (Array.isArray(m && m.sessions) ? { ...m, sessions: m.sessions.map(at) } : m)))]);
+  }
 }
 
 // B.7.1 팀 삭제: 30일 유예. 그 사이엔 전원에게 배너가 보이고 인도자가 되돌릴 수 있다
@@ -360,7 +411,8 @@ on('POST', '/teams/:id/invites', async ({ uid, params, body }) => {
   const live = await q(`select id from invites where team_id=$1 and revoked_at is null
       and (expires_at is null or expires_at > now()) and (max_uses is null or uses < max_uses)`, [params.id]);
   const cap = LIVE_INVITES[m.plan || 'free'] || LIVE_INVITES.free;
-  if (live.length >= cap) throw bad(`살아 있는 초대 링크는 ${cap}개까지예요. 안 쓰는 링크를 회수해 주세요`);
+  if (ENFORCE_PLAN && live.length >= cap) throw new HttpError(402, 'plan_limit', `살아 있는 초대 링크는 ${cap}개까지예요. 안 쓰는 링크를 회수해 주세요`);
+  if (live.length >= 20) throw bad('초대 링크가 너무 많아요. 안 쓰는 링크를 회수해 주세요');
   const expires = days ? new Date(Date.now() + days * 86400e3).toISOString() : null;
   const r = await one(`insert into invites(team_id, code, role, expires_at, max_uses, created_by)
     values($1,$2,$3,$4,$5,$6) returning *`, [params.id, randomToken(12), role, expires, maxUses, uid]);
@@ -426,16 +478,22 @@ on('PATCH', '/teams/:id/members/:userId', async ({ uid, params, body }) => {
 async function clearFromLineups(teamId, userId) {
   const rows = await q(`select id, lineup from service_dates where team_id=$1 and date >= (now() at time zone 'Asia/Seoul')::date`, [teamId]);
   for (const r of rows) {
-    const lu = r.lineup && typeof r.lineup === 'object' ? r.lineup : null;
-    if (!lu) continue;
+    if (!Array.isArray(r.lineup) || !r.lineup.length) continue;
+    const next = r.lineup.filter((x) => !x || x.memberId !== userId);
+    if (next.length !== r.lineup.length) await q('update service_dates set lineup=$2 where id=$1', [r.id, JSON.stringify(next)]);
+  }
+  // 기본 편성에서도 뺀다. 안 그러면 새 예배마다 다시 채워진다
+  const t = await one('select settings from teams where id=$1', [teamId]);
+  const st = (t && t.settings) || {};
+  if (st.defaultLineup && typeof st.defaultLineup === 'object') {
     let touched = false;
-    const out = {};
-    for (const k of Object.keys(lu)) {
-      const v = Array.isArray(lu[k]) ? lu[k].filter((x) => x !== userId) : lu[k];
-      if (Array.isArray(lu[k]) && v.length !== lu[k].length) touched = true;
-      out[k] = v;
+    const d = {};
+    for (const k of Object.keys(st.defaultLineup)) {
+      const v = Array.isArray(st.defaultLineup[k]) ? st.defaultLineup[k].filter((x) => x !== userId) : st.defaultLineup[k];
+      if (Array.isArray(v) && v.length !== st.defaultLineup[k].length) touched = true;
+      d[k] = v;
     }
-    if (touched) await q('update service_dates set lineup=$2 where id=$1', [r.id, JSON.stringify(out)]);
+    if (touched) await q('update teams set settings=$2 where id=$1', [teamId, JSON.stringify({ ...st, defaultLineup: d })]);
   }
 }
 
@@ -452,7 +510,8 @@ on('POST', '/teams/:id/transfer', async ({ uid, params, body }) => {
   // 새 인도자를 먼저 세우면 유일 인덱스에 걸리니 옛 인도자를 먼저 내린다
   await q(`update members set role='session_lead' where team_id=$1 and user_id=$2`, [params.id, uid]);
   await q(`update members set role='leader' where team_id=$1 and user_id=$2`, [params.id, to]);
-  await q('update teams set created_by=$2 where id=$1', [params.id, to]);
+  // created_by 를 옮기기 전에 결제 담당을 못박아 둔다 (기본값이 created_by 라 같이 넘어가 버린다)
+  await q(`update teams set billing_user_id = coalesce(billing_user_id, created_by), created_by=$2 where id=$1`, [params.id, to]);
   await audit(params.id, uid, 'team.transfer', to, {});
   const all = await teamUserIds(params.id);
   await notify(params.id, all, 'team.transfer', to, { title: `인도자가 ${target.name}으로 바뀌었어요`, link: '#/team' });
@@ -524,9 +583,9 @@ on('GET', '/teams/:id/members/:userId/impact', async ({ uid, params }) => {
   if (!uid) throw noAuth();
   await requireMember(uid, params.id, 'leader');
   const notes = await one('select count(*)::int as n from notes where team_id=$1 and author_id=$2', [params.id, params.userId]).catch(() => ({ n: 0 }));
-  const rows = await q(`select lineup from service_dates where team_id=$1 and lineup is not null`, [params.id]);
+  const rows = await q(`select lineup from service_dates where team_id=$1`, [params.id]);
   let slots = 0;
-  for (const r of rows) for (const k of Object.keys(r.lineup || {})) if (Array.isArray(r.lineup[k]) && r.lineup[k].includes(params.userId)) slots++;
+  for (const r of rows) if (Array.isArray(r.lineup)) slots += r.lineup.filter((x) => x && x.memberId === params.userId).length;
   return { notes: (notes && notes.n) || 0, lineupSlots: slots };
 });
 
@@ -588,11 +647,14 @@ on('POST', '/invite/:token/join', async ({ uid, params, body }) => {
   await q(`insert into members(user_id, team_id, name, session, sessions, role) values($1,$2,$3,$4,$5,$6)`,
     [uid, t.id, name, session, sessions, inv.role]);
   await q('update users set display_name=$2 where id=$1', [uid, name]);
-  await q('update invites set uses = uses + 1 where id=$1', [inv.id]);
+  // 먼저 세지 않으면 동시에 들어올 때 1회용 링크가 두 번 쓰인다
+  const claimed = await one(`update invites set uses = uses + 1 where id=$1
+    and (max_uses is null or uses < max_uses) and revoked_at is null returning id`, [inv.id]);
+  if (!claimed) { await q('delete from members where team_id=$1 and user_id=$2', [t.id, uid]); throw notFound('이 코드는 이미 다 쓰였어요'); }
   // 인도자에게 알림
   const leader = await one(`select user_id from members where team_id=$1 and role='leader' and active limit 1`, [t.id]);
   if (leader && leader.user_id !== uid) await notify(t.id, [leader.user_id], 'member.join', uid,
-    { title: `${josa(name, '이', '가')} ${pastor ? '목회자로' : (session ? session + '으로' : '멤버로')} 들어왔어요`, link: '#/team' });
+    { title: `${josa(name, '이', '가')} ${pastor ? '목회자로' : (session ? josa(session, '으로', '로') : '멤버로')} 들어왔어요`, link: '#/team' });
   return viewOf(await membership(uid, t.id));
 });
 
@@ -615,6 +677,7 @@ on('GET', '/services/:id', async ({ uid, url, params }) => {
   const teamId = str(url.searchParams.get('team'), 64);
   await requireMember(uid, teamId);
   const wantDraft = url.searchParams.get('draft') === '1';
+  if (wantDraft && (await membership(uid, teamId)).role !== 'leader') throw forbidden('초안은 인도자만 볼 수 있어요');
   const row = wantDraft
     ? await one('select doc, 0 as version, updated_at as "updatedAt" from drafts where team_id=$1 and id=$2', [teamId, params.id])
     : await one('select doc, version, updated_at as "updatedAt" from services where team_id=$1 and id=$2', [teamId, params.id]);
@@ -830,8 +893,13 @@ async function syncUsages(teamId, serviceId, doc, uid) {
       songId = a ? a.song_id : '';
     }
     if (!songId) continue;
-    const ok = await one('select id from songs where id=$1 and team_id=$2', [songId, teamId]);
-    if (!ok) continue;
+    const ok = await one('select id from songs where id=$1 and team_id=$2 and deleted_at is null', [songId, teamId]);
+    if (!ok) {
+      // 합쳐졌으면 편곡을 따라 남은 곡으로 옮겨 붙인다
+      const a2 = str(it.arrId, 64) ? await one('select song_id from arrangements where id=$1 and team_id=$2 and deleted_at is null', [it.arrId, teamId]) : null;
+      if (!a2) continue;
+      songId = a2.song_id;
+    }
     await q(`insert into song_usages(team_id, song_id, arrangement_id, service_id, service_date, service_name, position, is_application, key_used, via_medley, leader_id)
              values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) on conflict (song_id, service_id) do update set
                arrangement_id=excluded.arrangement_id, service_date=excluded.service_date, service_name=excluded.service_name,
@@ -892,6 +960,7 @@ async function teamBlobRefs(teamId) {
   for (const r of await q('select doc from services where team_id=$1', [teamId])) blobIdsOf(r.doc).forEach((id) => used.add(id));
   for (const r of await q('select doc from drafts where team_id=$1', [teamId])) blobIdsOf(r.doc).forEach((id) => used.add(id));
   for (const r of await q('select song from library where team_id=$1 and deleted_at is null', [teamId])) songBlobIds(r.song).forEach((id) => used.add(id));
+  for (const r of await q('select pieces, media from arrangements where team_id=$1 and deleted_at is null', [teamId])) arrBlobIds(r).forEach((id) => used.add(id));
   for (const r of await q('select blob_id from rehearsals where team_id=$1', [teamId])) if (r.blob_id) used.add(r.blob_id);
   return used;
 }
@@ -948,16 +1017,19 @@ const songView = (s, extra) => ({
   id: s.id, title: s.title, aliases: s.aliases || [], artist: s.artist, origKey: s.orig_key,
   firstLine: s.first_line, tags: s.tags || [], tempo: s.tempo, archived: s.archived,
   notDupOf: s.not_dup_of || [], updatedAt: s.updated_at,
+  fromTeam: s.from_team || null, fromAt: s.from_at || null,
   titleNorm: s.title_norm, titleCho: s.title_cho, ...(extra || {}),
 });
 // 파생값 (명세 A.1.3). 목록에 붙여 내려보낸다
 async function songStats(teamId) {
-  const rows = await q(`select song_id, count(*)::int as n, max(service_date) as last, min(service_date) as first
+  const rows = await q(`select song_id, count(*)::int as n, max(service_date) as last, min(service_date) as first,
+                        array_remove(array_agg(service_date order by service_date desc), null) as dates
                         from song_usages where team_id=$1 group by song_id`, [teamId]);
   const keys = await q(`select song_id, key_used, count(*)::int as n from song_usages
                         where team_id=$1 and key_used<>'' group by song_id, key_used`, [teamId]);
   const out = {};
-  for (const r of rows) out[r.song_id] = { useCount: r.n, lastUsed: r.last, firstUsed: r.first, keyStats: {} };
+  for (const r of rows) out[r.song_id] = { useCount: r.n, lastUsed: r.last, firstUsed: r.first,
+    usedDates: (r.dates || []).slice(0, 40).map((d) => String(d).slice(0, 10)), keyStats: {} };
   for (const k of keys) if (out[k.song_id]) out[k.song_id].keyStats[k.key_used] = k.n;
   return out;
 }
@@ -983,14 +1055,19 @@ on('GET', '/songs', async ({ uid, url }) => {
   const teamId = str(url.searchParams.get('team'), 64);
   await requireMember(uid, teamId);
   const since = str(url.searchParams.get('since'), 40);
+  const now0 = (await one('select now() as t')).t;   // 읽기 전에 잡아야 그 사이 바뀐 것을 다음에 받는다
   const songs = since
     ? await q('select * from songs where team_id=$1 and updated_at > $2 order by updated_at asc', [teamId, since])
     : await q('select * from songs where team_id=$1 order by updated_at asc', [teamId]);
   const arrs = await q('select * from arrangements where team_id=$1 and deleted_at is null order by is_default desc, created_at asc', [teamId]);
   const stats = await songStats(teamId);
+  // 남의 '나만' 메모는 내려보내지 않는다. 세션 메모는 그 세션 사람과 인도자만
+  const me0 = await membership(uid, teamId);
   const fixed = arrs.length ? await q(`select id, arrangement_id as "arrangementId", marker_label as "markerLabel", layer, session,
-      author_id as "authorId", author_name as "authorName", text from arrangement_notes where arrangement_id = any($1::uuid[])`,
-    [arrs.map((a) => a.id)]) : [];
+      author_id as "authorId", author_name as "authorName", text from arrangement_notes
+      where arrangement_id = any($1::uuid[]) and (layer='all' or (layer='mine' and author_id=$2)
+        or (layer='session' and ($3 or session = any($4::text[]))))`,
+    [arrs.map((a) => a.id), uid, me0.role === 'leader', mySessions(me0)]) : [];
   const notesBy = {};
   for (const n of fixed) (notesBy[n.arrangementId] = notesBy[n.arrangementId] || []).push(n);
   const byId = {};
@@ -1000,7 +1077,7 @@ on('GET', '/songs', async ({ uid, url }) => {
   return {
     songs: songs.filter((s) => !s.deleted_at).map((s) => songView(s, { arrangements: byId[s.id] || [], ...(stats[s.id] || { useCount: 0, lastUsed: null, firstUsed: null, keyStats: {} }) })),
     deleted: songs.filter((s) => s.deleted_at).map((s) => s.id),
-    now: new Date().toISOString(),
+    now: now0,
     blobs: await readUrls(blobs),
   };
 });
@@ -1031,9 +1108,12 @@ on('GET', '/songs/:id', async ({ uid, params, url }) => {
   const usages = await q(`select service_id as "serviceId", service_date as "serviceDate", service_name as "serviceName",
       position, is_application as "isApplication", key_used as "keyUsed", via_medley as "viaMedley", arrangement_id as "arrangementId"
       from song_usages where team_id=$1 and song_id=$2 order by service_date desc nulls last`, [teamId, s.id]);
+  const me1 = await membership(uid, teamId);
   const notes = await q(`select id, arrangement_id as "arrangementId", marker_label as "markerLabel", layer, session,
       author_id as "authorId", author_name as "authorName", text, created_at as "createdAt"
-      from arrangement_notes where arrangement_id = any($1::uuid[]) order by created_at asc`, [arrs.map((a) => a.id)]);
+      from arrangement_notes where arrangement_id = any($1::uuid[])
+        and (layer='all' or (layer='mine' and author_id=$2) or (layer='session' and ($3 or session = any($4::text[]))))
+      order by created_at asc`, [arrs.map((a) => a.id), uid, me1.role === 'leader', mySessions(me1)]);
   const stats = (await songStats(teamId))[s.id] || { useCount: 0, lastUsed: null, firstUsed: null, keyStats: {} };
   const ids = [...new Set(arrs.flatMap(arrBlobIds))];
   const blobs = ids.length ? await q('select id, url, pathname from blobs where team_id=$1 and id = any($2::text[])', [teamId, ids]) : [];
@@ -1058,10 +1138,11 @@ on('POST', '/songs', async ({ uid, body }) => {
     values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning *`,
     [teamId, title, tn, choSong(tn), str(body.artist, 60), str(body.origKey, 12), str(body.tempo, 8),
      strList(body.tags) || [], strList(body.aliases) || [], str(body.firstLine, 200), uid]);
-  const a = await one(`insert into arrangements(song_id, team_id, name, is_default, key, mod, form, song_note, pieces, media)
-    values($1,$2,'기본',true,$3,$4,$5,$6,$7,$8) returning *`,
+  const a = await one(`insert into arrangements(song_id, team_id, name, is_default, key, mod, form, song_note, pieces, media, chart, score)
+    values($1,$2,'기본',true,$3,$4,$5,$6,$7,$8,$9,$10) returning *`,
     [s.id, teamId, str(body.key, 12), str(body.mod, 12), str(body.form, 500), str(body.songNote, 300),
-     JSON.stringify(Array.isArray(body.pieces) ? body.pieces : []), JSON.stringify(Array.isArray(body.media) ? body.media : [])]);
+     JSON.stringify(Array.isArray(body.pieces) ? body.pieces : []), JSON.stringify(Array.isArray(body.media) ? body.media : []),
+     body.chart ? JSON.stringify(body.chart) : null, body.score ? JSON.stringify(body.score) : null]);
   return { song: songView(s, { arrangements: [arrView(a)], useCount: 0, lastUsed: null, firstUsed: null, keyStats: {} }) };
 });
 
@@ -1104,6 +1185,7 @@ on('DELETE', '/songs/:id', async ({ uid, params, url }) => {
     throw new HttpError(409, 'song_used', `${used.n}번 부른 곡이에요. 지우는 대신 보관하는 게 좋아요`);
   }
   await q('update songs set deleted_at=now(), updated_at=now() where id=$1', [params.id]);
+  await q('update arrangements set deleted_at=now() where song_id=$1 and deleted_at is null', [params.id]);
   return { ok: true, usages: used.n };
 });
 
@@ -1146,10 +1228,9 @@ on('PATCH', '/arrangements/:id', async ({ uid, params, body }) => {
   if (body.score !== undefined) put('score', body.score ? JSON.stringify(body.score) : null);
   if (set.length) { set.push('updated_at=now()'); await q(`update arrangements set ${set.join(', ')} where id=$1`, vals); }
   // 기본 편곡 바꾸기는 유일 인덱스 때문에 순서가 있다: 내리고 올린다
-  if (body.isDefault === true && !a.is_default) {
-    await q('update arrangements set is_default=false where song_id=$1', [a.song_id]);
-    await q('update arrangements set is_default=true where id=$1', [params.id]);
-  }
+  // 하나씩 하면 중간에 끊겼을 때 기본 편곡이 없는 곡이 남는다. 한 문장으로
+  if (body.isDefault === true && !a.is_default)
+    await q(`update arrangements set is_default = (id = $2) where song_id=$1 and deleted_at is null`, [a.song_id, params.id]);
   await q('update songs set updated_at=now() where id=$1', [a.song_id]);
   return { ok: true };
 });
@@ -1181,12 +1262,15 @@ on('POST', '/arrangements/:id/notes', async ({ uid, params, body }) => {
   const layer = ['all', 'session', 'mine'].includes(str(body.layer, 10)) ? str(body.layer, 10) : 'mine';
   const session = str(body.session, 40) || null;
   if (layer === 'all' && m.role !== 'leader') throw forbidden('전체 고정 메모는 인도자만 남길 수 있어요');
-  if (layer === 'session' && m.role !== 'leader' && !mySessions(m).includes(session)) throw forbidden('내 세션에만 남길 수 있어요');
+  if (layer === 'session' && m.role !== 'leader' && !(m.role === 'session_lead' && mySessions(m).includes(session)))
+    throw forbidden('세션이 함께 보는 고정 메모는 인도자와 세션 리더만 남길 수 있어요');
+  if (m.role === 'pastor' && !(await teamSettings(teamId)).pastorCanMemo) throw forbidden('목회자 메모는 팀 설정에서 켜야 해요');
   const text = str(body.text, 60);
   if (!text) throw bad('메모를 적어 주세요');
   const r = await one(`insert into arrangement_notes(arrangement_id, team_id, marker_label, layer, session, author_id, author_name, text)
     values($1,$2,$3,$4,$5,$6,$7,$8) returning *`,
     [params.id, teamId, str(body.markerLabel, 8) || 'A', layer, layer === 'session' ? session : null, uid, m.mname || '', text]);
+  await q('update songs set updated_at=now() where id=$1', [a.song_id]);
   return { note: { id: r.id, arrangementId: r.arrangement_id, markerLabel: r.marker_label, layer: r.layer, session: r.session, authorId: r.author_id, authorName: r.author_name, text: r.text, createdAt: r.created_at } };
 });
 on('DELETE', '/arrangements/:id/notes/:noteId', async ({ uid, params, url }) => {
@@ -1197,6 +1281,7 @@ on('DELETE', '/arrangements/:id/notes/:noteId', async ({ uid, params, url }) => 
   if (!n) throw notFound('그 메모가 없어요');
   if (m.role !== 'leader' && n.author_id !== uid) throw forbidden('내가 쓴 메모만 지울 수 있어요');
   await q('delete from arrangement_notes where id=$1', [params.noteId]);
+  await q(`update songs set updated_at=now() where id=(select song_id from arrangements where id=$1)`, [n.arrangement_id]);
   return { ok: true };
 });
 
@@ -1305,10 +1390,17 @@ on('DELETE', '/share/:code', async ({ uid, params, url }) => {
   return { ok: true };
 });
 // 미리보기 (받는 쪽). 담기 전에 무엇이 들어오는지 본다
-on('GET', '/share/:code', async ({ uid, params }) => {
+on('GET', '/share/:code', async ({ uid, params, req }) => {
   if (!uid) throw noAuth();
+  // 코드는 6자라 마구 넣어 보면 남의 팀 곡을 긁을 수 있다. 틀린 시도를 세어 막는다
+  const key = 'share|' + uid;
+  const la = await one('select n, last from login_attempts where username=$1', [key]).catch(() => null);
+  if (la && la.n >= 20 && Date.now() - new Date(la.last).getTime() < 60 * 60 * 1000)
+    throw new HttpError(429, 'too_many', '코드를 너무 많이 시도했어요. 한 시간 뒤에 다시 해 주세요');
+  const miss = async () => { await q(`insert into login_attempts(username, n, last) values($1,1,now())
+    on conflict (username) do update set n = case when login_attempts.last < now() - interval '1 hour' then 1 else login_attempts.n + 1 end, last = now()`, [key]).catch(() => {}); };
   const r = await one('select * from share_codes where code=$1', [String(params.code || '').toUpperCase()]);
-  if (!r) throw notFound('그런 코드가 없어요');
+  if (!r) { await miss(); throw notFound('그런 코드가 없어요'); }
   if (r.revoked_at) throw notFound('이 코드는 회수됐어요');
   if (new Date(r.expires_at) < new Date()) throw notFound('이 코드는 기한이 지났어요');
   if (r.max_uses != null && r.uses >= r.max_uses) throw notFound('이 코드는 이미 다 쓰였어요');
@@ -1320,13 +1412,15 @@ on('POST', '/share/:code/take', async ({ uid, params, body }) => {
   const teamId = str(body.teamId, 64);
   const m = await requireMember(uid, teamId, 'leader');
   const code = String(params.code || '').toUpperCase();
-  const r = await one('select * from share_codes where code=$1', [code]);
-  if (!r) throw notFound('그런 코드가 없어요');
-  if (r.revoked_at || new Date(r.expires_at) < new Date() || (r.max_uses != null && r.uses >= r.max_uses))
-    throw notFound('이 코드는 더 쓸 수 없어요');
-  const made = await takeSharePayload(teamId, uid, m, r.payload);
-  await q('update share_codes set uses = uses + 1 where code=$1', [code]);
-  return made;
+  // 먼저 한 자리를 선점한다. 검사하고 나중에 세면 '한 팀만' 코드가 여러 팀에 나간다
+  const claim = await one(`update share_codes set uses = uses + 1 where code=$1 and revoked_at is null
+    and expires_at > now() and (max_uses is null or uses < max_uses) returning payload`, [code]);
+  if (!claim) {
+    const exists = await one('select code from share_codes where code=$1', [code]);
+    throw notFound(exists ? '이 코드는 더 쓸 수 없어요' : '그런 코드가 없어요');
+  }
+  try { return await takeSharePayload(teamId, uid, m, claim.payload); }
+  catch (e) { await q('update share_codes set uses = greatest(uses - 1, 0) where code=$1', [code]).catch(() => {}); throw e; }
 });
 // 자립형 코드(1414:…)는 브라우저가 풀어서 이 자리로 보낸다. 서버는 저장하지 않는다
 on('POST', '/share/take', async ({ uid, body }) => {
@@ -1335,10 +1429,13 @@ on('POST', '/share/take', async ({ uid, body }) => {
   const m = await requireMember(uid, teamId, 'leader');
   const p = body.payload;
   if (!p || !Array.isArray(p.songs) || !p.songs.length) throw bad('코드를 읽지 못했어요');
+  if (p.songs.length > 30) throw bad('한 번에 30곡까지예요');
+  if (JSON.stringify(p).length > 400e3) throw new HttpError(413, 'too_large', '코드가 너무 커요');
   return await takeSharePayload(teamId, uid, m, p);
 });
 async function takeSharePayload(teamId, uid, member, payload) {
-  const from = (payload.from && payload.from.team) || '';
+  const from = str(payload.from && payload.from.team, 40);
+  const teamSess = (await one('select sessions from teams where id=$1', [teamId])).sessions || [];
   const out = [];
   if (ENFORCE_PLAN) {
     const n = await one('select count(*)::int as n from songs where team_id=$1 and not archived and deleted_at is null', [teamId]);
@@ -1348,14 +1445,16 @@ async function takeSharePayload(teamId, uid, member, payload) {
   for (const sp of payload.songs.slice(0, 30)) {
     const title = str(sp.title, 120) || '(제목 없음)';
     const tn = normSong(title);
-    const s = await one(`insert into songs(team_id, title, title_norm, title_cho, aliases, artist, orig_key, tempo, tags, created_by)
-      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning *`,
+    const s = await one(`insert into songs(team_id, title, title_norm, title_cho, aliases, artist, orig_key, tempo, tags, created_by, from_team, from_at)
+      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now()) returning *`,
       [teamId, title, tn, choSong(tn), (strList(sp.aliases) || []), str(sp.artist, 60), str(sp.origKey, 12),
-       str(sp.tempo, 8), (strList(sp.tags) || []), uid]);
+       str(sp.tempo, 8), (strList(sp.tags) || []), uid, from || null]);
     const ar = sp.arr || {};
     const media = (Array.isArray(ar.media) ? ar.media : []).filter(ytOnly).slice(0, 12).map((x) => ({
       id: randomToken(8), type: 'youtube', url: str(x.url, 300), name: str(x.name, 120),
-      start: +x.start || 0, end: +x.end || 0, sessions: strList(x.sessions) || [], notes: [] }));
+      start: +x.start || 0, end: +x.end || 0,
+      // 받는 팀에 없는 세션 태그는 버린다. 남기면 아무에게도 안 보인다
+      sessions: (strList(x.sessions) || []).filter((v) => teamSess.includes(v)), notes: [] }));
     const a = await one(`insert into arrangements(song_id, team_id, name, is_default, key, mod, form, bpm, song_note, pieces, media)
       values($1,$2,$3,true,$4,$5,$6,$7,$8,'[]',$9) returning *`,
       [s.id, teamId, str(ar.name, 40) || '기본', str(ar.key, 12), str(ar.mod, 12), str(ar.form, 500),
@@ -1609,13 +1708,18 @@ on('POST', '/notes', async ({ uid, body }) => {
   const teamId = str(body.teamId, 64), svcId = str(body.serviceId, 64);
   const m = await requireMember(uid, teamId);
   const list = Array.isArray(body.notes) ? body.notes.slice(0, 200) : [];
+  const pastorOk = m.role !== 'pastor' || (await teamSettings(teamId)).pastorCanMemo;
   let n = 0;
   for (const x of list) {
     const id = str(x.id, 40), itemId = str(x.itemId, 40), layer = str(x.layer, 10), text = str(x.text, 200);
     if (!/^[A-Za-z0-9_-]{4,40}$/.test(id) || !itemId || !text) continue;
     if (!['leader', 'session', 'mine'].includes(layer)) continue;
     if (layer === 'leader' && m.role !== 'leader') continue;
-    const session = layer === 'session' ? m.session : layer === 'leader' ? (str(x.session, 40) || null) : null;
+    if (m.role === 'pastor' && !pastorOk) continue;
+    // 겸임이면 고른 세션을 그대로 쓴다 (내 세션 목록 안일 때만)
+    const want = str(x.session, 40);
+    const session = layer === 'session' ? (mySessions(m).includes(want) ? want : m.session)
+      : layer === 'leader' ? (want || null) : null;
     await q(`insert into notes(id, team_id, service_id, item_id, marker_id, media_id, t, layer, session, text, author_id, author_name, created_at)
              values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) on conflict (id) do nothing`,
       [id, teamId, svcId, itemId, str(x.markerId, 40) || null, str(x.mediaId, 40) || null, x.t == null ? null : +x.t, layer, session, text, uid, layer === 'leader' ? '인도자' : m.mname, x.at ? new Date(+x.at) : new Date()]);
@@ -1647,12 +1751,14 @@ on('POST', '/omr', async ({ uid, body }) => {
   const mime = /^image\/(jpeg|png|webp)$/.test(String(body.mime || '')) ? String(body.mime) : 'image/jpeg';
   if (b64.length < 100) throw bad('이미지가 비어 있어요');
   if (b64.length > 9e6) throw new HttpError(413, 'too_large', '이미지가 너무 커요 (6MB 이하)');
+  await aiGuard(teamId, 'omr');
   let r;
   try { r = await transcribeSheet({ b64, mime }); }
   catch (e) {
     if (e.status === 429) throw new HttpError(429, 'omr_quota', '채보 한도에 걸렸어요. 잠시 뒤 다시 해 주세요');
     throw new HttpError(502, 'omr_failed', '채보 실패: ' + (e.message || ''));
   }
+  await aiCount(teamId, 'omr', r.usage && r.usage.total);
   return { songs: r.songs, model: r.model, usage: r.usage, cost: estimateUSD(r.model, r.usage) };
 });
 
@@ -1667,12 +1773,14 @@ on('POST', '/score', async ({ uid, body }) => {
   const mime = /^image\/(jpeg|png|webp)$/.test(String(body.mime || '')) ? String(body.mime) : 'image/jpeg';
   if (b64.length < 100) throw bad('이미지가 비어 있어요');
   if (b64.length > 9e6) throw new HttpError(413, 'too_large', '이미지가 너무 커요');
+  await aiGuard(teamId, 'score');
   let r;
-  try { r = await transcribeScore({ b64, mime }, { thinking: str(body.thinking, 10) || 'LOW', repair: body.repair !== false }); }
+  try { r = await transcribeScore({ b64, mime }, { thinking: 'LOW', repair: body.repair !== false }); }
   catch (e) {
     if (e.status === 429) throw new HttpError(429, 'omr_quota', '채보 한도에 걸렸어요. 잠시 뒤 다시 해 주세요');
     throw new HttpError(502, 'omr_failed', '채보 실패: ' + (e.message || ''));
   }
+  await aiCount(teamId, 'score', r.usage && r.usage.total);
   const usd = estimateUSD(r.model, r.usage);
   // 원화는 대략만 보여 준다 (환율은 USD_KRW 로 바꿀 수 있음)
   return { songs: r.songs, model: r.model, usage: r.usage, badMeasures: r.badMeasures, cost: usd, costKRW: Math.round(usd * (+process.env.USD_KRW || 1450) * 10) / 10 };
@@ -1696,7 +1804,9 @@ on('POST', '/ocr', async ({ uid, body }) => {
   const images = (Array.isArray(body.images) ? body.images : []).slice(0, 16).map((im) => ({ b64: String(im.b64 || ''), mime: str(im.mime, 40), w: +im.w || 0, h: +im.h || 0, kind: str(im.kind, 10) })).filter((im) => im.b64.length > 100);
   if (!images.length) throw bad('이미지가 없어요');
   if (images.reduce((n, im) => n + im.b64.length, 0) > 12 * 1024 * 1024) throw new HttpError(413, 'too_large', '이미지가 너무 커요');
+  await aiGuard(teamId, 'ocr');
   const results = await ocrBands(images);
+  await aiCount(teamId, 'ocr', 0);
   return { results };
 });
 
@@ -1753,8 +1863,10 @@ async function fillDefaultLineup(teamId, dateId, date, st) {
   const def = (st && st.defaultLineup) || {};
   if (!Object.keys(def).length) return 0;
   const no = new Set((await q(`select user_id from availability where team_id=$1 and date=$2 and state='no'`, [teamId, date])).map((r) => r.user_id));
+  // 비활성·내보낸·목회자가 된 사람은 자동 편성에서 뺀다
+  const ok = new Set((await q(`select user_id from members where team_id=$1 and active and role<>'pastor'`, [teamId])).map((r) => r.user_id));
   const out = [];
-  for (const [session, ids] of Object.entries(def)) for (const mid of (Array.isArray(ids) ? ids : [])) out.push({ session, memberId: no.has(mid) ? '' : mid, notifiedAt: null, acknowledgedAt: null });
+  for (const [session, ids] of Object.entries(def)) for (const mid of (Array.isArray(ids) ? ids : [])) out.push({ session, memberId: (no.has(mid) || !ok.has(mid)) ? '' : mid, notifiedAt: null, acknowledgedAt: null });
   await q('update service_dates set lineup=$2 where id=$1', [dateId, JSON.stringify(out)]);
   return out.length;
 }
@@ -1814,7 +1926,7 @@ on('PATCH', '/teams/:id/recurring/:rid', async ({ uid, params, body }) => {
     await q(`delete from service_dates sd where sd.team_id=$1 and sd.recurring_id=$2 and sd.date > current_date
              and sd.service_id is null and coalesce(jsonb_array_length(sd.lineup), 0) = 0
              and not exists (select 1 from availability a where a.team_id=sd.team_id and a.date=sd.date)`, [params.id, params.rid]);
-    await q(`update service_dates set open=false where team_id=$1 and recurring_id=$2 and date > current_date`, [params.id, params.rid]);
+    await q(`update service_dates set open=false where team_id=$1 and recurring_id=$2 and date > current_date and service_id is null`, [params.id, params.rid]);
     await q('update recurring set active=false where id=$1', [params.rid]);
     return { ok: true };
   }
@@ -1830,8 +1942,12 @@ on('PATCH', '/teams/:id/recurring/:rid', async ({ uid, params, body }) => {
 on('DELETE', '/teams/:id/recurring/:rid', async ({ uid, params }) => {
   if (!uid) throw noAuth();
   await requireMember(uid, params.id, 'leader');
-  await q(`delete from service_dates where team_id=$1 and recurring_id=$2 and date > current_date and service_id is null`, [params.id, params.rid]);
-  await q(`update service_dates set open=false, recurring_id=null where team_id=$1 and recurring_id=$2`, [params.id, params.rid]);
+  // 콘티도·편성도·가능 여부 답도 없는 미래 날짜만 지운다. 나머지는 닫기만 하고 지난 날짜는 그대로 둔다
+  await q(`delete from service_dates sd where sd.team_id=$1 and sd.recurring_id=$2 and sd.date > current_date
+           and sd.service_id is null and coalesce(jsonb_array_length(sd.lineup), 0) = 0
+           and not exists (select 1 from availability a where a.team_id=sd.team_id and a.date=sd.date)`, [params.id, params.rid]);
+  await q(`update service_dates set open=false where team_id=$1 and recurring_id=$2 and date > current_date and service_id is null`, [params.id, params.rid]);
+  await q(`update service_dates set recurring_id=null where team_id=$1 and recurring_id=$2`, [params.id, params.rid]);
   await q('delete from recurring where id=$1 and team_id=$2', [params.rid, params.id]);
   return { ok: true };
 });
@@ -2070,19 +2186,23 @@ on('POST', '/notifications/:id/ack', async ({ uid, params, body }) => {
 // §1 avail.request (매월 reminderDay) · avail.maybe (보류 D-14) · word.request (매주 wordRequestDay)
 async function scheduleReminders(teamId, st) {
   const now = new Date(Date.now() + 9 * 3600 * 1000); // KST 기준 날짜·요일
+  if ((await one('select deleted_at from teams where id=$1', [teamId]) || {}).deleted_at) return { asked: 0, maybes: 0 };
   const day = now.getUTCDate(), dow = now.getUTCDay();
   let asked = 0, maybes = 0;
   // 다음 달 사역일 가능 여부 요청
   if (day === (+st.reminderDay || 25)) {
     const y = now.getUTCFullYear(), mo = now.getUTCMonth();
+    const ahead = Math.max(1, Math.min(3, +st.reminderMonthsAhead || 3));
     const from = new Date(Date.UTC(y, mo + 1, 1)).toISOString().slice(0, 10);
-    const to = new Date(Date.UTC(y, mo + 2, 0)).toISOString().slice(0, 10);
+    const to = new Date(Date.UTC(y, mo + 1 + ahead, 0)).toISOString().slice(0, 10);
     const dates = await q('select date::text as date from service_dates where team_id=$1 and open and date between $2 and $3', [teamId, from, to]);
     if (dates.length) {
-      const members = (await q(`select user_id from members where team_id=$1 and role<>'pastor'`, [teamId])).map((r) => r.user_id);
+      const members = (await q(`select user_id from members where team_id=$1 and role<>'pastor' and active`, [teamId])).map((r) => r.user_id);
       const answered = await q('select user_id, count(*)::int as n from availability where team_id=$1 and date between $2 and $3 group by user_id', [teamId, from, to]);
       const cnt = Object.fromEntries(answered.map((r) => [r.user_id, r.n]));
-      const label = `${new Date(from + 'T00:00:00Z').getUTCMonth() + 1}월`;
+      const m1 = new Date(from + 'T00:00:00Z').getUTCMonth() + 1;
+      const m2 = new Date(to + 'T00:00:00Z').getUTCMonth() + 1;
+      const label = m1 === m2 ? `${m1}월` : `${m1}~${m2}월`;
       for (const mid of members) {
         const left = dates.length - (cnt[mid] || 0);
         if (left <= 0) continue;
@@ -2100,8 +2220,8 @@ async function scheduleReminders(teamId, st) {
     maybes++;
   }
   // 그 주 예배 중 말씀 미입력이 있으면 목회자에게
-  if (dow === (st.wordRequestDay == null ? 2 : +st.wordRequestDay)) {
-    const pastors = (await q(`select user_id from members where team_id=$1 and role='pastor'`, [teamId])).map((r) => r.user_id);
+  if (st.wordRequestOn !== false && dow === (st.wordRequestDay == null ? 2 : +st.wordRequestDay)) {
+    const pastors = (await q(`select user_id from members where team_id=$1 and role='pastor' and active`, [teamId])).map((r) => r.user_id);
     if (pastors.length) {
       const upto = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 7)).toISOString().slice(0, 10);
       const need = await q(`select sd.date::text as date, sd.label from service_dates sd
@@ -2178,7 +2298,7 @@ export default async function handler(req, res) {
     const params = path.match(route.re).groups || {};
     // 파일 그 자체가 본문인 경로(POST /blobs/:id)만 JSON 파싱을 건너뛴다. 이미지 base64 를 싣는 경로는 크게
     const rawBody = method === 'POST' && /^\/blobs\/[^/]+$/.test(path);
-    const body = (method === 'GET' || rawBody) ? {} : await readBody(req, /^\/(ocr|omr)$/.test(path) ? 12e6 : 1e6);
+    const body = (method === 'GET' || rawBody) ? {} : await readBody(req, /^\/(ocr|omr|score)$/.test(path) ? 12e6 : 1e6);
     // 세션: 서명·만료 검사 후, 비밀번호 변경(auth_epoch) 이전에 발급된 토큰은 무효 처리
     let uid = null; const claims = sessionClaims(req);
     if (claims) {

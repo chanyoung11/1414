@@ -90,6 +90,18 @@ def run():
         pm.goto(URL + '#/view/' + svc_id); pm.wait_for_timeout(1500)
         if '(v2)' not in pm.locator('#app').inner_text(): fail('멤버 보기에 v2 제목 없음')
         print('v2 ok; errors:', errs)
+
+        # ---- 인도자가 초안에서 곡을 빼도 발행본에 붙은 팀원 메모는 남아야 한다 ----
+        team = pg.evaluate("CONTI.S.team.id")
+        before = c2.request.get(URL + 'api/notes?team=' + team + '&service=' + svc_id).json()['notes']
+        if not before: fail('전제 실패: 서버에 메모가 없음')
+        pg.goto(URL + '#/edit/' + svc_id); pg.wait_for_selector('[data-f="item.title"]', timeout=10000); pg.wait_for_timeout(600)
+        pg.evaluate("(()=>{const s=CONTI.S.services.find(x=>x.id==='%s');s.items.length=0;s.editedAt=Date.now();CONTI.save();return CONTI.SYNC.pushNotes(s)})()" % svc_id)
+        pg.wait_for_timeout(2500)
+        after = c2.request.get(URL + 'api/notes?team=' + team + '&service=' + svc_id).json()['notes']
+        if len(after) < len(before): fail('초안에서 곡을 뺐더니 발행본의 팀원 메모가 지워짐: %d → %d' % (len(before), len(after)))
+        print('draft item removal keeps published notes ok:', len(after))
+
         if errs: fail('page errors')
         b.close()
     print('SYNC TEST OK')
