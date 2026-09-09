@@ -7,6 +7,7 @@ import { hashPassword, verifyPassword, USERNAME_RE, PASSWORD_MIN } from '../lib/
 import { putBlob, delBlobs, readUrls, presignPut, headBlob } from '../lib/blob.js';
 import { ocrBands, visionConfigured } from '../lib/vision.js';
 import { transcribeSheet, transcribeScore, geminiConfigured, geminiModel, estimateUSD } from '../lib/gemini.js';
+import { norm as normSong, cho as choSong } from '../lib/song.js';
 
 class HttpError extends Error { constructor(status, code, message) { super(message || code); this.status = status; this.code = code; } }
 const bad = (m) => new HttpError(400, 'bad_request', m);
@@ -809,8 +810,34 @@ on('PUT', '/services/:id', async ({ uid, params, body }) => {
       await notify(teamId, to, 'note.updated', params.id, { title: `${label} 인도자의 글이 바뀌었어요`, body: String(doc.message).split('\n')[0], link: '#/view/' + params.id });
     await linkDate(teamId, params.id, doc.date, name);
   } catch (e) { console.error('notify publish', e); }
+  try { await syncUsages(teamId, params.id, doc, uid); } catch (e) { console.error('usages', e); }
   return { ok: true, version: +doc.version || 0 };
 });
+
+// 사용 이력은 발행본에서만 만든다 (명세 A.1.3). 다시 발행하면 이 예배 줄을 지우고 새로 쓴다
+async function syncUsages(teamId, serviceId, doc, uid) {
+  await q('delete from song_usages where team_id=$1 and service_id=$2', [teamId, serviceId]);
+  const items = doc.items || [];
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(String(doc.date || '')) ? doc.date : null;
+  const last = items.length - 1;
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i] || {};
+    let songId = str(it.songId, 64);
+    // 라이브러리에 없는 임시 곡이면 이력도 남기지 않는다
+    if (!songId && str(it.arrId, 64)) {
+      const a = await one('select song_id from arrangements where id=$1 and team_id=$2', [it.arrId, teamId]);
+      songId = a ? a.song_id : '';
+    }
+    if (!songId) continue;
+    const ok = await one('select id from songs where id=$1 and team_id=$2', [songId, teamId]);
+    if (!ok) continue;
+    await q(`insert into song_usages(team_id, song_id, arrangement_id, service_id, service_date, service_name, position, is_application, key_used, via_medley, leader_id)
+             values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) on conflict (song_id, service_id) do update set
+               arrangement_id=excluded.arrangement_id, service_date=excluded.service_date, service_name=excluded.service_name,
+               position=excluded.position, is_application=excluded.is_application, key_used=excluded.key_used`,
+      [teamId, songId, str(it.arrId, 64) || null, serviceId, date, str(doc.name, 120), i, i === last, str(it.key, 12), !!it.medley, uid]);
+  }
+}
 
 on('GET', '/services/:id/draft', async ({ uid, url, params }) => {
   if (!uid) throw noAuth();
@@ -842,6 +869,7 @@ on('DELETE', '/services/:id', async ({ uid, url, params }) => {
   await q('delete from services where team_id=$1 and id=$2', [teamId, params.id]);
   await q('delete from drafts where team_id=$1 and id=$2', [teamId, params.id]);
   await q('delete from notes where team_id=$1 and service_id=$2', [teamId, params.id]);
+  await q('delete from song_usages where team_id=$1 and service_id=$2', [teamId, params.id]);   // 이력은 발행본에서만 나온다
   await q('update service_dates set service_id=null where team_id=$1 and service_id=$2', [teamId, params.id]); // 날짜를 다시 쓸 수 있게 (닫기·재생성)
   let freed = 0;
   if (row) {
@@ -900,6 +928,294 @@ on('POST', '/blobs/:id', async ({ req, uid, url, params }) => {
     [teamId, params.id, up.url, up.pathname, type, buf.length]);
   if (existing && existing.url !== up.url) { try { await delBlobs([existing.url]); } catch (e) {} }
   return { url: up.url };
+});
+
+/* ---------- 라이브러리 A부: 곡 → 편곡 → 사용 이력 ---------- */
+const arrBlobIds = (a) => {
+  const ids = new Set();
+  for (const p of (a && a.pieces) || []) if (p && p.blob) ids.add(p.blob);
+  for (const m of (a && a.media) || []) if (m && m.blob) ids.add(m.blob);
+  return [...ids];
+};
+const arrView = (a) => ({
+  id: a.id, songId: a.song_id, name: a.name, isDefault: a.is_default,
+  medleySongIds: a.medley_song_ids || [], key: a.key, mod: a.mod, form: a.form,
+  bpm: a.bpm, songNote: a.song_note, pieces: a.pieces || [], media: a.media || [],
+  chart: a.chart || null, score: a.score || null, updatedAt: a.updated_at,
+});
+const songView = (s, extra) => ({
+  id: s.id, title: s.title, aliases: s.aliases || [], artist: s.artist, origKey: s.orig_key,
+  firstLine: s.first_line, tags: s.tags || [], tempo: s.tempo, archived: s.archived,
+  notDupOf: s.not_dup_of || [], updatedAt: s.updated_at,
+  titleNorm: s.title_norm, titleCho: s.title_cho, ...(extra || {}),
+});
+// 파생값 (명세 A.1.3). 목록에 붙여 내려보낸다
+async function songStats(teamId) {
+  const rows = await q(`select song_id, count(*)::int as n, max(service_date) as last, min(service_date) as first
+                        from song_usages where team_id=$1 group by song_id`, [teamId]);
+  const keys = await q(`select song_id, key_used, count(*)::int as n from song_usages
+                        where team_id=$1 and key_used<>'' group by song_id, key_used`, [teamId]);
+  const out = {};
+  for (const r of rows) out[r.song_id] = { useCount: r.n, lastUsed: r.last, firstUsed: r.first, keyStats: {} };
+  for (const k of keys) if (out[k.song_id]) out[k.song_id].keyStats[k.key_used] = k.n;
+  return out;
+}
+// 같은 예배에서 바로 앞뒤에 온 곡 (2회 이상만)
+async function companionsOf(teamId, songId) {
+  const rows = await q(`select a.position as p, a.service_id, b.song_id as other, b.position as q, s.title
+                        from song_usages a join song_usages b on b.service_id=a.service_id and b.team_id=a.team_id
+                        join songs s on s.id=b.song_id
+                        where a.team_id=$1 and a.song_id=$2 and abs(b.position - a.position)=1`, [teamId, songId]);
+  const acc = {};
+  for (const r of rows) {
+    const dir = r.q > r.p ? 'next' : 'prev';
+    const k = r.other + '|' + dir;
+    acc[k] = acc[k] || { songId: r.other, title: r.title, dir, n: 0 };
+    acc[k].n++;
+  }
+  return Object.values(acc).filter((x) => x.n >= 2).sort((a, b) => b.n - a.n).slice(0, 8);
+}
+
+// 목록 (전원). 검색은 브라우저가 하고 서버는 팀의 곡을 통째로 준다 — 팀당 곡이 500을 넘지 않는다
+on('GET', '/songs', async ({ uid, url }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(url.searchParams.get('team'), 64);
+  await requireMember(uid, teamId);
+  const since = str(url.searchParams.get('since'), 40);
+  const songs = since
+    ? await q('select * from songs where team_id=$1 and updated_at > $2 order by updated_at asc', [teamId, since])
+    : await q('select * from songs where team_id=$1 order by updated_at asc', [teamId]);
+  const arrs = await q('select * from arrangements where team_id=$1 and deleted_at is null order by is_default desc, created_at asc', [teamId]);
+  const stats = await songStats(teamId);
+  const byId = {};
+  for (const a of arrs) (byId[a.song_id] = byId[a.song_id] || []).push(arrView(a));
+  const ids = [...new Set(arrs.flatMap(arrBlobIds))];
+  const blobs = ids.length ? await q('select id, url, pathname from blobs where team_id=$1 and id = any($2::text[])', [teamId, ids]) : [];
+  return {
+    songs: songs.filter((s) => !s.deleted_at).map((s) => songView(s, { arrangements: byId[s.id] || [], ...(stats[s.id] || { useCount: 0, lastUsed: null, firstUsed: null, keyStats: {} }) })),
+    deleted: songs.filter((s) => s.deleted_at).map((s) => s.id),
+    now: new Date().toISOString(),
+    blobs: await readUrls(blobs),
+  };
+});
+
+// 비슷한 곡 짝 (정리 카드)
+on('GET', '/songs/dups', async ({ uid, url }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(url.searchParams.get('team'), 64);
+  await requireMember(uid, teamId, 'leader');
+  const rows = await q('select id, title, title_norm, title_cho, not_dup_of from songs where team_id=$1 and deleted_at is null and not archived', [teamId]);
+  const pairs = [];
+  for (let i = 0; i < rows.length; i++) for (let j = i + 1; j < rows.length; j++) {
+    const a = rows[i], b = rows[j];
+    if ((a.not_dup_of || []).includes(b.id) || (b.not_dup_of || []).includes(a.id)) continue;
+    if ((a.title_norm && a.title_norm === b.title_norm) || (a.title_cho && a.title_cho === b.title_cho)) pairs.push([a.id, b.id]);
+  }
+  return { pairs: pairs.slice(0, 50) };
+});
+
+// 곡 하나: 사용 이력·고정 메모·함께 부른 곡까지
+on('GET', '/songs/:id', async ({ uid, params, url }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(url.searchParams.get('team'), 64);
+  await requireMember(uid, teamId);
+  const s = await one('select * from songs where id=$1 and team_id=$2 and deleted_at is null', [params.id, teamId]);
+  if (!s) throw notFound('그 곡이 없어요');
+  const arrs = await q('select * from arrangements where song_id=$1 and deleted_at is null order by is_default desc, created_at asc', [s.id]);
+  const usages = await q(`select service_id as "serviceId", service_date as "serviceDate", service_name as "serviceName",
+      position, is_application as "isApplication", key_used as "keyUsed", via_medley as "viaMedley", arrangement_id as "arrangementId"
+      from song_usages where team_id=$1 and song_id=$2 order by service_date desc nulls last`, [teamId, s.id]);
+  const notes = await q(`select id, arrangement_id as "arrangementId", marker_label as "markerLabel", layer, session,
+      author_id as "authorId", author_name as "authorName", text, created_at as "createdAt"
+      from arrangement_notes where arrangement_id = any($1::uuid[]) order by created_at asc`, [arrs.map((a) => a.id)]);
+  const stats = (await songStats(teamId))[s.id] || { useCount: 0, lastUsed: null, firstUsed: null, keyStats: {} };
+  const ids = [...new Set(arrs.flatMap(arrBlobIds))];
+  const blobs = ids.length ? await q('select id, url, pathname from blobs where team_id=$1 and id = any($2::text[])', [teamId, ids]) : [];
+  return { song: songView(s, { arrangements: arrs.map(arrView), ...stats }), usages, notes,
+    companions: await companionsOf(teamId, s.id), blobs: await readUrls(blobs) };
+});
+
+// 새 곡 (인도자). 편곡 하나를 기본으로 함께 만든다
+on('POST', '/songs', async ({ uid, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  const m = await requireMember(uid, teamId, 'leader');
+  const title = str(body.title, 120);
+  if (!title) throw bad('곡 제목을 적어 주세요');
+  if (ENFORCE_PLAN) {
+    const n = await one('select count(*)::int as n from songs where team_id=$1 and not archived and deleted_at is null', [teamId]);
+    const cap = planOf(m).songs;
+    if (n.n >= cap) throw new HttpError(402, 'plan_limit', `무료는 ${cap}곡까지예요. 안 부르는 곡을 보관하면 자리가 생겨요`);
+  }
+  const tn = normSong(title);
+  const s = await one(`insert into songs(team_id, title, title_norm, title_cho, artist, orig_key, tempo, tags, aliases, first_line, created_by)
+    values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning *`,
+    [teamId, title, tn, choSong(tn), str(body.artist, 60), str(body.origKey, 12), str(body.tempo, 8),
+     strList(body.tags) || [], strList(body.aliases) || [], str(body.firstLine, 200), uid]);
+  const a = await one(`insert into arrangements(song_id, team_id, name, is_default, key, mod, form, song_note, pieces, media)
+    values($1,$2,'기본',true,$3,$4,$5,$6,$7,$8) returning *`,
+    [s.id, teamId, str(body.key, 12), str(body.mod, 12), str(body.form, 500), str(body.songNote, 300),
+     JSON.stringify(Array.isArray(body.pieces) ? body.pieces : []), JSON.stringify(Array.isArray(body.media) ? body.media : [])]);
+  return { song: songView(s, { arrangements: [arrView(a)], useCount: 0, lastUsed: null, firstUsed: null, keyStats: {} }) };
+});
+
+// 곡 정보 고치기 · 보관 (인도자)
+on('PATCH', '/songs/:id', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  await requireMember(uid, teamId, 'leader');
+  const s = await one('select * from songs where id=$1 and team_id=$2', [params.id, teamId]);
+  if (!s) throw notFound('그 곡이 없어요');
+  const set = [], vals = [params.id];
+  const put = (col, v) => { vals.push(v); set.push(`${col}=$${vals.length}`); };
+  if (body.title !== undefined) {
+    const t = str(body.title, 120); if (!t) throw bad('곡 제목을 적어 주세요');
+    const tn = normSong(t); put('title', t); put('title_norm', tn); put('title_cho', choSong(tn));
+  }
+  if (body.artist !== undefined) put('artist', str(body.artist, 60));
+  if (body.origKey !== undefined) put('orig_key', str(body.origKey, 12));
+  if (body.tempo !== undefined) put('tempo', str(body.tempo, 8));
+  if (body.firstLine !== undefined) put('first_line', str(body.firstLine, 200));
+  if (body.tags !== undefined) put('tags', strList(body.tags) || []);
+  if (body.aliases !== undefined) put('aliases', strList(body.aliases) || []);
+  if (body.archived !== undefined) put('archived', !!body.archived);
+  if (body.notDupOf !== undefined) put('not_dup_of', (Array.isArray(body.notDupOf) ? body.notDupOf : []).slice(0, 50));
+  if (!set.length) return { ok: true };
+  set.push('updated_at=now()');
+  await q(`update songs set ${set.join(', ')} where id=$1`, vals);
+  return { ok: true };
+});
+
+// 곡 지우기 (인도자). 이력이 있으면 보관을 권한다
+on('DELETE', '/songs/:id', async ({ uid, params, url }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(url.searchParams.get('team'), 64);
+  await requireMember(uid, teamId, 'leader');
+  const s = await one('select * from songs where id=$1 and team_id=$2', [params.id, teamId]);
+  if (!s) throw notFound('그 곡이 없어요');
+  const used = await one('select count(*)::int as n from song_usages where song_id=$1', [params.id]);
+  if (used.n > 0 && url.searchParams.get('force') !== '1') {
+    throw new HttpError(409, 'song_used', `${used.n}번 부른 곡이에요. 지우는 대신 보관하는 게 좋아요`);
+  }
+  await q('update songs set deleted_at=now(), updated_at=now() where id=$1', [params.id]);
+  return { ok: true, usages: used.n };
+});
+
+// 편곡 만들기 (다른 키로 복제)
+on('POST', '/songs/:id/arrangements', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  await requireMember(uid, teamId, 'leader');
+  const s = await one('select id from songs where id=$1 and team_id=$2 and deleted_at is null', [params.id, teamId]);
+  if (!s) throw notFound('그 곡이 없어요');
+  const from = str(body.fromId, 64) ? await one('select * from arrangements where id=$1 and song_id=$2', [body.fromId, s.id]) : null;
+  const base = from || { key: '', mod: '', form: '', song_note: '', pieces: [], media: [], chart: null, score: null };
+  const a = await one(`insert into arrangements(song_id, team_id, name, is_default, key, mod, form, song_note, pieces, media, chart, score)
+    values($1,$2,$3,false,$4,$5,$6,$7,$8,$9,$10,$11) returning *`,
+    [s.id, teamId, str(body.name, 40) || (str(body.key, 12) || '새 편곡'),
+     str(body.key, 12) || base.key, base.mod, base.form, base.song_note,
+     JSON.stringify(base.pieces || []), JSON.stringify(base.media || []),
+     base.chart ? JSON.stringify(base.chart) : null, base.score ? JSON.stringify(base.score) : null]);
+  return { arrangement: arrView(a) };
+});
+
+// 편곡 고치기 (인도자). 이 편곡을 쓰는 미발행 예배는 자동으로 따라온다 (참조라서)
+on('PATCH', '/arrangements/:id', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  await requireMember(uid, teamId, 'leader');
+  const a = await one('select * from arrangements where id=$1 and team_id=$2 and deleted_at is null', [params.id, teamId]);
+  if (!a) throw notFound('그 편곡이 없어요');
+  const set = [], vals = [params.id];
+  const put = (col, v) => { vals.push(v); set.push(`${col}=$${vals.length}`); };
+  if (body.name !== undefined) put('name', str(body.name, 40) || '기본');
+  if (body.key !== undefined) put('key', str(body.key, 12));
+  if (body.mod !== undefined) put('mod', str(body.mod, 12));
+  if (body.form !== undefined) put('form', str(body.form, 500));
+  if (body.songNote !== undefined) put('song_note', str(body.songNote, 300));
+  if (body.bpm !== undefined) put('bpm', +body.bpm || null);
+  if (body.pieces !== undefined) put('pieces', JSON.stringify(Array.isArray(body.pieces) ? body.pieces : []));
+  if (body.media !== undefined) put('media', JSON.stringify(Array.isArray(body.media) ? body.media : []));
+  if (body.chart !== undefined) put('chart', body.chart ? JSON.stringify(body.chart) : null);
+  if (body.score !== undefined) put('score', body.score ? JSON.stringify(body.score) : null);
+  if (set.length) { set.push('updated_at=now()'); await q(`update arrangements set ${set.join(', ')} where id=$1`, vals); }
+  // 기본 편곡 바꾸기는 유일 인덱스 때문에 순서가 있다: 내리고 올린다
+  if (body.isDefault === true && !a.is_default) {
+    await q('update arrangements set is_default=false where song_id=$1', [a.song_id]);
+    await q('update arrangements set is_default=true where id=$1', [params.id]);
+  }
+  await q('update songs set updated_at=now() where id=$1', [a.song_id]);
+  return { ok: true };
+});
+
+on('DELETE', '/arrangements/:id', async ({ uid, params, url }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(url.searchParams.get('team'), 64);
+  await requireMember(uid, teamId, 'leader');
+  const a = await one('select * from arrangements where id=$1 and team_id=$2', [params.id, teamId]);
+  if (!a) throw notFound('그 편곡이 없어요');
+  const left = await one('select count(*)::int as n from arrangements where song_id=$1 and deleted_at is null and id<>$2', [a.song_id, params.id]);
+  if (!left.n) throw bad('마지막 편곡은 지울 수 없어요. 곡을 보관하거나 지워 주세요');
+  await q('update arrangements set deleted_at=now() where id=$1', [params.id]);
+  if (a.is_default) {
+    const next = await one('select id from arrangements where song_id=$1 and deleted_at is null order by created_at asc limit 1', [a.song_id]);
+    if (next) await q('update arrangements set is_default=true where id=$1', [next.id]);
+  }
+  await q('update songs set updated_at=now() where id=$1', [a.song_id]);
+  return { ok: true };
+});
+
+/* 고정 메모 (명세 A.6): 편곡에 붙어 이 곡을 넣을 때마다 따라온다 */
+on('POST', '/arrangements/:id/notes', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  const m = await requireMember(uid, teamId);
+  const a = await one('select * from arrangements where id=$1 and team_id=$2 and deleted_at is null', [params.id, teamId]);
+  if (!a) throw notFound('그 편곡이 없어요');
+  const layer = ['all', 'session', 'mine'].includes(str(body.layer, 10)) ? str(body.layer, 10) : 'mine';
+  const session = str(body.session, 40) || null;
+  if (layer === 'all' && m.role !== 'leader') throw forbidden('전체 고정 메모는 인도자만 남길 수 있어요');
+  if (layer === 'session' && m.role !== 'leader' && !mySessions(m).includes(session)) throw forbidden('내 세션에만 남길 수 있어요');
+  const text = str(body.text, 60);
+  if (!text) throw bad('메모를 적어 주세요');
+  const r = await one(`insert into arrangement_notes(arrangement_id, team_id, marker_label, layer, session, author_id, author_name, text)
+    values($1,$2,$3,$4,$5,$6,$7,$8) returning *`,
+    [params.id, teamId, str(body.markerLabel, 8) || 'A', layer, layer === 'session' ? session : null, uid, m.mname || '', text]);
+  return { note: { id: r.id, arrangementId: r.arrangement_id, markerLabel: r.marker_label, layer: r.layer, session: r.session, authorId: r.author_id, authorName: r.author_name, text: r.text, createdAt: r.created_at } };
+});
+on('DELETE', '/arrangements/:id/notes/:noteId', async ({ uid, params, url }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(url.searchParams.get('team'), 64);
+  const m = await requireMember(uid, teamId);
+  const n = await one('select * from arrangement_notes where id=$1 and team_id=$2', [params.noteId, teamId]);
+  if (!n) throw notFound('그 메모가 없어요');
+  if (m.role !== 'leader' && n.author_id !== uid) throw forbidden('내가 쓴 메모만 지울 수 있어요');
+  await q('delete from arrangement_notes where id=$1', [params.noteId]);
+  return { ok: true };
+});
+
+/* 합치기 (명세 A.8.1): 많이 부른 쪽을 남기고 편곡·이력을 옮긴다 */
+on('POST', '/songs/merge', async ({ uid, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  await requireMember(uid, teamId, 'leader');
+  const a = await one('select * from songs where id=$1 and team_id=$2 and deleted_at is null', [str(body.a, 64), teamId]);
+  const b = await one('select * from songs where id=$1 and team_id=$2 and deleted_at is null', [str(body.b, 64), teamId]);
+  if (!a || !b || a.id === b.id) throw bad('합칠 두 곡을 골라 주세요');
+  const cnt = async (id) => (await one('select count(*)::int as n from song_usages where song_id=$1', [id])).n;
+  const [na, nb] = [await cnt(a.id), await cnt(b.id)];
+  const keep = na >= nb ? a : b, drop = keep.id === a.id ? b : a;
+  // 남는 곡에 기본 편곡이 이미 있으니 옮겨 오는 것은 전부 보조 편곡으로
+  await q(`update arrangements set song_id=$1, is_default=false, name = name || ' (합침)', updated_at=now() where song_id=$2`, [keep.id, drop.id]);
+  // 같은 예배에 두 곡이 다 있었다면 한 줄만 남는다
+  await q(`delete from song_usages u where u.song_id=$1 and exists
+           (select 1 from song_usages v where v.song_id=$2 and v.service_id=u.service_id)`, [drop.id, keep.id]);
+  await q('update song_usages set song_id=$1 where song_id=$2', [keep.id, drop.id]);
+  await q(`update songs set aliases = (select array(select distinct e from unnest(aliases || $2::text[] || array[$3::text]) e where e <> '')), updated_at=now() where id=$1`,
+    [keep.id, drop.aliases || [], drop.title]);
+  await q('update songs set deleted_at=now(), updated_at=now() where id=$1', [drop.id]);
+  await audit(teamId, uid, 'song.merge', keep.id, { dropped: drop.id, title: drop.title });
+  return { ok: true, keepId: keep.id, dropId: drop.id };
 });
 
 /* ---------- 라이브러리: 팀이 함께 쓰는 곡 보관함 ---------- */

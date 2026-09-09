@@ -86,12 +86,7 @@ def run():
         if '콘티가 비어 있어요' not in pl.locator('#app').inner_text(): fail('인도자 홈에 "콘티가 비어 있어요" 카드 없음')
         print('auto-create ok:', autos)
 
-        # ---- 라이브러리 중복 합치기 ----
-        pl.evaluate("CONTI.S.library.push({id:'d1',title:'주 은혜임을',key:'G',pieces:[],media:[],form:'',songNote:''},{id:'d2',title:'주 은혜임을 (G)',key:'G',pieces:[{}],media:[],form:'A-B',songNote:''});CONTI.save()")
-        pl.click('.navi[data-act="nav-lib"]'); pl.wait_for_selector('#libMerge', timeout=5000); pl.click('#libMerge'); pl.wait_for_timeout(600)
-        lib = pl.evaluate("CONTI.S.library.filter(s=>/주 은혜임을/.test(s.title))")
-        if len(lib) != 1 or lib[0]['id'] != 'd2': fail('중복 합치기 결과 이상: %s' % lib)
-        pl.keyboard.press('Escape'); print('library merge ok')
+        # 라이브러리 합치기는 test_library2 에서 본다 (서버 쪽 곡·편곡 모델)
 
         # ---- 가져오기: 같은 이름·날짜 → 합치기 ----
         pl.goto(URL + '#/home'); pl.wait_for_selector('.hd')

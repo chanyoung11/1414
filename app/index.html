@@ -503,6 +503,37 @@ html.dark .msgbody{background:#1C1C1C}
 .nrow{display:flex;gap:5px;align-items:center;padding:4px 0;border-bottom:1px solid var(--line2);flex-wrap:wrap}
 .nrow .field{padding:4px 6px;font-size:13px}
 .nrow .q.sm{padding:2px 8px;font-size:12px;min-width:0}
+/* ---------- 라이브러리 (A부) ---------- */
+.libpage{max-width:900px;margin:0 auto;padding:4px 0 40px}
+.filters{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px}
+.filters .sep{width:1px;height:18px;background:var(--border);margin:0 2px}
+.insight{margin-top:10px;font-size:12.5px;color:var(--muted-fg)}
+.insight b{color:var(--fg)}
+.linkish{background:none;border:0;padding:0;font:inherit;color:var(--primary);text-decoration:underline;cursor:pointer}
+.songrow{display:flex;align-items:center;gap:10px;padding:9px 6px;border-bottom:1px solid var(--border);cursor:pointer;border-radius:var(--r-md)}
+.songrow:hover{background:var(--secondary)}
+.songrow.picked{background:var(--ring)}
+.songrow .chk{width:20px;height:20px;flex:0 0 auto;border:1.5px solid var(--border-2);border-radius:5px;display:inline-flex;align-items:center;justify-content:center}
+.songrow .chk.on{background:var(--primary);border-color:var(--primary);color:var(--primary-fg)}
+.sthumb{width:44px;height:32px;flex:0 0 auto;border-radius:5px;background:var(--muted) center/cover no-repeat;border:1px solid var(--border)}
+.sthumb.wide{width:84px;height:60px}
+.sthumb.big{width:100%;height:88px}
+.sthumb.xl{width:92px;height:66px}
+.scards{display:flex;gap:10px;overflow-x:auto;padding:2px 2px 8px;scroll-snap-type:x proximity}
+.scard{flex:0 0 132px;scroll-snap-align:start;display:flex;flex-direction:column;gap:4px;padding:8px;border:1px solid var(--border);border-radius:var(--r-lg);background:var(--card);text-align:left;cursor:pointer;color:inherit;font:inherit}
+.scard b{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.scard .hint{font-size:11.5px}
+.acard{border:1px solid var(--border);border-radius:var(--r-lg);background:var(--card);padding:14px;margin-bottom:10px}
+.row.three{display:flex;gap:10px;margin-top:4px}
+.stat{flex:1;border:1px solid var(--border);border-radius:var(--r-lg);padding:10px 12px;background:var(--card)}
+.stat b{display:block;font-size:18px;letter-spacing:-.02em}
+.stat span{font-size:11.5px;color:var(--muted-fg)}
+.bars{display:flex;flex-direction:column;gap:5px}
+.bar{display:flex;align-items:center;gap:8px}
+.bar .bl{width:34px;font-weight:600;font-size:12.5px}
+.bar .bb{flex:1;height:8px;background:var(--muted);border-radius:99px;overflow:hidden}
+.bar .bb i{display:block;height:100%;background:var(--primary)}
+.m.fixed{border-width:1px;box-shadow:0 0 0 1px var(--border) inset,0 0 0 3px var(--card) inset}
 /* ---------- 팀 화면 (B부) ---------- */
 .tpage{max-width:760px;margin:0 auto;padding:4px 0 40px}
 .tsec{border:1px solid var(--border);border-radius:var(--r-lg);background:var(--card);margin-bottom:10px;overflow:hidden}
@@ -661,7 +692,7 @@ function homeHTML(){
   ${on&&!isPastor()?`<button class="navi" data-act="cal">${ic('list')}내 일정</button>`:''}
   ${on&&lead?`<button class="navi" data-act="sched">${ic('users')}편성</button>`:''}
   ${on&&(lead||isPastor())?`<button class="navi" data-act="word">${ic('note')}말씀</button>`:''}
-  ${lead?`<button class="navi" data-act="nav-lib">${ic('music')}라이브러리<span class="cnt">${S.library.length}</span></button>`:''}
+  <button class="navi" data-act="nav-lib">${ic('music')}라이브러리<span class="cnt">${(S.songs||[]).filter(x=>!x.archived).length||''}</span></button>
   ${on?`<button class="navi" data-act="team">${ic('users')}팀<span class="cnt">${esc(S.team.name||'')}</span></button>`:''}
   <div class="sect">계정</div>
   <button class="navi" data-act="settings">${ic('gear')}설정</button>
@@ -1422,15 +1453,6 @@ async function inboxModal(){await pullNoti();const list=NOTI.list;
    if(!n.readAt){n.readAt=new Date().toISOString();NOTI.unread=Math.max(0,NOTI.unread-1);NOTI.sig='';updateBadges();api('/notifications/read',{method:'POST',body:{teamId:S.team.id,ids:[n.id]}}).catch(()=>{})}
    closeModal();const h=String(n.link||'').replace(/^#\/?/,'');if(h&&h!=='home')go(h);else render();return}
  }catch(err){toast(err.message)}}}
-async function libraryModal(){const lead=isLeader();const usedIn=id=>S.services.filter(sv=>sv.items.some(it=>it.libId===id)).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
- const groups=Object.values(S.library.reduce((g,s)=>{const k=normTitle(s.title);if(!k)return g;(g[k]||(g[k]=[])).push(s);return g},{})).filter(g=>g.length>1);const dupN=groups.reduce((n,g)=>n+g.length-1,0);
- modal(`<b style="font-size:17px">라이브러리</b> <span class="hint">${S.library.length}곡 · 예배에 넣은 곡은 자동 저장</span>${lead&&dupN?`<div class="row" style="margin-top:8px"><button class="btn sm" id="libMerge">같은 곡 ${dupN}개 합치기</button><span class="hint">제목이 같은 곡: ${groups.map(g=>esc(g[0].title)).slice(0,3).join(', ')}${groups.length>3?' 외':''}</span></div>`:''}
-  <div id="libList" style="margin-top:12px">${S.library.length?S.library.slice().sort((a,b)=>(a.title||'').localeCompare(b.title||'','ko')).map(sg=>{const u=usedIn(sg.id);return `<div class="mrow"><span class="grow"><b>${esc(sg.title||'(제목 없음)')}</b> <span class="muted">${esc(keyStr(sg))}</span><div class="hint" style="margin-top:2px">${u.length?'사용: '+u.slice(0,4).map(sv=>esc(sv.name||'(이름 없음)')).join(', ')+(u.length>4?' 외 '+(u.length-4):''):'아직 안 쓴 곡'} · 악보 ${(sg.pieces||[]).length}장 · 미디어 ${(sg.media||[]).length}</div></span>${lead?`<button class="icon sm ghost" data-libdel="${sg.id}" title="라이브러리에서 삭제">${ic('trash')}</button>`:''}</div>`}).join(''):'<div class="empty">비어 있어요. 예배에 곡을 넣으면 여기에 쌓입니다.</div>'}</div>
-  <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" data-close="1">닫기</button></div>`,{center:true});
- $('#modal').onclick=e=>{if(e.target.closest('[data-close]')){closeModal();return}const d=e.target.closest('[data-libdel]');if(d){if(!confirm('라이브러리에서 이 곡을 지울까요? 이미 들어간 예배에는 영향이 없어요.'))return;S.library=S.library.filter(x=>x.id!==d.dataset.libdel);S.libDeleted=(S.libDeleted||[]).concat(d.dataset.libdel);save();SYNC.pushLibrary().then(()=>libraryModal());libraryModal()}
-  if(e.target.closest('#libMerge')){if(!confirm(`제목이 같은 곡을 하나로 합칠까요? 악보가 많은 쪽을 남기고, 예배에 들어간 곡은 남는 쪽으로 이어집니다.`))return;let merged=0;
-   groups.forEach(g=>{const keep=g.slice().sort((a,b)=>((b.pieces||[]).length-(a.pieces||[]).length)||((b.at||0)-(a.at||0)))[0];g.forEach(s=>{if(s===keep)return;S.services.forEach(sv=>sv.items.forEach(it=>{if(it.libId===s.id)it.libId=keep.id}));if(!keep.form&&s.form)keep.form=s.form;if(!keep.songNote&&s.songNote)keep.songNote=s.songNote;if(!keep.chart&&s.chart)keep.chart=s.chart;S.library=S.library.filter(x=>x.id!==s.id);S.libDeleted=(S.libDeleted||[]).concat(s.id);keep.dirty=true;merged++})});
-   save();SYNC.pushLibrary();toast(merged+'곡을 합쳤어요');libraryModal()}}}
 function mediaTargetModal(svc,it,md){let t=mdSess(md).slice();
  modal(`<b style="font-size:17px">이 미디어를 누가 보나요</b><div class="hint" style="margin-top:4px">${esc(md.name||md.url)}</div>
   <div style="margin-top:14px" id="mtSel"><button class="q ${t.length?'':'on'}" data-mdt="">전체</button>${S.team.sessions.filter(x=>x!=='인도자').map(x=>`<button class="q ${t.includes(x)?'on':''}" data-mdt="${esc(x)}">${esc(x)}</button>`).join('')}</div>
@@ -1518,12 +1540,37 @@ function settingsModal(){
   if(e.target.closest('#sReset')){if(confirm(on?'이 기기에 저장된 콘티·악보·메모를 지웁니다. 계정은 그대로예요. 계속할까요?':'모든 데이터를 지웁니다. 계속할까요?')){indexedDB.deleteDatabase('conti-v1');location.reload()}}
  };
 }
+// 서버 없이 쓰는 모드(정적 호스팅)에서는 곡·편곡을 받을 수 없다. 그때는 기기에 쌓인 옛 라이브러리를 쓴다
+const libSongs=()=>online()?(S.songs||[]).filter(x=>!x.archived)
+ :(S.library||[]).map(x=>({id:x.id,title:x.title,titleNorm:nrm(x.title),titleCho:chos(nrm(x.title)),
+   artist:'',tags:[],aliases:[],useCount:0,lastUsed:null,
+   arrangements:[{id:x.id,name:'기본',isDefault:true,key:x.key||'',mod:x.mod||'',form:x.form||'',
+    songNote:x.songNote||'',pieces:x.pieces||[],media:x.media||[],chart:x.chart||null,score:x.score||null}]}));
 function libraryPicker(svc){
- if(!S.library.length){toast('라이브러리가 비어 있어요');return}
- modal(`<b style="font-size:17px">라이브러리에서 추가</b><input class="field" id="libQ" placeholder="제목 검색" style="margin:10px 0"><div id="libList">${S.library.map(s=>`<div class="list-item" data-lib="${esc(s.id)}"><span class="icon sm" style="background:var(--panel2)">${ic('music')}</span><span class="grow" style="font-weight:600">${esc(s.title)}</span><span class="k">${esc(s.key)} · 조각 ${s.pieces.length} · 마커 ${s.pieces.reduce((n,p)=>n+p.markers.length,0)}</span></div>`).join('')}</div>`,{center:true});
- $('#libQ').oninput=e=>{const q=e.target.value.trim();$$('#libList .list-item').forEach(li=>{const s=S.library.find(x=>x.id===li.dataset.lib);li.style.display=!q||s.title.includes(q)?'':'none'})};
- $('#modal').onclick=e=>{const li=e.target.closest('[data-lib]');if(!li)return;const s=S.library.find(x=>x.id===li.dataset.lib);const it=newItem();Object.assign(it,{title:s.title,key:s.key,mod:s.mod||'',form:s.form,songNote:s.songNote||'',pieces:clone(s.pieces),media:clone(s.media),chart:s.chart?clone(s.chart):undefined,score:s.score?clone(s.score):undefined,libId:s.id});
-  it.pieces.forEach(p=>{p.id=uid();p.markers.forEach(mk=>mk.id=uid());(p.hls||[]).forEach(h=>h.id=uid())});it.media.forEach(m=>{m.id=uid();m.notes=[]});
+ const all=libSongs();
+ if(!all.length){if(!online()){toast('라이브러리가 비어 있어요');return}toast('라이브러리가 비어 있어요 · "새 곡"으로 만들어 보세요');newSongModal(true);return}
+ let q='';
+ const rows=()=>{const list=(q.trim().length>=2?all.map(x=>({s:x,m:matchSong(x,q)})).filter(x=>x.m.rank>0).sort((a,b)=>a.m.rank-b.m.rank)
+   :all.map(x=>({s:x,m:{rank:0,where:''}})).sort((a,b)=>(b.s.lastUsed||'').localeCompare(a.s.lastUsed||''))).slice(0,60);
+  return list.length?list.map(x=>{const a=defArr(x.s);
+   return `<div class="list-item" data-lib="${esc(x.s.id)}"><span class="icon sm" style="background:var(--panel2)">${ic('music')}</span>
+    <span class="grow" style="font-weight:600;min-width:0">${esc(x.s.title)}${x.m.where?`<span class="hint" style="font-weight:400"> · ${esc(x.m.where)}</span>`:''}</span>
+    <span class="k">${esc(songKeys(x.s).join(' · ')||'-')} · ${x.s.useCount||0}회 · ${relDate(x.s.lastUsed)}</span></div>`}).join('')
+   :'<div class="empty">찾는 곡이 없어요</div>'};
+ modal(`<div class="row"><b style="font-size:17px">라이브러리에서 추가</b><span class="grow"></span>${online()?`<button class="btn sm" id="lpNew">${ic('plus')}새 곡</button>`:''}</div>
+  <input class="field" id="libQ" placeholder="제목 · 가사 · 아티스트 — 초성도 됩니다" style="margin:10px 0" autocomplete="off">
+  <div id="libList">${rows()}</div>`,{center:true});
+ $('#libQ').oninput=debounce(e=>{q=e.target.value;const l=$('#libList');if(l)l.innerHTML=rows()},150);
+ $('#modal').onclick=e=>{
+  if(e.target.closest('#lpNew')){closeModal();newSongModal(true);return}
+  const li=e.target.closest('[data-lib]');if(!li)return;
+  const sg=all.find(x=>x.id===li.dataset.lib);if(!sg)return;const a=defArr(sg);
+  const it=newItem();
+  Object.assign(it,{title:sg.title,key:a.key||'',mod:a.mod||'',form:a.form||'',songNote:a.songNote||'',
+   pieces:clone(a.pieces||[]),media:clone(a.media||[]),chart:a.chart?clone(a.chart):undefined,
+   score:a.score?clone(a.score):undefined,songId:sg.id,arrId:a.id,libId:a.id});
+  it.pieces.forEach(p=>{p.id=uid();(p.markers||[]).forEach(mk=>mk.id=uid());(p.hls||[]).forEach(h=>h.id=uid())});
+  it.media.forEach(m=>{m.id=uid();m.notes=[]});
   svc.items.push(it);SEL[svc.id]={item:it.id,tool:'marker'};touch(svc);save();closeModal();render()};
 }
 
@@ -1556,7 +1603,7 @@ const url=id=>urlCache.get(id)||'';
 /* ---------- state ---------- */
 const DEF_SESS=['드럼','베이스','건반','일렉','어쿠스틱','싱어','인도자'];
 const DEF_PHR=['Down','Full','쉬기','패드만','브레이크','하프타임','반복'];
-let S={v:1,team:{sessions:DEF_SESS.slice(),phrases:DEF_PHR.slice(),me:{name:'',session:'건반',role:'leader'}},services:[],library:[]};
+let S={v:1,team:{sessions:DEF_SESS.slice(),phrases:DEF_PHR.slice(),me:{name:'',session:'건반',role:'leader'}},services:[],library:[],songs:[],songsAt:''};
 // 로컬 상태는 (계정, 팀) 단위로 따로 저장한다 — 로그아웃·팀 전환 뒤에 다른 팀의 콘티·악보가 화면에 남거나 서버로 올라가지 않도록
 let saveT;let CUR_SCOPE='legacy';
 const scopeKey=(userId,teamId)=>'state:'+(userId||'local')+':'+(teamId||'none');
@@ -1567,16 +1614,27 @@ const DEF_TEAM=()=>({sessions:DEF_SESS.slice(),phrases:DEF_PHR.slice(),settings:
 async function switchScope(next){if(next===CUR_SCOPE)return;
  if(CUR_SCOPE==='legacy'){CUR_SCOPE=next;await flushSave();try{await IDB.del('kv','state')}catch(e){}return} // 예전 단일 저장소는 첫 스코프가 그대로 물려받음
  await flushSave();CUR_SCOPE=next;let s=null;try{const raw=await IDB.get('kv',next);if(raw)s=JSON.parse(raw)}catch(e){console.warn('scope',e)}
- S.services=(s&&s.services)||[];S.library=(s&&s.library)||[];S.noteShadow=(s&&s.noteShadow)||{};S.seedAt=(s&&s.seedAt)||0;S.dropped=(s&&s.dropped)||[];S.libAt=(s&&s.libAt)||'';S.libDeleted=(s&&s.libDeleted)||[];S.team=Object.assign(DEF_TEAM(),(s&&s.team)||{});
+ S.services=(s&&s.services)||[];S.library=(s&&s.library)||[];S.songs=(s&&s.songs)||[];S.songsAt=(s&&s.songsAt)||'';S.noteShadow=(s&&s.noteShadow)||{};S.seedAt=(s&&s.seedAt)||0;S.dropped=(s&&s.dropped)||[];S.libAt=(s&&s.libAt)||'';S.libDeleted=(s&&s.libDeleted)||[];S.team=Object.assign(DEF_TEAM(),(s&&s.team)||{});
  if(typeof SYNC!=='undefined')Object.keys(SYNC.pulledAt).forEach(k=>delete SYNC.pulledAt[k]);
  // 팀·계정이 바뀌면 화면 캐시도 모두 비운다 (이전 팀 일정·말씀·녹음이 남지 않게)
  if(typeof NOTI!=='undefined'){NOTI.list=[];NOTI.unread=0;NOTI.at=0;NOTI.sig=''}
  if(typeof SCH!=='undefined'){SCH.dates=[];SCH.availability=[];SCH.members=[];SCH.role='';SCH.at=0;SCH.month='';SCH.onlyUnset=false}
  if(typeof WORDS!=='undefined'){WORDS.list=[];WORDS.role='';WORDS.at=0}
- if(typeof REH!=='undefined'){REH.bySvc={};REH.urls={};REH.at={}}}
+ if(typeof REH!=='undefined'){REH.bySvc={};REH.urls={};REH.at={}}
+ if(typeof LIB!=='undefined'){LIB.at=0;LIB.q='';LIB.key='';LIB.tempo='';LIB.tag='';LIB.last='';LIB.sel=[];LIB.pick=null;LIB.detail=null;LIB.dups=null}
+ if(typeof TM!=='undefined'){TM.data=null;TM.invites=null;TM.at=0}}
 const me=()=>S.team.me;
 const isLeader=()=>me().role==='leader';
-const svcById=id=>S.services.find(s=>s.id===id);
+let PRACTICE=null;   // 라이브러리에서 곡 하나만 연습할 때 쓰는 임시 콘티 (저장·동기화하지 않는다)
+const svcById=id=>S.services.find(s=>s.id===id)||(PRACTICE&&PRACTICE.id===id?PRACTICE:null);
+function practiceArr(song,a){
+ if(!a||!a.id){toast('편곡이 없어요');return}
+ const it=newItem();
+ Object.assign(it,{title:song.title,key:a.key||'',mod:a.mod||'',form:a.form||'',songNote:a.songNote||'',
+  pieces:clone(a.pieces||[]),media:clone(a.media||[]),chart:a.chart?clone(a.chart):undefined,
+  score:a.score?clone(a.score):undefined,songId:song.id,arrId:a.id});
+ PRACTICE={id:'practice-'+a.id,name:song.title||'연습',date:today(),notice:'',version:0,items:[it],published:null,practice:true};
+ go('play/'+PRACTICE.id+'/0')}
 function newService(){return {id:uid(),name:'',date:today(),notice:'',version:0,items:[],published:null}}
 function newItem(){return {id:uid(),title:'',key:'',mod:'',form:'',songNote:'',pieces:[],media:[],notes:[]}}
 const keyStr=it=>it.mod?`${it.key||'?'} – ${it.mod}`:(it.key||'');
@@ -1643,7 +1701,7 @@ async function probeServer(){try{const r=await fetch('/api/health',{cache:'no-st
 function probeOmr(){if(!online()||!NET.user)return;api('/omr').then(r=>{const on=!!(r&&r.available);if(on!==NET.omr){NET.omr=on;if(route().name==='edit')render()}}).catch(()=>{})}
 async function applyMembership(t){const next=scopeKey(NET.user&&NET.user.id,t.teamId);
  if(next!==CUR_SCOPE){const prev=S.team.id;await switchScope(next);if(prev&&prev!==t.teamId&&route().name!=='home')go('home');
-  if(typeof SYNC!=='undefined'&&online())setTimeout(()=>SYNC.pullLibrary(),0)}   // 팀이 바뀌면 그 팀 라이브러리를 받아온다
+  if(typeof SYNC!=='undefined'&&online())setTimeout(()=>{SYNC.pullLibrary();if(typeof pullSongs!=='undefined')pullSongs(true)},0)}   // 팀이 바뀌면 그 팀 라이브러리를 받아온다
  S.team.id=t.teamId;S.team.name=t.teamName;S.team.invite=t.invite||'';S.team.sessions=t.sessions.slice();S.team.phrases=t.phrases.slice();S.team.settings=t.settings||S.team.settings||{};S.team.me={userId:t.me.userId,name:t.me.name,session:t.me.session,mySessions:t.me.mySessions||[],role:t.me.role,capo:+t.me.capo||0};save()}
 async function takeMe(m){NET.user=m.user;NET.teams=m.teams||[];NET.blocked=m.blocked||null;const cur=NET.teams.find(x=>x.teamId===S.team.id)||m.team;
  if(cur){if(S.team.id&&cur.teamId!==S.team.id)toast((cur.teamName||'다른')+' 팀으로 전환했어요');await applyMembership(cur)}
@@ -1757,7 +1815,7 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),
    (it.media||[]).forEach(m=>{m.notes=list.filter(n=>n.mediaId===m.id).map(n=>({id:n.id,t:+n.t||0,marker:n.markerId||undefined,layer:n.layer,session:n.session,text:n.text,author:who(n)}))})});
   S.noteShadow=S.noteShadow||{};S.noteShadow[svc.id]=d.notes.map(n=>n.id);SYNC.pulledAt[svc.id]=Date.now();save()},
  flush(){const r=route();const svc=svcById(r.a);if(online()&&svc&&/^(edit|view|play)$/.test(r.name)){clearTimeout(SYNC.t);SYNC.pushNotes(svc,true);if(r.name==='edit'&&isLeader()){clearTimeout(SYNC.td);SYNC.pushDraft(svc)}}},
- schedulePush(){if(!online())return;clearTimeout(SYNC.tl);SYNC.tl=setTimeout(()=>{SYNC.pushLibrary()},3000);clearTimeout(SYNC.t);SYNC.t=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&/^(edit|view|play)$/.test(r.name))SYNC.pushNotes(svc)},700);clearTimeout(SYNC.td);SYNC.td=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&r.name==='edit'&&isLeader())SYNC.pushDraft(svc)},2500)}
+ schedulePush(){if(!online())return;clearTimeout(SYNC.tl);SYNC.tl=setTimeout(()=>{SYNC.pushLibrary();pushSongs()},3000);clearTimeout(SYNC.t);SYNC.t=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&/^(edit|view|play)$/.test(r.name))SYNC.pushNotes(svc)},700);clearTimeout(SYNC.td);SYNC.td=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&r.name==='edit'&&isLeader())SYNC.pushDraft(svc)},2500)}
 };
 const GATE={mode:'login',err:'',user:'',sess:'',preview:null};
 function authShell(inner){return `<div class="auth"><aside class="auth-side"><div class="logostack">${logoSymbol(56)}${logoWordmark(47,'')}</div><div><p class="kick">찬양팀 콘티 · 연습 · 무대 — 1414</p><blockquote>“콘티 한 장으로<br>팀 전체가 같은 곳을 봅니다.”</blockquote><p class="desc">곡 순서와 키, 송폼, 악보, 참고 영상을 한 화면에. 인도자가 발행하면 팀원은 자기 세션 메모와 함께 연습하고 무대에 섭니다.</p>
@@ -1824,6 +1882,400 @@ async function doGate(act,el){
 }
 function copyText(t){if(navigator.clipboard&&navigator.clipboard.writeText)return navigator.clipboard.writeText(t);const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();return Promise.resolve()}
 const inviteLink=()=>location.origin+location.pathname+'#/join/'+(S.team.invite||'');
+/* ---------- 라이브러리 A부: 곡 → 편곡 → 사용 이력 ---------- */
+// 서버가 진실이고 기기에는 거울을 둔다(오프라인에서 보기 위해). 고친 것은 dirty 표를 달아 나중에 올린다.
+const CHO_L=['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+const nrm=s=>String(s||'').normalize('NFC').toLowerCase().replace(/[\s\-–—''"()[\]·,.!?+/&]/g,'');
+const chos=s=>[...String(s||'')].map(ch=>{const c=ch.charCodeAt(0);return (c>=0xAC00&&c<=0xD7A3)?CHO_L[Math.floor((c-0xAC00)/588)]:ch}).join('');
+const isCho=s=>{const t=nrm(s);return t.length>=2&&/^[ㄱ-ㅎ]+$/.test(t)};
+const MATCH_F=[['aliases','다른 이름'],['artist','아티스트'],['firstLine','가사'],['tags','태그']];
+function matchSong(s,qq){const raw=String(qq||'').trim();if(raw.length<2)return {rank:0,where:''};
+ if(isCho(raw)){const c=nrm(raw);const tc=s.titleCho||chos(nrm(s.title));
+  return tc.startsWith(c)?{rank:1,where:''}:tc.includes(c)?{rank:2,where:''}:{rank:0,where:''}}
+ const n=nrm(raw);const tn=s.titleNorm||nrm(s.title);
+ if(tn.startsWith(n))return {rank:1,where:''};
+ if(tn.includes(n))return {rank:2,where:''};
+ for(let i=0;i<MATCH_F.length;i++){const [k,label]=MATCH_F[i];const v=s[k];
+  const list=Array.isArray(v)?v:(v?[v]:[]);const hit=list.find(x=>nrm(x).includes(n));
+  if(hit)return {rank:3+i,where:`${label}: ${hit}`}}
+ const an=(s.arrangements||[]).find(a=>nrm(a.name).includes(n));
+ if(an)return {rank:9,where:'편곡: '+an.name};
+ return {rank:0,where:''}}
+const defArr=s=>(s.arrangements||[]).find(a=>a.isDefault)||(s.arrangements||[])[0]||{};
+const arrById=(s,id)=>(s.arrangements||[]).find(a=>a.id===id)||defArr(s);
+const songById=id=>(S.songs||[]).find(s=>s.id===id);
+const songKeys=s=>[...new Set((s.arrangements||[]).map(a=>a.key).filter(Boolean))];
+// 상대 시각: '이번 주' '3주 전' '2달 전'
+function relDate(d){if(!d)return '—';const t=new Date(d);if(isNaN(t))return '—';
+ const days=Math.floor((Date.now()-t)/864e5);
+ if(days<7)return '이번 주';if(days<31)return Math.max(1,Math.floor(days/7))+'주 전';
+ if(days<365)return Math.floor(days/30)+'달 전';return Math.floor(days/365)+'년 전'}
+
+const LIB={at:0,q:'',key:'',tempo:'',tag:'',last:'',sort:'recent',archived:false,pick:null,sel:[],detail:null,tab:'arr',dups:null};
+async function pullSongs(force){if(!online()||!S.team.id)return false;
+ if(!force&&Date.now()-LIB.at<8000)return false;
+ let r;try{r=await api('/songs?team='+S.team.id+(S.songsAt&&!force?'&since='+encodeURIComponent(S.songsAt):''))}catch(e){return false}
+ let changed=false;
+ await SYNC.fetchBlobs(r.blobs);
+ (r.songs||[]).forEach(s=>{scrubIds(s);const i=(S.songs||[]).findIndex(x=>x.id===s.id);
+  if(i<0){S.songs.push(s);changed=true}
+  else if(!S.songs[i].dirty){S.songs[i]=s;changed=true}});
+ (r.deleted||[]).forEach(id=>{const i=(S.songs||[]).findIndex(x=>x.id===id);if(i>=0){S.songs.splice(i,1);changed=true}});
+ S.songsAt=r.now||S.songsAt;LIB.at=Date.now();if(changed)save();
+ await songURLs();
+ return changed}
+// 목록 썸네일은 url() 로 그리는데 그건 캐시만 본다. 미리 만들어 둔다
+async function songURLs(){const ids=[];
+ (S.songs||[]).forEach(s=>(s.arrangements||[]).forEach(a=>(a.pieces||[]).forEach(p=>p.blob&&ids.push(p.blob))));
+ await Promise.all([...new Set(ids)].map(blobURL))}
+// 곡을 고치면 서버에 바로 (인도자·온라인). 실패하면 dirty 로 남겨 다음에 다시
+async function saveSong(s,fields){if(!isLeader())return;
+ s.dirty=true;save();
+ if(!online())return;
+ try{await api('/songs/'+s.id,{method:'PATCH',body:{teamId:S.team.id,...fields}});s.dirty=false;save()}
+ catch(e){toast(e.message)}}
+async function saveArr(s,a,fields){if(!isLeader())return;
+ Object.assign(a,fields);s.dirty=true;save();
+ if(!online())return;
+ try{await api('/arrangements/'+a.id,{method:'PATCH',body:{teamId:S.team.id,...fields}});s.dirty=false;save()}
+ catch(e){toast(e.message)}}
+// 콘티의 곡 → 라이브러리의 편곡. 곡 하나의 지금 모습을 뽑는다
+const arrSnap=(x)=>({key:x.key||'',mod:x.mod||'',form:x.form||'',songNote:x.songNote||'',
+ pieces:clone(x.pieces||[]),media:clone(x.media||[]).map(m=>({...m,notes:[]})),
+ chart:x.chart||null,score:x.score||null});
+const sameSnap=(a,b)=>JSON.stringify(arrSnap(a))===JSON.stringify(b);
+// 콘티에서 고친 것을 라이브러리 편곡에 반영한다. 글자마다 부르면 같은 곡이 여러 번 만들어지므로
+// 라이브러리 올리기와 같은 디바운스 자리에서 한 번에 민다
+let PUSH_SONGS=false;
+async function pushSongs(){
+ if(!online()||!isLeader()||!S.team.id||PUSH_SONGS)return false;
+ PUSH_SONGS=true;let changed=false;
+ try{
+  for(const sv of S.services){
+   for(const it of (sv.items||[])){
+    if(!(it.title||'').trim())continue;
+    const snap=arrSnap(it);
+    if(it.arrId){
+     const sg=songById(it.songId);const a=sg&&(sg.arrangements||[]).find(x=>x.id===it.arrId);
+     if(!a||sameSnap(a,snap))continue;
+     try{await api('/arrangements/'+it.arrId,{method:'PATCH',body:{teamId:S.team.id,...snap}});Object.assign(a,snap);changed=true}
+     catch(e){if(e.status===404){delete it.arrId;delete it.songId}else console.warn('arr push',e.message)}
+    }else{
+     try{const r=await api('/songs',{method:'POST',body:{teamId:S.team.id,title:it.title,origKey:it.key||'',...snap}});
+      S.songs.push(r.song);it.songId=r.song.id;it.arrId=(r.song.arrangements[0]||{}).id;it.libId=it.arrId;changed=true}
+     catch(e){console.warn('song create',e.message);return false}
+    }
+   }
+  }
+  if(changed)save();
+ }finally{PUSH_SONGS=false}
+ return changed}
+
+/* ---------- 라이브러리 홈 ---------- */
+const KEYS7=['C','D','E','F','G','A','B'];
+const TEMPOS=['느림','보통','빠름'];
+function libFiltered(){
+ const all=(S.songs||[]).filter(s=>!!s.archived===!!LIB.archived);
+ const q=LIB.q.trim();
+ let list=all.map(s=>({s,m:q.length>=2?matchSong(s,q):{rank:0,where:''}}));
+ if(q.length>=2)list=list.filter(x=>x.m.rank>0);
+ if(LIB.key)list=list.filter(x=>songKeys(x.s).some(k=>k.startsWith(LIB.key)));
+ if(LIB.tempo)list=list.filter(x=>x.s.tempo===LIB.tempo);
+ if(LIB.tag)list=list.filter(x=>(x.s.tags||[]).includes(LIB.tag));
+ if(LIB.last){const days=LIB.last==='30'?30:LIB.last==='90'?90:180;
+  list=list.filter(x=>{const d=x.s.lastUsed?Math.floor((Date.now()-new Date(x.s.lastUsed))/864e5):1e9;
+   return LIB.last==='180'?d>180:d<=days})}
+ const byTitle=(a,b)=>(a.s.title||'').localeCompare(b.s.title||'','ko');
+ if(q.length>=2)list.sort((a,b)=>a.m.rank-b.m.rank||(b.s.lastUsed||'').localeCompare(a.s.lastUsed||'')||byTitle(a,b));
+ else if(LIB.sort==='count')list.sort((a,b)=>(b.s.useCount||0)-(a.s.useCount||0)||byTitle(a,b));
+ else if(LIB.sort==='title')list.sort(byTitle);
+ else if(LIB.sort==='added')list.sort((a,b)=>(b.s.updatedAt||'').localeCompare(a.s.updatedAt||''));
+ else list.sort((a,b)=>(b.s.lastUsed||'').localeCompare(a.s.lastUsed||'')||byTitle(a,b));
+ return list}
+const staleSongs=()=>(S.songs||[]).filter(s=>!s.archived&&(!s.lastUsed||Date.now()-new Date(s.lastUsed)>180*864e5)).sort((a,b)=>(b.useCount||0)-(a.useCount||0));
+function seasonSongs(){const now=new Date();const y=now.getFullYear()-1;
+ const lo=new Date(y,now.getMonth(),now.getDate()-21),hi=new Date(y,now.getMonth(),now.getDate()+21);
+ return (S.songs||[]).filter(s=>!s.archived&&(s.usedDates||[]).some(d=>{const t=new Date(d);return t>=lo&&t<=hi}))}
+function songThumb(s){const a=defArr(s);const p=(a.pieces||[])[0];return p?url(p.blob):''}
+function songRow(x,opts){const s=x.s;const a=defArr(s);const o=opts||{};const keys=songKeys(s);
+ const th=songThumb(s);
+ return `<div class="songrow ${o.picked?'picked':''}" data-song="${esc(s.id)}">
+  ${o.multi?`<span class="chk ${o.picked?'on':''}">${o.picked?ic('check'):''}</span>`:''}
+  <span class="sthumb" style="${th?`background-image:url('${th}')`:''}"></span>
+  <span class="grow" style="min-width:0">
+   <b>${esc(s.title||'(제목 없음)')}</b>${(a.medleySongIds||[]).length?' <span class="tag">메들리</span>':''}
+   <div class="hint" style="margin-top:1px">${x.m&&x.m.where?esc(x.m.where):[s.artist,(s.tags||[]).slice(0,3).join('·')].filter(Boolean).map(esc).join(' · ')||'&nbsp;'}</div></span>
+  <span class="pill key">${esc(keys.join(' · ')||'-')}</span>
+  <span class="hint" style="white-space:nowrap">${s.useCount||0}회 · ${relDate(s.lastUsed)}</span>
+  ${o.multi?'':`<button class="btn sm ${isLeader()?'pri':''}" data-songgo="${esc(s.id)}">${isLeader()?ic('plus')+'예배에':ic('play')+'연습'}</button>`}
+ </div>`}
+function libraryHTML(){
+ const lead=isLeader();const list=libFiltered();const q=LIB.q.trim();
+ const plain=!q&&!LIB.key&&!LIB.tempo&&!LIB.tag&&!LIB.last&&!LIB.archived;
+ const all=(S.songs||[]).filter(s=>!s.archived);
+ const year=new Date().getFullYear();
+ const thisYear=all.filter(s=>s.lastUsed&&new Date(s.lastUsed).getFullYear()===year).length;
+ const top=all.slice().sort((a,b)=>(b.useCount||0)-(a.useCount||0))[0];
+ const stale=staleSongs();const season=seasonSongs();
+ const tags=[...new Set(all.flatMap(s=>s.tags||[]))].slice(0,20);
+ const chip=(on,act,val,label)=>`<button class="q ${on?'on':''}" data-lf="${act}" data-v="${esc(val)}">${esc(label)}</button>`;
+ const card=s=>{const th=songThumb(s);return `<button class="scard" data-songopen="${esc(s.id)}">
+   <span class="sthumb big" style="${th?`background-image:url('${th}')`:''}"></span>
+   <b>${esc(s.title||'(제목 없음)')}</b><span class="hint">${esc(songKeys(s).join(' · ')||'-')} · ${relDate(s.lastUsed)}</span></button>`};
+ return `<div class="top"><button class="icon ghost" data-act="home">${ic('back')}</button>
+  <h1>라이브러리<span class="pill">${all.length}곡</span></h1>
+  ${lead?`<button class="btn sm ${LIB.sel.length?'pri':''}" data-act="lib-multi">${LIB.sel.length?`${LIB.sel.length}곡 선택`:'여러 곡 고르기'}</button>
+   ${LIB.sel.length?`<button class="btn sm pri" data-act="lib-add-sel">${ic('plus')}예배에 넣기</button>`:''}
+   <button class="btn sm" data-act="lib-receive">${ic('import')}코드로 받기</button>
+   <button class="btn pri" data-act="lib-new">${ic('plus')}새 곡</button>`:''}</div>
+ <div class="ws" style="grid-template-columns:minmax(0,1fr)"><div class="panel"><div class="pbody"><div class="libpage">
+  <div class="row" style="gap:6px"><input class="field grow" id="libQ" value="${esc(LIB.q)}" placeholder="제목 · 가사 · 아티스트 · 태그 — 초성도 됩니다 (ㅇㅅㄹ)">${LIB.q?`<button class="btn sm ghost" data-act="lib-clear">지우기</button>`:''}</div>
+  <div class="filters">
+   ${KEYS7.map(k=>chip(LIB.key===k,'key',k,k)).join('')}
+   <span class="sep"></span>${TEMPOS.map(t=>chip(LIB.tempo===t,'tempo',t,t)).join('')}
+   ${tags.length?`<span class="sep"></span>${tags.map(t=>chip(LIB.tag===t,'tag',t,'#'+t)).join('')}`:''}
+   <span class="sep"></span>${chip(LIB.last==='30','last','30','30일 안')}${chip(LIB.last==='90','last','90','90일 안')}${chip(LIB.last==='180','last','180','반년 넘음')}
+   <span class="grow"></span>
+   <select class="field" id="libSort" style="width:auto">
+    <option value="recent" ${LIB.sort==='recent'?'selected':''}>최근 부른 순</option>
+    <option value="count" ${LIB.sort==='count'?'selected':''}>많이 부른 순</option>
+    <option value="title" ${LIB.sort==='title'?'selected':''}>가나다</option>
+    <option value="added" ${LIB.sort==='added'?'selected':''}>추가한 순</option>
+   </select>
+   ${chip(LIB.archived,'archived','1','보관함')}
+  </div>
+  <div class="insight">총 ${all.length}곡 · 올해 ${thisYear}곡${top&&top.useCount?` · 가장 많이 <b>${esc(top.title)}</b> ${top.useCount}회`:''}
+   ${stale.length?` · <button class="linkish" data-lf="last" data-v="180">반년 넘게 안 부른 곡 ${stale.length}곡</button>`:''}
+   ${season.length?` · <button class="linkish" data-act="lib-season">작년 이맘때 ${season.length}곡</button>`:''}</div>
+  ${lead&&LIB.dups&&LIB.dups.length?`<div class="card" style="background:var(--amber-soft);color:var(--amber)"><b>비슷한 곡이 ${LIB.dups.length}쌍 있어요</b><div class="row" style="margin-top:6px"><button class="btn sm" data-act="lib-merge">정리하기</button></div></div>`:''}
+  ${plain?`
+   ${all.filter(s=>s.lastUsed).length?`<div class="lbl">최근 부른 곡</div><div class="scards">${all.slice().sort((a,b)=>(b.lastUsed||'').localeCompare(a.lastUsed||'')).slice(0,8).map(card).join('')}</div>`:''}
+   ${stale.length?`<div class="lbl">오래 안 부른 곡 <span class="hint">반년 넘게</span></div><div class="scards">${stale.slice(0,8).map(card).join('')}</div>`:''}
+   ${season.length?`<div class="lbl">작년 이맘때 부른 곡</div><div class="scards">${season.slice(0,8).map(card).join('')}</div>`:''}
+   <div class="lbl">전체 ${all.length}곡</div>`:''}
+  <div id="libList">${list.length?list.map(x=>songRow(x,{multi:LIB.pick==='multi',picked:LIB.sel.includes(x.s.id)})).join('')
+   :`<div class="empty">${q?'찾는 곡이 없어요':'없어요. "새 곡"으로 만들면 라이브러리에 들어가요.'}</div>`}</div>
+ </div></div></div></div>`}
+
+/* ---------- 곡 상세 ---------- */
+async function pullSong(id){if(!online()||!S.team.id)return null;
+ try{const r=await api('/songs/'+id+'?team='+S.team.id);await SYNC.fetchBlobs(r.blobs);
+  scrubIds(r.song);const i=(S.songs||[]).findIndex(x=>x.id===id);
+  if(i>=0)S.songs[i]={...S.songs[i],...r.song};else S.songs.push(r.song);save();await songURLs();
+  LIB.detail={...r,at:Date.now()};return LIB.detail}
+ catch(e){toast(e.message);return null}}
+function songHTML(s){const lead=isLeader();const d=LIB.detail||{};const arrs=s.arrangements||[];
+ const th=songThumb(s);const tab=LIB.tab;
+ const notesOf=aid=>(d.notes||[]).filter(n=>n.arrangementId===aid);
+ const layerName=n=>n.layer==='all'?'전체':n.layer==='session'?(n.session||'세션'):'나';
+ const arrCard=a=>`<div class="acard">
+   <div class="row" style="gap:8px;align-items:baseline">
+    ${arrs.length>1?`<b>${esc(a.name)}</b>`:''}<span class="pill key">${esc(a.key||'-')}${a.mod?' – '+esc(a.mod):''}</span>
+    ${a.isDefault&&arrs.length>1?'<span class="tag">기본</span>':(lead&&arrs.length>1?`<button class="btn sm ghost" data-arrdef="${esc(a.id)}">기본으로</button>`:'')}
+    ${a.bpm?`<span class="hint">♩=${a.bpm}</span>`:''}<span class="grow"></span>
+    ${lead?`<button class="btn sm ghost" data-arrdel="${esc(a.id)}" title="편곡 지우기">${ic('trash')}</button>`:''}</div>
+   ${a.form?`<div class="songbar" style="margin-top:8px">${esc(a.form)}</div>`:''}
+   ${a.songNote?`<div class="hint" style="margin-top:6px">${esc(a.songNote)}</div>`:''}
+   ${(a.pieces||[]).length?`<div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap">${a.pieces.map(p=>`<span class="sthumb wide" style="background-image:url('${url(p.blob)}')"></span>`).join('')}</div>`:''}
+   ${(a.media||[]).length?`<div class="small" style="margin-top:8px">${a.media.map(m=>`<div class="row" style="margin-bottom:3px"><span class="icon sm ${m.type==='youtube'?'ytc':'micc'}">${ic(m.type==='youtube'?'yt':'mic')}</span><span class="grow muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.name||m.url)}</span>${m.type==='youtube'?`<a class="btn sm ghost" href="https://youtu.be/${ytId(m.url)}" target="_blank" rel="noopener">${ic('open')}</a>`:''}</div>`).join('')}</div>`:''}
+   ${notesOf(a.id).length?`<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">${notesOf(a.id).map(n=>`<span class="m fixed ${n.layer==='all'?'leader':n.layer}"><span class="mk" style="width:20px;height:20px;font-size:10px">${esc(n.markerLabel)}</span><span class="who">${esc(layerName(n))}</span>${esc(n.text)}</span>`).join('')}</div>`:''}
+   <div class="row" style="margin-top:10px;gap:6px;justify-content:flex-end">
+    <button class="btn sm" data-arrplay="${esc(a.id)}">${ic('play')}연습</button>
+    ${lead?`<button class="btn sm pri" data-arradd="${esc(a.id)}">${ic('plus')}예배에</button>`:''}</div>
+  </div>`;
+ const hist=()=>{const u=d.usages||[];
+  const ks=Object.entries(s.keyStats||{}).sort((a,b)=>b[1]-a[1]).slice(0,6);const mx=Math.max(1,...ks.map(k=>k[1]));
+  return `<div class="row three"><div class="stat"><b>${s.useCount||0}회</b><span>부른 횟수</span></div>
+   <div class="stat"><b>${s.firstUsed?String(s.firstUsed).slice(2,10).replace(/-/g,'.'):'—'}</b><span>처음</span></div>
+   <div class="stat"><b>${relDate(s.lastUsed)}</b><span>마지막</span></div></div>
+   ${ks.length?`<div class="lbl">키 분포</div><div class="bars">${ks.map(([k,n])=>`<div class="bar"><span class="bl">${esc(k)}</span><span class="bb"><i style="width:${n/mx*100}%"></i></span><span class="hint">${n}</span></div>`).join('')}</div>`:''}
+   <div class="lbl">부른 예배</div>
+   ${u.length?u.map(x=>`<div class="mrow" data-usego="${esc(x.serviceId)}" style="cursor:pointer">
+     <span class="mono hint">${x.serviceDate?String(x.serviceDate).slice(2,10).replace(/-/g,'.'):'—'}</span>
+     <span class="grow">${esc(x.serviceName||'예배')}</span>
+     <span class="hint">${x.isApplication?'적용':(x.position+1)+'번째'}${x.viaMedley?' · 메들리':''}</span>
+     <span class="pill key">${esc(x.keyUsed||'-')}</span></div>`).join(''):'<div class="empty">아직 안 불렀어요</div>'}`};
+ const memo=()=>{const mine=(d.notes||[]).filter(n=>n.layer==='mine'&&n.authorId===(NET.user||{}).id);
+  const shared=(d.notes||[]).filter(n=>n.layer!=='mine');
+  const row=n=>`<div class="mrow"><span class="mk" style="width:24px;height:24px;font-size:11px">${esc(n.markerLabel)}</span>
+   <span class="grow">${esc(n.text)}</span><span class="tag">${esc(layerName(n))}</span>
+   ${(lead||n.authorId===(NET.user||{}).id)?`<button class="icon sm ghost" data-notedel="${esc(n.id)}" data-arr="${esc(n.arrangementId)}">${ic('x')}</button>`:''}</div>`;
+  return `<div class="lbl">인도자·세션 고정 메모</div>${shared.length?shared.map(row).join(''):'<div class="hint">없어요</div>'}
+   <div class="lbl">내 고정 메모 <span class="hint">나만 보여요</span></div>${mine.length?mine.map(row).join(''):'<div class="hint">없어요</div>'}
+   <div class="hint" style="margin-top:8px">연습 화면에서 메모를 쓸 때 "이 곡에 항상"을 켜면 여기 남아요.</div>`};
+ const withs=()=>{const c=d.companions||[];
+  return c.length?c.map(x=>`<div class="mrow"><span class="grow">${x.dir==='next'?`이 곡 <b>→</b> ${esc(x.title)}`:`${esc(x.title)} <b>→</b> 이 곡`}</span><span class="hint">${x.n}번</span><button class="btn sm ghost" data-songopen="${esc(x.songId)}">열기</button></div>`).join('')
+   :'<div class="empty">아직 패턴이 없어요. 두 번 이상 같은 순서로 부르면 생겨요.</div>'};
+ return `<div class="top"><button class="icon ghost" data-act="lib-back">${ic('back')}</button>
+  <h1>${esc(s.title||'(제목 없음)')}${s.archived?'<span class="pill">보관됨</span>':''}</h1>
+  ${lead?`<button class="btn sm" data-act="song-clone">${ic('plus')}다른 키로</button>`:''}
+  <button class="btn sm" data-arrplay="${esc(defArr(s).id||'')}">${ic('play')}연습</button>
+  ${lead?`<button class="btn pri" data-arradd="${esc(defArr(s).id||'')}">${ic('plus')}예배에 넣기</button>
+  <button class="icon ghost" data-act="song-more">${ic('list')}</button>`:''}</div>
+ <div class="ws" style="grid-template-columns:minmax(0,1fr)"><div class="panel"><div class="pbody"><div class="libpage">
+  <div class="row" style="gap:14px;align-items:flex-start">
+   <span class="sthumb xl" style="${th?`background-image:url('${th}')`:''}"></span>
+   <span class="grow">
+    <div class="hint">${[s.artist,s.origKey?'원키 '+s.origKey:'',s.tempo,`${s.useCount||0}회`,'마지막 '+relDate(s.lastUsed)].filter(Boolean).map(esc).join(' · ')}</div>
+    <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">${(s.tags||[]).map(t=>`<span class="tag">#${esc(t)}</span>`).join('')}</div>
+    ${(s.aliases||[]).length?`<div class="hint" style="margin-top:4px">다른 이름: ${(s.aliases||[]).map(esc).join(', ')}</div>`:''}</span></div>
+  <div class="seg" style="margin-top:14px">
+   ${[['arr','편곡'],['hist','사용 이력'],['notes','메모'],['with','함께']].map(([k,l])=>`<button class="${tab===k?'on':''}" data-tab="${k}">${l}</button>`).join('')}</div>
+  <div style="margin-top:12px">${tab==='arr'?arrs.map(arrCard).join(''):tab==='hist'?hist():tab==='notes'?memo():withs()}</div>
+ </div></div></div></div>`}
+
+/* ---------- 예배에 넣기 (명세 A.5.3) ---------- */
+// 어디서 부르든 같은 창. songIds[] 를 받아 예배를 고르고 편곡·키를 정한 뒤 콘티 끝에 붙인다
+function addToServiceSheet(songIds,arrPick){
+ const ids=(songIds||[]).filter(Boolean);if(!ids.length)return;
+ const soon=S.services.slice().filter(sv=>!sv.date||sv.date>=today()).sort((a,b)=>(a.date||'').localeCompare(b.date||'')).slice(0,12);
+ const sel={svc:soon[0]?soon[0].id:'',arr:{...(arrPick||{})},key:{}};
+ ids.forEach(id=>{const s=songById(id);if(s&&!sel.arr[id])sel.arr[id]=defArr(s).id});
+ const body=()=>{
+  const svc=svcById(sel.svc);
+  return `<b style="font-size:17px">예배에 넣기</b> <span class="hint">${ids.length>1?ids.length+'곡':esc((songById(ids[0])||{}).title||'')}</span>
+  <div class="lbl">어느 예배에</div>
+  <div id="atsSvc">
+   <button class="q ${sel.svc==='new'?'on':''}" data-ats="new">${ic('plus')}새 예배 만들기</button>
+   ${soon.map(sv=>{const has=ids.some(id=>(sv.items||[]).some(it=>it.songId===id));
+    return `<button class="q ${sel.svc===sv.id?'on':''}" data-ats="${esc(sv.id)}">${esc(sv.date?sv.date.slice(5).replace('-','/'):'')} ${esc(sv.name||'예배')} <span class="hint">${(sv.items||[]).length}곡${has?' · 이미 있음':''}</span></button>`}).join('')}
+  </div>
+  ${sel.svc==='new'?`<div class="row" style="gap:6px;margin-top:8px"><input class="field grow" id="atsName" placeholder="예배 이름"><input class="field" id="atsDate" type="date" value="${esc(nextSunday())}" style="width:auto"></div>`:''}
+  <div class="lbl">편곡·키</div>
+  ${ids.map(id=>{const s=songById(id);if(!s)return '';const arrs=s.arrangements||[];const a=arrById(s,sel.arr[id]);
+   return `<div class="mrow" style="flex-wrap:wrap"><span class="grow"><b>${esc(s.title)}</b></span>
+    ${arrs.length>1?`<span class="row" style="gap:4px">${arrs.map(x=>`<button class="q sm ${sel.arr[id]===x.id?'on':''}" data-atsa="${esc(id)}" data-a="${esc(x.id)}">${esc(x.name)} ${esc(x.key||'')}</button>`).join('')}</span>`:''}
+    <input class="field mono" data-atsk="${esc(id)}" value="${esc(sel.key[id]!=null?sel.key[id]:(a.key||''))}" placeholder="키" style="width:70px;text-align:center"></div>`}).join('')}
+  <div class="hint">키를 바꾸면 이 예배에서만 바뀌고 라이브러리는 그대로예요.</div>
+  <div class="row" style="margin-top:18px;justify-content:flex-end;gap:6px"><button class="btn" data-close="1">취소</button>
+   <button class="btn" id="atsMore">넣고 계속 고르기</button><button class="btn pri" id="atsGo">${ic('check')}넣고 에디터로</button></div>`};
+ const show=()=>{modal(body(),{center:true});wire()};
+ const put=async(goEditor)=>{
+  let svc=sel.svc==='new'?null:svcById(sel.svc);
+  if(!svc){const name=(($('#atsName')||{}).value||'').trim();const date=(($('#atsDate')||{}).value||'')||nextSunday();
+   svc=newService();svc.name=name||fmtNameC(((S.team.settings||{}).nameRule)||'{월}/{일} {이름}',date,'예배');svc.date=date;S.services.unshift(svc)}
+  $$('[data-atsk]').forEach(i=>sel.key[i.dataset.atsk]=i.value.trim());
+  ids.forEach(id=>{const s=songById(id);if(!s)return;const a=arrById(s,sel.arr[id]);
+   const it=newItem();
+   Object.assign(it,{title:s.title,key:sel.key[id]!=null&&sel.key[id]!==''?sel.key[id]:(a.key||''),mod:a.mod||'',
+    form:a.form||'',songNote:a.songNote||'',pieces:clone(a.pieces||[]),media:clone(a.media||[]),
+    chart:a.chart?clone(a.chart):undefined,score:a.score?clone(a.score):undefined,
+    songId:s.id,arrId:a.id,libId:a.id});
+   svc.items.push(it)});
+  SEL[svc.id]=SEL[svc.id]||{};SEL[svc.id].item=svc.items[svc.items.length-1].id;
+  touch(svc);save();closeModal();
+  if(goEditor)go('edit/'+svc.id);else{LIB.sel=[];LIB.pick=null;toast(`${ids.length}곡을 ${svc.name}에 넣었어요`);render()}};
+ const wire=()=>{$('#modal').onclick=async e=>{
+  if(e.target.closest('[data-close]')){closeModal();return}
+  const b=e.target.closest('[data-ats]');if(b){sel.svc=b.dataset.ats;closeModal();show();return}
+  const a=e.target.closest('[data-atsa]');if(a){sel.arr[a.dataset.atsa]=a.dataset.a;
+   const s=songById(a.dataset.atsa);const ar=arrById(s,a.dataset.a);
+   const ki=$(`[data-atsk="${a.dataset.atsa}"]`);if(ki)ki.value=ar.key||'';
+   $$(`[data-atsa="${a.dataset.atsa}"]`).forEach(x=>x.classList.toggle('on',x.dataset.a===a.dataset.a));return}
+  if(e.target.closest('#atsGo')){await put(true);return}
+  if(e.target.closest('#atsMore')){await put(false);return}}};
+ show()}
+function nextSunday(){const d=new Date();d.setDate(d.getDate()+((7-d.getDay())%7||7));
+ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
+
+/* ---------- 새 곡 (중복 확인) ---------- */
+function newSongModal(afterAdd){
+ modal(`<b style="font-size:17px">새 곡</b>
+  <div class="lbl">제목</div><input class="field" id="nsTitle" placeholder="곡 제목" autocomplete="off">
+  <div id="nsDup"></div>
+  <div class="row" style="gap:10px;margin-top:10px">
+   <label class="grow"><div class="lbl">아티스트</div><input class="field" id="nsArtist" placeholder="마커스"></label>
+   <label><div class="lbl">키</div><input class="field mono" id="nsKey" placeholder="G" style="width:72px;text-align:center"></label></div>
+  <div class="lbl">템포</div><div id="nsTempo">${TEMPOS.map(t=>`<button class="q" data-nst="${t}">${t}</button>`).join('')}</div>
+  <div class="row" style="margin-top:18px;justify-content:flex-end;gap:6px"><button class="btn" data-close="1">취소</button><button class="btn pri" id="nsOk">${ic('plus')}만들기</button></div>`,{center:true});
+ let tempo='';const inp=$('#nsTitle');setTimeout(()=>inp.focus(),50);
+ const check=debounce(()=>{const t=inp.value.trim();const box=$('#nsDup');if(!box)return;
+  if(t.length<2){box.innerHTML='';return}
+  const hits=(S.songs||[]).map(s=>({s,m:matchSong(s,t)})).filter(x=>x.m.rank<=2&&x.m.rank>0).slice(0,3);
+  box.innerHTML=hits.length?`<div class="card" style="margin-top:8px;background:var(--amber-soft);color:var(--amber)"><b>이미 있어요</b>${hits.map(x=>`<div class="row" style="margin-top:4px;color:var(--ink)"><span class="grow">${esc(x.s.title)} · ${esc(songKeys(x.s).join(' · ')||'-')} · ${x.s.useCount||0}회</span><button class="btn sm" data-nsuse="${esc(x.s.id)}">이 곡 쓰기</button></div>`).join('')}</div>`:''},250);
+ inp.oninput=check;
+ $('#modal').onclick=async e=>{
+  if(e.target.closest('[data-close]')){closeModal();return}
+  const u=e.target.closest('[data-nsuse]');if(u){closeModal();if(afterAdd)addToServiceSheet([u.dataset.nsuse]);else go('library/'+u.dataset.nsuse);return}
+  const t=e.target.closest('[data-nst]');if(t){tempo=tempo===t.dataset.nst?'':t.dataset.nst;$$('[data-nst]').forEach(x=>x.classList.toggle('on',x.dataset.nst===tempo));return}
+  if(e.target.closest('#nsOk')){const title=inp.value.trim();if(!title){toast('곡 제목을 적어 주세요');return}
+   try{const r=await api('/songs',{method:'POST',body:{teamId:S.team.id,title,artist:$('#nsArtist').value.trim(),key:$('#nsKey').value.trim(),origKey:$('#nsKey').value.trim(),tempo}});
+    S.songs.push(r.song);save();closeModal();
+    if(afterAdd)addToServiceSheet([r.song.id]);else go('library/'+r.song.id)}
+   catch(err){toast(err.message)}}}}
+
+/* ---------- 정리: 합치기 (명세 A.8.1) ---------- */
+async function mergeModal(){
+ let pairs=[];try{pairs=(await api('/songs/dups?team='+S.team.id)).pairs||[]}catch(e){toast(e.message);return}
+ LIB.dups=pairs;
+ if(!pairs.length){toast('비슷한 곡이 없어요');render();return}
+ const body=()=>`<b style="font-size:17px">비슷한 곡 정리</b> <span class="hint">${pairs.length}쌍 · 되돌릴 수 없어요</span>
+  <div style="margin-top:12px">${pairs.map(([a,b],i)=>{const A=songById(a),B=songById(b);if(!A||!B)return '';
+   const cell=s=>`<div class="grow"><b>${esc(s.title)}</b><div class="hint">${esc(songKeys(s).join(' · ')||'-')} · 악보 ${(defArr(s).pieces||[]).length}장 · ${s.useCount||0}회 · ${relDate(s.lastUsed)}</div></div>`;
+   return `<div class="card" data-pair="${i}"><div class="row" style="gap:12px;align-items:flex-start">${cell(A)}<span class="muted">↔</span>${cell(B)}</div>
+    <div class="row" style="margin-top:8px;justify-content:flex-end;gap:6px"><button class="btn sm ghost" data-notdup="${i}">다른 곡이에요</button><button class="btn sm pri" data-domerge="${i}">합치기</button></div></div>`}).join('')}</div>
+  <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn" data-close="1">닫기</button></div>`;
+ modal(body(),{center:true});
+ $('#modal').onclick=async e=>{try{
+  if(e.target.closest('[data-close]')){closeModal();render();return}
+  const m=e.target.closest('[data-domerge]');if(m){const [a,b]=pairs[+m.dataset.domerge];
+   const A=songById(a),B=songById(b);
+   if(!confirm(`「${A.title}」과 「${B.title}」을 한 곡으로 합칠까요?\n많이 부른 쪽이 남고, 다른 쪽 편곡이 옮겨 옵니다. 되돌릴 수 없어요.`))return;
+   await api('/songs/merge',{method:'POST',body:{teamId:S.team.id,a,b}});
+   pairs.splice(+m.dataset.domerge,1);await pullSongs(true);closeModal();
+   if(pairs.length)mergeModal();else{LIB.dups=[];render();toast('합쳤어요')}return}
+  const n=e.target.closest('[data-notdup]');if(n){const [a,b]=pairs[+n.dataset.notdup];const A=songById(a);
+   await api('/songs/'+a,{method:'PATCH',body:{teamId:S.team.id,notDupOf:(A.notDupOf||[]).concat(b)}});
+   A.notDupOf=(A.notDupOf||[]).concat(b);save();
+   pairs.splice(+n.dataset.notdup,1);closeModal();if(pairs.length)mergeModal();else{LIB.dups=[];render()}return}
+ }catch(err){toast(err.message)}}}
+
+/* ---------- 곡 정보 수정 · ⋯ ---------- */
+function songInfoModal(s){
+ modal(`<b style="font-size:17px">곡 정보</b>
+  <div class="lbl">제목</div><input class="field" id="siT" value="${esc(s.title)}">
+  <div class="row" style="gap:10px;margin-top:10px">
+   <label class="grow"><div class="lbl">아티스트</div><input class="field" id="siA" value="${esc(s.artist||'')}"></label>
+   <label><div class="lbl">원키</div><input class="field mono" id="siK" value="${esc(s.origKey||'')}" style="width:72px;text-align:center"></label></div>
+  <div class="lbl">템포</div><div id="siTe">${TEMPOS.map(t=>`<button class="q ${s.tempo===t?'on':''}" data-sit="${t}">${t}</button>`).join('')}</div>
+  <div class="lbl">태그 <span class="hint">쉼표로</span></div><input class="field" id="siTa" value="${esc((s.tags||[]).join(', '))}">
+  <div class="lbl">다른 이름 <span class="hint">검색에 걸려요 · 쉼표로</span></div><input class="field" id="siAl" value="${esc((s.aliases||[]).join(', '))}">
+  <div class="lbl">가사 첫 줄 <span class="hint">검색용 · 화면에는 안 나와요</span></div><input class="field" id="siF" value="${esc(s.firstLine||'')}">
+  <div class="row" style="margin-top:18px;justify-content:flex-end;gap:6px"><button class="btn" data-close="1">취소</button><button class="btn pri" id="siOk2">${ic('check')}저장</button></div>`,{center:true});
+ let tempo=s.tempo||'';
+ const split=v=>v.split(',').map(x=>x.trim()).filter(Boolean);
+ $('#modal').onclick=async e=>{
+  if(e.target.closest('[data-close]')){closeModal();return}
+  const t=e.target.closest('[data-sit]');if(t){tempo=tempo===t.dataset.sit?'':t.dataset.sit;$$('[data-sit]').forEach(x=>x.classList.toggle('on',x.dataset.sit===tempo));return}
+  if(e.target.closest('#siOk2')){const f={title:$('#siT').value.trim(),artist:$('#siA').value.trim(),origKey:$('#siK').value.trim(),
+    tempo,tags:split($('#siTa').value),aliases:split($('#siAl').value),firstLine:$('#siF').value.trim()};
+   if(!f.title){toast('곡 제목을 적어 주세요');return}
+   Object.assign(s,{title:f.title,artist:f.artist,origKey:f.origKey,tempo:f.tempo,tags:f.tags,aliases:f.aliases,firstLine:f.firstLine,
+    titleNorm:nrm(f.title),titleCho:chos(nrm(f.title))});
+   await saveSong(s,f);closeModal();render()}}}
+function songMoreModal(s){
+ modal(`<b style="font-size:17px">${esc(s.title)}</b>
+  <div class="row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:14px">
+   <button class="btn" id="smInfo">${ic('pen')}정보 수정</button>
+   <button class="btn" id="smMerge">${ic('users')}합치기…</button>
+   <button class="btn" id="smArch">${ic('import')}${s.archived?'보관 해제':'보관하기'}</button>
+   <button class="btn danger" id="smDel2">${ic('trash')}삭제</button>
+  </div>
+  <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" data-close="1">닫기</button></div>`,{center:true});
+ $('#modal').onclick=async e=>{try{
+  if(e.target.closest('[data-close]')){closeModal();return}
+  if(e.target.closest('#smInfo')){closeModal();songInfoModal(s);return}
+  if(e.target.closest('#smMerge')){closeModal();mergeModal();return}
+  if(e.target.closest('#smArch')){s.archived=!s.archived;await saveSong(s,{archived:s.archived});closeModal();
+   toast(s.archived?'보관했어요 · 목록에서 빠져요':'보관을 풀었어요');render();return}
+  if(e.target.closest('#smDel2')){
+   if(s.useCount){if(!confirm(`${s.useCount}번 부른 곡이에요. 지우는 대신 보관하는 게 좋아요.\n그래도 지울까요?`))return;
+    if(!confirm('정말 지울까요? 되돌릴 수 없어요.'))return}
+   else if(!confirm('이 곡을 지울까요?'))return;
+   await api('/songs/'+s.id+'?team='+S.team.id+(s.useCount?'&force=1':''),{method:'DELETE'});
+   S.songs=(S.songs||[]).filter(x=>x.id!==s.id);save();closeModal();go('library');return}
+ }catch(err){toast(err.message)}}}
+
 /* ---------- 팀 화면 (명세 B부). 홈 위 모달이던 것을 한 페이지로 ---------- */
 const TM={data:null,invites:null,at:0,open:{members:true}};   // 멤버 목록은 처음부터 펼쳐 둔다
 const relTime=(iso)=>{if(!iso)return '';const d=Math.floor((Date.now()-new Date(iso))/86400000);
@@ -1943,6 +2395,16 @@ function teamHTML(){
    <div class="row" style="justify-content:space-between"><button class="btn ghost danger" data-act="tm-leave">팀 나가기</button>${t.deletedAt?'':`<button class="btn danger" data-act="tm-delete">${ic('trash')}팀 삭제</button>`}</div>`
   :`<div class="row"><button class="btn ghost danger" data-act="tm-leave">팀 나가기</button></div>`)}
  </div></div></div></div>`;
+}
+function afterLibrary(){
+ const q=$('#libQ');
+ if(q){q.oninput=debounce(()=>{LIB.q=q.value;const l=$('#libList');if(!l)return;
+   const list=libFiltered();
+   l.innerHTML=list.length?list.map(x=>songRow(x,{multi:LIB.pick==='multi',picked:LIB.sel.includes(x.s.id)})).join('')
+    :`<div class="empty">${LIB.q.trim()?'찾는 곡이 없어요':'없어요'}</div>`},150);
+  // 글자를 지웠다가 다시 치면 섹션이 나왔다 사라지는 게 어지러워서, 화면은 목록만 갈아 끼운다
+  q.onchange=()=>{if(!LIB.q.trim())render()}}
+ const so=$('#libSort');if(so)so.onchange=()=>{LIB.sort=so.value;render()};
 }
 function afterTeam(){
  const box=$('.tpage');if(!box)return;
@@ -2677,6 +3139,23 @@ async function render(){
   if(r.name==='edit'){if(online()&&!same&&isLeader()){try{await SYNC.pullDraft(svc)}catch(e){}}if(stale())return;app.innerHTML=editorHTML(svc);afterEditor(svc);restoreScroll();return}
   if(r.name==='view'){app.innerHTML=viewerHTML(svc);restoreScroll();if(!same&&msgUnread(svc))setTimeout(()=>{if(!stale())messageSheet(svc,true)},150);return}
   app.innerHTML=playHTML(svc,+r.b||0);afterPlay(svc,+r.b||0);restoreScroll();return}
+ // 라이브러리 (A부)
+ if(/^library$/.test(r.name)){
+  if(!online()||!S.team.id)return go('home');
+  if(!(S.songs||[]).length&&!S.songsAt){app.innerHTML='<div class="empty" style="margin:40px auto;max-width:420px"><b>라이브러리를 받는 중…</b></div>';await pullSongs(true);if(stale())return}
+  else if(!same)pullSongs(true).then(ch=>{if(ch&&route().name==='library'&&!r.a)render()}).catch(()=>{});
+  if(r.a){   // 곡 상세
+   let song=songById(r.a);
+   // 화면에 들어올 때만 서버에서 받는다. 탭을 눌러 다시 그릴 때(same)는 이미 받아 둔 것을 쓴다 — 안 그러면 계속 다시 받는다
+   if(!same||!LIB.detail||LIB.detail.song.id!==r.a){
+    if(!LIB.detail||LIB.detail.song.id!==r.a)app.innerHTML='<div class="empty" style="margin:40px auto;max-width:420px"><b>곡을 여는 중…</b></div>';
+    const d=await pullSong(r.a);if(stale())return;if(!d&&!song)return go('library');if(d)song=d.song}
+   song=songById(r.a)||song;
+   if(!song)return go('library');
+   app.innerHTML=songHTML(song);restoreScroll();return}
+  if(isLeader()&&LIB.dups===null)api('/songs/dups?team='+S.team.id).then(x=>{LIB.dups=x.pairs||[];if(route().name==='library'&&!route().a&&LIB.dups.length)render()}).catch(()=>{LIB.dups=[]});
+  await songURLs();if(stale())return;
+  app.innerHTML=libraryHTML();afterLibrary();restoreScroll();return}
  // 팀 화면 (B부)
  if(r.name==='team'){
   if(!online()||!S.team.id)return go('home');
@@ -2981,6 +3460,33 @@ document.addEventListener('click',async e=>{
  const cc=e.target.closest('[data-cc]');
  if(cc&&!cc.closest('#modal')){const r0=route();const s0=svcById(r0.a);const it0=s0&&curItem(s0);
   if(s0&&it0&&it0.chart&&r0.name==='edit'){chartCellModal(s0,it0,cc.dataset.cc);return}}
+ // 라이브러리 화면: 필터 칩·곡 줄·탭·편곡
+ if(route().name==='library'&&!e.target.closest('#modal')){
+  const f=e.target.closest('[data-lf]');
+  if(f){const k=f.dataset.lf,v=f.dataset.v;
+   if(k==='archived')LIB.archived=!LIB.archived;else LIB[k]=LIB[k]===v?'':v;
+   render();return}
+  const tb=e.target.closest('[data-tab]');if(tb){LIB.tab=tb.dataset.tab;render();return}
+  const op=e.target.closest('[data-songopen]');if(op){LIB.detail=null;LIB.tab='arr';go('library/'+op.dataset.songopen);return}
+  const gg=e.target.closest('[data-songgo]');if(gg){const id=gg.dataset.songgo;
+   if(isLeader())addToServiceSheet([id]);else{const sg=songById(id);if(sg)practiceArr(sg,defArr(sg))}return}
+  const rw=e.target.closest('[data-song]');if(rw){
+   if(LIB.pick==='multi'){const id=rw.dataset.song;LIB.sel=LIB.sel.includes(id)?LIB.sel.filter(x=>x!==id):LIB.sel.concat(id);render()}
+   else{LIB.detail=null;LIB.tab='arr';go('library/'+rw.dataset.song)}return}
+  const ad=e.target.closest('[data-arradd]');if(ad){const sg=songById(route().a);if(sg)addToServiceSheet([sg.id],{[sg.id]:ad.dataset.arradd});return}
+  const ap=e.target.closest('[data-arrplay]');if(ap){const sg=songById(route().a);if(sg)practiceArr(sg,arrById(sg,ap.dataset.arrplay));return}
+  const af=e.target.closest('[data-arrdef]');if(af){const sg=songById(route().a);if(!sg)return;
+   api('/arrangements/'+af.dataset.arrdef,{method:'PATCH',body:{teamId:S.team.id,isDefault:true}})
+    .then(async()=>{LIB.detail=null;await pullSong(sg.id);render();toast('기본 편곡을 바꿨어요')}).catch(err=>toast(err.message));return}
+  const axd=e.target.closest('[data-arrdel]');if(axd){const sg=songById(route().a);if(!sg)return;
+   if(!confirm('이 편곡을 지울까요? 발행한 콘티는 그대로예요'))return;
+   api('/arrangements/'+axd.dataset.arrdel+'?team='+S.team.id,{method:'DELETE'})
+    .then(async()=>{LIB.detail=null;await pullSong(sg.id);render();toast('지웠어요')}).catch(err=>toast(err.message));return}
+  const nd=e.target.closest('[data-notedel]');if(nd){const sg=songById(route().a);if(!sg)return;
+   api('/arrangements/'+nd.dataset.arr+'/notes/'+nd.dataset.notedel+'?team='+S.team.id,{method:'DELETE'})
+    .then(async()=>{LIB.detail=null;await pullSong(sg.id);render()}).catch(err=>toast(err.message));return}
+  const ug=e.target.closest('[data-usego]');if(ug){go('view/'+ug.dataset.usego);return}
+ }
  // 팀 화면: 섹션 접기·멤버 줄·초대 링크·칩
  if(route().name==='team'&&!e.target.closest('#modal')){
   const so=e.target.closest('[data-sopen]');
@@ -3005,6 +3511,23 @@ document.addEventListener('click',async e=>{
   case 'home':go('home');break;
   case 'settings':settingsModal();break;
   case 'team':go('team');break;
+  /* ---- 라이브러리 (A부) ---- */
+  case 'lib-back':go('library');break;
+  case 'lib-clear':LIB.q='';render();break;
+  case 'lib-new':newSongModal(false);break;
+  case 'lib-merge':mergeModal();break;
+  case 'lib-season':{LIB.q='';LIB.last='';LIB.key='';LIB.tempo='';LIB.tag='';
+   const ids=seasonSongs().map(x=>x.id);if(!ids.length){toast('작년 이맘때 부른 곡이 없어요');break}
+   LIB.pick='multi';LIB.sel=ids.slice(0,8);render();break}
+  case 'lib-multi':{LIB.pick=LIB.pick==='multi'?null:'multi';if(!LIB.pick)LIB.sel=[];render();break}
+  case 'lib-add-sel':{if(!LIB.sel.length){toast('곡을 고르세요');break}addToServiceSheet(LIB.sel.slice());break}
+  case 'lib-receive':toast('공유 코드는 곧 붙습니다');break;
+  case 'song-more':{const s2=songById(r.a);if(s2)songMoreModal(s2);break}
+  case 'song-clone':{const s2=songById(r.a);if(!s2)break;
+   const k=prompt('어느 키로 만들까요? (예: A)','');if(k==null)break;
+   try{const rr=await api(`/songs/${s2.id}/arrangements`,{method:'POST',body:{teamId:S.team.id,fromId:defArr(s2).id,key:k.trim(),name:k.trim()||'새 편곡'}});
+    s2.arrangements=(s2.arrangements||[]).concat(rr.arrangement);save();LIB.detail=null;await pullSong(s2.id);render();toast('편곡을 만들었어요')}
+   catch(e){toast(e.message)}break}
   /* ---- 팀 화면 (B부) ---- */
   case 'tm-invite':inviteModal();break;
   case 'tm-transfer':transferModal(null);break;
@@ -3050,8 +3573,8 @@ document.addEventListener('click',async e=>{
   case 'msg':messageSheet(svcById(el.dataset.id||r.a),false);break;
   case 'theme':THEME.cycle();break;
   case 'home-more':{const on=online(),lead=isLeader();modal(`<b style="font-size:17px">더 보기</b><div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">${on?`<button class="btn" data-m="sync">${ic('import')}팀 서버에서 새로고침</button>`:''}${(!on||lead)?`<button class="btn" data-m="import">${ic('import')}파일 가져오기</button>`:''}<button class="btn" data-m="export">${ic('export')}파일 내보내기</button>${lead?`<button class="btn" data-m="lib">${ic('music')}라이브러리</button>`:''}</div>`,{center:true});
-   $('#modal').onclick=ev=>{const b=ev.target.closest('[data-m]');if(!b)return;closeModal();if(b.dataset.m==='lib'){libraryModal();return}const proxy=document.querySelector(`.more-hide [data-act="${b.dataset.m}"]`);if(proxy)proxy.click()};break}
-  case 'nav-lib':{libraryModal();if(online())SYNC.pullLibrary().then(ch=>{if(ch&&$('#libList'))libraryModal()});break}
+   $('#modal').onclick=ev=>{const b=ev.target.closest('[data-m]');if(!b)return;closeModal();if(b.dataset.m==='lib'){go('library');return}const proxy=document.querySelector(`.more-hide [data-act="${b.dataset.m}"]`);if(proxy)proxy.click()};break}
+  case 'nav-lib':go('library');break;
   case 'inbox':inboxModal();break;
   case 'repub':{if(!svc||!svc.published)break;toast('다시 올리는 중…');
    try{await SYNC.pushPublish(svc);delete svc.pubPending;save();render();toast('팀에 공유됐어요')}
@@ -3186,7 +3709,7 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
  if(!online()&&!me().name){setTimeout(()=>{render();settingsModal()},0)}else render();
  if(online()&&S.team.id){SYNC.pullServices().then(ch=>{if(ch)render()});SYNC.pullLibrary()}
  probeOmr();startNotiPoll();
- window.CONTI={TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go};
+ window.CONTI={LIB,pullSongs,pushSongs,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go};
 })();
 })();
 </script>

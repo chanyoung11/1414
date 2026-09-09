@@ -1,4 +1,4 @@
-# 라이브러리 서버 동기화: 인도자가 올린 곡을 다른 기기·팀원이 받고, 삭제·합치기도 전파
+# 라이브러리 동기화: 콘티에서 만든 곡이 곡·편곡으로 서버에 쌓이고, 다른 기기·팀원이 받는다
 import os, sys, time
 from playwright.sync_api import sync_playwright
 
@@ -34,25 +34,28 @@ def run():
         pa.set_input_files('#pieceFile', [SHEET])
         pa.wait_for_function("(()=>{const p=(CONTI.S.services[0].items[0].pieces||[])[0];return p&&p.ocr&&p.ocr!=='pending'})()", timeout=60000)
         pa.wait_for_timeout(5000)   # 라이브러리 push 디바운스(3초) + 업로드
-        srv = cA.request.get(URL + 'api/library?team=' + team).json()
-        if not srv['songs']: fail('서버 라이브러리가 비었음')
+        srv = cA.request.get(URL + 'api/songs?team=' + team).json()
+        if not srv['songs']: fail('서버에 곡이 없음')
         s0 = srv['songs'][0]
         if s0['title'] != '주 은혜임을': fail('제목이 다름: %s' % s0['title'])
-        if not (s0.get('pieces') or []): fail('악보 조각이 안 올라감')
+        a0 = (s0.get('arrangements') or [{}])[0]
+        if not (a0.get('pieces') or []): fail('악보 조각이 편곡에 안 올라감')
+        if a0.get('form') != '1414 – AAB': fail('송폼이 편곡에 안 들어감: %r' % a0.get('form'))
         if not srv['blobs']: fail('악보 파일 URL 이 없음')
-        print('push ok:', s0['title'], '· 조각', len(s0['pieces']))
+        print('push ok:', s0['title'], '· 조각', len(a0['pieces']))
 
         # ---- 다른 기기(같은 인도자)에서 받아짐 ----
         cB = b.new_context(viewport={'width': 1240, 'height': 900}); pb = cB.new_page()
         pb.on('pageerror', lambda e: errs.append('B:' + str(e))); pb.on('dialog', lambda d: d.accept())
         login(pb, L)
         pb.wait_for_selector('.hd [data-act="team"]', timeout=10000); pb.wait_for_timeout(4000)
-        got = pb.evaluate("CONTI.S.library.map(s=>s.title)")
+        pb.evaluate("CONTI.pullSongs(true)"); pb.wait_for_timeout(2500)
+        got = pb.evaluate("CONTI.S.songs.map(s=>s.title)")
         if '주 은혜임을' not in got: fail('다른 기기에 라이브러리가 안 내려옴: %s' % got)
         # 악보 파일도 같이 (썸네일이 뜨는지)
-        pb.click('.navi[data-act="nav-lib"]'); pb.wait_for_selector('#libList', timeout=10000); pb.wait_for_timeout(1200)
-        if '악보 1장' not in pb.locator('#libList').inner_text(): fail('악보 장수가 안 맞음: ' + pb.locator('#libList').inner_text()[:120])
-        pb.keyboard.press('Escape')
+        pb.click('.navi[data-act="nav-lib"]'); pb.wait_for_selector('.songrow', timeout=10000); pb.wait_for_timeout(1200)
+        thumb = pb.evaluate("!!document.querySelector('.songrow .sthumb').style.backgroundImage")
+        if not thumb: fail('목록에 악보 썸네일이 안 뜸')
         print('pull ok:', got)
 
         # ---- 멤버도 라이브러리를 본다(읽기) ----
@@ -63,28 +66,34 @@ def run():
         pm.fill('#lgName', '민수'); pm.fill('#lgUser', 'lm' + tag); pm.fill('#lgPass', 'secret1'); pm.click('[data-act="lg-submit"]')
         pm.wait_for_selector('#jnName', timeout=8000); pm.click('[data-act="team-join"]'); pm.wait_for_selector('.hd [data-act="team"]', timeout=8000)
         pm.wait_for_timeout(3500)
-        mlib = pm.evaluate("CONTI.S.library.map(s=>s.title)")
+        pm.evaluate("CONTI.pullSongs(true)"); pm.wait_for_timeout(2000)
+        mlib = pm.evaluate("CONTI.S.songs.map(s=>s.title)")
         if '주 은혜임을' not in mlib: fail('멤버가 라이브러리를 못 받음: %s' % mlib)
-        # 멤버는 못 올림
-        up = cM.request.put(URL + 'api/library', headers=H, data={'teamId': team, 'songs': [{'id': 'x1', 'title': '멤버곡'}]})
-        if up.status != 403: fail('멤버가 라이브러리를 고칠 수 있음: %s' % up.status)
+        # 멤버는 못 고침
+        up = cM.request.post(URL + 'api/songs', headers=H, data={'teamId': team, 'title': '멤버곡'})
+        if up.status != 403: fail('멤버가 곡을 만들 수 있음: %s' % up.status)
+        # 멤버 화면에는 편집 버튼이 없다
+        pm.goto(URL + '#/library'); pm.wait_for_selector('.songrow', timeout=10000); pm.wait_for_timeout(600)
+        if pm.locator('[data-act="lib-new"]').count(): fail('멤버에게 새 곡 버튼이 보임')
         print('member read-only ok')
 
-        # ---- B 기기에서 곡을 고치면 A 기기로 전파 ----
-        pb.evaluate("(()=>{const s=CONTI.S.library.find(x=>x.title==='주 은혜임을');s.songNote='밝게';s.dirty=true;CONTI.save();return CONTI.SYNC.pushLibrary()})()")
-        pb.wait_for_timeout(2500)
-        pa.evaluate("CONTI.SYNC.pullLibrary()"); pa.wait_for_timeout(2000)
-        note = pa.evaluate("(CONTI.S.library.find(x=>x.title==='주 은혜임을')||{}).songNote")
+        # ---- B 기기에서 편곡을 고치면 A 기기로 전파 ----
+        arr = pb.evaluate("CONTI.S.songs.find(x=>x.title==='주 은혜임을').arrangements[0].id")
+        cB.request.patch(URL + 'api/arrangements/' + arr, headers=H, data={'teamId': team, 'songNote': '밝게'})
+        pa.evaluate("CONTI.S.songsAt='';CONTI.pullSongs(true)"); pa.wait_for_timeout(2500)
+        note = pa.evaluate("((CONTI.S.songs.find(x=>x.title==='주 은혜임을')||{}).arrangements||[{}])[0].songNote")
         if note != '밝게': fail('수정이 전파 안 됨: %s' % note)
         print('edit propagation ok')
 
         # ---- 삭제도 전파 ----
-        pa.goto(URL + '#/home'); pa.wait_for_selector('.navi[data-act="nav-lib"]', timeout=10000)
-        pa.click('.navi[data-act="nav-lib"]'); pa.wait_for_selector('[data-libdel]', timeout=10000)
-        pa.click('[data-libdel]'); pa.wait_for_timeout(2500); pa.keyboard.press('Escape')
-        if cA.request.get(URL + 'api/library?team=' + team).json()['songs']: fail('서버에서 안 지워짐')
-        pb.evaluate("CONTI.SYNC.pullLibrary()"); pb.wait_for_timeout(2000)
-        if pb.evaluate("CONTI.S.library.length"): fail('다른 기기에서 삭제가 반영 안 됨')
+        sid = pa.evaluate("CONTI.S.songs.find(x=>x.title==='주 은혜임을').id")
+        pa.goto(URL + '#/library/' + sid); pa.wait_for_selector('.acard', timeout=10000); pa.wait_for_timeout(600)
+        pa.click('[data-act="song-more"]'); pa.wait_for_selector('#smDel2', timeout=5000)
+        pa.click('#smDel2'); pa.wait_for_timeout(2500)
+        left = cA.request.get(URL + 'api/songs?team=' + team).json()['songs']
+        if [x for x in left if x['title'] == '주 은혜임을']: fail('서버에서 안 지워짐')
+        pb.evaluate("CONTI.S.songsAt='';CONTI.pullSongs(true)"); pb.wait_for_timeout(2500)
+        if pb.evaluate("CONTI.S.songs.filter(x=>x.title==='주 은혜임을').length"): fail('다른 기기에서 삭제가 반영 안 됨')
         print('delete propagation ok')
 
         print('errors:', errs)

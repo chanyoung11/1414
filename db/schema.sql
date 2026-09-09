@@ -291,3 +291,106 @@ create table if not exists team_audit (
   at       timestamptz not null default now()
 );
 create index if not exists team_audit_idx on team_audit(team_id, at desc);
+
+-- ─────────────────────────────────────────────────────────────
+-- 라이브러리 명세 A부: 곡 → 편곡 → 사용 이력
+-- 지금 library 표는 "예배에 넣은 곡의 복사본"이라 같은 곡이 여러 번 들어간다.
+-- 곡은 하나로 두고, 키·편곡이 다르면 편곡을 여러 개 단다.
+-- ─────────────────────────────────────────────────────────────
+
+create table if not exists songs (
+  id         uuid primary key default gen_random_uuid(),
+  team_id    uuid not null references teams(id) on delete cascade,
+  title      text not null,
+  title_norm text not null default '',        -- 공백·기호 뺀 소문자 (검색)
+  title_cho  text not null default '',        -- 초성 문자열 (ㅇㅅㄹ 검색)
+  aliases    text[] not null default '{}',
+  artist     text not null default '',
+  orig_key   text not null default '',        -- 원키(참고). 연주 키는 편곡에
+  first_line text not null default '',        -- 가사 첫 줄 (검색용, 화면에 안 씀)
+  tags       text[] not null default '{}',
+  tempo      text not null default '',        -- 느림·보통·빠름
+  archived   boolean not null default false,
+  not_dup_of uuid[] not null default '{}',    -- "다른 곡이에요" 표시한 짝
+  created_by uuid references users(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz
+);
+create index if not exists songs_team_idx on songs(team_id, archived, updated_at desc);
+create index if not exists songs_norm_idx on songs(team_id, title_norm);
+create index if not exists songs_cho_idx  on songs(team_id, title_cho);
+
+create table if not exists arrangements (
+  id          uuid primary key default gen_random_uuid(),
+  song_id     uuid not null references songs(id) on delete cascade,
+  team_id     uuid not null references teams(id) on delete cascade,
+  name        text not null default '기본',
+  is_default  boolean not null default false,
+  medley_song_ids uuid[] not null default '{}',
+  key         text not null default '',
+  mod         text not null default '',       -- 곡 안에서 전조하는 키
+  form        text not null default '',       -- 송폼 원문
+  bpm         int,
+  song_note   text not null default '',
+  pieces      jsonb not null default '[]',
+  media       jsonb not null default '[]',
+  chart       jsonb,                          -- 채보한 코드 차트
+  score       jsonb,                          -- 재구성한 악보
+  created_from_service_id text,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  deleted_at  timestamptz
+);
+create unique index if not exists one_default_per_song on arrangements (song_id) where is_default and deleted_at is null;
+create index if not exists arr_team_idx on arrangements(team_id, song_id);
+create index if not exists arr_updated_idx on arrangements(team_id, updated_at desc);
+
+-- 고정 메모: 편곡에 붙어 "이 곡을 넣을 때마다" 따라오는 메모. 마커 id 가 아니라 라벨로 붙는다
+create table if not exists arrangement_notes (
+  id             uuid primary key default gen_random_uuid(),
+  arrangement_id uuid not null references arrangements(id) on delete cascade,
+  team_id        uuid not null references teams(id) on delete cascade,
+  marker_label   text not null,
+  layer          text not null check (layer in ('all','session','mine')),
+  session        text,
+  author_id      uuid references users(id) on delete set null,
+  author_name    text not null default '',
+  text           text not null,
+  created_at     timestamptz not null default now()
+);
+create index if not exists arrnotes_idx on arrangement_notes(arrangement_id);
+
+-- 사용 이력: 발행된 예배에서만 만든다. 초안은 세지 않는다
+create table if not exists song_usages (
+  id             uuid primary key default gen_random_uuid(),
+  team_id        uuid not null references teams(id) on delete cascade,
+  song_id        uuid not null references songs(id) on delete cascade,
+  arrangement_id uuid references arrangements(id) on delete set null,
+  service_id     text not null,
+  service_date   date,
+  service_name   text not null default '',
+  position       int not null default 0,
+  is_application boolean not null default false,   -- 마지막 곡(적용곡)
+  key_used       text not null default '',
+  via_medley     boolean not null default false,
+  leader_id      uuid,
+  unique (song_id, service_id)
+);
+create index if not exists usage_song_idx on song_usages(team_id, song_id, service_date desc);
+create index if not exists usage_date_idx on song_usages(team_id, service_date desc);
+
+-- 곡 공유 코드. 파일은 담지 않는다
+create table if not exists share_codes (
+  code       text primary key,
+  team_id    uuid not null references teams(id) on delete cascade,
+  created_by uuid references users(id),
+  payload    jsonb not null,
+  kind       text not null default 'song' check (kind in ('song','bundle')),
+  max_uses   int,
+  uses       int not null default 0,
+  expires_at timestamptz not null,
+  revoked_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists share_team_idx on share_codes(team_id, created_at desc);
