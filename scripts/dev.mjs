@@ -5,6 +5,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// 실수로 운영 DB 를 보고 테스트를 돌리면 운영 데이터가 더러워진다. 로컬이 아니면 막는다
+{
+  const u = process.env.DATABASE_URL || '';
+  const local = /@(localhost|127\.0\.0\.1|\[::1\])[:/]/.test(u) || /host=localhost/.test(u);
+  if (u && !local && process.env.ALLOW_PROD_DB !== '1') {
+    console.error('\n[막음] DATABASE_URL 이 로컬이 아닙니다. 개발 서버는 운영 DB 를 보지 않습니다.');
+    console.error('       테스트는 로컬 DB 로 돌리세요. 정말 필요하면 ALLOW_PROD_DB=1 을 붙이세요.\n');
+    process.exit(1);
+  }
+}
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const appDir = path.join(root, 'app');
 const { default: api } = await import(path.join(root, 'api', 'index.js'));

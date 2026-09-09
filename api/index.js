@@ -6,7 +6,7 @@ import { sessionClaims, sessionCookie, clearSessionCookie, randomToken } from '.
 import { hashPassword, verifyPassword, USERNAME_RE, PASSWORD_MIN } from '../lib/password.js';
 import { putBlob, delBlobs, readUrls, presignPut, headBlob } from '../lib/blob.js';
 import { ocrBands, visionConfigured } from '../lib/vision.js';
-import { transcribeSheet, geminiConfigured, geminiModel, estimateUSD } from '../lib/gemini.js';
+import { transcribeSheet, transcribeScore, geminiConfigured, geminiModel, estimateUSD } from '../lib/gemini.js';
 
 class HttpError extends Error { constructor(status, code, message) { super(message || code); this.status = status; this.code = code; } }
 const bad = (m) => new HttpError(400, 'bad_request', m);
@@ -901,6 +901,36 @@ on('POST', '/omr', async ({ uid, body }) => {
     throw new HttpError(502, 'omr_failed', '채보 실패: ' + (e.message || ''));
   }
   return { songs: r.songs, model: r.model, usage: r.usage, cost: estimateUSD(r.model, r.usage) };
+});
+
+// 악보 재구성 (인도자): 오선 한 줄을 보내면 그 줄의 마디를 악보 데이터로 돌려준다.
+// 한 장을 통째로 읽으면 뒤로 갈수록 흐트러져서(마디 오류 39%), 줄 단위로 나눠 읽는다(4%).
+on('POST', '/score', async ({ uid, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  await requireMember(uid, teamId, 'leader');
+  if (!geminiConfigured()) throw new HttpError(503, 'no_omr', '채보 엔진이 아직 연결되지 않았어요 (GEMINI_API_KEY)');
+  const b64 = String(body.b64 || '');
+  const mime = /^image\/(jpeg|png|webp)$/.test(String(body.mime || '')) ? String(body.mime) : 'image/jpeg';
+  if (b64.length < 100) throw bad('이미지가 비어 있어요');
+  if (b64.length > 9e6) throw new HttpError(413, 'too_large', '이미지가 너무 커요');
+  let r;
+  try { r = await transcribeScore({ b64, mime }, { thinking: str(body.thinking, 10) || 'LOW', repair: body.repair !== false }); }
+  catch (e) {
+    if (e.status === 429) throw new HttpError(429, 'omr_quota', '채보 한도에 걸렸어요. 잠시 뒤 다시 해 주세요');
+    throw new HttpError(502, 'omr_failed', '채보 실패: ' + (e.message || ''));
+  }
+  const usd = estimateUSD(r.model, r.usage);
+  // 원화는 대략만 보여 준다 (환율은 USD_KRW 로 바꿀 수 있음)
+  return { songs: r.songs, model: r.model, usage: r.usage, badMeasures: r.badMeasures, cost: usd, costKRW: Math.round(usd * (+process.env.USD_KRW || 1450) * 10) / 10 };
+});
+
+// 악보 데이터 → MusicXML (내려받기·다른 프로그램에서 열기)
+on('POST', '/score/musicxml', async ({ uid, body }) => {
+  if (!uid) throw noAuth();
+  await requireMember(uid, str(body.teamId, 64));
+  const { toMusicXML } = await import('../lib/score.js');
+  return { xml: toMusicXML(body.score || {}) };
 });
 
 // 코드 OCR (인도자): 클라이언트가 자른 코드 띠 이미지들을 Vision 에 넘김
