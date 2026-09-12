@@ -598,17 +598,80 @@ html.dark .msgbody{background:#1C1C1C}
 .auth-side .logostack{color:#F2F2F2}
 .stagelogo{display:inline-flex;align-items:center;padding:0 12px 0 0;margin-left:0;color:inherit;flex:0 0 auto}
 .stagelogo .logo{color:inherit}
+/* ---------- 무대 모드: 자동 조판 (§1-A) ---------- */
+body.stgon{overflow:hidden}
+.stgw{position:fixed;inset:0;z-index:210;background:#0B0C0D;color:#F2F2F0;overflow:hidden;-webkit-user-select:none;user-select:none;touch-action:pan-y}
+.stgbar{position:absolute;left:0;right:0;top:0;height:46px;display:flex;align-items:center;gap:10px;padding:0 12px;background:#17181A;border-bottom:1px solid #2A2B2E;white-space:nowrap;overflow:hidden;z-index:2}
+.stgbar b{font-size:15px;font-weight:800;letter-spacing:-.02em;flex:0 0 auto}
+.stgform{font-family:"Geist Mono",ui-monospace,Menlo,monospace;font-size:12px;color:#A0A29C;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.stgpg{font-size:12px;color:#E9C35C;font-weight:700;flex:0 0 auto}
+.stgw .sbtn{width:32px;height:32px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;color:#A0A29C;flex:0 0 auto}
+.stgw .sbtn:hover{background:#242527;color:#F2F2F0}
+.stgw .sbtn.on{background:#242527;color:#F2F2F0}
+.stgw .sbtn[disabled]{opacity:.3;pointer-events:none}
+.stgw .sbtn2{width:30px;height:30px;border-radius:8px;background:var(--surface-medium);display:inline-flex;align-items:center;justify-content:center;font-weight:700;flex:0 0 auto}
+.stgshow{position:absolute;right:10px;top:8px;z-index:3;background:#17181A}
+.stgcanvas{position:absolute;left:16px;right:16px;bottom:12px;display:flex;justify-content:center}
+.stgpage{position:relative;background:#fff;color:#000;border-radius:10px;overflow:hidden}
+.stgpage .blk{position:absolute}
+.stgpage .pslice{position:absolute;left:0;overflow:hidden}
+.stgpage .pslice>img{position:absolute;left:0;display:block;max-width:none}
+.stgpop{position:absolute;right:12px;top:54px;width:min(340px,calc(100vw - 24px));background:var(--card);color:var(--fg);border:1px solid var(--border-2);border-radius:var(--r-xl);padding:12px;z-index:4;box-shadow:0 24px 56px -20px rgba(0,0,0,.7)}
+@media(max-width:640px){.stgbar .stgform{display:none}.stgcanvas{left:8px;right:8px}}
+/* ---------- 인쇄 조판 결과 (미리보기 + 종이) ---------- */
 #printArea{display:none}
+#printArea.pv{display:block;position:fixed;inset:0;z-index:200;background:#5A5D63;overflow:auto;-webkit-overflow-scrolling:touch}
+.pvbar{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--card);border-bottom:1px solid var(--border);color:var(--fg)}
+.pvbar .hint{white-space:nowrap}
+@media(max-width:760px){.pvbar .pvtip{display:none}}
+.pvout{padding:20px 0 60px;display:flex;flex-direction:column;align-items:center;gap:20px}
+.ppage{position:relative;background:#fff;color:#000;box-shadow:0 6px 24px rgba(0,0,0,.35);flex:0 0 auto;overflow:hidden}
+.ppage .pinner{position:absolute;inset:0}
+.ppage .blk{position:absolute}
+.ppage .pslice{position:absolute;left:0;overflow:hidden}
+.ppage .pslice>img{position:absolute;left:0;display:block;max-width:none}
+.ppage .hl{position:absolute;background:rgba(255,214,0,.38);mix-blend-mode:multiply;border-radius:2px}
+.ppage .mask{position:absolute;background:#fff}
+.ppage .pchord{position:absolute;color:#C0392B;font-weight:700;font-family:ui-monospace,Menlo,monospace;line-height:1;white-space:nowrap}
+.ppage .pmk{position:absolute;transform:translate(-50%,-50%);min-width:17px;height:17px;border-radius:999px;border:1.5px solid #111;background:#fff;color:#111;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;padding:0 3px}
+.ppage .songhead{display:flex;align-items:center;gap:10px}
+.ppage .songhead .num{width:24px;height:24px;border-radius:50%;background:#111;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.ppage .songhead .title{font-size:19px;font-weight:800;letter-spacing:-.02em;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ppage .songhead .key{font-weight:800;font-size:15px;border:2px solid #111;border-radius:999px;padding:1px 10px;flex:0 0 auto}
+.ppage .pform2{margin-top:8px;background:#111;color:#fff;font-family:ui-monospace,Menlo,monospace;font-size:11px;line-height:1.5;padding:6px 9px;border-radius:5px}
+.ppage .pform2.big{font-size:12.5px}
+.ppage .preason{margin-top:4px;font-size:11px;color:#444}
+.ppage .pstrip{position:absolute;display:flex;align-items:center;gap:6px;font-size:11px;overflow:hidden;border-left:3px solid #111;padding-left:7px}
+.ppage .pstrip .mk2{min-width:17px;height:17px;border-radius:999px;background:#111;color:#fff;font-size:10px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;padding:0 4px;flex:0 0 auto}
+.ppage .pstrip .mod{font-size:10px;font-weight:700;color:#111;border:1px solid #111;border-radius:3px;padding:0 4px;flex:0 0 auto}
+.ppage .pstrip .m{display:inline-flex;align-items:center;gap:4px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ppage .pstrip .m .who{font-size:9px;font-weight:700;color:#fff;background:#777;border-radius:3px;padding:0 4px}
+.ppage .pstrip .m.all .who{background:#111}
+.ppage .pdiv{display:flex;align-items:center;gap:8px;color:#999;font-size:10px}
+.ppage .pdiv::before,.ppage .pdiv::after{content:"";flex:1;height:1px;background:#ddd}
+.ppage .pfoot2{position:absolute;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:10px;color:#777;border-top:1px solid #ddd;padding-top:5px}
+.ppage .pfoot2 .nx{color:#111;font-weight:700;font-size:11px}
+.ppage .pcover .ct{font-size:30px;font-weight:800;letter-spacing:-.03em}
+.ppage .pcover .cm{color:#666;font-size:12px;margin-top:4px}
+.ppage .pcover .h{margin:18px 0 6px;font-size:11px;font-weight:700;color:#111;border-bottom:2px solid #111;padding-bottom:3px}
+.ppage .pcover .li{display:flex;align-items:center;gap:8px;font-size:13px;padding:4px 0;border-bottom:1px solid #eee}
+.ppage .pcover .li .n{width:18px;height:18px;border-radius:50%;background:#111;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.ppage .pcover .li .k{font-weight:800}
+.ppage .pcover .body{font-size:12px;color:#333;white-space:pre-wrap;line-height:1.55}
+.ppage .psum .sumhd{display:flex;align-items:baseline;gap:10px;border-bottom:3px solid #111;padding-bottom:6px;font-size:12px;color:#666}
+.ppage .psum .sumhd b{font-size:19px;color:#111}
+.ppage .psum .sl{display:flex;align-items:baseline;gap:8px;padding:7px 0;border-bottom:1px solid #eee;font-size:12px}
+.ppage .psum .sl .n{width:18px;height:18px;border-radius:50%;background:#111;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.ppage .psum .sl .t{font-weight:700;font-size:13px}
+.ppage .psum .sl .k{font-weight:800}
+.ppage .psum .sl .f{flex:1;font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:#444;text-align:right}
 @media print{
- @page{size:A4 portrait;margin:12mm}
- body.printing #app,body.printing #modal,body.printing #toast{display:none!important}
- body.printing #printArea{display:block;color:#000;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
- #printArea .phdr{font-size:12px;color:#444;border-bottom:1px solid #999;padding-bottom:6px;margin-bottom:8px}#printArea .phdr b{font-size:14px;color:#000;margin-right:8px}
- #printArea .psong{page-break-after:always;break-after:page}#printArea .psong:last-child{page-break-after:auto}
- #printArea .chart{margin-top:8px}#printArea .cbar{border-color:#bbb}#printArea .cbars{border-color:#bbb}#printArea .clr{color:#444}#printArea .cshd b{color:#444}
- #printArea .ptitle{display:flex;align-items:center;gap:10px;margin:6px 0 8px}#printArea .ptitle h2{margin:0;font-size:22px;letter-spacing:-.02em}#printArea .pnum{width:26px;height:26px;border-radius:50%;background:#000;color:#fff;font-size:13px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}#printArea .pkey{margin-left:auto;font-weight:800;font-size:18px;border:2px solid #000;border-radius:999px;padding:0 12px}
- #printArea .pform{background:#000!important;color:#fff!important;font-family:ui-monospace,Menlo,monospace;font-size:12px;padding:7px 10px;border-radius:6px;margin-bottom:6px}#printArea .pnote{font-size:12px;color:#333;margin:0 0 8px}
- #printArea .psheet{box-shadow:none;border:0;padding:0 0 0 36px;width:736px;max-width:100%}#printArea .slice{break-inside:avoid}#printArea .mkabs .badge{display:none}
+ html,body{background:#fff!important}
+ body.printing #app,body.printing #modal,body.printing #toast,body.printing .pvbar{display:none!important}
+ body.printing #printArea{display:block!important;position:static!important;background:#fff!important;overflow:visible!important}
+ body.printing .pvout{padding:0;gap:0;display:block}
+ body.printing .ppage{box-shadow:none;break-after:page;page-break-after:always;margin:0}
+ body.printing .ppage:last-child{break-after:auto;page-break-after:auto}
  body.printing #printArea.osmdout{position:static!important;left:auto!important;top:auto!important;width:auto!important}
  #printArea .osmdpage{page-break-after:always;break-after:page}#printArea .osmdpage:last-child{page-break-after:auto}
  #printArea svg{max-width:100%;height:auto}
@@ -800,6 +863,7 @@ const fmtToday=()=>{const d=new Date();return `${d.getMonth()+1}월 ${d.getDate(
 let toastT;function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),1800)}
 /* ---------- icons ---------- */
 const ICONS={
+ print:'<path d="M7 8V4h10v4M7 18H5.5A1.5 1.5 0 0 1 4 16.5v-5A1.5 1.5 0 0 1 5.5 10h13a1.5 1.5 0 0 1 1.5 1.5v5a1.5 1.5 0 0 1-1.5 1.5H17M7 15h10v5H7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
  dots:'<circle cx="5" cy="12" r="1.7" fill="currentColor"/><circle cx="12" cy="12" r="1.7" fill="currentColor"/><circle cx="19" cy="12" r="1.7" fill="currentColor"/>',
  play:'<path d="M8 5.5v13a1 1 0 0 0 1.5.86l11-6.5a1 1 0 0 0 0-1.72l-11-6.5A1 1 0 0 0 8 5.5z" fill="currentColor"/>',
  home:'<path d="M4 10.5 12 4l8 6.5V20h-5.5v-6h-5v6H4z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/>',
@@ -996,7 +1060,7 @@ function viewerHTML(svc){
  const pub=pubOrDraft(svc);const my=me();const sess=VF.session||my.session;
  const ctx={mode:'play',session:sess,f:{leader:true,session:true,mine:true,chords:true}};
  return `<div class="top"><button class="icon ghost" data-act="home">${ic('back')}</button><h1>${esc(pub.name||'예배')}<span class="pill ${pub.draft?'':'amber'}">${pub.draft?(svc.published?`초안 미리보기 · 발행본 v${svc.published.version}${svc.version>svc.published.version?'과 다름':'과 같음'}`:'미발행 초안'):'v'+pub.version}</span></h1>
-  ${hasNote(svc)?`<button class="icon ghost ${msgUnread(svc)?'dot':''}" data-act="msg" data-id="${svc.id}" title="예배 노트">${ic('note')}</button>`:''}<button class="icon ghost" data-act="print" data-id="${svc.id}" title="인쇄 (A4, 곡당 한 장)">${ic('export')}</button><button class="btn" data-act="play" data-id="${svc.id}" data-i="0">${ic('play')}연습</button><button class="btn pri" data-act="play" data-id="${svc.id}" data-i="0" data-stage="1">${ic('moon')}무대</button></div>
+  ${hasNote(svc)?`<button class="icon ghost ${msgUnread(svc)?'dot':''}" data-act="msg" data-id="${svc.id}" title="예배 노트">${ic('note')}</button>`:''}<button class="icon ghost" data-act="print" data-id="${svc.id}" title="인쇄 · PDF로 저장">${ic('print')}</button><button class="btn" data-act="play" data-id="${svc.id}" data-i="0">${ic('play')}연습</button><button class="btn pri" data-act="play" data-id="${svc.id}" data-i="0" data-stage="1">${ic('moon')}무대</button></div>
   <div class="ws" style="grid-template-columns:minmax(0,1fr)">
    <div class="panel">${ptab('콘티',pub.items.length+'곡',`<span class="hint" style="margin-right:6px">세션</span><div class="seg">${S.team.sessions.filter(s=>s!=='인도자').map(s=>`<button class="${s===sess?'on':''}" data-act="vsess" data-s="${esc(s)}">${esc(s)}</button>`).join('')}</div>`)}
    <div class="pbody"><div style="max-width:900px;margin:0 auto">
@@ -1026,7 +1090,7 @@ function playHTML(svc,idx){
  const my=me();const sess=PL.session||my.session;const k=keyStr(it);const prev=pub.items[idx-1],next=pub.items[idx+1];PL.ml=visMedia(it,sess);
  return `<div class="top"><button class="icon ghost" ${svc.practice?`data-act="lib-song" data-id="${esc(it.songId||'')}"`:`data-act="back-view" data-id="${svc.id}"`}>${ic('back')}</button>
   <div class="songnav grow"><span class="nb prev" ${prev?'data-act="pn" data-d="-1"':''}>${prev?esc(prev.title||'(제목 없음)'):''}</span><button class="icon sm" data-act="pn" data-d="-1" ${prev?'':'disabled'} title="이전 곡">${ic('left')}</button><span class="nb cur"><span class="num">${idx+1}</span>${esc(it.title||'(제목 없음)')}<span class="pill key">${esc(k||'-')}</span></span><button class="icon sm" data-act="pn" data-d="1" ${next?'':'disabled'} title="다음 곡">${ic('right')}</button><span class="nb next" ${next?'data-act="pn" data-d="1"':''}>${next?esc(next.title||'(제목 없음)'):''}</span></div>
-  ${hasNote(svc)?`<button class="icon ghost ${msgUnread(svc)?'dot':''}" data-act="msg" data-id="${svc.id}" title="예배 노트">${ic('note')}</button>`:''}${it.score&&it.score.measures&&it.score.measures.length?`<button class="icon ghost" data-act="score-go" data-id="${svc.id}" data-item="${it.id}" title="재구성한 악보">${ic('music')}</button>`:''}<button class="switch ${PL.stage?'on':''}" data-act="stage"><i></i>무대 모드</button></div>
+  ${hasNote(svc)?`<button class="icon ghost ${msgUnread(svc)?'dot':''}" data-act="msg" data-id="${svc.id}" title="예배 노트">${ic('note')}</button>`:''}${it.score&&it.score.measures&&it.score.measures.length?`<button class="icon ghost" data-act="score-go" data-id="${svc.id}" data-item="${it.id}" title="재구성한 악보">${ic('music')}</button>`:''}<button class="btn sm" data-act="stage">${ic('moon')}무대 모드</button></div>
  <div class="ws split" id="ws">
   <div class="stack" id="stack">
    <div class="panel media">${ptab('미디어','',PL.ml.length?PL.ml.map((md,i)=>`<button class="chip t ${i===0?'on':''}" data-act="msel" data-i="${i}" title="${esc(mdTag(md))}"><span class="${md.type==='youtube'?'ytc':'micc'}" style="display:inline-flex">${ic(md.type==='youtube'?'yt':'mic')}</span>${mdSess(md).length?`<span class="tag" style="margin-right:2px">${esc(mdTag(md))}</span>`:''}${esc((md.name||md.url||'').replace(/^https?:\/\//,'').slice(0,20))}</button>`).join(''):'<span class="hint">미디어 없음</span>')}
@@ -4129,15 +4193,409 @@ window.addEventListener('message',e=>{if(!P.yt||e.source!==P.yt.contentWindow)re
  if(d.event==='infoDelivery'&&d.info){if(d.info.currentTime!=null){P.t=d.info.currentTime}if(d.info.duration)P.dur=d.info.duration;if(d.info.playerState!=null)P.playing=d.info.playerState===1;updateTL()}});
 let PL={svc:null,idx:0,mi:0,stage:false,chart:!!lsGet('conti-chart'),zoom:+(lsGet('conti-zoom')||1)||1,f:{leader:true,session:true,mine:true,chords:true},session:null};
 // 인쇄: A4 세로, 곡마다 한 장 — 번호·제목·키·송폼 헤더 + 악보(메모 띠·전조 코드 포함)
-async function printService(svc){const pub=pubOrDraft(svc);const my=me();await preload(svc);
- const ctx={mode:'play',session:my.session,f:{leader:true,session:true,mine:true,chords:true}};
- const old=$('#printArea');if(old)old.remove();const area=document.createElement('div');area.id='printArea';
- area.innerHTML=`<div class="phdr"><b>${esc(pub.name||'예배')}</b> <span>${esc(pub.date||'')} · v${pub.version||0}${pub.notice?' · '+esc(pub.notice.split('\n')[0]):''}</span></div>`+pub.items.map((it,i)=>{const live=svc.items.find(x=>x.id===it.id)||it;const merged={...it,notes:live.notes||[]};const k=keyStr(it);
-  return `<section class="psong"><div class="ptitle"><span class="pnum">${i+1}</span><h2>${esc(it.title||'(제목 없음)')}</h2><span class="pkey">${esc(k||'')}</span></div>${it.form?`<div class="songbar pform">${esc(it.form)}</div>`:''}${it.songNote?`<div class="pnote">${esc(it.songNote)}</div>`:''}${it.pieces&&it.pieces.length?`<div class="sheet psheet">${sheetHTML(merged,700,ctx)}</div>`:''}${it.chart?chartHTML(it,{}):''}</section>`}).join('');
+/* ---------- 인쇄·무대 공용 조판 엔진 (인쇄·내보내기 명세 §1·§4) ----------
+   화면 DOM 을 그대로 인쇄하면 오선 중간에서 잘리고 빈 쪽이 생긴다.
+   그래서 같은 엔진이 화면(무대)과 종이(인쇄) 양쪽을 다시 짠다. */
+const PMM=96/25.4, PAPER={A4:[210,297],Letter:[216,279]};
+const STRIP_H=30;
+const PG={pw:0,ph:0,margin:12*PMM,foot:8*PMM,cols:1,gutter:8*PMM};
+// 인쇄 설정. '용도' 프리셋이 한 번에 바꾸고 그 뒤 개별 조정 (§2)
+const PRT={mode:'stage',session:'',summary:false,sheets:true,cover:false,memos:true,hl:true,next:true,
+           paper:'A4',orient:'landscape',scale:1,songPage:true,only:null};
+function prtPreset(mode){PRT.mode=mode;
+ if(mode==='stage')Object.assign(PRT,{summary:false,sheets:true,cover:false,next:true,scale:1,orient:'landscape'});
+ else Object.assign(PRT,{summary:false,sheets:true,cover:true,next:false,scale:.9,orient:'portrait'})}
+function pgPageSize(){let [w,h]=PAPER[PRT.paper]||PAPER.A4;if(PRT.orient==='landscape')[w,h]=[h,w];
+ PG.pw=w*PMM;PG.ph=h*PMM;PG.cols=PRT.orient==='landscape'?2:1}
+function pgColWidth(){return (PG.pw-PG.margin*2-PG.gutter*(PG.cols-1))/PG.cols}
+const pgKey=it=>it.mod?`${it.key} – ${it.mod}`:(it.key||'');
+// 송폼에서 섹션별 변형(Key up 등)을 뽑아 띠에 같이 적는다
+function pgMods(form){const m={};let pend=[];const toks=String(form||'').split(/\s+[–\-—]\s+/);
+ for(const seg of toks){let rest=seg;const mod=rest.match(/^\(([^)]*)\)/);
+  if(mod){pend=[mod[1]];rest=rest.slice(mod[0].length)}else pend=[];
+  const sec=rest.match(/^([A-H])(\d?)/);if(sec&&pend.length){const b=sec[1];if(!m[b])m[b]=pend[0]+(sec[2]?' ('+sec[1]+sec[2]+')':'')}}
+ return m}
+const pgHeadH=(it,cw)=>36+8+(String(it.form||'').length>cw/8.2?46:28)+(it.reason?18:0)+10;
+// 앱의 조각 데이터를 엔진이 쓰는 모양으로. 좌표는 앱이 px 로 저장한다
+function pgPieces(item,box,opt){
+ return (item.pieces||[]).map(p=>{
+  const im={src:url(p.blob),w:p.w||1,h:p.h||1,gaps:p.gaps||[]};
+  let s=box.cw/im.w*opt.scale;if(s*im.w>box.cw&&opt.clamp!==false)s=box.cw/im.w;
+  const markers=(p.markers||[]).map(m=>({...m,px:m.x,py:m.y,
+   cut:m.cut!=null?m.cut:autoCut(p,m.y),
+   vis:fixedNotesOf(item,m.id,opt.ctx).concat(notesOfMarker(item,m.id).filter(n=>noteVisible(n,opt.ctx)))}));
+  // 여백 한가운데로 잘라도 전조 코드 글자가 거기 걸치면 글자가 반으로 잘린다.
+  // 코드는 아래 오선에 딸린 것이니 그 줄 위에서 자른다
+  const chs=(p.chords||[]).filter(c=>c&&c.y!=null);
+  const gapOf=v=>im.gaps.find(q=>v>=q.s-2&&v<=q.e+2);
+  const adj=v=>{if(!chs.length)return v;
+   const hit=chs.filter(c=>v>c.y-1&&v<c.y+(c.h||12)+1);
+   if(!hit.length)return v;
+   const g=gapOf(v);if(!g)return v;             // 여백이 아닌 곳은 건드리지 않는다
+   const up=Math.round(Math.min(...hit.map(c=>c.y))-3);
+   // 코드 위로 올리되 여백 밖(=위 오선 안)으로는 절대 넘어가지 않는다.
+   // 여백 시작까지만 올리면 코드는 아래 조각과 함께 간다
+   return Math.max(g.s,Math.min(up,v))};
+  markers.forEach(m=>{if(m.cut!=null)m.cut=adj(m.cut)});
+  const forced=new Set(opt.memos?markers.filter(m=>m.vis.length&&m.cut!=null).map(m=>m.cut):[]);
+  const big=im.gaps.filter(q=>(q.e-q.s)>Math.max(40,im.h*0.03));const pad=10;
+  let pts=new Set([0,im.h,...im.gaps.map(q=>adj(Math.round((q.s+q.e)/2))),...forced]);
+  big.forEach(q=>{pts.add(q.s+pad);pts.add(q.e-pad)});
+  pts=[...pts].filter(v=>v>=0&&v<=im.h).sort((a,b)=>a-b);
+  const units=[];
+  for(let i=0;i<pts.length-1;i++){const a=pts[i],b=pts[i+1];if(b-a<2)continue;
+   if(big.some(q=>a>=q.s+pad-1&&b<=q.e-pad+1))continue;   // 큰 빈 여백은 접는다
+   units.push({a,b,strip:forced.has(a)?markers.filter(m=>m.cut===a&&m.vis.length):null})}
+  const hls=(p.hls||[]).filter(h=>h.kind!=='mask'),masks=(p.hls||[]).filter(h=>h.kind==='mask');
+  return {im,s,markers,units,hls,masks,chords:p.chords||[]}})}
+function pgLayout(items,box,opt){
+ const pages=[];const P=()=>{const p={blocks:[],col:0,ys:Array(box.cols).fill(box.top)};pages.push(p);return p};
+ const fill=opt.fillH?Math.min(box.ch,opt.fillH):box.ch;
+ const rem=p=>fill-(p.ys[p.col]-box.top);
+ const place=(p,b)=>{b.col=p.col;b.top=p.ys[p.col];p.blocks.push(b);p.ys[p.col]+=b.height+(b.gap||0)};
+ const adv=p=>{if(p.col<box.cols-1){p.col++;return p}return P()};
+ items.forEach((it,idx)=>{
+  let p=pages.length?pages[pages.length-1]:P();
+  if(opt.songPage&&p.blocks.length)p=P();
+  const mods=pgMods(it.form);
+  const pieces=pgPieces(it,box,opt);
+  if(opt.head!==false){const fullW=box.cw*box.cols+box.gutter*(box.cols-1);const headH=pgHeadH(it,fullW);
+   // 곡 머리는 쪽 전체 폭. 모든 열이 그 아래에서 시작한다
+   let y0=Math.max(...p.ys);if(y0>box.top+1&&box.ch-(y0-box.top)<headH+140){p=P();y0=box.top}
+   p.blocks.push({type:'head',height:headH,item:it,idx:opt.numFrom!=null?opt.numFrom+idx:idx,full:true,col:0,top:y0});
+   p.ys=p.ys.map(()=>y0+headH+10);p.col=0}
+  pieces.forEach((pc,pi)=>{const {im,s,units}=pc;let i=0;const segs={};
+   const seg=(pp,h)=>{const k=pages.indexOf(pp)+':'+pp.col;segs[k]=(segs[k]||0)+h};
+   // 조각은 통째로 한 칸에 두는 것을 우선한다
+   const total=units.reduce((a,q)=>a+(q.b-q.a)*s+(q.strip?STRIP_H+2:0),0);
+   if(p.ys[p.col]>box.top+1){const r=rem(p);
+    if(total+(pi?16:0)>r&&(total<=box.ch||r<total*0.45))p=adv(p);
+    else if(pi)place(p,{type:'divider',height:14,label:'조각 '+(pi+1)})}
+   while(i<units.length){const u=units[i];
+    if(u.strip){if(rem(p)<STRIP_H+Math.min((u.b-u.a)*s,80))p=adv(p);
+     place(p,{type:'strip',height:STRIP_H,markers:u.strip,mods,gap:2})}
+    let j=i,hSum=0;const r=rem(p);
+    while(j<units.length&&(j===i||!units[j].strip)){const h=(units[j].b-units[j].a)*s;if(hSum+h>r)break;hSum+=h;j++}
+    if(i===0&&j-i===1&&units.length>=2&&p.ys[p.col]>box.top+1){p=adv(p);continue}   // 제목만 남는 고아 방지
+    if(j===i){if(p.ys[p.col]>box.top+1){p=adv(p);continue}
+     const s2=Math.min(s,rem(p)/(u.b-u.a));
+     place(p,{type:'slice',height:(u.b-u.a)*s2,pc,scale:s2,ranges:[[u.a,u.b]],gap:2});seg(p,(u.b-u.a)*s2);i++;continue}
+    const ranges=[];for(let k=i;k<j;k++){const q=units[k];
+     if(ranges.length&&ranges[ranges.length-1][1]===q.a)ranges[ranges.length-1][1]=q.b;else ranges.push([q.a,q.b])}
+    place(p,{type:'slice',height:hSum,pc,scale:s,ranges,gap:2});seg(p,hSum);i=j}
+   const parts=Object.values(segs);
+   if(parts.length>1){const tot=parts.reduce((a,b)=>a+b,0);
+    if(Math.min(...parts)/tot<0.25)pages.badSplit=true;   // 꼬리 금지
+    pages.splits=(pages.splits||0)+1}});
+ });
+ return pages}
+// 한 곡을 한 면에, 가능한 한 크게 (화면·종이 공용)
+function pgBestFit(it,W,H,colsList,zMax,floor,opt){
+ const gutter=opt.gutter||18;
+ const tryFit=(cols,z,fillH)=>{const cw=(W-gutter*(cols-1))/cols;const box={cols,cw,ch:H,gutter,top:0};
+  return {pages:pgLayout([it],box,{...opt,scale:z,songPage:false,head:false,fillH}),box,cw,fillH}};
+ // 열 채우기가 탐욕적이라 2열이면 둘째 열에 한 줄만 남아 꼬리 금지에 걸리곤 한다.
+ // 열 높이에 상한을 걸어 고르게 나눠 담는 것도 같이 시도한다
+ const variants=(cols,z)=>{const cw=(W-gutter*(cols-1))/cols;
+  const out=[tryFit(cols,z)];
+  if(cols>1){const tot=(it.pieces||[]).reduce((a,p)=>{const sc=Math.min(z,1)*cw/(p.w||1);return a+(p.h||0)*sc},0);
+   const even=tot/cols;
+   [1.02,1.12,1.25].forEach(m=>{const f=even*m;if(f<H-4)out.push(tryFit(cols,z,f))})}
+  return out};
+ let best=null;
+ // 이분 탐색은 못 쓴다. 꼬리 금지(§1) 때문에 되는 구간 사이에 안 되는 구간이 낀다 —
+ // z=1.0 은 두 열에 고르게 나뉘어 되는데 z=0.8 은 둘째 열에 한 줄만 남아 안 된다.
+ // 그래서 위에서부터 훑어 내려가며 되는 것 중 가장 큰 것을 고른다.
+ const STEPS=22;
+ for(const cols of colsList){let ok=null;
+  for(let k=0;k<=STEPS;k++){const z=zMax-(zMax-0.3)*k/STEPS;if(z<=0)break;
+   const r=variants(cols,z).find(x=>x.pages.length===1&&!x.pages.badSplit);
+   if(r){ok={...r,z};break}}   // 큰 쪽부터 보니 처음 되는 것이 최대
+  if(ok){ // 한 칸 위로 조금 더 밀어 본다
+   const step=(zMax-0.3)/STEPS;
+   for(let k=1;k<=4;k++){const z=ok.z+step*k/5;if(z>zMax)break;
+    const r=variants(cols,z).find(x=>x.pages.length===1&&!x.pages.badSplit);if(r)ok={...r,z}}
+   const eff=Math.min(ok.z,1)*ok.cw;const sp=ok.pages.splits||0;
+   if(eff>=floor&&(!best||eff>best.eff*(sp<best.sp?0.9:1.02)))best={...ok,cols,eff,sp}}}
+ return best}
+function pgCompose(svc){
+ const pub=pubOrDraft(svc);
+ const my=me();const session=PRT.session||my.session||'전체';
+ const ctx={mode:'play',session,f:{leader:true,session:true,mine:true,chords:true}};
+ const items=(pub.items||[]).map((it,i)=>{const live=(svc.items||[]).find(x=>x.id===it.id)||it;
+  return {...it,notes:live.notes||[],_n:i}});
+ const picked=PRT.only?items.filter(x=>x.id===PRT.only):items;
+ pgPageSize();
+ const pre=[];const fullW=PG.pw-PG.margin*2;const fullH=PG.ph-PG.margin*2-PG.foot;
+ const full={type:null,height:fullH,full:true,col:0,top:PG.margin};
+ if(PRT.cover)pre.push({blocks:[{...full,type:'cover'}],svc,pub,session});
+ if(PRT.summary)pre.push({blocks:[{...full,type:'summary'}],svc,pub,session});
+ if(!PRT.sheets)return pre;
+ const gutter=PG.gutter;const opt={memos:PRT.memos,session,ctx,gutter};
+ const pages=[];
+ picked.forEach((it,idx)=>{
+  if(!(it.pieces||[]).length)return;
+  const headH=pgHeadH(it,fullW);const H=fullH-headH-10;
+  const colsList=PRT.orient==='landscape'?[1,2,3]:[1,2];
+  const best=pgBestFit(it,fullW,H,colsList,PRT.scale,90*PMM,opt);   // 악보 폭 최소 90mm
+  let songPages;
+  if(best){const box={cols:best.cols,cw:best.cw,ch:H,gutter,top:PG.margin+headH+10};
+   songPages=pgLayout([it],box,{...opt,scale:best.z,songPage:false,head:false,fillH:best.fillH,numFrom:it._n});
+   songPages.forEach(p=>{p.blocks.unshift({type:'head',height:headH,item:it,idx:it._n,full:true,col:0,top:PG.margin});p.box=box})}
+  else{ // 한 장에 못 넣으면 여러 장. 가장 긴 조각이 한 칸에 통째로 들어가는 축척까지만
+   const cols=PRT.orient==='landscape'?2:1;const cw=(fullW-gutter*(cols-1))/cols;
+   const box={cols,cw,ch:fullH,gutter,top:PG.margin};
+   const maxPiece=Math.max(...it.pieces.map(p=>(p.h||1)*(cw/(p.w||1))));
+   const z=Math.min(PRT.scale,(fullH-headH-40)/maxPiece);
+   songPages=pgLayout([it],box,{...opt,scale:z,songPage:false,head:true,numFrom:it._n});
+   songPages.forEach(p=>{p.box=box})}
+  songPages.forEach(p=>{p.svc=svc;p.pub=pub;p.session=session});
+  if(PRT.next&&idx<picked.length-1){const nx=picked[idx+1];
+   songPages[songPages.length-1].nextText=`다음 ${nx._n+1}. ${nx.title||'(제목 없음)'} / ${pgKey(nx)}`}
+  pages.push(...songPages)});
+ return pre.concat(pages)}
+function pgBlockHTML(b,box,page){
+ const L=b.full?box.left:box.left+b.col*(box.cw+box.gutter),T=b.top+(box.top0||0);
+ const W=b.full?box.fullW:box.cw;
+ const pub=page.pub||{},svc=page.svc||{};
+ if(b.type==='cover'){const w=pub.word;
+  return `<div class="blk pcover" style="left:${L}px;top:${T}px;width:${W}px">
+   <div class="ct">${esc(pub.name||'예배')}</div><div class="cm">${esc(pub.date||'')} · v${pub.version||0} · ${esc(page.session)} 기준</div>
+   <div class="h">콘티</div>${(pub.items||[]).map((it,k)=>`<div class="li"><span class="n">${k+1}</span><span style="flex:1">${esc(it.title||'(제목 없음)')}</span><span class="k">${esc(pgKey(it))}</span></div>`).join('')}
+   ${pub.notice?`<div class="h">공지</div><div class="body">${esc(pub.notice)}</div>`:''}
+   ${w&&(w.passage||w.title)?`<div class="h">말씀</div><div class="body"><b>${esc(w.passage||'')}</b>${w.title?' · '+esc(w.title):''}${w.line?`<br><span style="color:#555">${esc(w.line)}</span>`:''}</div>`:''}
+   ${pub.message?`<div class="h">인도자의 글</div><div class="body">${esc(pub.message)}</div>`:''}</div>`}
+ if(b.type==='summary')return `<div class="blk psum" style="left:${L}px;top:${T}px;width:${W}px">
+   <div class="sumhd"><b>${esc(pub.name||'예배')}</b><span>v${pub.version||0} · ${esc(page.session)}</span><span style="flex:1"></span><span>${esc(pub.notice||'')}</span></div>
+   ${(pub.items||[]).map((it,k)=>`<div class="sl"><span class="n">${k+1}</span><span class="t">${esc(it.title||'(제목 없음)')}</span><span class="k">${esc(pgKey(it))}</span><span class="f">${esc(it.form||'')}</span></div>`).join('')}</div>`;
+ if(b.type==='head'){const it=b.item;
+  return `<div class="blk" style="left:${L}px;top:${T}px;width:${W}px"><div class="songhead"><span class="num">${b.idx+1}</span><span class="title">${esc(it.title||'(제목 없음)')}</span><span class="key">${esc(pgKey(it))}</span></div>${it.form?`<div class="pform2 ${PRT.scale>=1?'big':''}">${esc(it.form)}</div>`:''}${it.songNote?`<div class="preason">${esc(it.songNote)}</div>`:''}</div>`}
+ if(b.type==='slice'){const {pc,scale,ranges}=b;const im=pc.im;const w=im.w*scale;const left=L+(W-w)/2;
+  let inner='';let off=0;
+  ranges.forEach(([start,end])=>{const hh=(end-start)*scale;
+   let sub=`<img src="${im.src}" style="width:${w}px;top:${-start*scale}px">`;
+   if(box.hl!==false)pc.hls.forEach(h=>{if(h.y>=start&&h.y<end)sub+=`<div class="hl" style="left:${h.x*scale}px;top:${(h.y-start)*scale}px;width:${h.w*scale}px;height:${Math.min(h.h,end-h.y)*scale}px"></div>`});
+   pc.masks.forEach(m=>{if(m.y>=start&&m.y<end)sub+=`<div class="mask" style="left:${m.x*scale}px;top:${(m.y-start)*scale}px;width:${m.w*scale}px;height:${m.h*scale}px"></div>`});
+   pc.chords.forEach(c=>{if(c.y>=start&&c.y<end)sub+=`<div class="pchord" style="left:${(c.x+(c.w||0))*scale+3}px;top:${(c.y-start)*scale-2}px;font-size:${Math.max(9,(c.h||14)*scale)}px">${esc(c.text||'')}</div>`});
+   pc.markers.forEach(m=>{const hasStrip=m.vis.length&&m.cut!=null&&box.memos!==false;
+    if(!hasStrip&&m.py>=start&&m.py<end)sub+=`<div class="pmk" style="left:${m.px*scale}px;top:${(m.py-start)*scale}px">${esc(m.label)}</div>`});
+   inner+=`<div class="pslice" style="top:${off}px;width:${w}px;height:${hh}px">${sub}</div>`;off+=hh});
+  return `<div class="blk" style="left:${left}px;top:${T}px;width:${w}px;height:${b.height}px">${inner}</div>`}
+ if(b.type==='strip')return `<div class="pstrip" style="left:${L}px;top:${T}px;width:${W}px;height:${b.height}px">${b.markers.map(m=>`<span class="mk2">${esc(m.label)}</span>${b.mods[m.label]?`<span class="mod">${esc(b.mods[m.label])}</span>`:''}${m.vis.map(n=>{const all=n.layer==='all'||(n.layer==='leader'&&!n.session);return `<span class="m ${all?'all':''}"><span class="who">${all?'전체':esc(n.session||'전체')}</span>${esc(n.text)}</span>`}).join('')}`).join('<span style="width:10px;display:inline-block"></span>')}</div>`;
+ if(b.type==='divider')return `<div class="blk pdiv" style="left:${L}px;top:${T}px;width:${W}px">${esc(b.label)}</div>`;
+ return ''}
+function pgPagesHTML(pages){
+ return pages.map((p,i)=>{
+  const pb=p.box||{cw:PG.pw-PG.margin*2,gutter:PG.gutter,cols:1};
+  const box={left:PG.margin,cw:pb.cw,gutter:pb.gutter,fullW:PG.pw-PG.margin*2,hl:PRT.hl,memos:PRT.memos};
+  const pub=p.pub||{};
+  return `<div class="ppage" style="width:${PG.pw}px;height:${PG.ph}px"><div class="pinner">
+   ${p.blocks.map(b=>pgBlockHTML(b,box,p)).join('')}
+   <div class="pfoot2" style="left:${PG.margin}px;right:${PG.margin}px;bottom:${PG.margin-6}px">
+    <span>${esc(pub.name||'예배')} · v${pub.version||0} · ${esc(p.session||'')}</span>
+    ${p.nextText?`<span class="nx">${esc(p.nextText)} ›</span>`:''}
+    <span>${i+1} / ${pages.length}</span></div></div></div>`}).join('')}
+
+/* ---------- 무대 모드 = 자동 조판 (인쇄·내보내기 명세 §1-A) ----------
+   한 곡이 한 화면에. 스크롤 없음. 조판은 사람·곡·기기 구간마다 따로 저장된다 */
+const STG={svc:null,idx:0,screen:0,open:false,pref:null,fit:null};
+const STG_DEF={zoom:1,cols:'auto',memos:true,hl:true,bar:true};
+// 기기 구간: 11인치와 13인치 아이패드, 폰, 데스크톱이 같은 조판을 쓸 이유가 없다
+function deviceClass(){const w=Math.max(window.innerWidth,window.innerHeight);
+ return w<760?'phone':w<1100?'tab-s':w<1500?'tab-l':'desktop'}
+function stgKey(songId){const u=(NET.user&&NET.user.id)||'local';return `stage:${u}:${songId||'-'}:${deviceClass()}`}
+function stgLoad(songId){try{const s=JSON.parse(localStorage.getItem(stgKey(songId))||'null');
+ return Object.assign({},STG_DEF,s||{})}catch(e){return {...STG_DEF}}}
+function stgSave(songId){try{localStorage.setItem(stgKey(songId),JSON.stringify(STG.pref))}catch(e){}}
+function stgItem(){const pub=pubOrDraft(STG.svc);const it=pub.items[STG.idx];if(!it)return null;
+ const live=(STG.svc.items||[]).find(x=>x.id===it.id)||it;return {...it,notes:live.notes||[]}}
+// 화면 크기와 곡 하나를 받아 한 화면에 들어가는 가장 큰 조판을 찾는다
+function stgFit(it,W,H,pref){
+ const my=me();const session=PL.session||my.session||'전체';
+ const ctx={mode:'play',session,f:{leader:true,session:true,mine:true,chords:true}};
+ const opt={memos:pref.memos,session,ctx,gutter:18};
+ const colsList=pref.cols==='auto'?(W>H?[1,2,3]:[1,2]):[+pref.cols];
+ const p0=(it.pieces||[])[0]||{w:1};
+ const best=pgBestFit(it,W,H,colsList,1,0,opt);
+ if(best){const z=best.z*pref.zoom;const cw=best.cw;
+  const box={cols:best.cols,cw,ch:H,gutter:18,top:0};
+  const pages=pgLayout([it],box,{...opt,scale:z,songPage:false,head:false,fillH:best.fillH});
+  return {pages,box,cols:best.cols,zoom:Math.min(z,1)*cw/(p0.w||1),auto:Math.min(best.z,1)*cw/(p0.w||1),split:pages.length>1}}
+ // 최소 크기로도 안 들어가면 화면을 나눈다
+ const cols=W>H?2:1;const cw=(W-18*(cols-1))/cols;const box={cols,cw,ch:H,gutter:18,top:0};
+ return {pages:pgLayout([it],box,{...opt,scale:0.5*pref.zoom,songPage:false,head:false}),
+         box,cols,zoom:0.5*cw/(p0.w||1),auto:0.5*cw/(p0.w||1),split:true}}
+function stageOpen(svc,idx){
+ STG.svc=svc;STG.idx=idx||0;STG.screen=0;STG.open=false;
+ const it=stgItem();STG.pref=stgLoad(it&&it.songId);
+ let el=$('#stageWrap');if(el)el.remove();
+ el=document.createElement('div');el.id='stageWrap';el.className='stgw';
+ document.body.appendChild(el);document.body.classList.add('stgon');
+ stageRender();
+ el.onclick=stageClick;
+ window.addEventListener('keydown',stageKey);
+ window.addEventListener('resize',stageResize);
+ let x0=null;
+ el.addEventListener('touchstart',e=>{x0=e.touches[0].clientX},{passive:true});
+ el.addEventListener('touchend',e=>{if(x0==null)return;const dx=e.changedTouches[0].clientX-x0;x0=null;
+  if(Math.abs(dx)>60)stageGo(dx<0?1:-1)},{passive:true})}
+function stageClose(){const el=$('#stageWrap');if(el)el.remove();
+ document.body.classList.remove('stgon');
+ window.removeEventListener('keydown',stageKey);window.removeEventListener('resize',stageResize);
+ STG.svc=null}
+let STG_RZ=null;
+function stageResize(){clearTimeout(STG_RZ);STG_RZ=setTimeout(()=>{if($('#stageWrap'))stageRender()},150)}
+function stageKey(e){if(!$('#stageWrap'))return;
+ if(e.key==='ArrowRight'){e.preventDefault();stageGo(1)}
+ else if(e.key==='ArrowLeft'){e.preventDefault();stageGo(-1)}
+ else if(e.key==='Escape'){e.preventDefault();stageClose();render()}}
+function stageGo(d){const pub=pubOrDraft(STG.svc);const n=(pub.items||[]).length;
+ const nx=Math.max(0,Math.min(n-1,STG.idx+d));if(nx===STG.idx)return;
+ STG.idx=nx;STG.screen=0;STG.open=false;const it=stgItem();STG.pref=stgLoad(it&&it.songId);stageRender()}
+function stageRender(){
+ const host=$('#stageWrap');if(!host)return;
+ const it=stgItem();const pub=pubOrDraft(STG.svc);
+ if(!it){host.innerHTML=`<div class="stgbar"><b>곡이 없어요</b><span class="grow"></span><button class="sbtn" data-stg="exit">${ic('x')}</button></div>`;return}
+ const barH=STG.pref.bar?46:0;
+ const W=host.clientWidth-32,H=host.clientHeight-barH-24;
+ const fit=stgFit(it,W,Math.max(120,H),STG.pref);STG.fit=fit;
+ const pages=fit.pages;if(STG.screen>=pages.length)STG.screen=0;
+ const p=pages[STG.screen];
+ const used=p.blocks.length?Math.max(...p.blocks.map(x=>x.col))+1:1;
+ const usedW=used*fit.box.cw+(used-1)*fit.box.gutter;
+ // 남는 세로 공간은 위아래로 나눠 가운데에 둔다
+ const contentH=p.blocks.length?Math.max(...p.blocks.map(x=>x.top+x.height)):0;
+ const padT=Math.max(0,(Math.max(120,H)-contentH)/2);
+ const box={left:Math.max(0,(W-usedW)/2),top0:padT,cw:fit.box.cw,gutter:fit.box.gutter,fullW:W,hl:STG.pref.hl,memos:STG.pref.memos};
+ const page={pub,svc:STG.svc,session:PL.session||me().session||''};
+ const n=(pub.items||[]).length;const k=keyStr(it);
+ host.innerHTML=`
+  ${STG.pref.bar?`<div class="stgbar">
+   <button class="sbtn" data-stg="prev" ${STG.idx?'':'disabled'}>${ic('left')}</button>
+   <b>${STG.idx+1}. ${esc(it.title||'(제목 없음)')}${k?' / '+esc(k):''}</b>
+   <span class="stgform">${esc(it.form||'')}</span>
+   <span class="grow"></span>
+   ${pages.length>1?`<span class="stgpg">${STG.screen+1}/${pages.length} 화면</span>`:''}
+   <button class="sbtn" data-stg="next" ${STG.idx<n-1?'':'disabled'}>${ic('right')}</button>
+   <button class="sbtn ${STG.open?'on':''}" data-stg="cfg" title="내 조판">${ic('gear')}</button>
+   <button class="sbtn" data-stg="export" title="이 조판 그대로 내보내기">${ic('print')}</button>
+   <button class="sbtn" data-stg="exit" title="무대 모드 끝내기">${ic('x')}</button></div>`:
+   `<button class="sbtn stgshow" data-stg="baron" title="바 켜기">${ic('up')}</button>`}
+  <div class="stgcanvas" style="top:${barH+12}px"><div class="stgpage" style="width:${W}px;height:${Math.max(120,H)}px">
+   ${p.blocks.map(b=>pgBlockHTML(b,box,page)).join('')}</div></div>
+  ${STG.open?stagePopHTML(fit):''}`}
+function stagePopHTML(fit){
+ const P=STG.pref;
+ return `<div class="stgpop" data-stop="1">
+  <div class="lbl" style="margin-top:0">이 곡 조판 <span class="hint">내 기기에만 저장돼요</span></div>
+  <div class="row" style="gap:8px"><span style="width:52px" class="hint">크기</span>
+   <button class="sbtn2" data-stg="z" data-d="-1">−</button>
+   <b style="width:56px;text-align:center">×${P.zoom.toFixed(1)}</b>
+   <button class="sbtn2" data-stg="z" data-d="1">＋</button>
+   <span class="hint">자동 최대가 ×1.0</span></div>
+  <div class="row" style="gap:8px;margin-top:8px"><span style="width:52px" class="hint">열</span>
+   <span class="seg">${['auto',1,2,3].map(c=>`<button class="${String(P.cols)===String(c)?'on':''}" data-stg="cols" data-v="${c}">${c==='auto'?'자동':c+'열'}</button>`).join('')}</span></div>
+  <label class="mrow" style="cursor:pointer"><span class="grow">메모 띠</span><input type="checkbox" data-stgt="memos" ${P.memos?'checked':''}></label>
+  <label class="mrow" style="cursor:pointer"><span class="grow">하이라이트</span><input type="checkbox" data-stgt="hl" ${P.hl?'checked':''}></label>
+  <label class="mrow" style="cursor:pointer"><span class="grow">상단 송폼 바</span><input type="checkbox" data-stgt="bar" ${P.bar?'checked':''}></label>
+  <div class="hint" style="margin-top:8px">${fit.cols}열 · 원본 대비 ${Math.round(fit.zoom*100)}%${P.zoom!==1?` (자동 ${Math.round(fit.auto*100)}% × ${P.zoom.toFixed(1)})`:''}${fit.split?' · 화면이 나뉘었어요. 탭하면 다음 화면':''}</div>
+  <div class="row" style="justify-content:space-between;margin-top:10px">
+   <button class="btn sm ghost" data-stg="reset">자동으로 되돌리기</button>
+   <button class="btn sm pri" data-stg="export">${ic('print')}이대로 내보내기</button></div></div>`}
+function stageClick(e){
+ const b=e.target.closest('[data-stg]');
+ const t=e.target.closest('[data-stgt]');
+ if(t){STG.pref[t.dataset.stgt]=t.checked;stgSave((stgItem()||{}).songId);stageRender();return}
+ if(!b){ // 화면이 나뉘었으면 탭으로 다음 화면
+  if(e.target.closest('.stgpop'))return;
+  const pages=(STG.fit&&STG.fit.pages)||[];
+  if(pages.length>1){STG.screen=(STG.screen+1)%pages.length;stageRender()}
+  return}
+ const a=b.dataset.stg;const song=(stgItem()||{}).songId;
+ if(a==='exit'){stageClose();render();return}
+ if(a==='prev'){stageGo(-1);return}
+ if(a==='next'){stageGo(1);return}
+ if(a==='cfg'){STG.open=!STG.open;stageRender();return}
+ if(a==='baron'){STG.pref.bar=true;stgSave(song);stageRender();return}
+ if(a==='z'){STG.pref.zoom=Math.max(.6,Math.min(1.5,+(STG.pref.zoom+ +b.dataset.d*0.1).toFixed(2)));stgSave(song);stageRender();return}
+ if(a==='cols'){STG.pref.cols=b.dataset.v==='auto'?'auto':+b.dataset.v;stgSave(song);stageRender();return}
+ if(a==='reset'){STG.pref={...STG_DEF};stgSave(song);stageRender();return}
+ if(a==='export'){stageExport();return}}
+// ⇪ 내 조판 값으로 인쇄 시트를 채워서 연다 (§1-A)
+function stageExport(){
+ const svc=STG.svc;const it=stgItem();const P={...STG.pref};const fit=STG.fit;
+ const land=window.innerWidth>window.innerHeight;
+ Object.assign(PRT,{mode:'stage',summary:false,cover:false,sheets:true,next:true,songPage:true,
+  memos:P.memos,hl:P.hl,orient:land?'landscape':'portrait',
+  scale:Math.min(1.15,Math.max(0.9,P.zoom)),
+  session:PL.session||me().session||'전체',only:it?it.id:null});
+ stageClose();printSheet(svc)}
+
+// 인쇄 설정 시트 → 미리보기 → window.print() (§2·§5)
+async function printService(svc,opts){
+ await preload(svc);
+ const my=me();
+ if(!PRT.session)PRT.session=my.session||'전체';
+ if(opts)Object.assign(PRT,opts);
+ printSheet(svc)}
+function printSheet(svc){
+ const pub=pubOrDraft(svc);
+ const sessions=['전체'].concat((S.team.sessions||[]).filter(x=>x!=='인도자'));
+ const seg=(act,list,cur)=>`<div class="seg">${list.map(([v,l])=>`<button class="${String(cur)===String(v)?'on':''}" data-po="${act}" data-v="${esc(String(v))}">${esc(l)}</button>`).join('')}</div>`;
+ const sw=(k,label,hint)=>`<label class="mrow" style="cursor:pointer"><span class="grow">${esc(label)}${hint?`<div class="hint">${esc(hint)}</div>`:''}</span><input type="checkbox" data-pt="${k}" ${PRT[k]?'checked':''}></label>`;
+ const draw=()=>{
+  modal(`<b style="font-size:17px">인쇄 · PDF로 저장</b>
+  <div class="hint" style="margin-top:4px">${esc(pub.name||'예배')} · v${pub.version||0}</div>
+  <div class="lbl">용도</div>${seg('mode',[['stage','합주·무대용'],['archive','보관·전달용']],PRT.mode)}
+  <div class="lbl">세션 <span class="hint">고른 세션 메모 + 전체 메모만 띠로</span></div>
+  <div class="seg" style="flex-wrap:wrap">${sessions.map(x=>`<button class="${PRT.session===x?'on':''}" data-po="session" data-v="${esc(x)}">${esc(x)}</button>`).join('')}</div>
+  <div class="lbl">범위</div>${seg('only',[['','전체 곡']].concat((pub.items||[]).map((it,i)=>[it.id,`${i+1}. ${(it.title||'(제목 없음)').slice(0,10)}`])),PRT.only||'')}
+  <div class="lbl">종이</div><div class="row" style="gap:8px;flex-wrap:wrap">${seg('paper',[['A4','A4'],['Letter','Letter']],PRT.paper)}${seg('orient',[['portrait','세로'],['landscape','가로']],PRT.orient)}${seg('scale',[[0.9,'보통'],[1,'크게'],[1.15,'더 크게']],PRT.scale)}</div>
+  <div class="lbl">담을 것</div>
+  ${sw('cover','표지','곡 목록 · 공지 · 말씀 · 인도자의 글')}
+  ${sw('summary','송폼 한 장','예배 전체 요약')}
+  ${sw('sheets','곡별 악보')}
+  ${sw('memos','메모 띠')}
+  ${sw('hl','하이라이트')}
+  ${sw('next','다음 곡 표시','바닥글 가운데')}
+  ${sw('songPage','곡마다 새 장')}
+  <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" data-close="1">취소</button><button class="btn pri" id="pvGo">${ic('print')}미리보기</button></div>`,{center:true});
+  $('#modal').onclick=e=>{
+   const o=e.target.closest('[data-po]');
+   if(o){const k=o.dataset.po;let v=o.dataset.v;
+    if(k==='scale')v=+v; if(k==='only')v=v||null;
+    if(k==='mode')prtPreset(v);else PRT[k]=v;
+    draw();return}
+   const t=e.target.closest('[data-pt]');if(t){PRT[t.dataset.pt]=t.checked;return}
+   if(e.target.closest('[data-close]')){closeModal();return}
+   if(e.target.closest('#pvGo')){closeModal();printPreview(svc);return}}};
+ draw()}
+function printPreview(svc){
+ const pages=pgCompose(svc);
+ if(!pages.length){toast('인쇄할 것이 없어요 — 담을 것을 하나 이상 켜 주세요');return}
+ const pub=pubOrDraft(svc);
+ const old=$('#printArea');if(old)old.remove();
+ const area=document.createElement('div');area.id='printArea';area.className='pv';
+ area.innerHTML=`<div class="pvbar">
+   <button class="btn ghost" data-pv="close">${ic('back')}닫기</button>
+   <b>${esc(pub.name||'예배')}</b>
+   <span class="hint">${PRT.paper} ${PRT.orient==='portrait'?'세로':'가로'} · ${pages.length}장 · ${esc(PRT.session)}</span>
+   <span class="grow"></span>
+   <span class="hint pvtip">인쇄 창에서 <b>배경 그래픽 켜기</b> · 여백 없음</span>
+   <button class="btn" data-pv="opt">${ic('gear')}설정</button>
+   <button class="btn pri" data-pv="print">${ic('print')}인쇄 · PDF</button></div>
+  <div class="pvout">${pgPagesHTML(pages)}</div>`;
  document.body.appendChild(area);document.body.classList.add('printing');
+ let st=$('#pagestyle');if(!st){st=document.createElement('style');st.id='pagestyle';document.head.appendChild(st)}
+ st.textContent=`@page{size:${PRT.paper} ${PRT.orient};margin:0}`;
  const t0=document.title;document.title=printName(pub.name,pub.date,pub.version);
- const done=()=>{document.title=t0;document.body.classList.remove('printing');area.remove();window.removeEventListener('afterprint',done)};
- window.addEventListener('afterprint',done);setTimeout(()=>window.print(),150)}
+ const done=()=>{document.title=t0;document.body.classList.remove('printing');area.remove()};
+ area.onclick=e=>{const b=e.target.closest('[data-pv]');if(!b)return;
+  const a=b.dataset.pv;
+  if(a==='close'){done();return}
+  if(a==='opt'){done();printSheet(svc);return}
+  if(a==='print'){window.print();return}};
+ area.scrollTop=0}
 // 브라우저가 'PDF로 저장' 할 때 쓰는 이름. 파일 이름에 못 쓰는 글자는 뺀다
 function printName(name,date,version){
  const base=String(name||'예배').trim()||'예배';
@@ -4526,7 +4984,10 @@ document.addEventListener('click',async e=>{
   case 'ytopen':window.open(el.dataset.url,'_blank','noopener');break;
   case 'publish':publishModal(svcById(r.a));break;
   case 'vsess':VF.session=el.dataset.s;render();break;
-  case 'play':PL.stage=!!el.dataset.stage;PL.wantFs=PL.stage;go('play/'+svc.id+'/'+el.dataset.i);break;
+  case 'play':{
+   if(el.dataset.stage){await preload(svc);PL.svc=svc;PL.idx=+el.dataset.i||0;stageOpen(svc,+el.dataset.i||0);break}
+   PL.stage=false;go('play/'+svc.id+'/'+el.dataset.i);break}
+  case 'stage-open':{await preload(svc);stageOpen(svc,PL.idx||0);break}
   case 'back-view':go('view/'+svc.id);break;
   case 'pn':{const i=PL.idx+ +el.dataset.d;go('play/'+r.a+'/'+i);break}
   case 'msel':selectMedia(+el.dataset.i);break;
@@ -4536,7 +4997,7 @@ document.addEventListener('click',async e=>{
   case 'tnote':{const s=PL.svc;const pub=pubOrDraft(s);const it=pub.items[PL.idx];const live=s.items.find(x=>x.id===it.id)||it;const md=(PL.ml||[])[PL.mi];if(!md){toast('미디어가 없어요');break}const lmd=live.media.find(x=>x.id===md.id);if(!lmd){toast('발행본에 없는 미디어');break}P.pauseForComposer();openComposer(s,live,{leader:isLeader(),t:P.t,mediaId:lmd.id});break}
   case 'psess':PL.session=el.dataset.s;render();break;
   case 'pf':PL.f[el.dataset.k]=!PL.f[el.dataset.k];$$('[data-act="pf"]').forEach(b=>b.classList.toggle('on',PL.f[b.dataset.k]));redrawPlay();break;
-  case 'stage':setStage(!PL.stage);break;
+  case 'stage':{const s2=PL.svc||svc;if(s2){await preload(s2);stageOpen(s2,PL.idx||0)}break}
   case 'zoom':setZoom((PL.zoom||1)+(+el.dataset.d)*0.1);break;
   case 'print':printService(svc);break;
  }
@@ -4561,7 +5022,7 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
  if(!online()&&!me().name){location.hash='#/settings';render()}else render();
  if(online()&&S.team.id){SYNC.pullServices().then(ch=>{if(ch)render()});SYNC.pullLibrary();pullSongs(true).then(ch=>{if(ch&&/^(edit|view|play|library)$/.test(route().name))render()}).catch(()=>{})}
  probeOmr();startNotiPoll();
- window.CONTI={fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go};
+ window.CONTI={STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go};
 })();
 })();
 </script>
