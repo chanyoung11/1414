@@ -17,7 +17,7 @@ def run():
     pg.click('[data-act="lg-mode"][data-m="signup"]'); pg.wait_for_selector('#lgName')
     pg.fill('#lgName', '하은'); pg.fill('#lgUser', 'hl' + tag); pg.fill('#lgPass', 'secret1'); pg.click('[data-act="lg-submit"]')
     pg.wait_for_selector('#gtTeam', timeout=8000); pg.fill('#gtTeam', '하이팀'); pg.click('[data-act="team-create"]')
-    pg.wait_for_selector('.hd [data-act="team"]', timeout=8000)
+    pg.wait_for_selector('.shell[data-page]', timeout=8000)
     pg.click('[data-act="new-svc"]'); pg.wait_for_selector('[data-f="svc.name"]'); pg.fill('[data-f="svc.name"]', '하이 예배')
     pg.click('[data-act="add-item"]'); pg.wait_for_selector('[data-f="item.title"]'); pg.fill('[data-f="item.title"]', '곡')
     pg.set_input_files('#pieceFile', [SHEET])

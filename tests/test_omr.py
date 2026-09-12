@@ -18,7 +18,7 @@ def run():
         pg.on('dialog', lambda d: d.accept())
         pg.goto(URL); pg.wait_for_selector('#lgUser', timeout=8000)
         pg.click('[data-act="lg-mode"][data-m="signup"]'); pg.wait_for_selector('#lgName'); pg.fill('#lgName', L[2]); pg.fill('#lgUser', L[0]); pg.fill('#lgPass', L[1]); pg.click('[data-act="lg-submit"]')
-        pg.wait_for_selector('#gtTeam', timeout=8000); pg.fill('#gtTeam', '채보팀'); pg.click('[data-act="team-create"]'); pg.wait_for_selector('.hd [data-act="team"]', timeout=8000)
+        pg.wait_for_selector('#gtTeam', timeout=8000); pg.fill('#gtTeam', '채보팀'); pg.click('[data-act="team-create"]'); pg.wait_for_selector('.shell[data-page]', timeout=8000)
         avail = ctx.request.get(URL + 'api/omr').json()
         print('omr:', avail)
         if not avail.get('available'): fail('dev 서버에 GEMINI_API_KEY 가 없어요')

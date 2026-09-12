@@ -18,14 +18,14 @@ def signup(pg, user):
 def join(ctx, user, link, session):
     pm = ctx.new_page(); pm.goto(link); pm.wait_for_selector('#lgUser', timeout=8000)
     pm.click('[data-act="lg-mode"][data-m="signup"]'); pm.wait_for_selector('#lgName'); pm.fill('#lgName', user[2]); pm.fill('#lgUser', user[0]); pm.fill('#lgPass', user[1]); pm.click('[data-act="lg-submit"]')
-    pm.wait_for_selector('#jnName', timeout=8000); pm.click('#gtSess .q:has-text("%s")' % session); pm.click('[data-act="team-join"]'); pm.wait_for_selector('.hd [data-act="team"]', timeout=8000)
+    pm.wait_for_selector('#jnName', timeout=8000); pm.click('#gtSess .q:has-text("%s")' % session); pm.click('[data-act="team-join"]'); pm.wait_for_selector('.shell[data-page]', timeout=8000)
     return pm
 
 def run():
     with sync_playwright() as p:
         b = p.chromium.launch(); errs = []
         c1 = b.new_context(viewport={'width': 1180, 'height': 820}); pg = c1.new_page(); pg.on('pageerror', lambda e: errs.append('L:' + str(e)))
-        signup(pg, LEADER); pg.wait_for_selector('#gtTeam', timeout=8000); pg.fill('#gtTeam', '요청2팀'); pg.click('[data-act="team-create"]'); pg.wait_for_selector('.hd [data-act="team"]', timeout=8000)
+        signup(pg, LEADER); pg.wait_for_selector('#gtTeam', timeout=8000); pg.fill('#gtTeam', '요청2팀'); pg.click('[data-act="team-create"]'); pg.wait_for_selector('.shell[data-page]', timeout=8000)
         link = pg.evaluate("location.origin+location.pathname+'#/join/'+CONTI.S.team.invite")
         ocr = c1.request.get(URL + 'api/ocr').json(); print('ocr available:', ocr)
 

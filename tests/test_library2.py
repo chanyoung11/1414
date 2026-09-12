@@ -15,7 +15,7 @@ def run():
     pg.click('[data-act="lg-mode"][data-m="signup"]'); pg.wait_for_selector('#lgName')
     pg.fill('#lgName', '하은'); pg.fill('#lgUser', 'lb' + tag); pg.fill('#lgPass', 'secret1'); pg.click('[data-act="lg-submit"]')
     pg.wait_for_selector('#gtTeam', timeout=8000); pg.fill('#gtTeam', '라이브러리팀'); pg.click('[data-act="team-create"]')
-    pg.wait_for_selector('.hd [data-act="team"]', timeout=8000)
+    pg.wait_for_selector('.shell[data-page]', timeout=8000)
     team = pg.evaluate('CONTI.S.team.id')
 
     # ---- 곡 세 개 만들기 (서버 API 로 바로) ----

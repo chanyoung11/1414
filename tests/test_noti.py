@@ -19,7 +19,7 @@ def run():
     with sync_playwright() as p:
         b = p.chromium.launch(); errs = []
         cL = b.new_context(viewport={'width': 1180, 'height': 820}); pl = cL.new_page(); pl.on('pageerror', lambda e: errs.append('L:' + str(e))); pl.on('dialog', lambda d: d.accept())
-        signup(pl, L); pl.wait_for_selector('#gtTeam', timeout=8000); pl.fill('#gtTeam', '알림팀'); pl.click('[data-act="team-create"]'); pl.wait_for_selector('.hd [data-act="team"]', timeout=8000)
+        signup(pl, L); pl.wait_for_selector('#gtTeam', timeout=8000); pl.fill('#gtTeam', '알림팀'); pl.click('[data-act="team-create"]'); pl.wait_for_selector('.shell[data-page]', timeout=8000)
         team = pl.evaluate('CONTI.S.team.id')
         link = pl.evaluate("location.origin+location.pathname+'#/join/'+CONTI.S.team.invite")
         # 팀 설정이 클라이언트에 내려오는지
@@ -29,7 +29,7 @@ def run():
         cM = b.new_context(viewport={'width': 1180, 'height': 820}); pm = cM.new_page(); pm.on('pageerror', lambda e: errs.append('M:' + str(e))); pm.on('dialog', lambda d: d.accept())
         pm.goto(link); pm.wait_for_selector('#lgUser', timeout=8000)
         pm.click('[data-act="lg-mode"][data-m="signup"]'); pm.wait_for_selector('#lgName'); pm.fill('#lgName', M[2]); pm.fill('#lgUser', M[0]); pm.fill('#lgPass', M[1]); pm.click('[data-act="lg-submit"]')
-        pm.wait_for_selector('#jnName', timeout=8000); pm.click('[data-act="team-join"]'); pm.wait_for_selector('.hd [data-act="team"]', timeout=8000)
+        pm.wait_for_selector('#jnName', timeout=8000); pm.click('[data-act="team-join"]'); pm.wait_for_selector('.shell[data-page]', timeout=8000)
 
         # ---- 이름 규칙: 이름 없이 발행하면 규칙대로 채워짐 ----
         pl.click('[data-act="new-svc"]'); pl.wait_for_selector('[data-f="svc.name"]')
@@ -51,10 +51,13 @@ def run():
         # 멤버 홈 배지 + 알림함 + 탭하면 이동·읽음
         pm.goto(URL + '#/home'); pm.reload(); pm.wait_for_selector('.hd'); pm.wait_for_timeout(2000)
         badge = pm.locator('[data-noti-badge]').first
-        if badge.inner_text().strip() != '1': fail('사이드바 알림 배지가 1이 아님: %r' % badge.inner_text())
-        pm.click('.navi[data-act="inbox"]'); pm.wait_for_selector('#modal .nrow.unread', timeout=5000)
-        if '콘티 v1' not in pm.locator('#modal').inner_text(): fail('알림함에 발행 알림 없음')
-        pm.click('#modal .nrow'); pm.wait_for_timeout(1500)
+        if badge.inner_text().strip() != '1': fail('헤더 종 배지가 1이 아님: %r' % badge.inner_text())
+        # 종을 누르면 드롭다운, 「모두 보기」로 알림 페이지 (§6.7)
+        pm.click('.hd .bell'); pm.wait_for_selector('.dd.open .ddit', timeout=5000)
+        if '콘티 v1' not in pm.locator('.dd.open').inner_text(): fail('종 드롭다운에 발행 알림 없음')
+        pm.click('.dd.open .ddall'); pm.wait_for_selector('.shell[data-page="inbox"] .nrow2.unread', timeout=5000)
+        if '콘티 v1' not in pm.locator('.setpane, main').first.inner_text(): fail('알림 페이지에 발행 알림 없음')
+        pm.click('.nrow2'); pm.wait_for_timeout(1500)
         if not pm.evaluate('location.hash').startswith('#view/') and '/view/' not in pm.evaluate('location.hash'): fail('알림 탭 후 콘티 보기로 안 감: ' + pm.evaluate('location.hash'))
         if cM.request.get(URL + 'api/notifications?team=' + team).json()['unread'] != 0: fail('탭 후 읽음 처리 안 됨')
         print('publish notification ok')

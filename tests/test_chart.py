@@ -28,7 +28,7 @@ def run():
         pg.goto(URL); pg.wait_for_selector('#lgUser', timeout=8000)
         pg.click('[data-act="lg-mode"][data-m="signup"]'); pg.wait_for_selector('#lgName')
         pg.fill('#lgName', '하은'); pg.fill('#lgUser', 'ct' + tag); pg.fill('#lgPass', 'secret1'); pg.click('[data-act="lg-submit"]')
-        pg.wait_for_selector('#gtTeam', timeout=8000); pg.fill('#gtTeam', '차트팀'); pg.click('[data-act="team-create"]'); pg.wait_for_selector('.hd [data-act="team"]', timeout=8000)
+        pg.wait_for_selector('#gtTeam', timeout=8000); pg.fill('#gtTeam', '차트팀'); pg.click('[data-act="team-create"]'); pg.wait_for_selector('.shell[data-page]', timeout=8000)
 
         pg.click('[data-act="new-svc"]'); pg.wait_for_selector('[data-f="svc.name"]'); pg.fill('[data-f="svc.name"]', '차트 예배')
         pg.click('[data-act="add-item"]'); pg.wait_for_selector('[data-f="item.title"]')
@@ -78,7 +78,7 @@ def run():
         print('play chart ok')
 
         # ---- 카포 2: 연주 A 기준으로 두 반음 내려 보임 ----
-        pg.goto(URL + '#/home'); pg.wait_for_selector('.hd'); pg.click('.hd [data-act="settings"]'); pg.wait_for_selector('#sCapo')
+        pg.goto(URL + '#/home'); pg.wait_for_selector('.hd'); pg.goto(URL + '#/settings'); pg.wait_for_selector('.setpane', timeout=8000); pg.wait_for_selector('#sCapo')
         pg.fill('#sCapo', '2'); pg.click('#sOk'); pg.wait_for_timeout(1500)
         pg.goto(URL + '#/play/' + svc_id + '/0'); pg.wait_for_selector('#chartpanel .chart', timeout=15000); pg.wait_for_timeout(500)
         cap = pg.locator('#chartpanel .cch').first.inner_text().strip()

@@ -15,7 +15,7 @@ def team_of(b, user, tname):
     pg.click('[data-act="lg-mode"][data-m="signup"]'); pg.wait_for_selector('#lgName')
     pg.fill('#lgName', '하은'); pg.fill('#lgUser', user); pg.fill('#lgPass', 'secret1'); pg.click('[data-act="lg-submit"]')
     pg.wait_for_selector('#gtTeam', timeout=8000); pg.fill('#gtTeam', tname); pg.click('[data-act="team-create"]')
-    pg.wait_for_selector('.hd [data-act="team"]', timeout=8000)
+    pg.wait_for_selector('.shell[data-page]', timeout=8000)
     return c, pg, pg.evaluate('CONTI.S.team.id')
 
 def run():

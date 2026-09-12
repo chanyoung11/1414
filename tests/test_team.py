@@ -25,9 +25,10 @@ def run():
     # ---- 인도자: 팀 만들기 ----
     signup(L, 'tl' + tag, '하은')
     L.wait_for_selector('#gtTeam', timeout=8000); L.fill('#gtTeam', '팀테스트'); L.click('[data-act="team-create"]')
-    L.wait_for_selector('.hd [data-act="team"]', timeout=8000)
-    L.click('.hd [data-act="team"]'); L.wait_for_selector('.tpage', timeout=8000)
-    if '팀테스트' not in L.locator('.top h1').inner_text(): fail('팀 화면 제목이 틀림')
+    L.wait_for_selector('.shell[data-page]', timeout=8000)
+    L.click('.navi[data-act="team"]'); L.wait_for_selector('.tpage', timeout=8000)
+    # 팀 이름은 페이지 제목이 아니라 부제에 있다 (§1.4 · §6.2)
+    if '팀테스트' not in L.locator('.hd .ttl').inner_text(): fail('팀 화면 부제에 팀 이름이 없음: ' + L.locator('.hd .ttl').inner_text())
     print('team page ok')
 
     # ---- 초대 링크: 역할·1회용 ----
@@ -52,7 +53,7 @@ def run():
     M.wait_for_selector('#gtTeam', timeout=8000)
     M.goto(URL + '#/join/' + code); M.wait_for_selector('#jnName', timeout=8000)
     M.fill("#jnName", "지우"); M.click("[data-act=\"team-join\"]")
-    M.wait_for_selector('.hd [data-act="team"]', timeout=10000)
+    M.wait_for_selector('.shell[data-page]', timeout=10000)
     role = M.evaluate("CONTI.S.team.role||(CONTI.S.members&&CONTI.S.members[0])")
     print('member joined')
 

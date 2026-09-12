@@ -21,7 +21,7 @@ def run():
         b = p.chromium.launch(); errs = []
         # ---- 기기 A (인도자): 팀 → 예배 → 악보 ----
         cA = b.new_context(viewport={'width': 1180, 'height': 820}); A = cA.new_page(); A.on('pageerror', lambda e: errs.append('A:' + str(e)))
-        login(A, LEADER, 'signup'); A.wait_for_selector('#gtTeam', timeout=8000); A.fill('#gtTeam', '개선팀'); A.click('[data-act="team-create"]'); A.wait_for_selector('.hd [data-act="team"]', timeout=8000)
+        login(A, LEADER, 'signup'); A.wait_for_selector('#gtTeam', timeout=8000); A.fill('#gtTeam', '개선팀'); A.click('[data-act="team-create"]'); A.wait_for_selector('.shell[data-page]', timeout=8000)
         team = A.evaluate("CONTI.S.team.id")
         A.click('[data-act="new-svc"]'); A.wait_for_selector('[data-f="svc.name"]'); A.fill('[data-f="svc.name"]', '개선 예배')
         A.click('[data-act="add-item"]'); A.wait_for_selector('[data-f="item.title"]'); A.fill('[data-f="item.title"]', '우리 주 하나님'); A.fill('[data-f="item.key"]', 'A')
@@ -75,7 +75,7 @@ def run():
 
         # ---- 카포: 설정에서 2 → 연습 화면 빨간 코드 ----
         if ocr.get('available'):
-            A.goto(URL + '#/home'); A.wait_for_selector('.hd'); A.click('.hd [data-act="settings"]'); A.wait_for_selector('#sCapo'); A.fill('#sCapo', '2'); A.click('#sOk'); A.wait_for_timeout(1000)
+            A.goto(URL + '#/home'); A.wait_for_selector('.hd'); A.goto(URL + '#/settings'); A.wait_for_selector('.setpane', timeout=8000); A.wait_for_selector('#sCapo'); A.fill('#sCapo', '2'); A.click('#sOk'); A.wait_for_timeout(1000)
             if A.evaluate("CONTI.S.team.me.capo") != 2: fail('카포 저장 안 됨')
             A.goto(URL + '#/play/' + svc_id + '/0'); A.wait_for_selector('#sheet', timeout=15000); A.wait_for_timeout(1500)
             # 악보 키 = 연주 키, 카포 2 → 마커 위 코드는 -2 로 빨간 글씨, 마커 아래는 전조 +2 와 상쇄돼 0 → 없음
@@ -85,7 +85,7 @@ def run():
             print('capo ok')
 
         # ---- 복구 코드 ----
-        A.goto(URL + '#/home'); A.wait_for_selector('.hd'); A.click('.hd [data-act="settings"]'); A.wait_for_selector('#sRc'); A.click('#sRc'); A.wait_for_selector('.linkbox')
+        A.goto(URL + '#/home'); A.wait_for_selector('.hd'); A.goto(URL + '#/settings'); A.wait_for_selector('.setpane', timeout=8000); A.click('[data-act="set-tab"][data-t="account"]'); A.wait_for_selector('#sRc'); A.click('#sRc'); A.wait_for_selector('.linkbox')
         code = A.locator('.linkbox').inner_text().strip(); A.click('#rcClose')
         A.evaluate("fetch('/api/auth/logout',{method:'POST',headers:{'x-conti':'1'}})"); A.wait_for_timeout(500); A.reload(); A.wait_for_selector('#lgUser', timeout=8000)
         A.click('[data-act="lg-mode"][data-m="recover"]'); A.wait_for_selector('#rcCode'); A.fill('#lgUser', LEADER[0]); A.fill('#rcCode', code); A.fill('#lgPass', 'newpass1'); A.click('[data-act="rc-submit"]')

@@ -11,7 +11,7 @@ with sync_playwright() as p:
     pg.goto(URL); pg.wait_for_selector('#lgUser')
     pg.click('[data-act="lg-mode"][data-m="signup"]'); pg.wait_for_selector('#lgName')
     pg.fill('#lgName','하은'); pg.fill('#lgUser','bg'+tag); pg.fill('#lgPass','secret1'); pg.click('[data-act="lg-submit"]')
-    pg.wait_for_selector('#gtTeam'); pg.fill('#gtTeam','큰파일팀'); pg.click('[data-act="team-create"]'); pg.wait_for_selector('.hd [data-act="team"]')
+    pg.wait_for_selector('#gtTeam'); pg.fill('#gtTeam','큰파일팀'); pg.click('[data-act="team-create"]'); pg.wait_for_selector('.shell[data-page]')
     team=pg.evaluate('CONTI.S.team.id')
     pg.click('[data-act="new-svc"]'); pg.wait_for_selector('[data-f="svc.name"]'); pg.fill('[data-f="svc.name"]','큰 오디오')
     pg.click('[data-act="add-item"]'); pg.wait_for_selector('[data-f="item.title"]'); pg.fill('[data-f="item.title"]','곡')

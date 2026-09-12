@@ -16,7 +16,7 @@ def run():
     L.click('[data-act="lg-mode"][data-m="signup"]'); L.wait_for_selector('#lgName')
     L.fill('#lgName', '하은'); L.fill('#lgUser', 'cg' + tag); L.fill('#lgPass', 'secret1'); L.click('[data-act="lg-submit"]')
     L.wait_for_selector('#gtTeam', timeout=8000); L.fill('#gtTeam', '변경팀'); L.click('[data-act="team-create"]')
-    L.wait_for_selector('.hd [data-act="team"]', timeout=8000)
+    L.wait_for_selector('.shell[data-page]', timeout=8000)
     link = L.evaluate("location.origin+location.pathname+'#/join/'+CONTI.S.team.invite")
 
     L.click('[data-act="new-svc"]'); L.wait_for_selector('[data-f="svc.name"]'); L.fill('[data-f="svc.name"]', '변경 예배')
@@ -34,7 +34,7 @@ def run():
     M.click('[data-act="lg-mode"][data-m="signup"]'); M.wait_for_selector('#lgName')
     M.fill('#lgName', '지우'); M.fill('#lgUser', 'cm' + tag); M.fill('#lgPass', 'secret1'); M.click('[data-act="lg-submit"]')
     M.wait_for_selector('#jnName', timeout=8000); M.click('[data-act="team-join"]')
-    M.wait_for_selector('.hd [data-act="team"]', timeout=10000); M.wait_for_timeout(1500)
+    M.wait_for_selector('.shell[data-page]', timeout=10000); M.wait_for_timeout(1500)
 
     # ---- 인도자가 키·순서·곡을 고쳐 v2 발행 ----
     L.goto(URL + '#/edit/' + svc); L.wait_for_selector('[data-f="item.key"]', timeout=10000); L.wait_for_timeout(500)

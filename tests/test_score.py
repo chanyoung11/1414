@@ -30,7 +30,7 @@ def run():
     pg.goto(URL); pg.wait_for_selector('#lgUser', timeout=8000)
     pg.click('[data-act="lg-mode"][data-m="signup"]'); pg.wait_for_selector('#lgName')
     pg.fill('#lgName', '하은'); pg.fill('#lgUser', 'sc'+tag); pg.fill('#lgPass', 'secret1'); pg.click('[data-act="lg-submit"]')
-    pg.wait_for_selector('#gtTeam', timeout=8000); pg.fill('#gtTeam', '악보팀'); pg.click('[data-act="team-create"]'); pg.wait_for_selector('.hd [data-act="team"]', timeout=8000)
+    pg.wait_for_selector('#gtTeam', timeout=8000); pg.fill('#gtTeam', '악보팀'); pg.click('[data-act="team-create"]'); pg.wait_for_selector('.shell[data-page]', timeout=8000)
 
     pg.click('[data-act="new-svc"]'); pg.wait_for_selector('[data-f="svc.name"]'); pg.fill('[data-f="svc.name"]', '악보 예배')
     pg.click('[data-act="add-item"]'); pg.wait_for_selector('[data-f="item.title"]')

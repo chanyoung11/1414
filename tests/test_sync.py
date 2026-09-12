@@ -24,7 +24,7 @@ def run():
         # ---- 인도자: 팀 → 예배 → 곡 + 악보 → 발행 ----
         c1 = b.new_context(viewport={'width': 1180, 'height': 820}); pg = c1.new_page(); pg.on('pageerror', lambda e: errs.append('L:' + str(e)))
         signup(pg, LEADER); pg.wait_for_selector('#gtTeam', timeout=8000)
-        pg.fill('#gtTeam', '동기화팀'); pg.click('[data-act="team-create"]'); pg.wait_for_selector('.hd [data-act="team"]', timeout=8000)
+        pg.fill('#gtTeam', '동기화팀'); pg.click('[data-act="team-create"]'); pg.wait_for_selector('.shell[data-page]', timeout=8000)
         link = pg.evaluate("location.origin+location.pathname+'#/join/'+CONTI.S.team.invite")
         pg.click('[data-act="new-svc"]'); pg.wait_for_selector('[data-f="svc.name"]')
         pg.fill('[data-f="svc.name"]', '동기화 예배'); pg.click('[data-act="add-item"]'); pg.wait_for_selector('[data-f="item.title"]')
@@ -46,7 +46,7 @@ def run():
         pm.goto(link); pm.wait_for_selector('#lgUser', timeout=8000)
         pm.click('[data-act="lg-mode"][data-m="signup"]'); pm.wait_for_selector('#lgName'); pm.fill('#lgName', MEMBER[2]); pm.fill('#lgUser', MEMBER[0]); pm.fill('#lgPass', MEMBER[1]); pm.click('[data-act="lg-submit"]')
         pm.wait_for_selector('#jnName', timeout=8000); pm.click('#gtSess .q:has-text("드럼")'); pm.click('[data-act="team-join"]')
-        pm.wait_for_selector('.hd [data-act="team"]', timeout=8000); pm.wait_for_selector('.svcrow', timeout=15000)
+        pm.wait_for_selector('.shell[data-page]', timeout=8000); pm.wait_for_selector('.svcrow', timeout=15000)
         if '동기화 예배' not in pm.locator('.svcrow').first.inner_text(): fail('멤버 홈에 발행본 없음')
         pm.goto(URL + '#/view/' + svc_id); pm.wait_for_selector('.thumb', timeout=15000)
         bg = pm.locator('.thumb').first.evaluate("el=>getComputedStyle(el).backgroundImage")

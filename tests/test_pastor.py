@@ -16,7 +16,7 @@ def run():
         pl.goto(URL); pl.wait_for_selector('#lgUser', timeout=8000)
         pl.click('[data-act="lg-mode"][data-m="signup"]'); pl.wait_for_selector('#lgName')
         pl.fill('#lgName', '하은'); pl.fill('#lgUser', 'pl' + tag); pl.fill('#lgPass', 'secret1'); pl.click('[data-act="lg-submit"]')
-        pl.wait_for_selector('#gtTeam', timeout=8000); pl.fill('#gtTeam', '말씀탭팀'); pl.click('[data-act="team-create"]'); pl.wait_for_selector('.hd [data-act="team"]', timeout=8000)
+        pl.wait_for_selector('#gtTeam', timeout=8000); pl.fill('#gtTeam', '말씀탭팀'); pl.click('[data-act="team-create"]'); pl.wait_for_selector('.shell[data-page]', timeout=8000)
         team = pl.evaluate('CONTI.S.team.id')
         link = pl.evaluate("location.origin+location.pathname+'#/join/'+CONTI.S.team.invite")
 
@@ -34,7 +34,7 @@ def run():
         pp.goto(link); pp.wait_for_selector('#lgUser', timeout=8000)
         pp.click('[data-act="lg-mode"][data-m="signup"]'); pp.wait_for_selector('#lgName')
         pp.fill('#lgName', '김OO 목사님'); pp.fill('#lgUser', 'pp' + tag); pp.fill('#lgPass', 'secret1'); pp.click('[data-act="lg-submit"]')
-        pp.wait_for_selector('#jnName', timeout=8000); pp.click('[data-act="team-join"]'); pp.wait_for_selector('.hd [data-act="team"]', timeout=8000)
+        pp.wait_for_selector('#jnName', timeout=8000); pp.click('[data-act="team-join"]'); pp.wait_for_selector('.shell[data-page]', timeout=8000)
         uidP = pp.evaluate('CONTI.NET.user.id')
         r = cL.request.patch(URL + 'api/teams/%s/members/%s' % (team, uidP), headers=H, data={'role': 'pastor'})
         if r.status != 200: fail('목회자 지정 실패: ' + r.text()[:120])
@@ -97,9 +97,10 @@ def run():
         print('word link ok')
 
         # ---- 알림 설정: 끄면 홈 카드에서 빠짐 ----
-        pp.goto(URL + '#/home'); pp.wait_for_selector('.hd'); pp.click('.hd [data-act="settings"]'); pp.wait_for_selector('#sNoti', timeout=5000)
+        pp.goto(URL + '#/home'); pp.wait_for_selector('.hd'); pp.goto(URL + '#/settings'); pp.wait_for_selector('.setpane', timeout=8000); pp.click('[data-act="set-tab"][data-t="noti"]'); pp.wait_for_selector('#sNoti', timeout=5000)
         if not pp.locator('[data-noti="word.request"]').count(): fail('알림 설정 목록이 없음')
-        pp.uncheck('[data-noti="word.request"]'); pp.wait_for_timeout(400); pp.click('#sOk'); pp.wait_for_timeout(1200)
+        # 알림 토글은 누르는 즉시 이 기기에 저장된다 (§6.8 알림 탭에는 저장 버튼이 없다)
+        pp.uncheck('[data-noti="word.request"]'); pp.wait_for_timeout(600)
         pp.goto(URL + '#/home'); pp.reload(); pp.wait_for_selector('.hd', timeout=10000); pp.wait_for_timeout(2500)
         body = pp.locator('#app').inner_text()
         if '말씀을 다시 봐' in body: fail('끈 알림이 홈 카드에 남음')
@@ -108,7 +109,7 @@ def run():
         # ---- 계정 삭제: 아이디 확인 + 마지막 인도자는 막힘 ----
         bad_del = cL.request.post(URL + 'api/auth/delete', headers=H, data={'username': 'pl' + tag, 'password': 'secret1'})
         if bad_del.status != 400 or '인도자' not in bad_del.text(): fail('마지막 인도자가 그냥 삭제됨: %s %s' % (bad_del.status, bad_del.text()[:120]))
-        pp.click('.hd [data-act="settings"]'); pp.wait_for_selector('#sDel', timeout=5000); pp.click('#sDel'); pp.wait_for_selector('#daUser', timeout=5000)
+        pp.goto(URL + '#/settings'); pp.wait_for_selector('.setpane', timeout=8000); pp.click('[data-act="set-tab"][data-t="account"]'); pp.wait_for_selector('#sDel', timeout=5000); pp.click('#sDel'); pp.wait_for_selector('#daUser', timeout=5000)
         pp.fill('#daUser', 'wrong'); pp.click('#daGo'); pp.wait_for_timeout(500)
         if '아이디가 맞지' not in pp.locator('#daErr').inner_text(): fail('아이디 확인이 없음')
         pp.fill('#daUser', 'pp' + tag); pp.fill('#daPw', 'secret1'); pp.click('#daGo')

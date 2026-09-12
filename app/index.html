@@ -43,20 +43,22 @@
   /* 레거시 토큰 별칭 (기존 화면 코드가 참조) */
   --bg2:var(--card);--panel:var(--card);--panel2:var(--secondary);--panel3:var(--accent);
   --line:var(--border);--line2:var(--border-2);--ink:var(--fg);--mute:var(--muted-fg);--faint:var(--faint-fg);
-  --amber:var(--form-bg);--amberink:var(--form-fg);--amber-soft:var(--form-soft);
+  --amber:#8A6A12;--amberink:#1D1500;--amber-soft:rgba(233,195,92,.20);--brand:#E9C35C;
   --teal:#0A0A0A;--tealink:#0A0A0A;--teal-soft:#EFEFEF;--red:var(--destructive);--yel:#FFE58A;--r:12px;
   color-scheme:light;
 }
 html.dark{
-  --bg:#0A0A0A;--fg:#F0F0F0;--card:#141414;--secondary:#1F1F1F;--accent:#1F1F1F;--muted:#1C1C1C;
-  --muted-fg:#888888;--faint-fg:#666666;--border:#2A2A2A;--border-2:#383838;--input:#1A1A1A;
-  --primary:#F0F0F0;--primary-fg:#0A0A0A;--ring:rgba(240,240,240,.08);
+  /* UI 통일 §3.1 팔레트. 라이트는 그대로 두고 다크만 시안 값으로 맞췄다 */
+  --bg:#111213;--fg:#F2F2F0;--card:#1B1C1E;--secondary:#242527;--accent:#242527;--muted:#242527;
+  --muted-fg:#A0A29C;--faint-fg:#7B7D78;--border:#2A2B2E;--border-2:#3B3C40;--input:#242527;
+  --primary:#F2F2F0;--primary-fg:#111213;--ring:rgba(242,242,240,.08);
   --surface:rgba(255,255,255,.05);--surface-subtle:rgba(255,255,255,.03);--surface-medium:rgba(255,255,255,.08);--surface-strong:rgba(255,255,255,.12);--surface-border:rgba(255,255,255,.07);
-  --destructive:#EF4444;--destructive-soft:rgba(239,68,68,.10);
-  --success:#22C55E;--success-soft:rgba(34,197,94,.10);--warning:#F59E0B;--warning-soft:rgba(245,158,11,.10);
+  --destructive:#E4816F;--destructive-soft:rgba(228,129,111,.16);
+  --success:#6FCF97;--success-soft:rgba(111,207,151,.16);--warning:#E9C35C;--warning-soft:rgba(233,195,92,.16);
   --shadow-card:0 1px 3px rgba(0,0,0,.3),0 4px 12px rgba(0,0,0,.2);
-  --form-bg:#F0F0F0;--form-fg:#0A0A0A;--form-soft:rgba(255,255,255,.08);
-  --teal:#F0F0F0;--tealink:#F0F0F0;--teal-soft:rgba(255,255,255,.10);
+  --form-bg:#F2F2F0;--form-fg:#111213;--form-soft:rgba(255,255,255,.08);
+  --teal:#F2F2F0;--tealink:#F2F2F0;--teal-soft:rgba(255,255,255,.10);
+  --amber:#E9C35C;--amberink:#1D1500;--amber-soft:rgba(233,195,92,.16);--brand:#E9C35C;
   color-scheme:dark;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -202,7 +204,7 @@ html.dark .songbar::placeholder{color:rgba(10,10,10,.5)}
 .cwrap summary::before{content:'▸ ';}.cwrap[open] summary::before{content:'▾ ';}
 .cwrap[open] summary{margin-bottom:8px}
 /* §4.2 말씀 탭 */
-.wgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:16px;align-items:start}
+.wgrid{display:grid;grid-template-columns:360px minmax(0,1fr);gap:16px;align-items:start}
 @media(max-width:860px){.wgrid{grid-template-columns:minmax(0,1fr)}}
 .wrow{display:flex;align-items:center;gap:12px;padding:10px;border-radius:var(--r-lg);border:1px solid transparent;cursor:pointer}
 .wrow:hover{background:var(--muted)}.wrow.on{border-color:var(--fg);background:var(--muted)}.wrow.past{opacity:.55}
@@ -232,7 +234,6 @@ html.dark .songbar::placeholder{color:rgba(10,10,10,.5)}
 .a-ok{color:#4E9E6E}.a-maybe{color:#B08A22}.a-no{color:#C0574A}.a-unset{color:var(--faint-fg)}
 html.dark .a-ok{color:#5FBF8A}html.dark .a-maybe{color:#E9C35C}html.dark .a-no{color:#E4816F}
 .cal-cell.a-ok.on{background:rgba(95,191,138,.13)}.cal-cell.a-maybe.on{background:rgba(233,195,92,.13)}.cal-cell.a-no.on{background:rgba(228,129,111,.13)}
-.cal-foot{margin-top:10px;font-size:12.5px;color:var(--muted-fg)}
 .cal-leg{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;font-size:12px;color:var(--muted-fg)}.cal-leg span{display:inline-flex;align-items:center;gap:4px}.cal-leg i{font-style:normal}
 .schwrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--r-lg);background:var(--card)}
 .schtab{border-collapse:collapse;font-size:12.5px;min-width:100%}
@@ -271,8 +272,8 @@ html.dark .a-ok{color:#5FBF8A}html.dark .a-maybe{color:#E9C35C}html.dark .a-no{c
 .svcrow .s{color:var(--muted-fg);font-size:12.5px;margin-top:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 
 /* ---------- 홈 대시보드 셸 ---------- */
-.shell{flex:1;min-height:0;display:flex;gap:20px;width:100%;max-width:1360px;margin:0 auto;padding:16px 16px 92px}
-.side{display:none;position:sticky;top:16px;width:200px;flex:0 0 auto;height:calc(100vh - 32px)}
+.shell{flex:1;min-height:0;display:flex;gap:20px;width:100%;max-width:1400px;margin:0 auto;padding:16px 24px 92px}
+.side{display:none;position:sticky;top:16px;width:224px;flex:0 0 auto;height:calc(100vh - 32px)}
 .side .box{display:flex;flex-direction:column;height:100%;padding:12px;background:var(--card);border:1px solid var(--surface-border);border-radius:var(--r-xl);box-shadow:var(--shadow-card)}
 .side .head{display:flex;align-items:center;gap:8px;padding:6px 8px 8px}
 .side nav{margin-top:8px;flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:2px}
@@ -311,7 +312,125 @@ html.dark .a-ok{color:#5FBF8A}html.dark .a-maybe{color:#E9C35C}html.dark .a-no{c
 .metric{padding:14px 16px;border:1px solid var(--surface-border);border-radius:var(--r-xl);background:var(--secondary)}
 .metric .v{font-family:"Satoshi","Pretendard Variable",sans-serif;font-size:24px;font-weight:700;letter-spacing:-.03em;line-height:1.1;font-variant-numeric:tabular-nums}
 .metric .l{font-size:11.5px;color:var(--muted-fg);margin-top:4px}
+/* ---------- 앱 셸 (UI 통일 §1·§2·§4) ---------- */
+html.dark .side .box,html.dark .hd{background:#17181A}   /* §3.1 surface-1: 사이드바·헤더 */
+.main>main.w-read,.main>main.w-full{min-width:0}
+.main>main.w-read{max-width:1120px;width:100%;margin:0 auto}   /* 읽기·설정·목록형 (§1.3) */
+.main>main.w-full{max-width:none}                              /* 작업면: 편성 표 */
+.side .prof{margin-top:10px;border-top:1px solid var(--border);padding:10px 8px 4px;display:flex;align-items:center;gap:9px;width:100%;text-align:left;color:var(--muted-fg)}
+.side .prof:hover .who b{color:var(--fg)}
+.side .prof .av{width:30px;height:30px;border-radius:50%;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;background:var(--surface-medium);color:var(--fg)}
+.side .prof .who{min-width:0;flex:1}
+.side .prof .who b{display:block;font-size:13px;font-weight:600;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.side .prof .who small{display:block;font-size:11.5px;color:var(--faint-fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.side .prof .gear{flex:0 0 auto;color:var(--faint-fg)}
+.side .prof.on{color:var(--fg)}.side .prof.on .gear{color:var(--fg)}
+/* 종 + 드롭다운 (§5: 목록 미리보기는 드롭다운) */
+.bellwrap{position:relative;display:inline-flex}
+.bell{position:relative;width:34px;height:34px;border-radius:var(--r-md);display:inline-flex;align-items:center;justify-content:center;color:var(--muted-fg)}
+.bell:hover,.bell.on{background:var(--muted);color:var(--fg)}
+.bell .bdot{position:absolute;top:3px;right:3px;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:var(--destructive);color:#fff;font-size:10px;font-weight:700;font-style:normal;display:flex;align-items:center;justify-content:center;line-height:1}
+.bell .bdot[hidden]{display:none}
+.dd{position:absolute;right:0;top:calc(100% + 8px);width:min(380px,calc(100vw - 32px));background:var(--card);border:1px solid var(--border-2);border-radius:var(--r-xl);padding:6px;z-index:60;box-shadow:var(--shadow-card);max-height:min(70vh,520px);overflow:auto}
+.ddhd{display:flex;align-items:center;gap:8px;padding:8px 10px 6px;font-size:14px}
+.ddit{display:flex;gap:10px;width:100%;text-align:left;padding:9px 10px;border-radius:var(--r-md)}
+.ddit:hover{background:var(--muted)}
+.ddit .dot{width:7px;height:7px;border-radius:50%;background:var(--warning);margin-top:6px;flex:0 0 auto}
+.ddit .dot.off{background:transparent}
+.ddit b{display:block;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ddit small{display:block;font-size:12px;color:var(--muted-fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ddit .when{flex:0 0 auto;color:var(--faint-fg);font-size:11.5px}
+.ddempty{padding:28px 16px;text-align:center;color:var(--muted-fg)}
+.ddempty svg.ic{width:24px;height:24px;color:var(--faint-fg);margin-bottom:6px}
+.ddempty b{display:block;color:var(--fg);font-size:15px;margin-bottom:2px}
+.ddempty small{font-size:13px}
+.ddall{display:block;width:100%;padding:9px;margin-top:4px;border-top:1px solid var(--border);font-size:13px;font-weight:600;color:var(--muted-fg)}
+.ddall:hover{color:var(--fg)}
+/* 빈 상태: 점선 없음 (§4·인수 기준 5) */
+.empty{border:0;background:transparent;padding:40px 20px}
+.empty.boxed{background:var(--muted);border-radius:var(--r-xl)}
+/* 알림 페이지·목록 줄 (§4 목록 줄 규격) */
+.ngrp{margin-bottom:24px}
+.nrow2{display:flex;align-items:center;gap:10px;width:100%;text-align:left;min-height:56px;padding:8px 10px;border-radius:var(--r-md);color:inherit}
+.nrow2+.nrow2{border-top:1px solid var(--border)}
+.nrow2:hover{background:var(--muted)}
+.nrow2 .dot{width:7px;height:7px;border-radius:50%;background:transparent;flex:0 0 auto}
+.nrow2.unread .dot{background:var(--warning)}
+.nrow2 .ni{width:34px;height:34px;border-radius:var(--r-md);background:var(--surface);display:flex;align-items:center;justify-content:center;flex:0 0 auto;color:var(--muted-fg)}
+.nrow2 .ni svg.ic{width:16px;height:16px}
+.nrow2 b{display:block;font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nrow2 small{display:block;font-size:13px;color:var(--muted-fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nrow2 .when{flex:0 0 auto;color:var(--faint-fg);font-size:12px}
+.nrow2.unread b{font-weight:700}
+/* 내 일정: 세 달 세로 · 사역 없는 날은 타일이 아니라 숫자만 (§6.6·인수 기준 6) */
+.calpage{max-width:720px}              /* 1120 안에서 달력만 읽기 좋은 폭으로 */
+.calmo{margin-bottom:28px}
+.calmo .cal-hd{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:8px}
+.calpage .cal{grid-auto-rows:72px}
+.calpage .cal-cell{aspect-ratio:auto;height:100%}
+.calpage .cal-cell.off,.calpage .cal-cell.blank{background:transparent;border-color:transparent}
+.calpage .cal-cell.off{align-items:center;justify-content:flex-start;padding-top:10px}
+.calpage .cal-cell.off .d{color:var(--faint-fg);font-weight:400}
+/* 더보기 시트 */
+.morelist{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+.morelist .btn{justify-content:flex-start;height:44px}
+/* 편성 표: 첫 열·머리글 고정 (§6.5 / 인수 기준 4) */
+.schwrap{overflow:auto;max-height:calc(100vh - 220px)}
+.schtab thead th{position:sticky;top:0;z-index:3}
+.schtab th.mname,.schtab th.corner{position:sticky;left:0;z-index:2;background:var(--card)}
+.schtab th.corner{z-index:4}
+.schtab .dcol{min-width:96px}
+.schtab .dcol span small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:88px}
+@media(max-width:1023px){.schwrap{max-height:none}}
+/* 역할 알약 색 (§6.2) */
+.pill.role-leader{background:var(--amber-soft);color:var(--amber)}
+.pill.role-session_lead{background:rgba(134,205,189,.18);color:#3E8C7C}
+.pill.role-pastor{background:rgba(180,167,245,.20);color:#6B5BC4}
+.pill.role-member{color:var(--faint-fg)}
+html.dark .pill.role-session_lead{color:#86CDBD}
+html.dark .pill.role-pastor{color:#B4A7F5}
+/* 탭 (§4): 글자 + brand 밑줄 2px */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:20px}
+.tabs button{padding:10px 14px;font-size:14px;font-weight:600;color:var(--muted-fg);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button:hover{color:var(--fg)}
+.tabs button.on{color:var(--fg);border-bottom-color:var(--amber)}
+.setpane{max-width:640px}
+.setpane .card+.card{margin-top:12px}
+/* 앰버는 다섯 자리에만 (§3.1): 송폼 바 · 키 알약 · 활성 탭 밑줄 · 선택 상태 · D-day 배지 */
+.pill.key{background:var(--brand);color:#1D1500;border-color:transparent}
+.hero .when{background:var(--brand);color:#1D1500}
+.chip.s{background:var(--amber-soft);color:var(--amber);border-color:transparent;font-weight:600}
+.tabs button.on{border-bottom-color:var(--brand)}
 @media (min-width:1024px){.side{display:block}.bnav{display:none}.shell{padding-bottom:24px}}
+/* ---------- 반응형 (§7) ---------- */
+/* 1024+ : 사이드바 224 고정 · 하단 탭 없음 (아래 기존 규칙) */
+/* 768–1023 : 아이콘 레일 64 · 본문 전폭 */
+@media (min-width:768px) and (max-width:1023px){
+ .side{display:block;width:64px}
+ .bnav{display:none}
+ .shell{padding:16px 16px 24px;gap:12px}
+ .side .box{padding:10px 8px;align-items:center}
+ .side .head .pill,.side .head .lockup .wm{display:none}
+ .side .sect{display:none}
+ .navi{justify-content:center;padding:10px 0;gap:0;font-size:0}
+ .navi svg.ic{width:19px;height:19px;font-size:0}
+ .navi .cnt{display:none}
+ .side .prof{justify-content:center;padding:10px 0}
+ .side .prof .who,.side .prof .gear{display:none}
+ .main>main.w-read{max-width:none}
+}
+/* <768 : 사이드바 없음 · 하단 탭 5개 */
+@media (max-width:767px){
+ .side{display:none}
+ .bnav{display:grid}
+ .shell{padding:10px 12px 92px}
+ .hd{min-height:56px}
+ .hd .acts .btn{display:none}       /* 좁은 폭에서는 제목 + 종만 (§7) */
+ .hd .acts .btn.pri{display:inline-flex}
+ .main>main.w-read{max-width:none}
+ .calpage{max-width:none}
+ .wgrid{grid-template-columns:minmax(0,1fr)}
+}
 @media (prefers-reduced-motion:no-preference){.rise{opacity:0;animation:surface-rise .6s cubic-bezier(.22,1,.36,1) forwards}.rise.d1{animation-delay:60ms}.rise.d2{animation-delay:110ms}.rise.d3{animation-delay:160ms}}
 @keyframes surface-rise{0%{opacity:0;transform:translate3d(0,12px,0) scale(.99)}100%{opacity:1;transform:none}}
 
@@ -559,7 +678,7 @@ body.lnopen .main>main,body.lnopen .main>.hd{padding-right:min(476px,100%)}
 .ovbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 12px;margin-bottom:10px;border-radius:var(--r-lg);background:var(--amber-soft);color:var(--amber);font-size:12.5px}
 .ovbar .hint{color:inherit;opacity:.75}
 /* ---------- 라이브러리 (A부) ---------- */
-.libpage{max-width:900px;margin:0 auto;padding:4px 0 40px}
+.libpage{padding:4px 0 40px}
 .filters{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px}
 .filters .sep{width:1px;height:18px;background:var(--border);margin:0 2px}
 .insight{margin-top:10px;font-size:12.5px;color:var(--muted-fg)}
@@ -590,7 +709,7 @@ body.lnopen .main>main,body.lnopen .main>.hd{padding-right:min(476px,100%)}
 .bar .bb i{display:block;height:100%;background:var(--primary)}
 .m.fixed{border-width:1px;box-shadow:0 0 0 1px var(--border) inset,0 0 0 3px var(--card) inset}
 /* ---------- 팀 화면 (B부) ---------- */
-.tpage{max-width:760px;margin:0 auto;padding:4px 0 40px}
+.tpage{padding:4px 0 40px}
 .tsec{border:1px solid var(--border);border-radius:var(--r-lg);background:var(--card);margin-bottom:10px;overflow:hidden}
 .tsec .thead{display:flex;align-items:center;gap:8px;width:100%;padding:14px 16px;background:none;border:0;color:var(--fg);font:inherit;text-align:left;cursor:pointer}
 .tsec .thead b{font-size:15px;letter-spacing:-.01em}
@@ -627,10 +746,8 @@ body.lnopen .main>main,body.lnopen .main>.hd{padding-right:min(476px,100%)}
 .auth-card h1{margin:0;font-size:24px;font-weight:700;letter-spacing:-.03em}
 .auth-card .sub{font-size:13.5px;color:var(--muted-fg);margin-top:4px}
 .auth-card h2{margin:0;font-size:17px;font-weight:700;letter-spacing:-.03em}
-.tabs{display:flex;border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;margin:22px 0 6px}
-.tabs button{flex:1;height:38px;font-size:13.5px;font-weight:500;color:var(--muted-fg);display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:background .12s,color .12s}
-.tabs button:hover{color:var(--fg)}
-.tabs button.on{background:var(--primary);color:var(--primary-fg);font-weight:600}
+.tabs{margin:22px 0 20px}
+.tabs button{display:inline-flex;align-items:center;justify-content:center;gap:6px}
 .auth .lbl{margin-top:16px}
 .auth .btn.pri.wide{margin-top:18px;height:42px;font-size:14px}
 .auth .fine{font-size:12.5px;color:var(--muted-fg);margin-top:16px;line-height:1.7}
@@ -676,14 +793,14 @@ const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMon
 const lsGet=k=>{try{return localStorage.getItem(k)}catch(e){return null}}; // 저장소가 막힌 환경(사파리 설정 등)에서도 앱이 죽지 않게
 const THEME={get(){try{return localStorage.getItem('conti-theme')||'system'}catch(e){return 'system'}},set(v){try{localStorage.setItem('conti-theme',v)}catch(e){}THEME.apply()},
  apply(){const v=THEME.get();const dark=v==='dark'||(v==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',dark);const mt=document.querySelector('meta[name=theme-color]');if(mt)mt.content=dark?'#0A0A0A':'#FAFAFA'},
- cycle(){const n={system:'dark',dark:'light',light:'system'}[THEME.get()];THEME.set(n);toast({system:'시스템 설정을 따라요',dark:'다크 모드',light:'라이트 모드'}[n]);render()}};
+};
 window.addEventListener('pagehide',()=>{if(typeof SYNC!=='undefined')SYNC.flush()});document.addEventListener('visibilitychange',()=>{if(document.hidden&&typeof SYNC!=='undefined')SYNC.flush()});
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{if(THEME.get()==='system')THEME.apply()});
-const themeIcon=()=>({system:'monitor',dark:'moon',light:'sun'})[THEME.get()];const themeLabel=()=>({system:'시스템',dark:'다크',light:'라이트'})[THEME.get()];
 const fmtToday=()=>{const d=new Date();return `${d.getMonth()+1}월 ${d.getDate()}일 ${'일월화수목금토'[d.getDay()]}요일`};
 let toastT;function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),1800)}
 /* ---------- icons ---------- */
 const ICONS={
+ dots:'<circle cx="5" cy="12" r="1.7" fill="currentColor"/><circle cx="12" cy="12" r="1.7" fill="currentColor"/><circle cx="19" cy="12" r="1.7" fill="currentColor"/>',
  play:'<path d="M8 5.5v13a1 1 0 0 0 1.5.86l11-6.5a1 1 0 0 0 0-1.72l-11-6.5A1 1 0 0 0 8 5.5z" fill="currentColor"/>',
  home:'<path d="M4 10.5 12 4l8 6.5V20h-5.5v-6h-5v6H4z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/>',
  bell:'<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round"/>',
@@ -704,7 +821,7 @@ const ICONS={
  mic:'<rect x="9" y="3.5" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M6 11.5a6 6 0 0 0 12 0M12 17.5V21M9 21h6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>',
  yt:'<rect x="3" y="6" width="18" height="12" rx="4" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M10.5 9.5v5l4-2.5z" fill="currentColor"/>',
  music:'<path d="M9 18.5V6l10-2v12.5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><circle cx="6.5" cy="18.5" r="2.5" fill="currentColor"/><circle cx="16.5" cy="16.5" r="2.5" fill="currentColor"/>',
- gear:'<circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>',
+ gear:'<circle cx="12" cy="12" r="3.1" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.07a1.7 1.7 0 0 0-1.1-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.07A1.7 1.7 0 0 0 4.6 8.94a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.07a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.07A1.7 1.7 0 0 0 19.4 15Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>',
  export:'<path d="M12 15V4M8 8l4-4 4 4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 14v5h14v-5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>',
  import:'<path d="M12 4v11M8 11l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 14v5h14v-5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>',
  trash:'<path d="M5 7h14M9 7V4.5h6V7M8 7l.8 13h6.4L16 7" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>',
@@ -736,43 +853,77 @@ function initVGutter(onEnd){const st=$('#stack');if(!st)return;const g=$('.vgutt
  g.onpointerdown=e=>{g.setPointerCapture(e.pointerId);g.classList.add('drag');const r=st.getBoundingClientRect();g.onpointermove=ev=>{const h=Math.min(Math.max(ev.clientY-r.top-3,80),r.height-120);st.style.gridTemplateRows=h+'px 6px minmax(0,1fr)'};
   g.onpointerup=()=>{g.onpointermove=null;g.classList.remove('drag');try{localStorage.setItem(key,parseInt(st.style.gridTemplateRows))}catch(e){}onEnd&&onEnd()}}}
 
+// 폰 하단 탭의 「더보기」 — 사이드바에 있던 나머지 항목 (§7)
+function moreMenu(){
+ const on=online(),lead=isLeader(),pas=isPastor(),sl=me().role==='session_lead';
+ const items=[];
+ if(on&&(lead||sl))items.push(['sched','users','편성']);
+ if(on&&(lead||pas))items.push(['word','note','말씀']);
+ if(on)items.push(['team','users','팀']);
+ items.push(['settings','gear','설정']);
+ modal(`<b style="font-size:17px">더보기</b>
+  <div class="morelist">${items.map(([act,i,t])=>`<button class="btn" data-act="${act}">${ic(i)}${esc(t)}</button>`).join('')}</div>`,{sheet:true})}
+/* ---------- 앱 셸: 사이드바·페이지 헤더 한 벌 (UI 통일 §1·§2) ---------- */
+// 사이드바 항목. 역할에 따라 숨는다 (멤버: 편성·말씀 없음 / 목회자: 내 일정·편성 없음)
+function navItems(){
+ const on=online(),lead=isLeader(),pas=isPastor(),sl=me().role==='session_lead';
+ const A=[{k:'home',act:'home',ic:'home',t:'예배',cnt:S.services.length||''}];
+ if(on&&!pas)A.push({k:'cal',act:'cal',ic:'list',t:'내 일정'});
+ if(on&&(lead||sl))A.push({k:'sched',act:'sched',ic:'users',t:'편성'});
+ if(on&&(lead||pas))A.push({k:'word',act:'word',ic:'note',t:'말씀'});
+ const B=[{k:'library',act:'nav-lib',ic:'music',t:'라이브러리',cnt:(S.songs||[]).filter(x=>!x.archived).length||''}];
+ if(on)B.push({k:'team',act:'team',ic:'users',t:'팀'});
+ return [['사역',A],['자산',B]];
+}
+function sidebarHTML(active){
+ const m=me();const on=online();
+ const groups=navItems().map(([label,items])=>`<div class="sect">${label}</div>`+items.map(it=>
+  `<button class="navi ${it.k===active?'on':''}" data-act="${it.act}">${ic(it.ic)}${esc(it.t)}${it.cnt!==''&&it.cnt!=null?`<span class="cnt">${esc(String(it.cnt))}</span>`:''}</button>`).join('')).join('');
+ return `<aside class="side"><div class="box">
+  <div class="head">${logoLockup(26)}<span class="pill">${on?esc(S.team.name||'팀'):'기기 전용'}</span></div>
+  <nav>${groups}</nav>
+  <button class="prof ${active==='settings'?'on':''}" data-act="settings" title="설정">
+   <span class="av">${esc((m.name||'?').slice(0,1))}</span>
+   <span class="who"><b>${esc(m.name||'이름 없음')}</b><small>${[roleLabel(m.role),m.session].filter((x,i,a)=>x&&a.indexOf(x)===i).map(esc).join(' · ')}</small></span>
+   <span class="gear">${ic('gear')}</span></button>
+ </div></aside>`}
+// 종: 모든 셸 페이지 헤더 오른쪽 (§2). 누르면 최근 8개 드롭다운
+function bellHTML(){if(!online())return '';
+ return `<span class="bellwrap" data-stop="1"><button class="bell ${NOTI.open?'on':''}" data-act="bell" title="알림">${ic('bell')}<i class="bdot" data-noti-badge ${NOTI.unread?'':'hidden'}>${NOTI.unread>99?'99+':(NOTI.unread||'')}</i></button>${NOTI.open?notiDropHTML():''}</span>`}
+function notiDropHTML(){
+ const list=(NOTI.list||[]).slice(0,8);
+ return `<div class="dd open"><div class="ddhd"><b>알림</b><span class="grow"></span>${NOTI.unread?`<button class="btn sm ghost" data-act="noti-all">모두 읽음</button>`:''}</div>
+  ${list.length?list.map(n=>`<button class="ddit" data-act="noti-open" data-id="${esc(n.id)}"><i class="dot ${n.readAt?'off':''}"></i><span class="grow"><b>${esc(n.title||'알림')}</b><small>${esc(n.body||'')}</small></span><small class="when">${esc(fmtRel(new Date(n.createdAt).getTime()))}</small></button>`).join('')
+   :`<div class="ddempty">${ic('bell')}<b>새 알림이 없어요</b><small>콘티가 발행되거나 편성이 오면 여기에 떠요</small></div>`}
+  <button class="ddall" data-act="inbox">모두 보기</button></div>`}
+// 셸 페이지 한 겹: 사이드바 + 64 헤더 + 폭 규칙 본문 (§1.3·§1.4)
+// wide=true 는 작업면(편성 표) — 전체 폭, 가로 스크롤
+function shellHTML(active,o){
+ return `<div class="shell" data-page="${esc(active)}">${sidebarHTML(active)}
+  <div class="main">
+   <header class="hd"><div class="ttl"><h1>${esc(o.title)}</h1>${o.sub?`<span class="date">${o.sub}</span>`:''}</div>
+    <div class="acts">${o.acts||''}${bellHTML()}</div></header>
+   <main class="${o.wide?'w-full':'w-read'}${o.bodyClass?' '+o.bodyClass:''}">${o.body}</main>
+  </div></div>${bnavHTML(active)}`}
+function bnavHTML(active){const on=online();const A=v=>active===v?'on':'';
+ return `<nav class="bnav"><button class="${A('home')}" data-act="home">${ic('home')}예배</button>${on?`${isPastor()?'':`<button class="${A('cal')}" data-act="cal">${ic('list')}일정</button><button class="${A('library')}" data-act="nav-lib">${ic('music')}라이브러리</button>`}<button class="${A('inbox')}" data-act="inbox" style="position:relative">${ic('bell')}알림<i class="bdot" data-noti-dot ${NOTI.unread?'':'hidden'}></i></button>`:''}<button data-act="more-menu">${ic('list')}더보기</button></nav>`}
+
 /* ---------- HOME ---------- */
 function homeHTML(){
  const m=me();const lead=isLeader();const on=online();
  const svcs=S.services.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
  const upcoming=svcs.filter(s=>(s.date||'')>=today()).length;const pubN=svcs.filter(s=>s.published).length;
- const nav=`<div class="sect">메뉴</div>
-  <button class="navi on" data-act="home">${ic('home')}예배<span class="cnt">${S.services.length}</span></button>
-  ${on?`<button class="navi" data-act="inbox">${ic('bell')}알림<span class="cnt badge-n" data-noti-badge ${NOTI.unread?'':'hidden'}>${NOTI.unread||''}</span></button>`:''}
-  ${on&&!isPastor()?`<button class="navi" data-act="cal">${ic('list')}내 일정</button>`:''}
-  ${on&&lead?`<button class="navi" data-act="sched">${ic('users')}편성</button>`:''}
-  ${on&&(lead||isPastor())?`<button class="navi" data-act="word">${ic('note')}말씀</button>`:''}
-  <button class="navi" data-act="nav-lib">${ic('music')}라이브러리<span class="cnt">${(S.songs||[]).filter(x=>!x.archived).length||''}</span></button>
-  ${on?`<button class="navi" data-act="team">${ic('users')}팀<span class="cnt">${esc(S.team.name||'')}</span></button>`:''}
-  <div class="sect">계정</div>
-  <button class="navi" data-act="settings">${ic('gear')}설정</button>
-  <button class="navi" data-act="theme">${ic(themeIcon())}테마<span class="cnt">${themeLabel()}</span></button>
-  ${on?`<button class="navi" data-act="logout">${ic('logout')}로그아웃</button>`:''}`;
  const rows=svcs.map((s,i)=>{const d=fmtDate(s.date);const past=(s.date||'')<today();
   const st=s.pubPending?`<span class="badge warn">서버에 못 올림</span>`:s.published?(s.version>s.published.version?`<span class="badge warn">v${s.published.version} 발행 · 수정 중</span>`:`<span class="badge ok">v${s.published.version} 발행됨</span>`):`<span class="badge neutral">미발행</span>`;
   return `<div class="svcrow ${past?'past':''} rise d${Math.min(i,3)}" data-act="open-svc" data-id="${esc(s.id)}"><div class="date"><b>${esc(d.md)}</b><span>${esc(d.w)}</span></div><div class="grow"><div class="t">${esc(svcName(s))}</div><div class="s"><span>${s.items.length}곡</span>${st}</div></div>
    <div class="row">${s.pubPending&&lead&&on?`<button class="btn sm pri" data-act="repub" data-id="${esc(s.id)}">${ic('send')}서버에 다시 올리기</button>`:''}${lead?`<button class="btn sm" data-act="edit-svc" data-id="${s.id}">${ic('pen')}편집</button>`:''}<button class="btn sm ${lead?'':'pri'}" data-act="view-svc" data-id="${s.id}">${ic('eye')}콘티</button>${lead?`<button class="icon sm ghost" data-act="del-svc" data-id="${s.id}" title="삭제">${ic('trash')}</button>`:''}</div></div>`}).join('');
- return `<div class="shell">
-  <aside class="side"><div class="box"><div class="head">${logoLockup(26)}<span class="pill">${on?esc(S.team.name||'팀'):'기기 전용'}</span></div><nav>${nav}</nav>
-   <div class="foot"><span class="who"><b>${esc(m.name||'이름 없음')}</b><span>${[m.session,roleLabel(m.role)].filter((x,i,a)=>x&&a.indexOf(x)===i).map(esc).join(' · ')}</span></span></div></div></aside>
-  <div class="main">
-   <header class="hd"><div class="ttl"><h1>예배</h1><span class="date">${fmtToday()}</span></div>
-    <div class="acts"><span class="pill">${whoStr(m)}</span>${on?`<button class="btn sm ghost" data-act="team">${ic('users')}${esc(S.team.name||'팀')}</button>`:''}<button class="icon ghost" data-act="settings" title="설정">${ic('gear')}</button></div></header>
-   <main>
-    ${heroHTML()}
+ const body=`${heroHTML()}
     ${todoHTML()}
     <div class="metrics rise"><div class="metric"><div class="v">${S.services.length}</div><div class="l">전체 예배</div></div><div class="metric"><div class="v">${upcoming}</div><div class="l">다가오는 예배</div></div><div class="metric"><div class="v">${pubN}</div><div class="l">발행된 콘티</div></div></div>
     <div class="sect-hd rise d1"><div><h2>예배 목록</h2><p>${on?`${esc(S.team.name)} 팀 · 인도자가 발행하면 자동으로 내려와요`:'이 기기에만 저장돼요. 팀에 보내려면 내보내기 파일을 카톡으로 보내세요'}</p></div>
      <div class="row">${lead?`<button class="btn sm pri" data-act="new-svc">${ic('plus')}새 예배</button>`:''}<span class="row more-hide">${on?`<button class="btn sm" data-act="sync" title="팀 서버에서 최신 발행본 받기">${ic('import')}새로고침</button>`:''}${(!on||lead)?`<button class="btn sm" data-act="import">${ic('import')}가져오기</button>`:''}<button class="btn sm" data-act="export">${ic('export')}내보내기</button></span><button class="icon more-only" data-act="home-more" title="더 보기">${ic('list')}</button></div></div>
-    ${svcs.length?rows:`<div class="empty rise d1"><b>아직 예배가 없어요</b>${lead?'첫 콘티를 만들거나, 받은 파일을 가져오세요.':(on?'인도자가 발행하면 여기에 자동으로 나타나요.':'인도자가 보낸 파일을 "가져오기"로 여세요.')}${lead?`<div><button class="btn pri" data-act="new-svc">${ic('plus')}새 예배 만들기</button></div>`:''}</div>`}
-
-   </main></div></div>
-  <nav class="bnav"><button class="on" data-act="home">${ic('home')}예배</button>${on?`<button data-act="inbox" style="position:relative">${ic('bell')}알림<i class="bdot" data-noti-dot ${NOTI.unread?'':'hidden'}></i></button>${isPastor()?'':`<button data-act="cal">${ic('list')}일정</button><button data-act="nav-lib">${ic('music')}라이브러리</button>`}<button data-act="team">${ic('users')}팀</button>`:''}<button data-act="settings">${ic('gear')}설정</button><button data-act="theme">${ic(themeIcon())}테마</button></nav>`;
+    ${svcs.length?rows:`<div class="empty rise d1"><b>아직 예배가 없어요</b>${lead?'첫 콘티를 만들거나, 받은 파일을 가져오세요.':(on?'인도자가 발행하면 여기에 자동으로 나타나요.':'인도자가 보낸 파일을 "가져오기"로 여세요.')}${lead?`<div><button class="btn pri" data-act="new-svc">${ic('plus')}새 예배 만들기</button></div>`:''}</div>`}`;
+ return shellHTML('home',{title:'예배',sub:fmtToday(),body});
 }
 /* ---------- EDITOR ---------- */
 function editorHTML(svc){
@@ -1167,12 +1318,9 @@ function wordTabHTML(sel){const list=WORDS.list;const cur=list.find(x=>x.service
   <div class="grow"><b>${esc(s.name)}</b><div class="hint">${hasWord(s.word)?esc([s.word.passage,s.word.title].filter(Boolean).join(' · ')):'아직 입력 전'}</div></div>
   <span class="badge ${s.past?'neutral':(hasWord(s.word)?'ok':'warn')}">${s.past?'지남 · 읽기만':(hasWord(s.word)?'입력됨':(s.serviceId?'미입력':'콘티 전'))}</span></div>`;
  const w=cur&&cur.word;const ro=!cur||cur.past||!cur.serviceId;
- return `<div class="shell"><div class="main">
-  <header class="hd"><div class="ttl"><h1>말씀</h1><span class="date">본문·제목·한 줄은 팀 전체에, 메모는 토글에 따라</span></div>
-   <div class="acts"><button class="icon ghost" data-act="home">${ic('back')}</button></div></header>
-  <main><div class="wgrid">
+ const body=`<div class="wgrid">
    <div class="card"><b>다가오는 예배</b><div class="hint">콘티가 있는 것 + 4주 안 사역 날짜</div>
-    <div style="margin-top:10px">${list.length?list.map(row).join(''):'<div class="empty">열린 예배가 없어요</div>'}</div></div>
+    <div style="margin-top:10px">${list.length?list.map(row).join(''):`<div class="empty"><span class="icon">${ic('note')}</span><b>열린 예배가 없어요</b>정기 예배를 켜면 여기에 예배가 생겨요<div><button class="btn" data-act="team">팀 설정으로</button></div></div>`}</div></div>
    ${cur?`<div class="card"><div class="row sb"><b>${esc(cur.name)}</b>${ro?'<span class="pill">읽기만</span>':`<label class="row" style="gap:6px;font-size:12.5px"><input type="checkbox" id="wpPub" ${w&&w.memoPublic?'checked':''}>팀 전체에 메모 공개</label>`}</div>
     <div class="lbl">본문 <span class="hint">항상 전체 공개</span></div><input class="field" id="wpPassage" placeholder="시편 103:1-5" value="${esc((w&&w.passage)||'')}" ${ro?'disabled':''}>
     <div class="lbl">제목</div><input class="field" id="wpTitle" placeholder="잊지 말아야 할 은혜" value="${esc((w&&w.title)||'')}" ${ro?'disabled':''}>
@@ -1180,9 +1328,9 @@ function wordTabHTML(sel){const list=WORDS.list;const cur=list.find(x=>x.service
     <div class="lbl">메모 <span class="hint">${w&&w.memoPublic?'전체에게 보여요':'인도자에게만 보여요'}</span></div><textarea class="field" id="wpMemo" rows="4" ${ro?'disabled':''}>${esc((w&&w.memo)||'')}</textarea>
     ${ro?'':`<div class="row" style="margin-top:12px;justify-content:flex-end;gap:8px"><span class="hint" id="wpState"></span><button class="btn pri" data-act="word-save" data-id="${esc(cur.serviceId)}">${ic('check')}저장</button></div>`}
     ${w&&w.from&&w.from.name?`<div class="hint" style="margin-top:8px">${esc(w.from.name)}${w.updatedAt?' · '+fmtRel(w.updatedAt):''}</div>`:''}</div>`
-   :'<div class="card"><div class="empty">왼쪽에서 예배를 골라 주세요</div></div>'}
-  </div></main></div>
-  <nav class="bnav"><button data-act="home">${ic('home')}예배</button><button data-act="inbox" style="position:relative">${ic('bell')}알림<i class="bdot" data-noti-dot ${NOTI.unread?'':'hidden'}></i></button><button class="on" data-act="word">${ic('note')}말씀</button></nav>`}
+   :`<div class="card"><div class="empty"><span class="icon">${ic('note')}</span><b>예배를 골라 주세요</b>왼쪽 목록에서 적을 예배를 누르세요</div></div>`}
+  </div>`;
+ return shellHTML('word',{title:'말씀',sub:'본문·제목·한 줄은 팀 전체에, 메모는 토글에 따라',body})}
 // §4.6 목회자 링크 페이지 (로그인 없음)
 async function wordLinkHTML(token){let d;
  try{d=await api('/word-link/'+encodeURIComponent(token))}
@@ -1366,12 +1514,11 @@ async function pullSchedule(month,force){const k=month||SCH.month||monthKey();
   SCH.dates=r.dates||[];SCH.availability=r.availability||[];SCH.members=r.members||[];SCH.role=r.role||'';SCH.month=k;SCH.at=Date.now();return true}
  catch(e){toast(e.message);return false}}
 // 내 일정 달력 (§3.2). 이번 달 ~ +2개월, 사역 날짜만 활성
-function calHTML(){const k=SCH.month||monthKey();const me0=me();const lead=isLeader();
+// 내 일정 (§6.6): 세 달을 세로로 이어 본다. 사역 없는 날은 타일이 아니라 숫자만
+function calMonthHTML(k){const me0=me();const lead=isLeader();
  const [y,mo]=k.split('-').map(Number);const first=new Date(Date.UTC(y,mo-1,1));const days=new Date(Date.UTC(y,mo,0)).getUTCDate();const pad=first.getUTCDay();
- const minK=monthKey(),maxK=monthAdd(minK,2);
- const inMonth=SCH.dates.filter(d=>d.date.slice(0,7)===k&&d.open&&d.date>=today());   // 지난 날짜는 답할 수 없으니 세지 않는다
+ const inMonth=SCH.dates.filter(d=>d.date.slice(0,7)===k&&d.open&&d.date>=today());
  const answered=inMonth.filter(d=>myAv(me0.userId,d.date)!=='unset').length;
- const unsetN=inMonth.length-answered;
  let cells='';
  for(let i=0;i<pad;i++)cells+='<div class="cal-cell blank"></div>';
  for(let n=1;n<=days;n++){const iso=`${k}-${String(n).padStart(2,'0')}`;const ds=SCH.dates.filter(d=>d.date===iso&&(d.open||lead));
@@ -1381,18 +1528,19 @@ function calHTML(){const k=SCH.month||monthKey();const me0=me();const lead=isLea
   cells+=`<div class="cal-cell ${open?'on':'off'} ${past?'past':''} ${AVN[st].cls} ${mySess.length?'assigned':''} ${dim?'dim':''}" ${open&&!past?`data-cal="${iso}"`:''}>
    <span class="d">${n}</span>${open?`<span class="sym">${AVN[st].sym}</span>`:''}
    ${ds.length?`<span class="lb">${esc(shortLabel(ds[0].label))}</span>`:''}${mySess.length?`<span class="mys">${esc(abbr(mySess[0]))}</span>`:''}${memo?'<i class="memodot"></i>':''}</div>`}
- return `<div class="shell"><div class="main" style="max-width:560px;margin:0 auto">
-  <header class="hd"><div class="ttl"><h1>내 일정</h1><span class="date">가능한 날을 눌러서 알려주세요</span></div>
-   <div class="acts"><button class="icon ghost" data-act="home" title="홈">${ic('back')}</button></div></header>
-  <main>
-   ${unsetN?`<div class="todo-card" style="margin-bottom:12px"><span class="icon sm">${ic('list')}</span><div class="grow"><b>아직 답하지 않은 날 ${unsetN}일</b></div><button class="btn sm ${SCH.onlyUnset?'pri':''}" data-act="cal-only">미선택만 보기</button></div>`:''}
-   <div class="cal-hd"><button class="icon sm ghost" data-act="cal-mv" data-d="-1" ${k<=minK?'disabled':''}>${ic('left')}</button><b>${y}년 ${mo}월</b><button class="icon sm ghost" data-act="cal-mv" data-d="1" ${k>=maxK?'disabled':''}>${ic('right')}</button></div>
-   <div class="cal-wd">${WDK.map(w=>`<span>${w}</span>`).join('')}</div>
-   <div class="cal">${cells}</div>
-   <div class="cal-foot"><span>${mo}월 · 사역 ${inMonth.length}일 중 ${answered}일 답함</span></div>
-   <div class="cal-leg">${Object.entries(AVN).map(([k2,v])=>`<span class="${v.cls}"><i>${v.sym}</i>${v.label}</span>`).join('')}<span class="hint">탭할 때마다 바뀌어요 · 보류·불가능은 꾹 눌러 메모</span></div>
-  </main></div>
-  <nav class="bnav"><button data-act="home">${ic('home')}예배</button><button data-act="inbox" style="position:relative">${ic('bell')}알림<i class="bdot" data-noti-dot ${NOTI.unread?'':'hidden'}></i></button><button class="on" data-act="cal">${ic('list')}일정</button>${isLeader()?`<button data-act="sched">${ic('users')}편성</button>`:''}</nav>`}
+ return `<section class="calmo">
+  <div class="cal-hd"><b>${y}년 ${mo}월</b><span class="hint">사역 ${inMonth.length}일 중 ${answered}일 답함</span></div>
+  <div class="cal-wd">${WDK.map(w=>`<span>${w}</span>`).join('')}</div>
+  <div class="cal">${cells}</div></section>`}
+function calHTML(){const me0=me();
+ const months=[monthKey(),monthAdd(monthKey(),1),monthAdd(monthKey(),2)];
+ const open=SCH.dates.filter(d=>d.open&&d.date>=today());
+ const answered=open.filter(d=>myAv(me0.userId,d.date)!=='unset').length;
+ const unsetN=open.length-answered;
+ const acts=`${unsetN?`<button class="btn sm ${SCH.onlyUnset?'pri':''}" data-act="cal-only">미선택만 보기</button>`:''}<span class="pill">${open.length?`${answered}/${open.length} 답함`:'사역 날짜 없음'}</span>`;
+ const body=`${open.length?months.map(calMonthHTML).join(''):`<div class="empty"><span class="icon">${ic('list')}</span><b>아직 사역 날짜가 없어요</b>인도자가 날짜를 열면 여기에 나타나요</div>`}
+   <div class="cal-leg">${Object.entries(AVN).map(([k2,v])=>`<span class="${v.cls}"><i>${v.sym}</i>${v.label}</span>`).join('')}<span class="hint">탭할 때마다 바뀌어요 · 보류·불가능은 꾹 눌러 메모</span></div>`;
+ return shellHTML('cal',{title:'내 일정',sub:'가능한 날을 눌러서 알려주세요',acts,body,bodyClass:'calpage'})}
 async function setAv(date,state,memo){SCH.seq++;const me0=me();const prev=SCH.availability.find(a=>a.userId===me0.userId&&a.date===date);const before=prev?{...prev}:null;
  SCH.availability=SCH.availability.filter(a=>!(a.userId===me0.userId&&a.date===date));
  if(state!=='unset')SCH.availability.push({userId:me0.userId,date,state,memo:memo!==undefined?memo:(before?before.memo:'')});
@@ -1420,16 +1568,11 @@ function schedHTML(){const k=SCH.month||monthKey();
     ds.map(d=>{const st=myAv(m.userId,d.date);const on=(d.lineup||[]).some(r=>r.memberId===m.userId&&r.session===s);const notified=(d.lineup||[]).some(r=>r.memberId===m.userId&&r.notifiedAt);
      const memo=avMemo(m.userId,d.date);
      return `<td class="${AVN[st].cls} ${on?(notified?'lined':'lined pending'):''}" title="${esc(m.name+' · '+fmtDate(d.date).md+' '+AVN[st].label+(memo?' — '+memo:''))}">${AVN[st].sym}</td>`}).join('')+'</tr>'}).join('')}).join('');
- return `<div class="shell"><div class="main">
-  <header class="hd"><div class="ttl"><h1>편성</h1><span class="date">${fmtDate(from).md} ~ ${fmtDate(to).md} · 석 달</span></div>
-   <div class="acts"><button class="btn sm" data-act="cal">${ic('list')}내 일정</button><button class="icon ghost" data-act="home">${ic('back')}</button></div></header>
-  <main>
-   ${maybeSoon?`<div class="todo-card" style="margin-bottom:12px"><span class="icon sm">${ic('marker')}</span><div class="grow"><b>가까운 날짜에 보류 ${maybeSoon}명 — 확인해 보세요</b></div></div>`:''}
+ const body=`${maybeSoon?`<div class="todo-card" style="margin-bottom:12px"><span class="icon sm">${ic('marker')}</span><div class="grow"><b>가까운 날짜에 보류 ${maybeSoon}명 — 확인해 보세요</b></div></div>`:''}
    ${ds.length?`<div class="schwrap"><table class="schtab"><thead><tr><th class="corner"></th>${ds.map(d=>`<th class="dcol ${route().name==='lineup'&&route().a===d.id?'on':''}" data-act="lineup" data-id="${esc(d.id)}" title="${esc(d.label)} — 눌러서 이 날 편성"><span>${esc(fmtDate(d.date).md)}<small>${esc(fmtDate(d.date).w)} · ${esc(shortLabel(d.label))}</small></span></th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>
    <div class="cal-leg">${Object.entries(AVN).map(([k2,v])=>`<span class="${v.cls}"><i>${v.sym}</i>${v.label}</span>`).join('')}<span class="hint">위쪽 날짜 버튼을 누르면 그날 편성이 옆에서 열려요 · 칸 테두리는 편성됨(점선은 통보 전)</span></div>`
-   :'<div class="empty"><b>열린 사역 날짜가 없어요</b>팀 관리에서 정기 예배를 등록하거나 날짜를 열어 주세요.</div>'}
-  </main></div>
-  <nav class="bnav"><button data-act="home">${ic('home')}예배</button><button data-act="inbox" style="position:relative">${ic('bell')}알림<i class="bdot" data-noti-dot ${NOTI.unread?'':'hidden'}></i></button><button data-act="cal">${ic('list')}일정</button><button class="on" data-act="sched">${ic('users')}편성</button></nav>`}
+   :`<div class="empty"><span class="icon">${ic('users')}</span><b>열린 사역 날짜가 없어요</b>팀 설정에서 정기 예배를 등록하거나 날짜를 열어 주세요<div><button class="btn" data-act="team">팀 설정으로</button></div></div>`}`;
+ return shellHTML('sched',{title:'편성',sub:`${fmtDate(from).md} ~ ${fmtDate(to).md} · 석 달`,body,wide:true})}
 // 그날 편성 (§3.4)
 const LN={dateId:null,slots:null};   // 그날만 바꾼 세션 인원 (저장 전 임시)
 function lineupHTML(dateId){const d=SCH.dates.find(x=>x.id===dateId);
@@ -1547,18 +1690,30 @@ function todoCards(){const cards=[];
  return cards}
 function todoHTML(){const cards=todoCards();if(!cards.length)return '';
  return `<div class="todo rise"><div class="todo-hd"><b>지금 할 일</b><span class="pill">${cards.length}</span></div>${cards.slice(0,3).map(c=>`<div class="todo-card"><span class="icon sm">${ic(c.icon)}</span><div class="grow"><b>${esc(c.title)}</b>${c.body?`<div class="hint">${esc(c.body)}</div>`:''}</div><span class="row" style="gap:6px">${c.btn2?`<button class="btn sm" data-act="${c.act2}" data-id="${esc(c.arg)}">${esc(c.btn2)}</button>`:''}<button class="btn sm pri" data-act="${c.act}" data-id="${esc(c.arg)}">${esc(c.btn)}</button></span></div>`).join('')}${cards.length>3?`<button class="btn sm ghost" data-act="inbox">+${cards.length-3} 더 보기</button>`:''}</div>`}
-async function inboxModal(){await pullNoti();const list=NOTI.list;
- modal(`<div class="row" style="align-items:center;gap:8px"><b style="font-size:17px">알림함</b>${NOTI.unread?`<span class="pill">${NOTI.unread}</span>`:''}<span class="grow"></span>${NOTI.unread?`<button class="btn sm ghost" id="nbAll">모두 읽음</button>`:''}</div>
-  <div style="margin-top:10px">${list.length?list.map(n=>`<div class="nrow ${n.readAt?'':'unread'}" data-nid="${esc(n.id)}"><i class="dot"></i><span class="icon sm">${ic(NOTI_ICON[n.type]||'note')}</span><div class="grow"><b>${esc(n.title)}</b>${n.body?`<div class="hint">${esc(n.body)}</div>`:''}</div><span class="hint" style="white-space:nowrap">${fmtRel(n.at)}</span></div>`).join(''):'<div class="empty">아직 알림이 없어요</div>'}</div>
-  <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn" id="nbClose">닫기</button></div>`,{center:true});
- updateBadges();
- $('#modal').onclick=async e=>{try{
-  if(e.target.closest('#nbClose')){closeModal();return}
-  if(e.target.closest('#nbAll')){await api('/notifications/read',{method:'POST',body:{teamId:S.team.id,all:true}});const now=new Date().toISOString();NOTI.list.forEach(n=>n.readAt=n.readAt||now);NOTI.unread=0;NOTI.sig='';updateBadges();inboxModal();return}
-  const row=e.target.closest('[data-nid]');if(row){const n=NOTI.list.find(x=>x.id===row.dataset.nid);if(!n)return;
-   if(!n.readAt){n.readAt=new Date().toISOString();NOTI.unread=Math.max(0,NOTI.unread-1);NOTI.sig='';updateBadges();api('/notifications/read',{method:'POST',body:{teamId:S.team.id,ids:[n.id]}}).catch(()=>{})}
-   closeModal();const h=String(n.link||'').replace(/^#\/?/,'');if(h&&h!=='home')go(h);else render();return}
- }catch(err){toast(err.message)}}}
+function inboxHTML(){
+ const list=NOTI.list||[];
+ const dayKey=t=>{const d=new Date(t);const n=new Date();const y=new Date(n.getTime()-86400e3);
+  const same=(a,b)=>a.getFullYear()===b.getFullYear()&&a.getMonth()===b.getMonth()&&a.getDate()===b.getDate();
+  return same(d,n)?'오늘':same(d,y)?'어제':`${d.getMonth()+1}월 ${d.getDate()}일`};
+ const groups=[];list.forEach(n=>{const k=dayKey(n.at);const g=groups.find(x=>x[0]===k);if(g)g[1].push(n);else groups.push([k,[n]])});
+ const row=n=>`<button class="nrow2 ${n.readAt?'':'unread'}" data-act="noti-open" data-id="${esc(n.id)}">
+  <i class="dot"></i><span class="ni">${ic(NOTI_ICON[n.type]||'note')}</span>
+  <span class="grow"><b>${esc(n.title||'알림')}</b>${n.body?`<small>${esc(n.body)}</small>`:''}</span>
+  <small class="when">${esc(fmtRel(n.at))}</small></button>`;
+ const acts=NOTI.unread?`<button class="btn sm" data-act="noti-all">모두 읽음</button>`:'';
+ const body=list.length
+  ? groups.map(([k,ns])=>`<section class="ngrp"><div class="lbl">${esc(k)}</div>${ns.map(row).join('')}</section>`).join('')
+  : `<div class="empty"><span class="icon">${ic('bell')}</span><b>아직 알림이 없어요</b>콘티가 발행되거나 편성이 오면 여기에 떠요</div>`;
+ return shellHTML('inbox',{title:'알림',sub:NOTI.unread?`안 읽음 ${NOTI.unread}개`:'',acts,body})}
+async function markAllRead(){if(!NOTI.unread)return;
+ const now=new Date().toISOString();NOTI.list.forEach(n=>n.readAt=n.readAt||now);NOTI.unread=0;NOTI.sig='';updateBadges();
+ try{await api('/notifications/read',{method:'POST',body:{teamId:S.team.id,all:true}})}catch(e){toast(e.message)}}
+async function openNoti(id){const n=(NOTI.list||[]).find(x=>x.id===id);if(!n)return;
+ if(!n.readAt){n.readAt=new Date().toISOString();NOTI.unread=Math.max(0,NOTI.unread-1);NOTI.sig='';updateBadges();
+  api('/notifications/read',{method:'POST',body:{teamId:S.team.id,ids:[n.id]}}).catch(()=>{})}
+ NOTI.open=false;
+ const h=String(n.link||'').replace(/^#\/?/,'');
+ if(h&&h!==route().name+(route().a?'/'+route().a:''))go(h);else render()}
 function mediaTargetModal(svc,it,md){let t=mdSess(md).slice();
  modal(`<b style="font-size:17px">이 미디어를 누가 보나요</b><div class="hint" style="margin-top:4px">${esc(md.name||md.url)}</div>
   <div style="margin-top:14px" id="mtSel"><button class="q ${t.length?'':'on'}" data-mdt="">전체</button>${S.team.sessions.filter(x=>x!=='인도자').map(x=>`<button class="q ${t.includes(x)?'on':''}" data-mdt="${esc(x)}">${esc(x)}</button>`).join('')}</div>
@@ -1666,60 +1821,86 @@ function diffPub(prev,next){
  if(wk(prev.word)!==wk(next.word))out.push({kind:'word',text:'말씀 바뀜'});
  return out.slice(0,20)}
 const CHG_IC={add:'plus',del:'trash',order:'list',key:'music',edit:'pen',sheet:'camera',media:'yt',notice:'note',word:'note'};
-function settingsModal(){
+/* ---------- 설정 페이지 · 탭 넷 (§6.8) ---------- */
+const ST_TABS=[['profile','프로필'],['noti','알림'],['account','계정'],['app','앱']];
+const SET={tab:'profile'};
+function settingsHTML(){
+ const m=me();const on=online();const lead=isLeader();
+ const t=ST_TABS.some(([k])=>k===SET.tab)?SET.tab:'profile';
+ const tabs=`<div class="tabs">${ST_TABS.filter(([k])=>on||k!=='noti').map(([k,label])=>`<button class="${k===t?'on':''}" data-act="set-tab" data-t="${k}">${label}</button>`).join('')}</div>`;
+ let pane='';
+ if(t==='profile')pane=`<div class="card">
+   <div class="lbl">내 이름</div><input class="field" id="sName" value="${esc(m.name)}" placeholder="하은">
+   ${isPastor()?'':`<div class="lbl">내 세션</div><div id="sSess">${S.team.sessions.map(x=>`<button class="q ${x===m.session?'on':''}" data-s="${esc(x)}">${esc(x)}</button>`).join('')}</div>
+   <div class="lbl">겸임 세션 <span class="hint">선택 · 편성에서 이 세션 후보에도 들어가요</span></div><div id="sSess2">${S.team.sessions.map(x=>`<button class="q ${(m.mySessions||[]).includes(x)&&x!==m.session?'on2':''}" data-s2="${esc(x)}" ${x===m.session?'hidden':''}>${esc(x)}</button>`).join('')}</div>`}
+   ${on?'':`<div class="lbl">역할</div><div id="sRole"><button class="q ${m.role==='leader'?'on':''}" data-r="leader">인도자 (콘티 제작)</button><button class="q ${m.role!=='leader'?'on':''}" data-r="member">멤버</button></div>
+   <div class="lbl">팀 세션 목록 <span class="hint">쉼표로</span></div><input class="field" id="sList" value="${esc(S.team.sessions.join(', '))}">`}
+   <div class="lbl">기타 카포 <span class="hint">0이면 없음. 내 화면의 빨간 코드가 카포만큼 더 내려가요</span></div>
+   <div class="row"><input class="field mono" id="sCapo" type="number" min="0" max="9" value="${+m.capo||0}" style="width:90px;text-align:center"><span class="hint">프렛</span></div>
+   <div class="err" id="sErr"></div>
+   <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn pri" id="sOk">${ic('check')}저장</button></div></div>`;
+ else if(t==='noti')pane=`<div class="card"><b>알림 종류</b>
+   <div class="hint" style="margin-top:2px">알림함은 끌 수 없어요. 여기서 끄면 이 기기 알림만 꺼져요</div>
+   <div id="sNoti" style="margin-top:10px">${Object.entries(NOTI_LABEL).map(([k,v])=>`<label class="mrow" style="cursor:pointer"><span class="grow">${esc(v)}</span><input type="checkbox" data-noti="${k}" ${notiOn(k)?'checked':''}></label>`).join('')}</div></div>`;
+ else if(t==='account')pane=`<div class="card"><b>비밀번호</b>
+   <div class="hint" style="margin-top:2px">비워 두면 그대로예요</div>
+   <div class="row" style="margin-top:10px"><input class="field" id="sPw0" type="password" autocomplete="current-password" placeholder="현재 비밀번호"><input class="field" id="sPw1" type="password" autocomplete="new-password" placeholder="새 비밀번호 6자 이상"></div>
+   <div class="err" id="sErr2"></div>
+   <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn pri" id="sPwOk">${ic('check')}비밀번호 바꾸기</button></div></div>
+  <div class="card"><b>복구 코드</b>
+   <div class="hint" style="margin-top:2px">비밀번호를 잊었을 때 쓰는 12자. 한 번만 보여주니 안전한 곳에 적어 두세요</div>
+   <div class="row" style="margin-top:10px"><span class="hint grow" id="sRcState">${NET.user&&NET.user.hasRecovery?'발급됨':'아직 없음'}</span><button class="btn sm" id="sRc">${NET.user&&NET.user.hasRecovery?'새로 발급':'발급'}</button></div></div>
+  <div class="card"><b>계정 삭제</b>
+   <div class="row" style="margin-top:8px"><span class="hint grow">지우면 되돌릴 수 없어요</span><button class="btn ghost danger" id="sDel">계정 삭제</button></div></div>`;
+ else pane=`<div class="card"><b>테마</b>
+   <div class="row" style="margin-top:10px;gap:6px">${[['system','시스템'],['light','라이트'],['dark','다크']].map(([k,label])=>`<button class="q ${THEME.get()===k?'on':''}" data-act="set-theme" data-t="${k}">${label}</button>`).join('')}</div>
+   <div class="hint" style="margin-top:6px">${THEME.get()==='system'?'이 기기의 시스템 설정을 따라요':'항상 이 테마로 보여요'}</div></div>
+  ${on?`<div class="card"><b>악보가 안 보일 때</b>
+   <div class="row" style="margin-top:8px"><span class="hint grow">이 기기에 저장된 악보를 지우고 서버에서 새로 받아요</span><button class="btn sm" id="sRefetch">${ic('import')}다시 불러오기</button></div></div>`:''}
+  <div class="card"><b>이 기기</b>
+   <div class="row" style="margin-top:8px"><span class="hint grow">${on?'받아 둔 콘티·악보·메모를 지웁니다. 계정은 그대로예요':'모든 데이터를 지웁니다'}</span><button class="btn ghost danger" id="sReset">${on?'기기 데이터 지우기':'전체 초기화'}</button></div>
+   ${on?`<div class="hr"></div><div class="row"><span class="hint grow">이 기기에서 로그아웃해요</span><button class="btn" id="sLogout">${ic('logout')}로그아웃</button></div>`:''}</div>`;
+ const sub=on?`${esc(S.team.name)} · ${roleLabel(m.role)}`:'이 기기 전용';
+ return shellHTML('settings',{title:'설정',sub,body:tabs+`<div class="setpane">${pane}</div>`})}
+function afterSettings(){
  const m=me();const on=online();const lead=isLeader();
  const split=el=>el.value.split(',').map(x=>x.trim()).filter(Boolean);
- modal(`<b style="font-size:17px">설정</b>${on?` <span class="hint">${esc(S.team.name)} · ${roleLabel(m.role)}</span>`:''}
-  <div class="lbl">내 이름</div><input class="field" id="sName" value="${esc(m.name)}" placeholder="하은">
-  ${isPastor()?'':`<div class="lbl">내 세션</div><div id="sSess">${S.team.sessions.map(s=>`<button class="q ${s===m.session?'on':''}" data-s="${esc(s)}">${esc(s)}</button>`).join('')}</div>
-  <div class="lbl">겸임 세션 <span class="hint">선택 · 편성에서 이 세션 후보에도 들어가요</span></div><div id="sSess2">${S.team.sessions.map(s=>`<button class="q ${(m.mySessions||[]).includes(s)&&s!==m.session?'on2':''}" data-s2="${esc(s)}" ${s===m.session?'hidden':''}>${esc(s)}</button>`).join('')}</div>`}
-  ${on?'':`<div class="lbl">역할</div><div id="sRole"><button class="q ${m.role==='leader'?'on':''}" data-r="leader">인도자 (콘티 제작)</button><button class="q ${m.role!=='leader'?'on':''}" data-r="member">멤버</button></div>`}
-  ${!on?`<div class="lbl">팀 세션 목록 <span class="hint">쉼표로</span></div><input class="field" id="sList" value="${esc(S.team.sessions.join(', '))}">
-  <div class="lbl">상용구 <span class="hint">메모 작성창에 칩으로</span></div><input class="field" id="sPhr" value="${esc(S.team.phrases.join(', '))}">`:(lead?`
-  <div class="lbl">상용구 <span class="hint">메모 작성창에 칩으로</span></div><input class="field" id="sPhr" value="${esc(S.team.phrases.join(', '))}">
-  <div class="hint" style="margin-top:4px">세션 이름·순서는 <b>팀 화면</b>에서 고쳐요. 거기서 고쳐야 편성·메모까지 함께 바뀝니다.</div>`:'')}
-  <div class="lbl">기타 카포 <span class="hint">0이면 없음. 내 화면의 빨간 코드가 카포만큼 더 내려가요</span></div><div class="row"><input class="field mono" id="sCapo" type="number" min="0" max="9" value="${+m.capo||0}" style="width:90px;text-align:center"><span class="hint">프렛</span></div>
-  ${on?`<div class="lbl">비밀번호 바꾸기 <span class="hint">비워 두면 그대로</span></div><div class="row"><input class="field" id="sPw0" type="password" autocomplete="current-password" placeholder="현재 비밀번호"><input class="field" id="sPw1" type="password" autocomplete="new-password" placeholder="새 비밀번호 6자 이상"></div>`:''}
-  ${on?`<div class="lbl">복구 코드 <span class="hint">비밀번호를 잊었을 때 쓰는 12자. 한 번만 보여주니 안전한 곳에 적어 두세요</span></div><div class="row"><span class="hint" id="sRcState">${NET.user&&NET.user.hasRecovery?'발급됨':'아직 없음'}</span><button class="btn sm" id="sRc">${NET.user&&NET.user.hasRecovery?'새로 발급':'발급'}</button></div>`:''}
-  ${on?`<div class="lbl">알림 <span class="hint">알림함은 끌 수 없어요. 여기서 끄면 이 기기 알림만 꺼져요</span></div>
-  <div id="sNoti">${Object.entries(NOTI_LABEL).map(([k,v])=>`<label class="mrow" style="cursor:pointer"><span class="grow">${esc(v)}</span><input type="checkbox" data-noti="${k}" ${notiOn(k)?'checked':''}></label>`).join('')}</div>`:''}
-  ${on?`<div class="lbl">악보가 안 보일 때</div><div class="row"><button class="btn sm" id="sRefetch">${ic('import')}악보 다시 불러오기</button><span class="hint">이 기기에 저장된 악보를 지우고 서버에서 새로 받아요</span></div>`:''}
-  <div class="err" id="sErr"></div>
-  <div class="row" style="margin-top:12px;justify-content:space-between"><span class="row"><button class="btn ghost danger" id="sReset">${on?'이 기기 데이터 지우기':'전체 초기화'}</button>${on?`<button class="btn ghost" id="sLogout">로그아웃</button>`:''}</span><button class="btn pri" id="sOk">${ic('check')}저장</button></div>
-  ${on?`<div class="row" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line2)"><span class="hint grow">계정을 지우면 되돌릴 수 없어요</span><button class="btn sm ghost danger" id="sDel">계정 삭제</button></div>`:''}`,{center:true});
- let sess=m.session,role=m.role;let extra=(m.mySessions||[]).filter(x=>x!==m.session);const mySessNow=()=>[sess,...extra.filter(x=>x!==sess)];
- $('#modal').onclick=async e=>{
+ let sess=m.session,role=m.role;let extra=(m.mySessions||[]).filter(x=>x!==m.session);
+ const mySessNow=()=>[sess,...extra.filter(x=>x!==sess)];
+ const box=$('.setpane');if(!box)return;
+ const firstRun=!String(m.name||'').trim();   // 기기 전용 첫 실행: 이름을 넣고 저장하면 바로 앱으로
+ box.onclick=async e=>{
   const sb=e.target.closest('[data-s]');if(sb){sess=sb.dataset.s;extra=extra.filter(x=>x!==sess);
    $$('#sSess .q').forEach(b=>b.classList.toggle('on',b.dataset.s===sess));
-   $$('#sSess2 .q').forEach(b=>{b.hidden=b.dataset.s2===sess;b.classList.toggle('on2',extra.includes(b.dataset.s2))})}
-  const sb2=e.target.closest('[data-s2]');if(sb2){const v=sb2.dataset.s2;   // 겸임 세션 켜고 끄기 (§3)
+   $$('#sSess2 .q').forEach(b=>{b.hidden=b.dataset.s2===sess;b.classList.toggle('on2',extra.includes(b.dataset.s2))});return}
+  const sb2=e.target.closest('[data-s2]');if(sb2){const v=sb2.dataset.s2;
    extra=extra.includes(v)?extra.filter(x=>x!==v):[...extra,v];
-   $$('#sSess2 .q').forEach(b=>b.classList.toggle('on2',extra.includes(b.dataset.s2)))}
-  const rb=e.target.closest('[data-r]');if(rb){role=rb.dataset.r;$$('#sRole .q').forEach(b=>b.classList.toggle('on',b.dataset.r===role))}
-  if(e.target.closest('#sRefetch')){const btn=e.target.closest('#sRefetch');btn.disabled=true;btn.textContent='불러오는 중…';
-   try{const n=await SYNC.refetchBlobs();toast(n?`악보 ${n}개를 다시 받았어요`:'다시 받을 악보가 없어요');closeModal();render()}
-   catch(err){toast(err.message);btn.disabled=false}return}
-  if(e.target.closest('#sOk')){const name=$('#sName').value.trim();
-   if(on){try{
-     if($('#sPw1')&&$('#sPw1').value){await api('/auth/password',{method:'POST',body:{current:$('#sPw0').value,next:$('#sPw1').value}})}
-     if(lead&&$('#sPhr')){await applyMembership(await api('/teams/'+S.team.id,{method:'PATCH',body:{phrases:split($('#sPhr'))}}))}
-     await applyMembership(await api('/me',{method:'PATCH',body:{teamId:S.team.id,name,session:sess,mySessions:mySessNow(),capo:+($('#sCapo')||{value:0}).value||0}}));
-    }catch(err){$('#sErr').textContent=err.message;return}}
-   else{m.name=name;m.session=sess;m.mySessions=mySessNow();m.role=role;m.capo=+($('#sCapo')||{value:0}).value||0;
-    if($('#sList'))S.team.sessions=split($('#sList'));if($('#sPhr'))S.team.phrases=split($('#sPhr'));
-    if(!S.team.sessions.includes(m.session))m.session=S.team.sessions[0]||''}
-   save();closeModal();render()}
-  if(e.target.closest('#sRc')){try{const r=await api('/auth/recovery',{method:'POST'});if(NET.user)NET.user.hasRecovery=true;closeModal();
-    modal(`<b style="font-size:17px">복구 코드</b><div class="hint" style="margin-top:4px">이 화면을 닫으면 다시 볼 수 없어요. 메모장이나 비밀번호 앱에 저장해 두세요. 비밀번호를 잊으면 로그인 화면의 "비밀번호를 잊었어요"에서 씁니다.</div><div class="linkbox" style="margin-top:12px;font-size:20px;letter-spacing:.08em;text-align:center">${esc(r.code)}</div><div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" id="rcCopy">복사</button><button class="btn pri" id="rcClose">저장했어요</button></div>`,{center:true});
-    $('#modal').onclick=async ev=>{if(ev.target.closest('#rcCopy')){await copyText(r.code);toast('복사했어요')}if(ev.target.closest('#rcClose')){closeModal()}}}catch(err){$('#sErr').textContent=err.message}return}
+   $$('#sSess2 .q').forEach(b=>b.classList.toggle('on2',extra.includes(b.dataset.s2)));return}
+  const rb=e.target.closest('[data-r]');if(rb){role=rb.dataset.r;$$('#sRole .q').forEach(b=>b.classList.toggle('on',b.dataset.r===role));return}
   const nb=e.target.closest('[data-noti]');if(nb){setNotiOn(nb.dataset.noti,nb.checked);return}
-  if(e.target.closest('#sDel')){closeModal();deleteAccountModal();return}
+  if(e.target.closest('#sOk')){const name=$('#sName').value.trim();
+   if(on){try{await applyMembership(await api('/me',{method:'PATCH',body:{teamId:S.team.id,name,session:sess,mySessions:mySessNow(),capo:+($('#sCapo')||{value:0}).value||0}}))}
+    catch(err){$('#sErr').textContent=err.message;return}}
+   else{m.name=name;m.session=sess;m.mySessions=mySessNow();m.role=role;m.capo=+($('#sCapo')||{value:0}).value||0;
+    if($('#sList'))S.team.sessions=split($('#sList'));
+    if(!S.team.sessions.includes(m.session))m.session=S.team.sessions[0]||''}
+   save();toast('저장했어요');if(firstRun)go('home');else render();return}
+  if(e.target.closest('#sPwOk')){const a=$('#sPw0'),b=$('#sPw1');if(!b.value){$('#sErr2').textContent='새 비밀번호를 적어 주세요';return}
+   try{await api('/auth/password',{method:'POST',body:{current:a.value,next:b.value}});a.value='';b.value='';$('#sErr2').textContent='';toast('비밀번호를 바꿨어요')}
+   catch(err){$('#sErr2').textContent=err.message}return}
+  if(e.target.closest('#sRc')){try{const r=await api('/auth/recovery',{method:'POST'});if(NET.user)NET.user.hasRecovery=true;
+    modal(`<b style="font-size:17px">복구 코드</b><div class="hint" style="margin-top:4px">이 화면을 닫으면 다시 볼 수 없어요. 메모장이나 비밀번호 앱에 저장해 두세요. 비밀번호를 잊으면 로그인 화면의 "비밀번호를 잊었어요"에서 씁니다.</div><div class="linkbox" style="margin-top:12px;font-size:20px;letter-spacing:.08em;text-align:center">${esc(r.code)}</div><div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" id="rcCopy">복사</button><button class="btn pri" id="rcClose">저장했어요</button></div>`,{center:true});
+    $('#modal').onclick=async ev=>{if(ev.target.closest('#rcCopy')){await copyText(r.code);toast('복사했어요')}if(ev.target.closest('#rcClose')){closeModal();render()}}}
+   catch(err){toast(err.message)}return}
+  if(e.target.closest('#sDel')){deleteAccountModal();return}
+  if(e.target.closest('#sRefetch')){const btn=e.target.closest('#sRefetch');btn.disabled=true;btn.textContent='불러오는 중…';
+   try{const n=await SYNC.refetchBlobs();toast(n?`악보 ${n}개를 다시 받았어요`:'다시 받을 악보가 없어요');render()}
+   catch(err){toast(err.message);btn.disabled=false}return}
   if(e.target.closest('#sLogout')){
    if(!confirm('로그아웃할까요?\n이 기기에 받아 둔 콘티·악보도 함께 지워져요. 다시 로그인하면 서버에서 다시 받습니다.'))return;
-   closeModal();doGate('logout')}
-  if(e.target.closest('#sReset')){if(confirm(on?'이 기기에 저장된 콘티·악보·메모를 지웁니다. 계정은 그대로예요. 계속할까요?':'모든 데이터를 지웁니다. 계속할까요?')){indexedDB.deleteDatabase('conti-v1');location.reload()}}
- };
-}
+   doGate('logout');return}
+  if(e.target.closest('#sReset')){if(confirm(on?'이 기기에 저장된 콘티·악보·메모를 지웁니다. 계정은 그대로예요. 계속할까요?':'모든 데이터를 지웁니다. 계속할까요?')){indexedDB.deleteDatabase('conti-v1');location.reload()}return}
+ }}
 // 서버 없이 쓰는 모드(정적 호스팅)에서는 곡·편곡을 받을 수 없다. 그때는 기기에 쌓인 옛 라이브러리를 쓴다
 const libSongs=()=>online()?(S.songs||[]).filter(x=>!x.archived)
  :(S.library||[]).map(x=>({id:x.id,title:x.title,titleNorm:nrm(x.title),titleCho:chos(nrm(x.title)),
@@ -1831,7 +2012,7 @@ const normTitle=t=>String(t||'').toLowerCase().replace(/\([^)]*\)|\[[^\]]*\]/g,'
 /* ---------- server (계정·팀) — /api 가 있으면 온라인, 없으면 지금처럼 기기 안에서만 ---------- */
 const NET={server:null,user:null,teams:[],blocked:null,enforcePlan:false};   // server: true=있음, false=없음(정적 호스팅), null=모름(네트워크 불가)
 /* ---------- 알림 (§1): 알림함 ① + 홈 카드 ②. 푸시 ③는 앱 단계 ---------- */
-const NOTI={list:[],unread:0,at:0,sig:'',timer:null};
+const NOTI={list:[],unread:0,at:0,sig:'',timer:null,open:false};
 const NOTI_ICON={publish:'send','note.updated':'note','date.opened':'users','date.closed':'moon','lineup.notify':'users','lineup.changed':'users','avail.request':'list','avail.maybe':'list','avail.conflict':'marker','word.request':'note','word.received':'note','rehearsal.uploaded':'mic'};
 const fmtRel=t=>{const d=Date.now()-new Date(t).getTime();if(!(d>=0))return '';if(d<60e3)return '방금';if(d<3600e3)return Math.floor(d/60e3)+'분 전';if(d<86400e3)return Math.floor(d/3600e3)+'시간 전';if(d<7*86400e3)return Math.floor(d/86400e3)+'일 전';const x=new Date(t);return (x.getMonth()+1)+'/'+x.getDate()};
 async function pullNoti(){if(!online()||!S.team.id||!NET.user)return false;try{const r=await api('/notifications?team='+S.team.id);NOTI.list=r.notifications||[];NOTI.unread=r.unread||0;NOTI.at=Date.now();const sig=NOTI.list.map(n=>n.id+(n.readAt?'r':'')+(n.ackAt?'a':'')).join(',');const ch=sig!==NOTI.sig;NOTI.sig=sig;return ch}catch(e){return false}}
@@ -2393,14 +2574,11 @@ function libraryHTML(){
  const card=s=>{const th=songThumb(s);return `<button class="scard" data-songopen="${esc(s.id)}">
    <span class="sthumb big" style="${th?`background-image:url('${th}')`:''}"></span>
    <b>${esc(s.title||'(제목 없음)')}</b><span class="hint">${esc(songKeys(s).join(' · ')||'-')} · ${relDate(s.lastUsed)}</span></button>`};
- return `<div class="top"><button class="icon ghost" data-act="home">${ic('back')}</button>
-  <h1>라이브러리<span class="pill">${all.length}곡</span></h1>
-  ${lead?`<button class="btn sm ${LIB.sel.length?'pri':''}" data-act="lib-multi">${LIB.sel.length?`${LIB.sel.length}곡 선택`:'여러 곡 고르기'}</button>
-   ${LIB.sel.length?`<button class="btn sm pri" data-act="lib-add-sel">${ic('plus')}예배에 넣기</button>`:''}
+ const acts=lead?`<button class="btn sm ${LIB.sel.length?'pri':''}" data-act="lib-multi">${LIB.sel.length?`${LIB.sel.length}곡 선택`:'여러 곡 고르기'}</button>
+   ${LIB.sel.length?`<button class="btn sm" data-act="lib-add-sel">${ic('plus')}예배에 넣기</button>`:''}
    <button class="btn sm" data-act="lib-receive">${ic('import')}코드로 받기</button>
-   <button class="btn sm ghost" data-act="lib-shares" title="내가 만든 코드">${ic('link')}</button>
-   <button class="btn pri" data-act="lib-new">${ic('plus')}새 곡</button>`:''}</div>
- <div class="ws" style="grid-template-columns:minmax(0,1fr)"><div class="panel"><div class="pbody"><div class="libpage">
+   <button class="btn sm pri" data-act="lib-new">${ic('plus')}새 곡</button>`:'';
+ const body=`<div class="libpage">
   <div class="row" style="gap:6px"><input class="field grow" id="libQ" value="${esc(LIB.q)}" placeholder="제목 · 가사 · 아티스트 · 태그 — 초성도 됩니다 (ㅇㅅㄹ)">${LIB.q?`<button class="btn sm ghost" data-act="lib-clear">지우기</button>`:''}</div>
   <div class="filters">
    ${KEYS7.map(k=>chip(LIB.key===k,'key',k,k)).join('')}
@@ -2408,17 +2586,13 @@ function libraryHTML(){
    ${tags.length?`<span class="sep"></span>${tags.map(t=>chip(LIB.tag===t,'tag',t,'#'+t)).join('')}`:''}
    <span class="sep"></span>${chip(LIB.last==='30','last','30','30일 안')}${chip(LIB.last==='90','last','90','90일 안')}${chip(LIB.last==='180','last','180','반년 넘음')}
    <span class="grow"></span>
-   <select class="field" id="libSort" style="width:auto">
-    <option value="recent" ${LIB.sort==='recent'?'selected':''}>최근 부른 순</option>
-    <option value="count" ${LIB.sort==='count'?'selected':''}>많이 부른 순</option>
-    <option value="title" ${LIB.sort==='title'?'selected':''}>가나다</option>
-    <option value="added" ${LIB.sort==='added'?'selected':''}>최근 고친 순</option>
-   </select>
+   <div class="seg">${[['recent','최근 부른'],['count','많이 부른'],['title','가나다'],['added','최근 고친']].map(([v,l])=>`<button class="${(LIB.sort||'recent')===v?'on':''}" data-act="lib-sort" data-v="${v}">${l}</button>`).join('')}</div>
    ${chip(LIB.archived,'archived','1','보관함')}${LIB.season?`<button class="q on" data-act="lib-season-off">작년 이맘때 ✕</button>`:''}
   </div>
   <div class="insight">총 ${all.length}곡 · 올해 ${thisYear}곡${top&&top.useCount?` · 가장 많이 <b>${esc(top.title)}</b> ${top.useCount}회`:''}
    ${stale.length?` · <button class="linkish" data-lf="last" data-v="180">반년 넘게 안 부른 곡 ${stale.length}곡</button>`:''}
-   ${season.length?` · <button class="linkish" data-act="lib-season">작년 이맘때 ${season.length}곡</button>`:''}</div>
+   ${season.length?` · <button class="linkish" data-act="lib-season">작년 이맘때 ${season.length}곡</button>`:''}
+   ${lead?` · <button class="linkish" data-act="lib-shares">내가 만든 공유 코드</button>`:''}</div>
   ${lead&&LIB.dups&&LIB.dups.length?`<div class="card" style="background:var(--amber-soft);color:var(--amber)"><b>비슷한 곡이 ${LIB.dups.length}쌍 있어요</b><div class="row" style="margin-top:6px"><button class="btn sm" data-act="lib-merge">정리하기</button></div></div>`:''}
   ${plain?`
    ${all.filter(s=>s.lastUsed).length?`<div class="lbl">최근 부른 곡</div><div class="scards">${all.slice().sort((a,b)=>(b.lastUsed||'').localeCompare(a.lastUsed||'')).slice(0,8).map(card).join('')}</div>`:''}
@@ -2426,8 +2600,10 @@ function libraryHTML(){
    ${season.length?`<div class="lbl">작년 이맘때 부른 곡</div><div class="scards">${season.slice(0,8).map(card).join('')}</div>`:''}
    <div class="lbl">전체 ${all.length}곡</div>`:''}
   <div id="libList">${list.length?list.map(x=>songRow(x,{multi:LIB.pick==='multi',picked:LIB.sel.includes(x.s.id)})).join('')
-   :`<div class="empty">${q?'찾는 곡이 없어요':(lead?'없어요. "새 곡"으로 만들면 라이브러리에 들어가요.':'아직 곡이 없어요. 인도자가 곡을 넣으면 여기 보여요.')}</div>`}</div>
- </div></div></div></div>`}
+   :`<div class="empty"><span class="icon">${ic('music')}</span><b>${q?'찾는 곡이 없어요':'아직 곡이 없어요'}</b>${q?'다른 말로 찾아 보세요':(lead?'"새 곡"으로 만들면 라이브러리에 들어가요':'인도자가 곡을 넣으면 여기 보여요')}${!q&&lead?`<div><button class="btn" data-act="lib-new">${ic('plus')}새 곡</button></div>`:''}</div>`}</div>
+ </div>`;
+ const sub=`${all.length}곡${thisYear?` · 올해 ${thisYear}곡`:''}`;
+ return shellHTML('library',{title:'라이브러리',sub,acts,body})}
 
 /* ---------- 곡 상세 ---------- */
 async function pullSong(id){if(!online()||!S.team.id)return null;
@@ -2862,8 +3038,8 @@ function teamHTML(){
     <b>${esc(m.name||'이름 없음')}</b>${meRow?' <span class="pill">나</span>':''}
     ${m.active===false?' <span class="pill">비활성</span>':''}
     <div class="hint" style="margin-top:1px">${m.role==='pastor'?'목회자':(ss.map(esc).join(' · ')||'세션 없음')}${inDefault(m)?' · <span class="tag">기본 편성</span>':''}${m.lastSeenAt?' · '+relTime(m.lastSeenAt):''}</div></span>
-   <span class="pill ${m.role==='leader'?'amber':''}">${roleLabel(m.role)}</span>
-   ${lead?`<button class="btn sm ghost" data-medit="${esc(m.userId)}">고치기</button><button class="icon sm ghost" data-mmore="${esc(m.userId)}" title="더보기">${ic('list')}</button>`:''}
+   <span class="pill role-${esc(m.role||'member')}">${roleLabel(m.role)}</span>
+   ${lead?`<button class="btn sm" data-medit="${esc(m.userId)}">고치기</button><button class="icon sm ghost" data-mmore="${esc(m.userId)}" title="더보기">${ic('dots')}</button>`:''}
   </div>`};
  const invRow=v=>{const ex=v.expiresAt?new Date(v.expiresAt):null;
   return `<div class="mrow ${v.dead?'off':''}">
@@ -2872,15 +3048,14 @@ function teamHTML(){
    ${v.dead?'':`<button class="btn sm" data-icopy="${esc(v.code)}">${ic('export')}복사</button><button class="btn sm ghost" data-ikakao="${esc(v.code)}">카톡 문구</button><button class="icon sm ghost" data-irevoke="${esc(v.id)}" title="회수">${ic('x')}</button>`}
   </div>`};
  const slotOf=s=>(st.slots&&st.slots[s]!=null)?st.slots[s]:(s==='싱어'?3:1);
- return `<div class="top"><button class="icon ghost" data-act="home">${ic('back')}</button>
-  <h1>${esc(t.teamName)}<span class="pill">${players.length}명</span>${pastors.length?`<span class="pill">목회자 ${pastors.length}</span>`:''}${off.length?`<span class="pill">비활성 ${off.length}</span>`:''}</h1>
-  ${NET.teams.length>1?`<button class="btn sm" data-act="team-switch">${ic('users')}팀 전환</button>`:''}</div>
- <div class="ws" style="grid-template-columns:minmax(0,1fr)"><div class="panel"><div class="pbody"><div class="tpage">
+ const acts=`${NET.teams.length>1?`<button class="btn sm" data-act="team-switch">${ic('users')}팀 전환</button>`:''}${lead?`<button class="btn sm pri" data-act="tm-invite">${ic('plus')}멤버 초대</button>`:''}`;
+ const sub=`${esc(t.teamName)} · ${players.length}명${pastors.length?` · 목회자 ${pastors.length}`:''}${off.length?` · 비활성 ${off.length}`:''}`;
+ const body=`<div class="tpage">
  ${t.deletedAt?`<div class="card" style="background:var(--destructive-soft);color:var(--destructive)"><b>이 팀은 30일 뒤에 지워져요</b><div style="color:var(--ink);margin-top:2px">${new Date(new Date(t.deletedAt).getTime()+30*864e5).toLocaleDateString('ko-KR')}에 예배·악보·녹음이 모두 사라집니다.</div>${lead?`<div class="row" style="margin-top:8px"><button class="btn sm pri" data-act="team-undelete">${ic('check')}삭제 취소</button></div>`:''}</div>`:''}
 
  ${sect('members','멤버',`활성 ${players.length}명${pastors.length?` · 목회자 ${pastors.length}`:''}${off.length?` · 비활성 ${off.length}`:''}`,
   `<div id="tmMembers">${sorted.map(mrow).join('')}</div>
-   ${lead?`<div class="row" style="margin-top:10px"><button class="btn pri" data-act="tm-invite">${ic('plus')}멤버 초대</button></div>`:''}`)}
+`)}
 
  ${lead?sect('invites','초대',`${(TM.invites||[]).filter(v=>!v.dead).length}개 살아 있음`,
   `<div class="hint" style="margin-bottom:8px">링크를 카톡방에 올리면 이름·세션만 고르고 들어와요.</div>
@@ -2949,7 +3124,8 @@ function teamHTML(){
    <div class="hr"></div>
    <div class="row" style="justify-content:space-between"><button class="btn ghost danger" data-act="tm-leave">팀 나가기</button>${t.deletedAt?'':`<button class="btn danger" data-act="tm-delete">${ic('trash')}팀 삭제</button>`}</div>`
   :`<div class="row"><button class="btn ghost danger" data-act="tm-leave">팀 나가기</button></div>`)}
- </div></div></div></div>`;
+ </div>`;
+ return shellHTML('team',{title:'팀',sub,acts,body});
 }
 function afterLibrary(){
  const q=$('#libQ');
@@ -2959,7 +3135,6 @@ function afterLibrary(){
     :`<div class="empty">${LIB.q.trim()?'찾는 곡이 없어요':'없어요'}</div>`},150);
   // 글자를 지웠다가 다시 치면 섹션이 나왔다 사라지는 게 어지러워서, 화면은 목록만 갈아 끼운다
   q.onchange=()=>{if(!LIB.q.trim())render()}}
- const so=$('#libSort');if(so)so.onchange=()=>{LIB.sort=so.value;render()};
 }
 function afterTeam(){
  const box=$('.tpage');if(!box)return;
@@ -3770,6 +3945,14 @@ async function render(){
   app.innerHTML=wordTabHTML(r.a);
   $$('[data-wsel]').forEach(el2=>el2.onclick=()=>go('word/'+el2.dataset.wsel));
   restoreScroll();return}
+ // 설정 페이지 (§6.8)
+ if(r.name==='settings'){app.innerHTML=settingsHTML();afterSettings();restoreScroll();return}
+ // 알림 페이지 (§6.7)
+ if(r.name==='inbox'){
+  if(!online()||!S.team.id)return go('home');
+  if(!NOTI.at){app.innerHTML='<div class="empty" style="margin:40px auto;max-width:420px"><b>알림을 받는 중…</b></div>';await pullNoti();if(stale())return}
+  else if(!same)pullNoti().then(ch=>{if(ch&&route().name==='inbox')render()});
+  app.innerHTML=inboxHTML();updateBadges();restoreScroll();return}
  // §3 편성 화면들 (온라인 전용)
  if(/^(cal|sched|lineup)$/.test(r.name)){
   if(!online()||!S.team.id)return go('home');
@@ -3778,8 +3961,9 @@ async function render(){
   const missing=r.name==='lineup'&&!SCH.dates.some(x=>x.id===r.a);   // 방금 생긴 날짜면 캐시에 없으니 다시 받는다
   if(!SCH.at||missing||!SCH.dates.length){app.innerHTML=`<div class="empty" style="margin:40px auto;max-width:420px"><b>일정을 받는 중…</b></div>`;await pullSchedule(SCH.month||monthKey(),true);if(stale())return}
   else if(!same)pullSchedule(SCH.month||monthKey(),true).then(ch=>{if(ch&&/^(cal|sched|lineup)$/.test(route().name))render()});   // 화면에 들어올 때는 캐시를 무시하고 다시 받는다
-  if(r.name==='sched'&&!isLeader())return go('cal');
-  if(r.name==='lineup'&&!isLeader())return go('cal');
+  const canSched=isLeader()||me().role==='session_lead';
+  if(r.name==='sched'&&!canSched)return go('cal');
+  if(r.name==='lineup'&&!isLeader())return go('cal');   // 고치기는 인도자만
   app.innerHTML=r.name==='cal'?calHTML():r.name==='sched'?schedHTML():lineupHTML(r.a);
   document.body.classList.toggle('lnopen',r.name==='lineup');
   if(r.name==='lineup')afterLineup(r.a);else if(r.name==='cal')afterCal();
@@ -4083,6 +4267,8 @@ document.addEventListener('keydown',e=>{
  else if(PL.stage&&(e.key==='PageDown'||e.key==='PageUp')){e.preventDefault();navSong(e.key==='PageDown'?1:-1)}
 });
 document.addEventListener('click',async e=>{
+ // 종 드롭다운은 바깥을 누르면 닫는다 (§5 드롭다운)
+ if(NOTI.open&&!e.target.closest('.bellwrap')){NOTI.open=false;render();return}
  // 코드 차트 셀 탭 → 고치기 (편집기에서만)
  const cc=e.target.closest('[data-cc]');
  if(cc&&!cc.closest('#modal')){const r0=route();const s0=svcById(r0.a);const it0=s0&&curItem(s0);
@@ -4138,7 +4324,9 @@ document.addEventListener('click',async e=>{
  const el=e.target.closest('[data-act]');if(!el||el.closest('#modal'))return;const act=el.dataset.act;const r=route();const svc=svcById(el.dataset.id||r.a);
  switch(act){
   case 'home':go('home');break;
-  case 'settings':settingsModal();break;
+  case 'settings':NOTI.open=false;go('settings');break;
+  case 'set-tab':{SET.tab=el.dataset.t;render();break}
+  case 'set-theme':{THEME.set(el.dataset.t);render();break}
   case 'team':go('team');break;
   /* ---- 라이브러리 (A부) ---- */
   case 'lib-back':go('library');break;
@@ -4163,6 +4351,7 @@ document.addEventListener('click',async e=>{
   case 'lib-add-sel':{if(!LIB.sel.length){toast('곡을 고르세요');break}addToServiceSheet(LIB.sel.slice());break}
   case 'lib-receive':shareTakeModal();break;
   case 'lib-shares':shareListModal();break;
+  case 'lib-sort':{LIB.sort=el.dataset.v;render();break}
   case 'lib-season-off':{LIB.season=false;LIB.pick=null;LIB.sel=[];render();break}
   case 'song-more':{const s2=songById(r.a);if(s2)songMoreModal(s2);break}
   case 'song-clone':{const s2=songById(r.a);if(!s2)break;
@@ -4213,11 +4402,14 @@ document.addEventListener('click',async e=>{
   case 'tm-leave':{if(!confirm('팀에서 나갈까요?\n쓴 메모와 지난 편성은 남고, 앞으로의 편성에서만 빠져요.'))break;
    try{await api('/teams/'+S.team.id+'/members/'+me().userId,{method:'DELETE'});S.team.id='';S.team.invite='';TM.data=null;save();await refreshMe();go('home')}catch(e){toast(e.message)}break}
   case 'msg':messageSheet(svcById(el.dataset.id||r.a),false);break;
-  case 'theme':THEME.cycle();break;
   case 'home-more':{const on=online(),lead=isLeader();modal(`<b style="font-size:17px">더 보기</b><div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">${on?`<button class="btn" data-m="sync">${ic('import')}팀 서버에서 새로고침</button>`:''}${(!on||lead)?`<button class="btn" data-m="import">${ic('import')}파일 가져오기</button>`:''}<button class="btn" data-m="export">${ic('export')}파일 내보내기</button>${lead?`<button class="btn" data-m="lib">${ic('music')}라이브러리</button>`:''}</div>`,{center:true});
    $('#modal').onclick=ev=>{const b=ev.target.closest('[data-m]');if(!b)return;closeModal();if(b.dataset.m==='lib'){go('library');return}const proxy=document.querySelector(`.more-hide [data-act="${b.dataset.m}"]`);if(proxy)proxy.click()};break}
   case 'nav-lib':{if(!online()){toast('라이브러리는 서버에 연결돼 있을 때 볼 수 있어요');break}go('library');break}
-  case 'inbox':inboxModal();break;
+  case 'inbox':NOTI.open=false;go('inbox');break;
+  case 'bell':{NOTI.open=!NOTI.open;if(NOTI.open)pullNoti().then(()=>{if(NOTI.open)render()});render();break}
+  case 'noti-all':{await markAllRead();render();break}
+  case 'noti-open':await openNoti(el.dataset.id);break;
+  case 'more-menu':moreMenu();break;
   case 'repub':{if(!svc||!svc.published)break;toast('다시 올리는 중…');
    try{await SYNC.pushPublish(svc);delete svc.pubPending;save();render();toast('팀에 공유됐어요')}
    catch(e){toast(e.message)}break}
@@ -4248,7 +4440,6 @@ document.addEventListener('click',async e=>{
   case 'cal':go('cal');break;
   case 'sched':go('sched');break;
   case 'lineup':go('lineup/'+el.dataset.id);break;
-  case 'cal-mv':{SCH.month=monthAdd(SCH.month||monthKey(),+el.dataset.d);render();break}
   case 'cal-only':{SCH.onlyUnset=!SCH.onlyUnset;render();break}
   case 're-ask':{const m2=SCH.members.find(x=>x.userId===el.dataset.id);
    try{await api('/notifications/ask',{method:'POST',body:{teamId:S.team.id,userId:el.dataset.id,month:SCH.month||monthKey()}});toast((m2?m2.name:'그 멤버')+'에게 다시 요청했어요')}catch(e){toast(e.message)}break}
@@ -4367,7 +4558,7 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
  clearStalePending();   // 인식 중에 앱이 닫혀 pending 으로 굳은 조각을 풀어 준다
  NET.server=await probeServer();
  if(NET.server===true){try{await takeMe(await api('/me'))}catch(e){if(e.status===401)NET.user=null;else NET.server=null}}
- if(!online()&&!me().name){setTimeout(()=>{render();settingsModal()},0)}else render();
+ if(!online()&&!me().name){location.hash='#/settings';render()}else render();
  if(online()&&S.team.id){SYNC.pullServices().then(ch=>{if(ch)render()});SYNC.pullLibrary();pullSongs(true).then(ch=>{if(ch&&/^(edit|view|play|library)$/.test(route().name))render()}).catch(()=>{})}
  probeOmr();startNotiPoll();
  window.CONTI={fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go};

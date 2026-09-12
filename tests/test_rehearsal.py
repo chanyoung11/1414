@@ -16,7 +16,7 @@ def run():
         pl.goto(URL); pl.wait_for_selector('#lgUser', timeout=8000)
         pl.click('[data-act="lg-mode"][data-m="signup"]'); pl.wait_for_selector('#lgName')
         pl.fill('#lgName', '하은'); pl.fill('#lgUser', 'rl' + tag); pl.fill('#lgPass', 'secret1'); pl.click('[data-act="lg-submit"]')
-        pl.wait_for_selector('#gtTeam', timeout=8000); pl.fill('#gtTeam', '녹음팀'); pl.click('[data-act="team-create"]'); pl.wait_for_selector('.hd [data-act="team"]', timeout=8000)
+        pl.wait_for_selector('#gtTeam', timeout=8000); pl.fill('#gtTeam', '녹음팀'); pl.click('[data-act="team-create"]'); pl.wait_for_selector('.shell[data-page]', timeout=8000)
         team = pl.evaluate('CONTI.S.team.id')
         link = pl.evaluate("location.origin+location.pathname+'#/join/'+CONTI.S.team.invite")
 
@@ -25,7 +25,7 @@ def run():
         pm.goto(link); pm.wait_for_selector('#lgUser', timeout=8000)
         pm.click('[data-act="lg-mode"][data-m="signup"]'); pm.wait_for_selector('#lgName')
         pm.fill('#lgName', '민수'); pm.fill('#lgUser', 'rm' + tag); pm.fill('#lgPass', 'secret1'); pm.click('[data-act="lg-submit"]')
-        pm.wait_for_selector('#jnName', timeout=8000); pm.click('[data-act="team-join"]'); pm.wait_for_selector('.hd [data-act="team"]', timeout=8000)
+        pm.wait_for_selector('#jnName', timeout=8000); pm.click('[data-act="team-join"]'); pm.wait_for_selector('.shell[data-page]', timeout=8000)
 
         # 예배 발행
         pl.click('[data-act="new-svc"]'); pl.wait_for_selector('[data-f="svc.name"]'); pl.fill('[data-f="svc.name"]', '녹음 예배')

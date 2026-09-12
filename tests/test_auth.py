@@ -33,12 +33,13 @@ def run():
         login_or_signup(pg, LEADER, 'signup')
         pg.wait_for_selector('#gtTeam', timeout=8000)                       # 팀 없음 → 팀 만들기 화면
         pg.fill('#gtTeam', 'LIKE 찬양팀'); pg.click('#gtSess .q:has-text("인도자")'); pg.click('[data-act="team-create"]')
-        pg.wait_for_selector('.hd [data-act="team"]', timeout=8000)            # 홈: 팀 버튼
-        head = pg.locator('.hd').inner_text()
-        if '하은' not in head or '인도자' not in head: fail('홈 헤더에 이름/역할 없음: ' + head)
+        pg.wait_for_selector('.shell[data-page]', timeout=8000)            # 홈 셸
+        # 이름·역할은 헤더가 아니라 사이드바 아래 프로필 카드에 있다 (§6.1)
+        prof = pg.locator('.side .prof').inner_text()
+        if '하은' not in prof or '인도자' not in prof: fail('사이드바 프로필에 이름/역할 없음: ' + prof)
         pg.screenshot(path='t_auth_home.png')
         # 초대 링크
-        pg.click('.hd [data-act="team"]'); pg.wait_for_selector('.tpage', timeout=8000)
+        pg.click('.navi[data-act="team"]'); pg.wait_for_selector('.tpage', timeout=8000)
         open_sect(pg, 'invites')
         link = pg.evaluate("location.origin+location.pathname+'#/join/'+CONTI.S.team.invite")
         if '#/join/' not in link: fail('초대 링크 없음: ' + link)
@@ -57,9 +58,9 @@ def run():
         pm.wait_for_selector('#jnName', timeout=8000)                       # 로그인 후 초대 화면으로 이어짐
         if 'LIKE 찬양팀' not in pm.locator('.auth').inner_text(): fail('초대 화면에 팀 이름 없음')
         pm.click('#gtSess .q:has-text("드럼")'); pm.click('[data-act="team-join"]')
-        pm.wait_for_selector('.hd [data-act="team"]', timeout=8000)
-        head = pm.locator('.hd').inner_text()
-        if '민수' not in head or '드럼' not in head or '멤버' not in head: fail('멤버 헤더 이상: ' + head)
+        pm.wait_for_selector('.shell[data-page]', timeout=8000)
+        who = pm.evaluate("(()=>{const m=CONTI.S.team.me||{};return [m.name,m.session,m.role].join(' ')})()")
+        if '민수' not in who or '드럼' not in who or 'member' not in who: fail('멤버 정보 이상: ' + who)
         if pm.locator('[data-act="new-svc"]').count(): fail('멤버에게 새 예배 버튼이 보임')
         pm.screenshot(path='t_auth_member.png')
         # 멤버가 편집 주소로 직접 접근 → 보기로 튕김
@@ -67,7 +68,8 @@ def run():
         pm.goto(URL + '#/edit/svc1'); pm.wait_for_timeout(600)
         if not pm.url.replace('#/', '#').endswith('#view/svc1'): fail('멤버 편집 가드 실패: ' + pm.url)
         # 멤버가 팀 모달을 열면 초대 링크는 없고 멤버 목록만
-        pm.goto(URL + '#/home'); pm.wait_for_selector('.hd [data-act="team"]'); pm.click('.hd [data-act="team"]'); pm.wait_for_selector('.tpage', timeout=8000)
+        # 이 멤버 창은 폰 폭(430)이라 사이드바가 없다 (§7) — 주소로 간다
+        pm.goto(URL + '#/team'); pm.wait_for_selector('.tpage', timeout=8000)
         if pm.locator('.tsec[data-sect="invites"]').count(): fail('멤버에게 초대 링크 섹션이 보임')
         if pm.locator('.tsec[data-sect="sessions"]').count(): fail('멤버에게 세션 편집이 보임')
         open_sect(pm, 'members')
@@ -75,27 +77,28 @@ def run():
         if pm.locator('[data-medit]').count(): fail('멤버에게 고치기 버튼이 보임')
         pm.goto(URL + '#/home'); pm.wait_for_timeout(400)
         # 설정: 이름·세션 변경이 서버에 반영
-        pm.click('.hd [data-act="settings"]'); pm.wait_for_selector('#sName')
+        pm.goto(URL + '#/settings'); pm.wait_for_selector('.setpane', timeout=8000); pm.wait_for_selector('#sName')
         if pm.locator('#sRole').count(): fail('온라인 모드에서 역할 토글이 보임')
         pm.fill('#sName', '민수2'); pm.click('#sSess .q:has-text("베이스")'); pm.click('#sOk'); pm.wait_for_timeout(600)
         pm.reload(); pm.wait_for_selector('.hd', timeout=8000); pm.wait_for_timeout(500)
-        head = pm.locator('.hd').inner_text()
-        if '민수2' not in head or '베이스' not in head: fail('설정 변경이 서버에 반영되지 않음: ' + head)
+        who = pm.evaluate("(()=>{const m=CONTI.S.team.me||{};return [m.name,m.session].join(' ')})()")
+        if '민수2' not in who or '베이스' not in who: fail('설정 변경이 서버에 반영되지 않음: ' + who)
         print('member ok')
 
         # ---- 인도자: 멤버 역할을 세션리더로 → 멤버 쪽 재로그인 시 반영 ----
-        pg.click('.hd [data-act="team"]'); pg.wait_for_selector('.tpage', timeout=8000)
+        pg.click('.navi[data-act="team"]'); pg.wait_for_selector('.tpage', timeout=8000)
         open_sect(pg, 'members')
         uid = pg.evaluate("CONTI.TM.data.members.find(m=>m.name==='민수2').userId")
         pg.click(f'[data-medit="{uid}"]'); pg.wait_for_selector('#meOk', timeout=5000)
         pg.click('[data-mr="session_lead"]'); pg.click('#meOk'); pg.wait_for_timeout(1500)
         pg.goto(URL + '#/home'); pg.wait_for_timeout(400)
         pm.reload(); pm.wait_for_selector('.hd', timeout=8000); pm.wait_for_timeout(500)
-        if '세션리더' not in pm.locator('.hd').inner_text(): fail('역할 변경 미반영: ' + pm.locator('.hd').inner_text())
+        role = pm.evaluate("(()=>{const m=CONTI.S.team.me||{};return m.role})()")
+        if role != 'session_lead': fail('역할 변경 미반영: ' + str(role))
         print('role ok')
 
         # ---- 로그아웃 → 로그인 화면, 잘못된 비밀번호 → 오류 문구 ----
-        pm.click('.hd [data-act="settings"]'); pm.wait_for_selector('#sLogout')
+        pm.goto(URL + '#/settings'); pm.wait_for_selector('.setpane', timeout=8000); pm.click('[data-act="set-tab"][data-t="app"]'); pm.wait_for_selector('#sLogout')
         # 로그아웃은 한 번 더 묻는다 (받아 둔 콘티·악보가 같이 지워지므로)
         cancelled = []
         pm.once('dialog', lambda d: (cancelled.append(d.message), d.dismiss()))
@@ -107,7 +110,7 @@ def run():
         print('logout confirm ok')
         pm.fill('#lgUser', MEMBER[0]); pm.fill('#lgPass', 'wrong!'); pm.click('[data-act="lg-submit"]'); pm.wait_for_timeout(600)
         if '맞지 않아요' not in pm.locator('#lgErr').inner_text(): fail('잘못된 비밀번호 안내 없음')
-        login_or_signup(pm, MEMBER, 'login'); pm.wait_for_selector('.hd [data-act="team"]', timeout=8000)
+        login_or_signup(pm, MEMBER, 'login'); pm.wait_for_selector('.shell[data-page]', timeout=8000)
         print('logout/login ok')
 
         # ---- 세션 쿠키 없이 API 직접 호출 → 401 ----

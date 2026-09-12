@@ -20,7 +20,7 @@ def run():
         pl.goto(URL); pl.wait_for_selector('#lgUser', timeout=8000)
         pl.click('[data-act="lg-mode"][data-m="signup"]'); pl.wait_for_selector('#lgName')
         pl.fill('#lgName', '하은'); pl.fill('#lgUser', 'sl' + tag); pl.fill('#lgPass', 'secret1'); pl.click('[data-act="lg-submit"]')
-        pl.wait_for_selector('#gtTeam', timeout=8000); pl.fill('#gtTeam', '편성팀'); pl.click('[data-act="team-create"]'); pl.wait_for_selector('.hd [data-act="team"]', timeout=8000)
+        pl.wait_for_selector('#gtTeam', timeout=8000); pl.fill('#gtTeam', '편성팀'); pl.click('[data-act="team-create"]'); pl.wait_for_selector('.shell[data-page]', timeout=8000)
         team = pl.evaluate('CONTI.S.team.id')
         link = pl.evaluate("location.origin+location.pathname+'#/join/'+CONTI.S.team.invite")
 
@@ -28,11 +28,11 @@ def run():
         pm.goto(link); pm.wait_for_selector('#lgUser', timeout=8000)
         pm.click('[data-act="lg-mode"][data-m="signup"]'); pm.wait_for_selector('#lgName')
         pm.fill('#lgName', '민수'); pm.fill('#lgUser', 'sm' + tag); pm.fill('#lgPass', 'secret1'); pm.click('[data-act="lg-submit"]')
-        pm.wait_for_selector('#jnName', timeout=8000); pm.click('#gtSess .q:has-text("드럼")'); pm.click('[data-act="team-join"]'); pm.wait_for_selector('.hd [data-act="team"]', timeout=8000)
+        pm.wait_for_selector('#jnName', timeout=8000); pm.click('#gtSess .q:has-text("드럼")'); pm.click('[data-act="team-join"]'); pm.wait_for_selector('.shell[data-page]', timeout=8000)
         uidM = pm.evaluate('CONTI.NET.user.id')
 
         # ---- 겸임 세션: 민수 = 드럼 + 싱어 ----
-        pm.click('.hd [data-act="settings"]'); pm.wait_for_selector('#sSess')
+        pm.goto(URL + '#/settings'); pm.wait_for_selector('.setpane', timeout=8000); pm.wait_for_selector('#sSess')
         pm.click('#sSess2 [data-s2="싱어"]'); pm.click('#sOk'); pm.wait_for_timeout(1200)
         ses = pm.evaluate('CONTI.S.team.me.mySessions')
         if '드럼' not in ses or '싱어' not in ses: fail('겸임 세션 저장 안 됨: %s' % ses)
@@ -55,7 +55,9 @@ def run():
         if pm.evaluate("CONTI.SCH.availability.find(a=>a.date===%s).state" % json.dumps(d1)) != 'maybe': fail('두 번째 탭이 maybe 가 아님')
         srv = cM.request.get(URL + 'api/teams/%s/schedule' % team).json()
         if not [a for a in srv['availability'] if a['date'] == d1 and a['state'] == 'maybe']: fail('서버에 maybe 저장 안 됨')
-        if '사역 2일 중 1일 답함' not in pm.locator('.cal-foot').inner_text(): fail('달력 하단 진행 문구 이상: ' + pm.locator('.cal-foot').inner_text())
+        # 달마다 제목 줄에 진행이 붙는다 (§6.6: 세 달 세로 · 월 이동 화살표 없음)
+        cal = pm.locator('main.w-read').inner_text()
+        if '사역 2일 중 1일 답함' not in cal: fail('달력 진행 문구 이상: ' + cal[:300])
         print('calendar cycle ok')
 
         # ---- 인도자 편성 표 + 그날 편성 ----
