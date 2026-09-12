@@ -409,3 +409,6 @@ create table if not exists ai_usage (
 -- 코드로 받은 곡의 출처 (명세 A.7.3: '코드로 받음 · {팀명}' 배지 30일)
 alter table songs add column if not exists from_team text;
 alter table songs add column if not exists from_at   timestamptz;
+
+-- 그날만 세션 인원을 늘리거나 줄일 때. 없으면 팀 기본 정원(settings.slots)을 쓴다
+alter table service_dates add column if not exists slots jsonb;

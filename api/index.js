@@ -865,7 +865,10 @@ on('PUT', '/services/:id', async ({ uid, params, body }) => {
     const version = +doc.version || 0, md = mdOf(doc.date), name = str(doc.name, 60) || '예배';
     const label = name.startsWith(md) ? name : `${md} ${name}`; // 이름 규칙에 이미 날짜가 들어 있으면 겹쳐 쓰지 않음
     const titles = doc.items.map((it) => str(it && it.title, 40)).filter(Boolean);
-    const body = titles.length ? (titles.length > 1 ? `${titles[0]} ~ ${titles[titles.length - 1]}` : titles[0]) : '곡 없음';
+    const songs = titles.length ? (titles.length > 1 ? `${titles[0]} ~ ${titles[titles.length - 1]}` : titles[0]) : '곡 없음';
+    // 바뀐 것이 있으면 그것을 알려 준다. 팀원이 알림만 보고도 뭘 다시 봐야 하는지 안다
+    const chg = Array.isArray(doc.changes) ? doc.changes.map((c) => str(c && c.text, 60)).filter(Boolean) : [];
+    const body = chg.length ? (chg.slice(0, 3).join(' · ') + (chg.length > 3 ? ` 외 ${chg.length - 3}` : '')) : songs;
     const to = await teamUserIds(teamId, { except: uid });
     await notify(teamId, to, 'publish', params.id, { title: `${label} 콘티 v${version}`, body, link: '#/view/' + params.id });
     const prevMsg = cur && cur.doc ? String(cur.doc.message || '') : '';
@@ -2037,7 +2040,7 @@ on('GET', '/teams/:id/schedule', async ({ uid, url, params }) => {
   const to = /^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get('to') || '') ? url.searchParams.get('to') : null;
   const range = from && to ? 'and date between $2 and $3' : "and date >= current_date - interval '1 month'";
   const args = from && to ? [params.id, from, to] : [params.id];
-  const dates = await q(`select id, date::text as date, label, time, source, open, service_id as "serviceId", lineup, notified
+  const dates = await q(`select id, date::text as date, label, time, source, open, service_id as "serviceId", lineup, notified, slots
                          from service_dates where team_id=$1 ${range} order by date asc`, args);
   const av = m.role === 'leader'
     ? await q(`select user_id as "userId", date::text as date, state, memo from availability where team_id=$1 ${range}`, args)
@@ -2085,8 +2088,17 @@ on('PUT', '/teams/:id/dates/:did/lineup', async ({ uid, params, body }) => {
     const old = prev.find((p) => p.session === r.session && p.memberId === r.memberId);
     return { ...r, notifiedAt: old ? old.notifiedAt : null, acknowledgedAt: old ? old.acknowledgedAt : null };
   });
-  await q('update service_dates set lineup=$2 where id=$1', [params.did, JSON.stringify(next)]);
-  return { ok: true, lineup: next, changed: lineupKey(prev) !== lineupKey(next) };
+  // 그날만 세션 인원을 늘리거나 줄일 수 있다. 팀 기본 정원은 건드리지 않는다
+  let slots;
+  if (body.slots && typeof body.slots === 'object') {
+    const list = (await one('select sessions from teams where id=$1', [params.id])).sessions || [];
+    slots = {};
+    for (const k of list) if (body.slots[k] != null) slots[k] = Math.max(0, Math.min(9, Math.round(+body.slots[k]) || 0));
+    await q('update service_dates set lineup=$2, slots=$3 where id=$1', [params.did, JSON.stringify(next), JSON.stringify(slots)]);
+  } else {
+    await q('update service_dates set lineup=$2 where id=$1', [params.did, JSON.stringify(next)]);
+  }
+  return { ok: true, lineup: next, slots, changed: lineupKey(prev) !== lineupKey(next) };
 });
 
 // 통보하기 / 변경 통보 (§3.4)

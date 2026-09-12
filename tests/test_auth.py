@@ -95,7 +95,16 @@ def run():
         print('role ok')
 
         # ---- 로그아웃 → 로그인 화면, 잘못된 비밀번호 → 오류 문구 ----
-        pm.click('.hd [data-act="settings"]'); pm.wait_for_selector('#sLogout'); pm.click('#sLogout'); pm.wait_for_selector('#lgUser', timeout=8000)
+        pm.click('.hd [data-act="settings"]'); pm.wait_for_selector('#sLogout')
+        # 로그아웃은 한 번 더 묻는다 (받아 둔 콘티·악보가 같이 지워지므로)
+        cancelled = []
+        pm.once('dialog', lambda d: (cancelled.append(d.message), d.dismiss()))
+        pm.click('#sLogout'); pm.wait_for_timeout(500)
+        if not cancelled: fail('로그아웃 확인 창이 안 뜸')
+        if pm.locator('#lgUser').count(): fail('취소했는데도 로그아웃됨')
+        pm.once('dialog', lambda d: d.accept())
+        pm.click('#sLogout'); pm.wait_for_selector('#lgUser', timeout=8000)
+        print('logout confirm ok')
         pm.fill('#lgUser', MEMBER[0]); pm.fill('#lgPass', 'wrong!'); pm.click('[data-act="lg-submit"]'); pm.wait_for_timeout(600)
         if '맞지 않아요' not in pm.locator('#lgErr').inner_text(): fail('잘못된 비밀번호 안내 없음')
         login_or_signup(pm, MEMBER, 'login'); pm.wait_for_selector('.hd [data-act="team"]', timeout=8000)
