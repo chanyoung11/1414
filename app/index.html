@@ -647,6 +647,9 @@ body.stgon{overflow:hidden}
 .ppage .pstrip .m{display:inline-flex;align-items:center;gap:4px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ppage .pstrip .m .who{font-size:9px;font-weight:700;color:#fff;background:#777;border-radius:3px;padding:0 4px}
 .ppage .pstrip .m.all .who{background:#111}
+.ppage .pchart .chart{margin:0}
+.ppage .pchart .cbar,.ppage .pchart .cbars{border-color:#bbb}
+.ppage .pchart .clr{color:#444}
 .ppage .pdiv{display:flex;align-items:center;gap:8px;color:#999;font-size:10px}
 .ppage .pdiv::before,.ppage .pdiv::after{content:"";flex:1;height:1px;background:#ddd}
 .ppage .pfoot2{position:absolute;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:10px;color:#777;border-top:1px solid #ddd;padding-top:5px}
@@ -4334,7 +4337,17 @@ function pgCompose(svc){
  const gutter=PG.gutter;const opt={memos:PRT.memos,session,ctx,gutter};
  const pages=[];
  picked.forEach((it,idx)=>{
-  if(!(it.pieces||[]).length)return;
+  const hasChart=!!(it.chart&&it.chart.sections&&it.chart.sections.length);
+  if(!(it.pieces||[]).length){
+   if(!hasChart)return;
+   // 악보 사진 없이 코드 차트만 있는 곡: 머리 + 차트로 한 장
+   const headH=pgHeadH(it,fullW);
+   const p={blocks:[{type:'head',height:headH,item:it,idx:it._n,full:true,col:0,top:PG.margin},
+                    {type:'chart',height:fullH-headH-10,item:it,full:true,col:0,top:PG.margin+headH+10}],
+            box:{cols:1,cw:fullW,ch:fullH,gutter,top:PG.margin},svc,pub,session};
+   if(PRT.next&&idx<picked.length-1){const nx=picked[idx+1];
+    p.nextText=`다음 ${nx._n+1}. ${nx.title||'(제목 없음)'} / ${pgKey(nx)}`}
+   pages.push(p);return}
   const headH=pgHeadH(it,fullW);const H=fullH-headH-10;
   const colsList=PRT.orient==='landscape'?[1,2,3]:[1,2];
   const best=pgBestFit(it,fullW,H,colsList,PRT.scale,90*PMM,opt);   // 악보 폭 최소 90mm
@@ -4381,6 +4394,7 @@ function pgBlockHTML(b,box,page){
     if(!hasStrip&&m.py>=start&&m.py<end)sub+=`<div class="pmk" style="left:${m.px*scale}px;top:${(m.py-start)*scale}px">${esc(m.label)}</div>`});
    inner+=`<div class="pslice" style="top:${off}px;width:${w}px;height:${hh}px">${sub}</div>`;off+=hh});
   return `<div class="blk" style="left:${left}px;top:${T}px;width:${w}px;height:${b.height}px">${inner}</div>`}
+ if(b.type==='chart')return `<div class="blk pchart" style="left:${L}px;top:${T}px;width:${W}px">${chartHTML(b.item,{})}</div>`;
  if(b.type==='strip')return `<div class="pstrip" style="left:${L}px;top:${T}px;width:${W}px;height:${b.height}px">${b.markers.map(m=>`<span class="mk2">${esc(m.label)}</span>${b.mods[m.label]?`<span class="mod">${esc(b.mods[m.label])}</span>`:''}${m.vis.map(n=>{const all=n.layer==='all'||(n.layer==='leader'&&!n.session);return `<span class="m ${all?'all':''}"><span class="who">${all?'전체':esc(n.session||'전체')}</span>${esc(n.text)}</span>`}).join('')}`).join('<span style="width:10px;display:inline-block"></span>')}</div>`;
  if(b.type==='divider')return `<div class="blk pdiv" style="left:${L}px;top:${T}px;width:${W}px">${esc(b.label)}</div>`;
  return ''}

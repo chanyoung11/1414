@@ -109,6 +109,19 @@ def run():
         if empty: fail('내용 없는 빈 페이지 %d장' % empty)
         print('빈 페이지 없음 ok')
 
+        # 악보 사진 없이 코드 차트만 있는 곡도 찍힌다 (옛 인쇄가 찍던 것)
+        pg.click('[data-pv="close"]'); pg.wait_for_timeout(400)
+        pg.evaluate("""(()=>{const s=CONTI.S.services[0];
+          s.items.push({id:'ch1',title:'차트만 있는 곡',key:'C',mod:'',form:'AABB',pieces:[],media:[],notes:[],
+            chart:{key:'C',sections:[{name:'A',bars:[{chords:['C']},{chords:['G']},{chords:['Am']},{chords:['F']}]}]}});
+          CONTI.save()})()""")
+        pg.wait_for_timeout(300)
+        pg.click('[data-act="print"]'); pg.wait_for_selector('#pvGo', timeout=8000)
+        pg.click('#pvGo'); pg.wait_for_selector('#printArea.pv .ppage', timeout=10000); pg.wait_for_timeout(800)
+        body = pg.locator('#printArea').inner_text()
+        if '차트만 있는 곡' not in body: fail('코드 차트만 있는 곡이 인쇄에서 빠짐')
+        if not pg.locator('.ppage .pchart').count(): fail('코드 차트가 안 그려짐')
+        print('코드 차트만 있는 곡 ok')
         pg.click('[data-pv="close"]'); pg.wait_for_timeout(400)
         if pg.locator('#printArea').count(): fail('닫기가 안 먹음')
         if errs: fail('JS 오류: %s' % errs[:3])
