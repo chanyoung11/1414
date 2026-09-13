@@ -6,6 +6,7 @@ import { sessionClaims, sessionCookie, clearSessionCookie, randomToken } from '.
 import { hashPassword, verifyPassword, USERNAME_RE, PASSWORD_MIN } from '../lib/password.js';
 import { putBlob, delBlobs, readUrls, presignPut, headBlob } from '../lib/blob.js';
 import { ocrBands, visionConfigured } from '../lib/vision.js';
+import { sendPush, pushConfigured, vapidPublicKey } from '../lib/push.js';
 import { transcribeSheet, transcribeScore, geminiConfigured, geminiModel, estimateUSD } from '../lib/gemini.js';
 import { norm as normSong, cho as choSong } from '../lib/song.js';
 import { randomBytes } from 'node:crypto';
@@ -206,6 +207,64 @@ on('POST', '/auth/password', async ({ req, uid, body }) => {
 });
 
 on('GET', '/me', async ({ uid }) => { if (!uid) throw noAuth(); const r = await meView(uid); const u = await one('select recovery_hash is not null as has from users where id=$1', [uid]); r.user.hasRecovery = !!(u && u.has); return r; });
+
+// ---------- 개인 설정 (무대 조판 · 조용한 시간 · 알림 끄기) ----------
+// 기기를 옮겨도 따라온다. 교회 컴퓨터에서 로그인해 PDF 뽑을 때 내 조판이 그대로 온다
+on('GET', '/me/prefs', async ({ uid }) => {
+  if (!uid) throw noAuth();
+  const u = await one('select coalesce(prefs,\'{}\'::jsonb) as prefs from users where id=$1', [uid]);
+  return { prefs: (u && u.prefs) || {}, push: { configured: pushConfigured(), key: vapidPublicKey() } };
+});
+// 부분 병합. 통째로 덮으면 다른 기기가 방금 저장한 것이 날아간다
+on('PATCH', '/me/prefs', async ({ uid, body }) => {
+  if (!uid) throw noAuth();
+  const patch = body && typeof body.prefs === 'object' && body.prefs ? body.prefs : {};
+  if (JSON.stringify(patch).length > 200000) throw new HttpError(413, 'too_big', '설정이 너무 큽니다');
+  const u = await one(`update users set prefs = coalesce(prefs,'{}'::jsonb) || $2::jsonb where id=$1 returning prefs`,
+    [uid, JSON.stringify(patch)]);
+  return { prefs: (u && u.prefs) || {} };
+});
+// 무대 조판은 곡·기기구간마다 따로. 한 덩어리로 합치면 기기끼리 서로 덮는다
+on('PUT', '/me/prefs/stage/:key', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  const key = String(params.key || '').slice(0, 120);
+  if (!/^[A-Za-z0-9_.:~-]+$/.test(key)) throw new HttpError(400, 'bad_key', '잘못된 키');
+  const val = body && typeof body.value === 'object' && body.value ? body.value : null;
+  // jsonb_set 은 중간 객체를 만들지 못한다. stage 가 없으면 조용히 아무것도 안 저장된다
+  const sql = val
+    ? `update users set prefs = jsonb_set(coalesce(prefs,'{}'::jsonb), '{stage}',
+         coalesce(prefs->'stage','{}'::jsonb) || jsonb_build_object($2::text, $3::jsonb), true) where id=$1`
+    : `update users set prefs = jsonb_set(coalesce(prefs,'{}'::jsonb), '{stage}',
+         coalesce(prefs->'stage','{}'::jsonb) - $2::text, true) where id=$1`;
+  await q(sql, val ? [uid, key, JSON.stringify(val)] : [uid, key]);
+  return { ok: true };
+});
+
+// ---------- 푸시 구독 ----------
+on('GET', '/push/key', async () => ({ configured: pushConfigured(), key: vapidPublicKey() }));
+on('POST', '/push/subscribe', async ({ uid, body, req }) => {
+  if (!uid) throw noAuth();
+  const sub = body && body.sub;
+  if (!sub || !sub.endpoint || !sub.keys || !sub.keys.p256dh || !sub.keys.auth) throw new HttpError(400, 'bad_sub', '구독 정보가 없습니다');
+  const ep = String(sub.endpoint).slice(0, 2000);
+  await q(`insert into push_subs(endpoint, user_id, keys, ua) values($1,$2,$3,$4)
+           on conflict (endpoint) do update set user_id=excluded.user_id, keys=excluded.keys, ua=excluded.ua, last_ok_at=now()`,
+    [ep, uid, JSON.stringify({ p256dh: String(sub.keys.p256dh), auth: String(sub.keys.auth) }),
+     str((req && req.headers && req.headers['user-agent']) || '', 200)]);
+  return { ok: true };
+});
+on('POST', '/push/unsubscribe', async ({ uid, body }) => {
+  if (!uid) throw noAuth();
+  const ep = String((body && body.endpoint) || '').slice(0, 2000);
+  if (ep) await q('delete from push_subs where endpoint=$1 and user_id=$2', [ep, uid]);
+  return { ok: true };
+});
+// 이 기기로 시험 발송
+on('POST', '/push/test', async ({ uid }) => {
+  if (!uid) throw noAuth();
+  const n = await sendPush([uid], { title: '알림 시험', body: '이렇게 보여요', link: '#/home', type: 'test' });
+  return { sent: n };
+});
 
 // 복구 코드 발급 (로그인 상태). 코드는 한 번만 보여주고 해시만 저장
 on('POST', '/auth/recovery', async ({ uid }) => {
@@ -1832,6 +1891,10 @@ async function notify(teamId, userIds, type, targetId, { title, body = '', link 
                updated_at = now()`,
       [teamId, u, type, String(targetId || ''), str(title, 120), str(body, 300), str(link, 200), !!actionable, expiresAt]);
   }
+  // 앱 안 알림은 전부 푸시로도 나간다. 종류별 끄기·조용한 시간은 sendPush 안에서 거른다
+  try {
+    await sendPush(userIds, { title: str(title, 120), body: str(body, 300), link: str(link, 200), type, tag: `${type}:${targetId || ''}` }, { type });
+  } catch (e) { console.warn('push', e && e.message); }
 }
 // 콘티(발행본·초안)를 같은 날짜의 사역 날짜에 연결한다. 없으면 manual 날짜를 만든다 (§2.2)
 async function linkDate(teamId, serviceId, date, label) {

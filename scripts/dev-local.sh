@@ -16,6 +16,9 @@ fi
 export DATABASE_URL="postgres://postgres:pg@localhost:54329/postgres"
 export AUTH_SECRET="${AUTH_SECRET_DEV:-local-dev-secret-0123456789}"
 export PORT="${PORT:-8766}"
+# 푸시: .env.local 에 없으면 개발용 키를 쓴다
+export VAPID_PUBLIC_KEY="${VAPID_PUBLIC_KEY:-BBq9nqw8YvL_wusVh4V6jQIXo-nph79oqnhr8VhzTfO67ssHN4FwThabeFwyq7YKeYl3lIOHJRklS6kfO8sbEVo}"
+export VAPID_PRIVATE_KEY="${VAPID_PRIVATE_KEY:-Qy2iS5vLHI40osMnj_7AQwXeTtFRf0aP24RkV21cMY8}"
 
 node scripts/migrate.mjs
 exec node scripts/dev.mjs

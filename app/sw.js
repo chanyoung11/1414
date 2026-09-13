@@ -16,3 +16,30 @@ self.addEventListener('fetch', e => {
   }
   e.respondWith(caches.match(req).then(hit => hit || fetch(req).then(res => { if (res && res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); } return res; })));
 });
+
+/* ---------- 푸시 알림 ---------- */
+self.addEventListener('push', e => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (err) { d = { title: '1414', body: e.data ? e.data.text() : '' }; }
+  const title = d.title || '1414';
+  e.waitUntil(self.registration.showNotification(title, {
+    body: d.body || '',
+    icon: './icon-180.png',
+    badge: './favicon-32.png',
+    tag: d.tag || d.type || 'conti',
+    renotify: true,
+    data: { link: d.link || '#/home' }
+  }));
+});
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const link = (e.notification.data && e.notification.data.link) || '#/home';
+  const url = new URL(link.replace(/^#\/?/, '#/'), self.location.origin + self.location.pathname.replace(/sw\.js$/, '')).href;
+  e.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+    for (const c of list) {
+      // 이미 열려 있는 창이 있으면 그 창을 쓴다
+      if (c.url.indexOf(self.location.origin) === 0 && 'focus' in c) { c.navigate ? c.navigate(url) : null; return c.focus(); }
+    }
+    return clients.openWindow(url);
+  }));
+});

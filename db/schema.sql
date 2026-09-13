@@ -412,3 +412,18 @@ alter table songs add column if not exists from_at   timestamptz;
 
 -- 그날만 세션 인원을 늘리거나 줄일 때. 없으면 팀 기본 정원(settings.slots)을 쓴다
 alter table service_dates add column if not exists slots jsonb;
+
+-- ---------- 사용자별 설정 · 푸시 알림 ----------
+-- 무대 조판(기기 구간별), 조용한 시간 같은 개인 설정. 기기를 옮겨도 따라온다
+-- (교회 컴퓨터에서 로그인해 PDF 뽑을 때 내 조판이 그대로 와야 한다)
+alter table users add column if not exists prefs jsonb not null default '{}'::jsonb;
+
+create table if not exists push_subs (
+  endpoint   text primary key,
+  user_id    uuid not null references users(id) on delete cascade,
+  keys       jsonb not null,                 -- {p256dh, auth}
+  ua         text,
+  created_at timestamptz not null default now(),
+  last_ok_at timestamptz
+);
+create index if not exists push_subs_user_idx on push_subs(user_id);

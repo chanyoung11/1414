@@ -1906,9 +1906,22 @@ function settingsHTML(){
    <div class="row"><input class="field mono" id="sCapo" type="number" min="0" max="9" value="${+m.capo||0}" style="width:90px;text-align:center"><span class="hint">프렛</span></div>
    <div class="err" id="sErr"></div>
    <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn pri" id="sOk">${ic('check')}저장</button></div></div>`;
- else if(t==='noti')pane=`<div class="card"><b>알림 종류</b>
-   <div class="hint" style="margin-top:2px">알림함은 끌 수 없어요. 여기서 끄면 이 기기 알림만 꺼져요</div>
-   <div id="sNoti" style="margin-top:10px">${Object.entries(NOTI_LABEL).map(([k,v])=>`<label class="mrow" style="cursor:pointer"><span class="grow">${esc(v)}</span><input type="checkbox" data-noti="${k}" ${notiOn(k)?'checked':''}></label>`).join('')}</div></div>`;
+ else if(t==='noti'){const st=pushState();const q=quietOf();
+  pane=`<div class="card"><b>폰으로 알림 받기</b>
+   <div class="hint" style="margin-top:2px">${st==='unsupported'?'이 브라우저는 푸시 알림을 지원하지 않아요':st==='granted'?'켜져 있어요. 앱을 꺼 둬도 알림이 옵니다':st==='denied'?'브라우저에서 막혀 있어요. 주소창 옆 자물쇠에서 알림을 허용해 주세요':'아직 안 켰어요'}</div>
+   <div class="row" style="margin-top:10px;gap:8px">
+    ${st==='default'?`<button class="btn sm pri" id="sPushOn">${ic('bell')}알림 켜기</button>`:''}
+    ${st==='granted'?`<button class="btn sm" id="sPushTest">${ic('send')}시험 알림 보내기</button><button class="btn sm ghost" id="sPushOff">이 기기에서 끄기</button>`:''}</div>
+   ${iosNeedsInstall()?`<div class="hint" style="margin-top:8px">${iosTip}</div>`:''}</div>
+  <div class="card"><b>조용한 시간</b>
+   <div class="hint" style="margin-top:2px">이 시간에는 폰이 울리지 않아요. 알림함에는 그대로 쌓여서 아침에 다 볼 수 있어요</div>
+   <label class="mrow" style="cursor:pointer;margin-top:8px"><span class="grow">밤에는 울리지 않기</span><input type="checkbox" id="sQuiet" ${q.on?'checked':''}></label>
+   <div class="row" style="gap:8px;margin-top:6px" id="sQuietRow" ${q.on?'':'hidden'}>
+    <span class="hint">밤</span><input class="field mono" id="sQFrom" type="number" min="0" max="23" value="${q.from}" style="width:70px;text-align:center">
+    <span class="hint">시부터 아침</span><input class="field mono" id="sQTo" type="number" min="0" max="23" value="${q.to}" style="width:70px;text-align:center"><span class="hint">시까지</span></div></div>
+  <div class="card"><b>알림 종류</b>
+   <div class="hint" style="margin-top:2px">알림함은 끌 수 없어요. 여기서 끄면 폰 알림만 꺼져요</div>
+   <div id="sNoti" style="margin-top:10px">${Object.entries(NOTI_LABEL).map(([k,v])=>`<label class="mrow" style="cursor:pointer"><span class="grow">${esc(v)}</span><input type="checkbox" data-noti="${k}" ${notiOn(k)?'checked':''}></label>`).join('')}</div></div>`}
  else if(t==='account')pane=`<div class="card"><b>비밀번호</b>
    <div class="hint" style="margin-top:2px">비워 두면 그대로예요</div>
    <div class="row" style="margin-top:10px"><input class="field" id="sPw0" type="password" autocomplete="current-password" placeholder="현재 비밀번호"><input class="field" id="sPw1" type="password" autocomplete="new-password" placeholder="새 비밀번호 6자 이상"></div>
@@ -1935,6 +1948,10 @@ function afterSettings(){
  let sess=m.session,role=m.role;let extra=(m.mySessions||[]).filter(x=>x!==m.session);
  const mySessNow=()=>[sess,...extra.filter(x=>x!==sess)];
  const box=$('.setpane');if(!box)return;
+ const qf=$('#sQFrom'),qt=$('#sQTo');
+ const saveQ=()=>{const from=Math.max(0,Math.min(23,+((qf||{}).value)||0));
+  const to=Math.max(0,Math.min(23,+((qt||{}).value)||0));savePrefs({quiet:{...quietOf(),from,to}})};
+ if(qf)qf.onchange=saveQ;if(qt)qt.onchange=saveQ;
  const firstRun=!String(m.name||'').trim();   // 기기 전용 첫 실행: 이름을 넣고 저장하면 바로 앱으로
  box.onclick=async e=>{
   const sb=e.target.closest('[data-s]');if(sb){sess=sb.dataset.s;extra=extra.filter(x=>x!==sess);
@@ -1944,7 +1961,17 @@ function afterSettings(){
    extra=extra.includes(v)?extra.filter(x=>x!==v):[...extra,v];
    $$('#sSess2 .q').forEach(b=>b.classList.toggle('on2',extra.includes(b.dataset.s2)));return}
   const rb=e.target.closest('[data-r]');if(rb){role=rb.dataset.r;$$('#sRole .q').forEach(b=>b.classList.toggle('on',b.dataset.r===role));return}
-  const nb=e.target.closest('[data-noti]');if(nb){setNotiOn(nb.dataset.noti,nb.checked);return}
+  const nb=e.target.closest('[data-noti]');if(nb){setNotiOn(nb.dataset.noti,nb.checked);
+   savePrefs({notiOff:Object.assign({},(PREFS.data||{}).notiOff||{},{[nb.dataset.noti]:!nb.checked})});return}
+  if(e.target.closest('#sQuiet')){const on=$('#sQuiet').checked;const r=$('#sQuietRow');if(r)r.hidden=!on;
+   savePrefs({quiet:{...quietOf(),on}});return}
+  if(e.target.closest('#sPushOn')){markAskedPush();
+   let perm='denied';try{perm=await Notification.requestPermission()}catch(err){}
+   if(perm==='granted'){const ok=await pushRegister();toast(ok?'알림을 켰어요':'알림을 켜지 못했어요')}
+   else toast('브라우저에서 알림을 막았어요');render();return}
+  if(e.target.closest('#sPushOff')){await pushUnregister();toast('이 기기에서 알림을 껐어요');render();return}
+  if(e.target.closest('#sPushTest')){try{const r=await api('/push/test',{method:'POST'});
+    toast(r.sent?'보냈어요 — 잠시 뒤 알림이 떠요':'보낼 기기가 없어요. 알림 켜기를 먼저 눌러 주세요')}catch(err){toast(err.message)}return}
   if(e.target.closest('#sOk')){const name=$('#sName').value.trim();
    if(on){try{await applyMembership(await api('/me',{method:'PATCH',body:{teamId:S.team.id,name,session:sess,mySessions:mySessNow(),capo:+($('#sCapo')||{value:0}).value||0}}))}
     catch(err){$('#sErr').textContent=err.message;return}}
@@ -4037,6 +4064,9 @@ async function render(){
   restoreScroll();return}
  app.innerHTML=homeHTML();
  if(online()&&S.team.id&&NET.user&&Date.now()-NOTI.at>8000)refreshNoti();
+ // 앱에 처음 들어왔을 때 한 번만 알림 받을지 묻는다 (야간 여부 포함)
+ if(online()&&S.team.id&&NET.user)setTimeout(()=>{if(route().name==='home'&&!$('#modal').firstChild)pushOnboard()},1200);
+ if(online()&&NET.user)pullPrefs().then(()=>{if(pushState()==='granted')pushRegister()});
  if(online()&&S.team.id&&NET.user)pullSchedule(monthKey()).then(ch=>{if(ch&&route().name==='home')render()});
  if(online()&&!same)SYNC.pullServices().then(ch=>{if(ch&&route().name==='home')render()});
 }
@@ -4410,6 +4440,79 @@ function pgPagesHTML(pages){
     ${p.nextText?`<span class="nx">${esc(p.nextText)} ›</span>`:''}
     <span>${i+1} / ${pages.length}</span></div></div></div>`}).join('')}
 
+/* ---------- 개인 설정 · 푸시 알림 ----------
+   앱 안 알림은 전부 푸시로도 나간다. 조용한 시간에는 알림함에만 쌓인다 */
+const PREFS={data:null,at:0,saving:null};
+async function pullPrefs(force){if(!online()||!NET.user)return null;
+ if(!force&&PREFS.data&&Date.now()-PREFS.at<30000)return PREFS.data;
+ try{const r=await api('/me/prefs');PREFS.data=r.prefs||{};PREFS.at=Date.now();
+  if(r.push)PUSH.key=r.push.key||'',PUSH.configured=!!r.push.configured;
+  return PREFS.data}catch(e){return PREFS.data}}
+// 부분 병합으로 올린다. 통째로 덮으면 다른 기기가 방금 저장한 것이 날아간다
+async function savePrefs(patch){
+ PREFS.data=Object.assign({},PREFS.data||{},patch);
+ if(!online()||!NET.user)return;
+ try{const r=await api('/me/prefs',{method:'PATCH',body:{prefs:patch}});PREFS.data=r.prefs||PREFS.data;PREFS.at=Date.now()}
+ catch(e){}}
+const QUIET_DEF={on:true,from:22,to:8};
+const quietOf=()=>Object.assign({},QUIET_DEF,((PREFS.data||{}).quiet)||{});
+
+// 사파리로 연 아이폰·아이패드에서만 참. 홈 화면에 추가해야 푸시가 온다
+const iosNeedsInstall=()=>{
+ const ua=navigator.userAgent||'';
+ const ios=/iPad|iPhone|iPod/.test(ua)||(/Macintosh/.test(ua)&&navigator.maxTouchPoints>1);
+ if(!ios)return false;
+ const standalone=window.navigator.standalone===true||matchMedia('(display-mode: standalone)').matches;
+ return !standalone};
+const iosTip='아이폰·아이패드는 <b>공유 → 홈 화면에 추가</b>를 해야 알림을 받을 수 있어요';
+const PUSH={key:'',configured:false,sub:null};
+const pushSupported=()=>'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;
+function b64ToU8(b64){const pad='='.repeat((4-b64.length%4)%4);const s=(b64+pad).replace(/-/g,'+').replace(/_/g,'/');
+ const raw=atob(s);const out=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)out[i]=raw.charCodeAt(i);return out}
+async function pushRegister(){
+ if(!pushSupported()||!online()||!NET.user)return false;
+ if(!PUSH.key){try{const r=await api('/push/key');PUSH.key=r.key||'';PUSH.configured=!!r.configured}catch(e){return false}}
+ if(!PUSH.key)return false;
+ if(Notification.permission!=='granted')return false;
+ try{const reg=await navigator.serviceWorker.ready;
+  let sub=await reg.pushManager.getSubscription();
+  if(sub&&sub.options&&sub.options.applicationServerKey){   // 키가 바뀌었으면 다시 받는다
+   const cur=btoa(String.fromCharCode(...new Uint8Array(sub.options.applicationServerKey))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+   if(cur!==PUSH.key){try{await sub.unsubscribe()}catch(e){}sub=null}}
+  if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToU8(PUSH.key)});
+  PUSH.sub=sub;
+  await api('/push/subscribe',{method:'POST',body:{sub:sub.toJSON()}});
+  return true}catch(e){console.warn('push',e);return false}}
+async function pushUnregister(){
+ try{const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();
+  if(sub){await api('/push/unsubscribe',{method:'POST',body:{endpoint:sub.endpoint}}).catch(()=>{});await sub.unsubscribe()}
+  PUSH.sub=null}catch(e){}}
+const pushState=()=>!pushSupported()?'unsupported':Notification.permission;
+// 앱에 처음 들어올 때 한 번: 알림을 켤지 + 야간에도 울릴지
+function askedPush(){try{return localStorage.getItem('conti-push-asked')==='1'}catch(e){return true}}
+function markAskedPush(){try{localStorage.setItem('conti-push-asked','1')}catch(e){}}
+async function pushOnboard(){
+ if(!pushSupported()||!online()||!NET.user)return;
+ if(askedPush()||Notification.permission==='denied')return;
+ if(Notification.permission==='granted'){markAskedPush();pushRegister();return}
+ await pullPrefs();
+ const q=quietOf();
+ modal(`<b style="font-size:17px">알림을 받을까요?</b>
+  <div class="hint" style="margin-top:6px">콘티가 발행되거나 편성·일정이 바뀌면 폰으로 알려 드려요. 앱을 켜 두지 않아도 옵니다.</div>
+  ${iosNeedsInstall()?`<div class="card" style="margin-top:10px;background:var(--amber-soft);color:var(--amber)">${iosTip}</div>`:''}
+  <label class="mrow" style="cursor:pointer;margin-top:14px"><span class="grow"><b>밤에도 울리기</b><div class="hint">끄면 밤 ${q.from}시~아침 ${q.to}시에는 소리가 안 나요. 알림함에는 그대로 쌓여서 아침에 다 볼 수 있어요.</div></span><input type="checkbox" id="pbNight" ${q.on?'':'checked'}></label>
+  <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" id="pbNo">나중에</button><button class="btn pri" id="pbYes">${ic('bell')}알림 받기</button></div>`,{center:true});
+ $('#modal').onclick=async e=>{
+  if(e.target.closest('#pbNo')){markAskedPush();closeModal();return}
+  if(e.target.closest('#pbYes')){
+   const night=$('#pbNight').checked;   // 체크 = 밤에도 울림 = 조용한 시간 끔
+   markAskedPush();closeModal();
+   await savePrefs({quiet:{...quietOf(),on:!night}});
+   let perm='denied';try{perm=await Notification.requestPermission()}catch(err){}
+   if(perm==='granted'){const ok=await pushRegister();toast(ok?'알림을 켰어요':'알림을 켜지 못했어요')}
+   else toast('브라우저에서 알림을 막았어요 · 설정에서 다시 켤 수 있어요');
+   render();return}}}
+
 /* ---------- 무대 모드 = 자동 조판 (인쇄·내보내기 명세 §1-A) ----------
    한 곡이 한 화면에. 스크롤 없음. 조판은 사람·곡·기기 구간마다 따로 저장된다 */
 const STG={svc:null,idx:0,screen:0,open:false,pref:null,fit:null};
@@ -4418,9 +4521,20 @@ const STG_DEF={zoom:1,cols:'auto',memos:true,hl:true,bar:true};
 function deviceClass(){const w=Math.max(window.innerWidth,window.innerHeight);
  return w<760?'phone':w<1100?'tab-s':w<1500?'tab-l':'desktop'}
 function stgKey(songId){const u=(NET.user&&NET.user.id)||'local';return `stage:${u}:${songId||'-'}:${deviceClass()}`}
-function stgLoad(songId){try{const s=JSON.parse(localStorage.getItem(stgKey(songId))||'null');
- return Object.assign({},STG_DEF,s||{})}catch(e){return {...STG_DEF}}}
-function stgSave(songId){try{localStorage.setItem(stgKey(songId),JSON.stringify(STG.pref))}catch(e){}}
+const stgSlot=songId=>`${songId||'-'}~${deviceClass()}`;
+function stgLoad(songId){
+ // 서버에 있으면 그것을 쓴다 — 교회 컴퓨터에서 로그인해도 내 조판이 따라온다
+ const srv=((PREFS.data||{}).stage||{})[stgSlot(songId)];
+ if(srv)return Object.assign({},STG_DEF,srv);
+ try{const s=JSON.parse(localStorage.getItem(stgKey(songId))||'null');
+  return Object.assign({},STG_DEF,s||{})}catch(e){return {...STG_DEF}}}
+function stgSave(songId){
+ try{localStorage.setItem(stgKey(songId),JSON.stringify(STG.pref))}catch(e){}
+ const slot=stgSlot(songId);
+ PREFS.data=PREFS.data||{};PREFS.data.stage=PREFS.data.stage||{};PREFS.data.stage[slot]={...STG.pref};
+ if(!online()||!NET.user)return;
+ clearTimeout(stgSave.t);stgSave.t=setTimeout(()=>{
+  api('/me/prefs/stage/'+encodeURIComponent(slot),{method:'PUT',body:{value:{...STG.pref}}}).catch(()=>{})},600)}
 function stgItem(){const pub=pubOrDraft(STG.svc);const it=pub.items[STG.idx];if(!it)return null;
  const live=(STG.svc.items||[]).find(x=>x.id===it.id)||it;return {...it,notes:live.notes||[]}}
 // 화면 크기와 곡 하나를 받아 한 화면에 들어가는 가장 큰 조판을 찾는다
@@ -4439,7 +4553,8 @@ function stgFit(it,W,H,pref){
  const cols=W>H?2:1;const cw=(W-18*(cols-1))/cols;const box={cols,cw,ch:H,gutter:18,top:0};
  return {pages:pgLayout([it],box,{...opt,scale:0.5*pref.zoom,songPage:false,head:false}),
          box,cols,zoom:0.5*cw/(p0.w||1),auto:0.5*cw/(p0.w||1),split:true}}
-function stageOpen(svc,idx){
+async function stageOpen(svc,idx){
+ await pullPrefs();
  STG.svc=svc;STG.idx=idx||0;STG.screen=0;STG.open=false;
  const it=stgItem();STG.pref=stgLoad(it&&it.songId);
  let el=$('#stageWrap');if(el)el.remove();
@@ -5036,7 +5151,7 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
  if(!online()&&!me().name){location.hash='#/settings';render()}else render();
  if(online()&&S.team.id){SYNC.pullServices().then(ch=>{if(ch)render()});SYNC.pullLibrary();pullSongs(true).then(ch=>{if(ch&&/^(edit|view|play|library)$/.test(route().name))render()}).catch(()=>{})}
  probeOmr();startNotiPoll();
- window.CONTI={STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go};
+ window.CONTI={PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go};
 })();
 })();
 </script>
