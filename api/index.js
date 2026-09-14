@@ -1001,7 +1001,9 @@ on('DELETE', '/services/:id', async ({ uid, url, params }) => {
   await q('delete from drafts where team_id=$1 and id=$2', [teamId, params.id]);
   await q('delete from notes where team_id=$1 and service_id=$2', [teamId, params.id]);
   await q('delete from song_usages where team_id=$1 and service_id=$2', [teamId, params.id]);   // 이력은 발행본에서만 나온다
-  await q('update service_dates set service_id=null where team_id=$1 and service_id=$2', [teamId, params.id]); // 날짜를 다시 쓸 수 있게 (닫기·재생성)
+  // 날짜는 다시 쓸 수 있게 비우되, 자동 생성이 같은 날짜에 새 콘티를 만들어 되살리지 않게 막는다.
+  // 손으로 새 콘티를 만들어 이 날짜에 붙이면 auto_skip 은 풀린다 (linkDate)
+  await q('update service_dates set service_id=null, auto_skip=true where team_id=$1 and service_id=$2', [teamId, params.id]);
   let freed = 0;
   if (row) {
     const mine = blobIdsOf(row.doc);
@@ -1901,7 +1903,7 @@ async function linkDate(teamId, serviceId, date, label) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return;
   if (await one('select id from service_dates where team_id=$1 and service_id=$2', [teamId, serviceId])) return;
   const free = await one(`select id from service_dates where team_id=$1 and date=$2 and service_id is null order by (source='recurring') desc, created_at asc limit 1`, [teamId, date]);
-  if (free) await q('update service_dates set service_id=$2 where id=$1', [free.id, serviceId]);
+  if (free) await q('update service_dates set service_id=$2, auto_skip=false where id=$1', [free.id, serviceId]);
   else await q(`insert into service_dates(team_id, date, label, source, open, service_id) values($1,$2,$3,'manual',true,$4)
                 on conflict (team_id, date, label) do update set service_id=coalesce(service_dates.service_id, excluded.service_id)`, [teamId, date, str(label, 40) || '예배', serviceId]);
 }
@@ -1910,6 +1912,7 @@ async function autoCreateServices(teamId) {
   const t = await one('select settings from teams where id=$1', [teamId]);
   const st = { ...DEF_SETTINGS, ...(t && t.settings || {}) };
   const rows = await q(`select id, date::text as date, label from service_dates where team_id=$1 and open and service_id is null
+                        and not auto_skip
                         and date >= current_date and date < current_date + ($2::int * interval '1 day') order by date`, [teamId, st.serviceAutoCreateWeeks * 7]);
   let n = 0;
   for (const r of rows) {

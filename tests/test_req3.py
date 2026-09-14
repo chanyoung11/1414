@@ -21,6 +21,7 @@ def run():
         b = p.chromium.launch(); errs = []
         # ---- 기기 A (인도자): 팀 → 예배 → 악보 ----
         cA = b.new_context(viewport={'width': 1180, 'height': 820}); A = cA.new_page(); A.on('pageerror', lambda e: errs.append('A:' + str(e)))
+        A.on('dialog', lambda d: d.accept())   # 나누기·삭제 확인 창
         login(A, LEADER, 'signup'); A.wait_for_selector('#gtTeam', timeout=8000); A.fill('#gtTeam', '개선팀'); A.click('[data-act="team-create"]'); A.wait_for_selector('.shell[data-page]', timeout=8000)
         team = A.evaluate("CONTI.S.team.id")
         A.click('[data-act="new-svc"]'); A.wait_for_selector('[data-f="svc.name"]'); A.fill('[data-f="svc.name"]', '개선 예배')
@@ -98,6 +99,10 @@ def run():
         if os.path.exists(TWO):
             A.goto(URL + '#/home'); A.wait_for_selector('.hd'); A.click('[data-act="new-svc"]'); A.wait_for_selector('[data-f="svc.name"]'); A.fill('[data-f="svc.name"]', '분리 테스트')
             A.click('[data-act="add-item"]'); A.wait_for_selector('[data-f="item.title"]'); A.set_input_files('#pieceFile', [TWO])
+            # 넣을 때는 한 곡으로 들어온다(말없이 쪼개지 않는다). 나누기는 조각의 가위 버튼으로 (실사용 제보)
+            A.wait_for_function("(()=>{const s=CONTI.S.services.find(x=>x.name==='분리 테스트');const p=s&&s.items[0]&&s.items[0].pieces[0];return p&&p.w>0})()", timeout=120000)
+            if A.evaluate("CONTI.S.services.find(x=>x.name==='분리 테스트').items.length") != 1: fail('넣자마자 말없이 쪼개짐')
+            A.click('[data-act="split-piece"]'); A.wait_for_timeout(1500)
             A.wait_for_function("(()=>{const s=CONTI.S.services.find(x=>x.name==='분리 테스트');const its=s?s.items:[];return its.length>=2&&its.every(it=>it.pieces.length&&it.pieces.every(p=>p.ocr&&p.ocr!=='pending'))})()", timeout=120000)
             two = A.evaluate("CONTI.S.services.find(x=>x.name==='분리 테스트').items.map(it=>({title:it.title,key:it.key,n:it.pieces[0].chords.length}))")
             print('split:', two)
@@ -108,6 +113,9 @@ def run():
         if os.path.exists(STACK):
             A.goto(URL + '#/home'); A.wait_for_selector('.hd'); A.click('[data-act="new-svc"]'); A.wait_for_selector('[data-f="svc.name"]'); A.fill('[data-f="svc.name"]', '세로 분리')
             A.click('[data-act="add-item"]'); A.wait_for_selector('[data-f="item.title"]'); A.set_input_files('#pieceFile', [STACK])
+            A.wait_for_function("(()=>{const s=CONTI.S.services.find(x=>x.name==='세로 분리');const p=s&&s.items[0]&&s.items[0].pieces[0];return p&&p.w>0})()", timeout=120000)
+            if A.evaluate("CONTI.S.services.find(x=>x.name==='세로 분리').items.length") != 1: fail('넣자마자 말없이 쪼개짐')
+            A.click('[data-act="split-piece"]'); A.wait_for_timeout(1500)
             A.wait_for_function("(()=>{const s=CONTI.S.services.find(x=>x.name==='세로 분리');const its=s?s.items:[];return its.length>=2&&its.every(it=>it.pieces.length&&it.pieces.every(p=>p.ocr&&p.ocr!=='pending'))})()", timeout=120000)
             st = A.evaluate("CONTI.S.services.find(x=>x.name==='세로 분리').items.map(it=>({title:it.title,key:it.key,n:it.pieces[0].chords.length,h:it.pieces[0].h}))")
             print('stacked split:', st)

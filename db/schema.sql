@@ -427,3 +427,6 @@ create table if not exists push_subs (
   last_ok_at timestamptz
 );
 create index if not exists push_subs_user_idx on push_subs(user_id);
+
+-- 인도자가 지운 콘티의 날짜를 자동 생성이 다시 만들어 되살리던 것 (실사용 제보)
+alter table service_dates add column if not exists auto_skip boolean not null default false;
