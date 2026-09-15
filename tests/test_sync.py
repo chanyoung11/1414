@@ -16,6 +16,7 @@ def fail(msg):
 def signup(pg, user):
     pg.goto(URL); pg.wait_for_selector('#lgUser', timeout=8000)
     pg.click('[data-act="lg-mode"][data-m="signup"]'); pg.wait_for_selector('#lgName')
+    pg.check('#lgAgree')   # 약관·개인정보처리방침 동의 (필수)
     pg.fill('#lgName', user[2]); pg.fill('#lgUser', user[0]); pg.fill('#lgPass', user[1]); pg.click('[data-act="lg-submit"]')
 
 def run():
@@ -44,7 +45,9 @@ def run():
         # ---- 멤버: 초대 가입 → 홈에 자동으로 예배 → 보기에서 악보 → 연습에서 메모 ----
         c2 = b.new_context(viewport={'width': 430, 'height': 900}); pm = c2.new_page(); pm.on('pageerror', lambda e: errs.append('M:' + str(e)))
         pm.goto(link); pm.wait_for_selector('#lgUser', timeout=8000)
-        pm.click('[data-act="lg-mode"][data-m="signup"]'); pm.wait_for_selector('#lgName'); pm.fill('#lgName', MEMBER[2]); pm.fill('#lgUser', MEMBER[0]); pm.fill('#lgPass', MEMBER[1]); pm.click('[data-act="lg-submit"]')
+        pm.click('[data-act="lg-mode"][data-m="signup"]'); pm.wait_for_selector('#lgName')
+        pm.check('#lgAgree')   # 약관·개인정보처리방침 동의 (필수)
+        pm.fill('#lgName', MEMBER[2]); pm.fill('#lgUser', MEMBER[0]); pm.fill('#lgPass', MEMBER[1]); pm.click('[data-act="lg-submit"]')
         pm.wait_for_selector('#jnName', timeout=8000); pm.click('#gtSess .q:has-text("드럼")'); pm.click('[data-act="team-join"]')
         pm.wait_for_selector('.shell[data-page]', timeout=8000); pm.wait_for_selector('.svcrow', timeout=15000)
         if '동기화 예배' not in pm.locator('.svcrow').first.inner_text(): fail('멤버 홈에 발행본 없음')

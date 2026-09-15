@@ -440,3 +440,7 @@ create table if not exists ai_usage_user (
   calls   int  not null default 0,
   primary key (user_id, day, kind)
 );
+
+-- 약관·개인정보처리방침 동의 기록 (언제, 어느 판에 동의했는지)
+alter table users add column if not exists agreed_at timestamptz;
+alter table users add column if not exists agreed_ver text;

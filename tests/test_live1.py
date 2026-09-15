@@ -23,6 +23,7 @@ def run():
         errs=[]; pg.on('pageerror', lambda e: errs.append(str(e))); pg.on('dialog', lambda d: d.accept())
         pg.goto(URL); pg.wait_for_selector('#lgUser')
         pg.click('[data-act="lg-mode"][data-m="signup"]'); pg.wait_for_selector('#lgName')
+        pg.check('#lgAgree')   # 약관·개인정보처리방침 동의 (필수)
         pg.fill('#lgName','하은'); pg.fill('#lgUser','lv'+tag); pg.fill('#lgPass','secret1'); pg.click('[data-act="lg-submit"]')
         pg.wait_for_selector('#gtTeam'); pg.fill('#gtTeam','제보팀'); pg.click('#gtSess .q:has-text("건반")')
         pg.click('[data-act="team-create"]'); pg.wait_for_selector('.shell[data-page]', timeout=10000)

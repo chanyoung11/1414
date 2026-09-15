@@ -9,6 +9,7 @@ def fail(m): print('FAIL:', m); sys.exit(1)
 def signup(pg, user, name):
     pg.goto(URL); pg.wait_for_selector('#lgUser', timeout=8000)
     pg.click('[data-act="lg-mode"][data-m="signup"]'); pg.wait_for_selector('#lgName')
+    pg.check('#lgAgree')   # 약관·개인정보처리방침 동의 (필수)
     pg.fill('#lgName', name); pg.fill('#lgUser', user); pg.fill('#lgPass', 'secret1')
     pg.click('[data-act="lg-submit"]')
 

@@ -13,11 +13,14 @@ def fail(msg): print('FAIL:', msg); sys.exit(1)
 def signup(pg, user):
     pg.goto(URL); pg.wait_for_selector('#lgUser', timeout=8000)
     pg.click('[data-act="lg-mode"][data-m="signup"]'); pg.wait_for_selector('#lgName')
+    pg.check('#lgAgree')   # 약관·개인정보처리방침 동의 (필수)
     pg.fill('#lgName', user[2]); pg.fill('#lgUser', user[0]); pg.fill('#lgPass', user[1]); pg.click('[data-act="lg-submit"]')
 
 def join(ctx, user, link, session):
     pm = ctx.new_page(); pm.goto(link); pm.wait_for_selector('#lgUser', timeout=8000)
-    pm.click('[data-act="lg-mode"][data-m="signup"]'); pm.wait_for_selector('#lgName'); pm.fill('#lgName', user[2]); pm.fill('#lgUser', user[0]); pm.fill('#lgPass', user[1]); pm.click('[data-act="lg-submit"]')
+    pm.click('[data-act="lg-mode"][data-m="signup"]'); pm.wait_for_selector('#lgName')
+    pm.check('#lgAgree')   # 약관·개인정보처리방침 동의 (필수)
+    pm.fill('#lgName', user[2]); pm.fill('#lgUser', user[0]); pm.fill('#lgPass', user[1]); pm.click('[data-act="lg-submit"]')
     pm.wait_for_selector('#jnName', timeout=8000); pm.click('#gtSess .q:has-text("%s")' % session); pm.click('[data-act="team-join"]'); pm.wait_for_selector('.shell[data-page]', timeout=8000)
     return pm
 

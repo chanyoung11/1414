@@ -10,6 +10,7 @@ def fail(m): print('FAIL:', m); sys.exit(1)
 def signup(pg, user, name='하은'):
     pg.goto(URL); pg.wait_for_selector('#lgUser')
     pg.click('[data-act="lg-mode"][data-m="signup"]'); pg.wait_for_selector('#lgName')
+    pg.check('#lgAgree')   # 약관·개인정보처리방침 동의 (필수)
     pg.fill('#lgName', name); pg.fill('#lgUser', user); pg.fill('#lgPass','secret1')
     pg.click('[data-act="lg-submit"]')
 
@@ -46,7 +47,7 @@ def run():
         # 껐다 켜도 서버에 반영
         pg.click('#sQuiet'); pg.wait_for_timeout(900)
         srv = c.request.get(URL + 'api/me/prefs', headers=H).json()
-        if ((srv.get('prefs') or {}).get('quiet') or {}).get('on') is not False: fail('조용한 시간 끄기가 안 올라감')
+        if ((srv.get('prefs') or {}).get('quiet') or {}).get('on') is not False: fail('조용한 시간 끄기가 안 올라감: %s' % srv.get('prefs'))
         print('조용한 시간 끄기 ok')
 
         # ---- 알림 종류 끄기도 서버로 (푸시를 거르는 데 쓰인다) ----

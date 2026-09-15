@@ -21,6 +21,7 @@ def fail(msg): print('FAIL:', msg); sys.exit(1)
 def signup(pg, u):
     pg.goto(URL); pg.wait_for_selector('#lgUser', timeout=8000)
     pg.click('[data-act="lg-mode"][data-m="signup"]'); pg.wait_for_selector('#lgName')
+    pg.check('#lgAgree')   # 약관·개인정보처리방침 동의 (필수)
     pg.fill('#lgName', u[2]); pg.fill('#lgUser', u[0]); pg.fill('#lgPass', u[1]); pg.click('[data-act="lg-submit"]')
 
 def login(pg, u):
@@ -72,7 +73,9 @@ def run():
         if pg.evaluate('CONTI.S.team.id'): fail('로그아웃 후 팀 id 남음')
 
         # ---- 같은 기기에서 B 가입 → 팀 Y: A 의 콘티가 보이면 안 됨 ----
-        pg.click('[data-act="lg-mode"][data-m="signup"]'); pg.wait_for_selector('#lgName'); pg.fill('#lgName', B[2]); pg.fill('#lgUser', B[0]); pg.fill('#lgPass', B[1]); pg.click('[data-act="lg-submit"]')
+        pg.click('[data-act="lg-mode"][data-m="signup"]'); pg.wait_for_selector('#lgName')
+        pg.check('#lgAgree')   # 약관·개인정보처리방침 동의 (필수)
+        pg.fill('#lgName', B[2]); pg.fill('#lgUser', B[0]); pg.fill('#lgPass', B[1]); pg.click('[data-act="lg-submit"]')
         teamY = make_team(pg, '스코프Y')
         if pg.evaluate('CONTI.S.services.length') != 0: fail('B 팀 홈에 A 콘티가 새어 나옴')
         if 'X팀 예배' in pg.locator('#app').inner_text(): fail('B 화면에 X팀 예배가 보임')

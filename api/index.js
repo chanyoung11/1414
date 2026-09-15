@@ -120,14 +120,14 @@ async function requireMember(uid, teamId, role) {
   return m;
 }
 async function meView(uid) {
-  const u = await one('select id, username, display_name from users where id=$1', [uid]);
+  const u = await one('select id, username, display_name, agreed_ver from users where id=$1', [uid]);
   if (!u) throw noAuth();
   q(`update members set last_seen_at=now() where user_id=$1 and (last_seen_at is null or last_seen_at < now() - interval '1 hour')`, [uid]).catch(() => {});
   const rows = await q(`select t.*, m.user_id, m.name as mname, m.session, m.sessions as msessions, m.role, m.capo, m.active from members m join teams t on t.id=m.team_id
                         where m.user_id=$1 order by m.active desc, m.created_at asc`, [uid]);
   // 비활성인 팀은 목록에 넣지 않는다. 다만 그 팀뿐이면 왜 안 보이는지 알려 준다 (B.4.3)
   const live = rows.filter((r) => r.active !== false);
-  const out = { user: { id: u.id, username: u.username, name: u.display_name }, team: live[0] ? viewOf(live[0]) : null, teams: live.map(viewOf) };
+  const out = { user: { id: u.id, username: u.username, name: u.display_name, agreedVer: u.agreed_ver || '', legalVer: LEGAL_VERSION }, team: live[0] ? viewOf(live[0]) : null, teams: live.map(viewOf) };
   if (!live.length && rows.length) out.blocked = { teamName: rows[0].name };
   return out;
 }
@@ -148,7 +148,10 @@ on('POST', '/auth/signup', async ({ req, body }) => {
   if (password.length < PASSWORD_MIN) throw bad(`비밀번호는 ${PASSWORD_MIN}자 이상이에요`);
   if (!name) throw bad('이름을 적어 주세요');
   if (await one('select 1 from users where username=$1', [username])) throw new HttpError(409, 'taken', '이미 쓰는 아이디예요');
-  const u = await one('insert into users(username, password_hash, display_name, last_login_at) values($1,$2,$3,now()) returning id', [username, hashPassword(password), name]);
+  // 가입 시 약관·개인정보처리방침 동의 시각을 남긴다 (나중에 증명이 필요할 수 있다)
+  const agreedAt = /^\d{4}-\d{2}-\d{2}T/.test(String(body.agreedAt || '')) ? new Date(body.agreedAt) : new Date();
+  const u = await one('insert into users(username, password_hash, display_name, last_login_at, agreed_at, agreed_ver) values($1,$2,$3,now(),$4,$5) returning id',
+    [username, hashPassword(password), name, agreedAt, LEGAL_VERSION]);
   return { data: await meView(u.id), headers: { 'Set-Cookie': sessionCookie(req, u.id) } };
 });
 
@@ -218,6 +221,13 @@ on('POST', '/auth/password', async ({ req, uid, body }) => {
 });
 
 on('GET', '/me', async ({ uid }) => { if (!uid) throw noAuth(); const r = await meView(uid); const u = await one('select recovery_hash is not null as has from users where id=$1', [uid]); r.user.hasRecovery = !!(u && u.has); return r; });
+
+// 약관이 생기기 전에 가입한 사람, 또는 약관이 바뀐 뒤의 재동의
+on('POST', '/me/agree', async ({ uid }) => {
+  if (!uid) throw noAuth();
+  await q('update users set agreed_at=now(), agreed_ver=$2 where id=$1', [uid, LEGAL_VERSION]);
+  return { ok: true, agreedVer: LEGAL_VERSION };
+});
 
 // ---------- 개인 설정 (무대 조판 · 조용한 시간 · 알림 끄기) ----------
 // 기기를 옮겨도 따라온다. 교회 컴퓨터에서 로그인해 PDF 뽑을 때 내 조판이 그대로 온다
@@ -455,6 +465,7 @@ const PLAN = {
 };
 const planOf = (t) => PLAN[(t && t.plan) || 'free'] || PLAN.free;
 const ENFORCE_PLAN = process.env.ENFORCE_PLAN === '1';
+const LEGAL_VERSION = '2026-09-15';   // 약관·개인정보처리방침 시행일. 내용을 고치면 앱과 함께 올린다
 // 한도를 넘었는지 본다. 검사가 꺼져 있으면 언제나 통과 (컬럼과 자리만 미리 만들어 둔 것)
 function checkLimit(team, key, count, msg) {
   if (!ENFORCE_PLAN) return;

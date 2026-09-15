@@ -13,6 +13,7 @@ def fail(msg): print('FAIL:', msg); sys.exit(1)
 def signup(pg, u):
     pg.goto(URL); pg.wait_for_selector('#lgUser', timeout=8000)
     pg.click('[data-act="lg-mode"][data-m="signup"]'); pg.wait_for_selector('#lgName')
+    pg.check('#lgAgree')   # 약관·개인정보처리방침 동의 (필수)
     pg.fill('#lgName', u[2]); pg.fill('#lgUser', u[0]); pg.fill('#lgPass', u[1]); pg.click('[data-act="lg-submit"]')
 
 def run():
@@ -28,7 +29,9 @@ def run():
 
         cM = b.new_context(viewport={'width': 1180, 'height': 820}); pm = cM.new_page(); pm.on('pageerror', lambda e: errs.append('M:' + str(e))); pm.on('dialog', lambda d: d.accept())
         pm.goto(link); pm.wait_for_selector('#lgUser', timeout=8000)
-        pm.click('[data-act="lg-mode"][data-m="signup"]'); pm.wait_for_selector('#lgName'); pm.fill('#lgName', M[2]); pm.fill('#lgUser', M[0]); pm.fill('#lgPass', M[1]); pm.click('[data-act="lg-submit"]')
+        pm.click('[data-act="lg-mode"][data-m="signup"]'); pm.wait_for_selector('#lgName')
+        pm.check('#lgAgree')   # 약관·개인정보처리방침 동의 (필수)
+        pm.fill('#lgName', M[2]); pm.fill('#lgUser', M[0]); pm.fill('#lgPass', M[1]); pm.click('[data-act="lg-submit"]')
         pm.wait_for_selector('#jnName', timeout=8000); pm.click('[data-act="team-join"]'); pm.wait_for_selector('.shell[data-page]', timeout=8000)
 
         # ---- 이름 규칙: 이름 없이 발행하면 규칙대로 채워짐 ----

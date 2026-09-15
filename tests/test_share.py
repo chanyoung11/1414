@@ -13,6 +13,7 @@ def team_of(b, user, tname):
     pg.on('dialog', lambda d: d.accept())
     pg.goto(URL); pg.wait_for_selector('#lgUser', timeout=8000)
     pg.click('[data-act="lg-mode"][data-m="signup"]'); pg.wait_for_selector('#lgName')
+    pg.check('#lgAgree')   # 약관·개인정보처리방침 동의 (필수)
     pg.fill('#lgName', '하은'); pg.fill('#lgUser', user); pg.fill('#lgPass', 'secret1'); pg.click('[data-act="lg-submit"]')
     pg.wait_for_selector('#gtTeam', timeout=8000); pg.fill('#gtTeam', tname); pg.click('[data-act="team-create"]')
     pg.wait_for_selector('.shell[data-page]', timeout=8000)

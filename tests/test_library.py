@@ -14,7 +14,9 @@ def fail(msg): print('FAIL:', msg); sys.exit(1)
 def login(pg, u, mode='login'):
     pg.goto(URL); pg.wait_for_selector('#lgUser', timeout=8000)
     if mode == 'signup':
-        pg.click('[data-act="lg-mode"][data-m="signup"]'); pg.wait_for_selector('#lgName'); pg.fill('#lgName', u[2])
+        pg.click('[data-act="lg-mode"][data-m="signup"]'); pg.wait_for_selector('#lgName')
+        pg.check('#lgAgree')   # 약관·개인정보처리방침 동의 (필수)
+        pg.fill('#lgName', u[2])
     pg.fill('#lgUser', u[0]); pg.fill('#lgPass', u[1]); pg.click('[data-act="lg-submit"]')
 
 def run():
@@ -63,6 +65,7 @@ def run():
         pm.on('pageerror', lambda e: errs.append('M:' + str(e))); pm.on('dialog', lambda d: d.accept())
         pm.goto(link); pm.wait_for_selector('#lgUser', timeout=8000)
         pm.click('[data-act="lg-mode"][data-m="signup"]'); pm.wait_for_selector('#lgName')
+        pm.check('#lgAgree')   # 약관·개인정보처리방침 동의 (필수)
         pm.fill('#lgName', '민수'); pm.fill('#lgUser', 'lm' + tag); pm.fill('#lgPass', 'secret1'); pm.click('[data-act="lg-submit"]')
         pm.wait_for_selector('#jnName', timeout=8000); pm.click('[data-act="team-join"]'); pm.wait_for_selector('.shell[data-page]', timeout=8000)
         pm.wait_for_timeout(3500)

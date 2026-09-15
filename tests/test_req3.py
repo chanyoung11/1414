@@ -13,7 +13,9 @@ def fail(msg): print('FAIL:', msg); sys.exit(1)
 def login(pg, user, mode='login'):
     pg.goto(URL); pg.wait_for_selector('#lgUser', timeout=8000)
     if mode == 'signup':
-        pg.click('[data-act="lg-mode"][data-m="signup"]'); pg.wait_for_selector('#lgName'); pg.fill('#lgName', user[2])
+        pg.click('[data-act="lg-mode"][data-m="signup"]'); pg.wait_for_selector('#lgName')
+        pg.check('#lgAgree')   # 약관·개인정보처리방침 동의 (필수)
+        pg.fill('#lgName', user[2])
     pg.fill('#lgUser', user[0]); pg.fill('#lgPass', user[1]); pg.click('[data-act="lg-submit"]')
 
 def run():

@@ -15,6 +15,7 @@ def login_or_signup(pg, user, mode):
     pg.goto(URL); pg.wait_for_selector('#lgUser', timeout=8000)
     if mode == 'signup':
         pg.click('[data-act="lg-mode"][data-m="signup"]'); pg.wait_for_selector('#lgName')
+        pg.check('#lgAgree')   # 약관·개인정보처리방침 동의 (필수)
         pg.fill('#lgName', user[2])
     pg.fill('#lgUser', user[0]); pg.fill('#lgPass', user[1]); pg.click('[data-act="lg-submit"]')
     pg.wait_for_timeout(700)
@@ -54,6 +55,7 @@ def run():
         pm.on('pageerror', lambda e: errs.append(str(e)))
         pm.goto(link); pm.wait_for_selector('#lgUser', timeout=8000)
         pm.click('[data-act="lg-mode"][data-m="signup"]'); pm.wait_for_selector('#lgName')
+        pm.check('#lgAgree')   # 약관·개인정보처리방침 동의 (필수)
         pm.fill('#lgName', MEMBER[2]); pm.fill('#lgUser', MEMBER[0]); pm.fill('#lgPass', MEMBER[1]); pm.click('[data-act="lg-submit"]')
         pm.wait_for_selector('#jnName', timeout=8000)                       # 로그인 후 초대 화면으로 이어짐
         if 'LIKE 찬양팀' not in pm.locator('.auth').inner_text(): fail('초대 화면에 팀 이름 없음')

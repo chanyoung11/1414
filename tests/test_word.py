@@ -16,6 +16,7 @@ def run():
         pl.on('pageerror', lambda e: errs.append('L:' + str(e))); pl.on('dialog', lambda d: d.accept())
         pl.goto(URL); pl.wait_for_selector('#lgUser', timeout=8000)
         pl.click('[data-act="lg-mode"][data-m="signup"]'); pl.wait_for_selector('#lgName')
+        pl.check('#lgAgree')   # 약관·개인정보처리방침 동의 (필수)
         pl.fill('#lgName', L[2]); pl.fill('#lgUser', L[0]); pl.fill('#lgPass', L[1]); pl.click('[data-act="lg-submit"]')
         pl.wait_for_selector('#gtTeam', timeout=8000); pl.fill('#gtTeam', '말씀팀'); pl.click('[data-act="team-create"]'); pl.wait_for_selector('.shell[data-page]', timeout=8000)
         team = pl.evaluate('CONTI.S.team.id')
@@ -24,7 +25,9 @@ def run():
         cM = b.new_context(viewport={'width': 1240, 'height': 900}); pm = cM.new_page()
         pm.on('pageerror', lambda e: errs.append('M:' + str(e))); pm.on('dialog', lambda d: d.accept())
         pm.goto(link); pm.wait_for_selector('#lgUser', timeout=8000)
-        pm.click('[data-act="lg-mode"][data-m="signup"]'); pm.wait_for_selector('#lgName'); pm.fill('#lgName', M[2]); pm.fill('#lgUser', M[0]); pm.fill('#lgPass', M[1]); pm.click('[data-act="lg-submit"]')
+        pm.click('[data-act="lg-mode"][data-m="signup"]'); pm.wait_for_selector('#lgName')
+        pm.check('#lgAgree')   # 약관·개인정보처리방침 동의 (필수)
+        pm.fill('#lgName', M[2]); pm.fill('#lgUser', M[0]); pm.fill('#lgPass', M[1]); pm.click('[data-act="lg-submit"]')
         pm.wait_for_selector('#jnName', timeout=8000); pm.click('[data-act="team-join"]'); pm.wait_for_selector('.shell[data-page]', timeout=8000)
 
         # ---- 인도자: 말씀 입력(자동 저장) + 곡별 이유 + 인도자의 글 ----

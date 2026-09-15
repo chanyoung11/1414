@@ -15,6 +15,7 @@ def run():
         pl.on('pageerror', lambda e: errs.append('L:' + str(e))); pl.on('dialog', lambda d: d.accept())
         pl.goto(URL); pl.wait_for_selector('#lgUser', timeout=8000)
         pl.click('[data-act="lg-mode"][data-m="signup"]'); pl.wait_for_selector('#lgName')
+        pl.check('#lgAgree')   # 약관·개인정보처리방침 동의 (필수)
         pl.fill('#lgName', '하은'); pl.fill('#lgUser', 'rl' + tag); pl.fill('#lgPass', 'secret1'); pl.click('[data-act="lg-submit"]')
         pl.wait_for_selector('#gtTeam', timeout=8000); pl.fill('#gtTeam', '녹음팀'); pl.click('[data-act="team-create"]'); pl.wait_for_selector('.shell[data-page]', timeout=8000)
         team = pl.evaluate('CONTI.S.team.id')
@@ -24,6 +25,7 @@ def run():
         pm.on('pageerror', lambda e: errs.append('M:' + str(e))); pm.on('dialog', lambda d: d.accept())
         pm.goto(link); pm.wait_for_selector('#lgUser', timeout=8000)
         pm.click('[data-act="lg-mode"][data-m="signup"]'); pm.wait_for_selector('#lgName')
+        pm.check('#lgAgree')   # 약관·개인정보처리방침 동의 (필수)
         pm.fill('#lgName', '민수'); pm.fill('#lgUser', 'rm' + tag); pm.fill('#lgPass', 'secret1'); pm.click('[data-act="lg-submit"]')
         pm.wait_for_selector('#jnName', timeout=8000); pm.click('[data-act="team-join"]'); pm.wait_for_selector('.shell[data-page]', timeout=8000)
 

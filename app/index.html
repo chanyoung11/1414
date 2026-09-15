@@ -417,6 +417,28 @@ html.dark .pill.role-pastor{color:#B4A7F5}
 .cropbox i[data-h=ne]{right:-8px;top:-8px;cursor:nesw-resize}
 .cropbox i[data-h=sw]{left:-8px;bottom:-8px;cursor:nesw-resize}
 .cropbox i[data-h=se]{right:-8px;bottom:-8px;cursor:nwse-resize}
+/* 약관·개인정보처리방침 */
+.legal{max-width:760px;line-height:1.75;font-size:14.5px}
+.legal h3{margin:28px 0 8px;font-size:16px;font-weight:700;letter-spacing:-.01em}
+.legal h3:first-of-type{margin-top:0}
+.legal p{margin:8px 0;color:var(--fg)}
+.legal ul{margin:8px 0;padding-left:20px}
+.legal li{margin:5px 0}
+.legal b{font-weight:700}
+.legal .lnote{font-size:13px;color:var(--muted-fg);background:var(--muted);border-radius:var(--r-md);padding:10px 12px;margin-top:10px}
+.ltab{width:100%;border-collapse:collapse;margin:10px 0;font-size:13.5px}
+.ltab th,.ltab td{border:1px solid var(--border);padding:8px 10px;text-align:left;vertical-align:top}
+.ltab thead th{background:var(--muted);font-weight:700;white-space:nowrap}
+.ltab tbody th{background:var(--surface-subtle);font-weight:600;white-space:nowrap;width:1%}
+@media(max-width:640px){.ltab,.ltab tbody,.ltab tr,.ltab th,.ltab td{display:block;width:auto}
+ .ltab thead{display:none}.ltab tr{border:1px solid var(--border);border-radius:var(--r-md);margin-bottom:8px}
+ .ltab th,.ltab td{border:0;padding:6px 10px}.ltab tbody th{border-bottom:1px solid var(--border)}}
+.agree{display:flex;align-items:flex-start;gap:8px;margin:12px 0 4px;font-size:13px;color:var(--muted-fg);cursor:pointer}
+.agree input{margin-top:3px;flex:0 0 auto}
+.agree a{color:var(--fg);text-decoration:underline;cursor:pointer}
+.legalfoot{margin-top:16px;font-size:12px;color:var(--faint-fg);display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.legalfoot button{color:inherit;text-decoration:underline}
+.legalfoot button:hover{color:var(--fg)}
 @media (min-width:1024px){.side{display:block}.bnav{display:none}.shell{padding-bottom:24px}}
 /* ---------- 반응형 (§7) ---------- */
 /* 1024+ : 사이드바 224 고정 · 하단 탭 없음 (아래 기존 규칙) */
@@ -1913,6 +1935,202 @@ function diffPub(prev,next){
  if(wk(prev.word)!==wk(next.word))out.push({kind:'word',text:'말씀 바뀜'});
  return out.slice(0,20)}
 const CHG_IC={add:'plus',del:'trash',order:'list',key:'music',edit:'pen',sheet:'camera',media:'yt',notice:'note',word:'note'};
+// 약관이 생기기 전에 가입했거나 약관이 바뀐 경우, 한 번 동의를 받는다
+function needsAgree(){const u=NET.user;if(!u||!u.legalVer)return false;return (u.agreedVer||'')!==u.legalVer}
+let AGREE_SHOWN=false;
+function agreeModal(){
+ if(AGREE_SHOWN||!needsAgree())return;AGREE_SHOWN=true;
+ const first=!(NET.user||{}).agreedVer;
+ modal(`<b style="font-size:17px">${first?'약관에 동의해 주세요':'약관이 바뀌었어요'}</b>
+  <div class="hint" style="margin-top:6px">${first?'1414에 이용약관과 개인정보처리방침이 생겼어요. 계속 쓰시려면 한 번만 동의해 주세요.':'바뀐 내용을 확인하고 동의해 주세요.'}</div>
+  <div class="row" style="margin-top:12px;gap:8px"><button class="btn sm" data-act="legal" data-k="terms">이용약관</button><button class="btn sm" data-act="legal" data-k="privacy">개인정보처리방침</button></div>
+  <label class="agree" style="margin-top:14px"><input type="checkbox" id="agChk"><span>이용약관과 개인정보처리방침에 동의합니다. <b>(필수)</b></span></label>
+  <div class="err" id="agErr"></div>
+  <div class="row" style="margin-top:14px;justify-content:flex-end;gap:8px"><button class="btn ghost" id="agLater">나중에</button><button class="btn pri" id="agOk">${ic('check')}동의</button></div>`,{center:true});
+ $('#modal').onclick=async e=>{
+  if(e.target.closest('#agLater')){closeModal();return}
+  if(e.target.closest('#agOk')){
+   if(!$('#agChk').checked){$('#agErr').textContent='동의에 체크해 주세요';return}
+   try{const r=await api('/me/agree',{method:'POST'});if(NET.user)NET.user.agreedVer=r.agreedVer;closeModal();toast('동의해 주셔서 고마워요')}
+   catch(err){$('#agErr').textContent=err.message}}}}
+/* ---------- 약관 · 개인정보처리방침 (로그인 없이 볼 수 있다) ---------- */
+const BIZ={name:'바디페인팅',ceo:'박찬영',regNo:'469-06-03606',
+ addr:'충청남도 천안시 동남구 문암로 114 (안서동, 학구당원룸)',
+ email:'chanyoung07119@gmail.com',tel:'010-2445-0711',
+ mailOrder:'',                     // 통신판매업 신고번호 — 신고 뒤 채운다
+ service:'1414',since:'2026-09-15'};
+const LEGAL_AT='2026-09-15';       // 시행일. 내용을 고치면 같이 올린다
+function legalHTML(kind){
+ const K=kind==='terms'?'terms':'privacy';
+ const bizRow=`<table class="ltab"><tbody>
+  <tr><th>상호</th><td>${esc(BIZ.name)}</td></tr>
+  <tr><th>대표자</th><td>${esc(BIZ.ceo)}</td></tr>
+  <tr><th>사업자등록번호</th><td>${esc(BIZ.regNo)}</td></tr>
+  <tr><th>주소</th><td>${esc(BIZ.addr)}</td></tr>
+  <tr><th>이메일</th><td><a href="mailto:${esc(BIZ.email)}">${esc(BIZ.email)}</a></td></tr>
+  <tr><th>연락처</th><td>${esc(BIZ.tel)}</td></tr>
+  ${BIZ.mailOrder?`<tr><th>통신판매업 신고번호</th><td>${esc(BIZ.mailOrder)}</td></tr>`:''}
+ </tbody></table>`;
+ const privacy=`
+  <p>${esc(BIZ.name)}(이하 "회사")는 찬양팀 콘티 서비스 <b>1414</b>(이하 "서비스")를 운영하며,
+  이용자의 개인정보를 소중히 다룹니다. 이 방침은 회사가 어떤 정보를 왜 모으고, 얼마나 두고, 누구에게 맡기는지를 적은 것입니다.</p>
+
+  <h3>1. 모으는 정보</h3>
+  <p>서비스는 <b>주민등록번호를 받지 않습니다.</b> 실제로 저장하는 것은 다음이 전부입니다.</p>
+  <table class="ltab"><thead><tr><th>구분</th><th>항목</th><th>언제</th></tr></thead><tbody>
+   <tr><th>계정</th><td>아이디, 비밀번호(복호화할 수 없는 형태로 저장), 이름, 가입일, 마지막 로그인 일시, 복구 코드(해시)</td><td>회원가입 시</td></tr>
+   <tr><th>팀 활동</th><td>팀에서 쓰는 이름, 세션(악기), 역할, 콘티·악보·메모, 편성, 가능한 날짜와 그에 적은 메모</td><td>서비스 이용 중</td></tr>
+   <tr><th>파일</th><td>올린 악보 사진, 연습 녹음</td><td>직접 올릴 때</td></tr>
+   <tr><th>알림</th><td>푸시 알림 주소(구독 정보), 기기 정보(브라우저 종류)</td><td>알림을 켤 때</td></tr>
+   <tr><th>보안</th><td>로그인 실패 횟수와 시각</td><td>로그인 시도 시</td></tr>
+  </tbody></table>
+  <p class="lnote">이름·세션·메모는 <b>같은 팀 사람들에게 보입니다.</b> 다만 "나만 보기"로 적은 메모는 본인에게만,
+  세션 메모는 그 세션 사람과 인도자에게만 보입니다.</p>
+
+  <h3>2. 쓰는 목적</h3>
+  <ul>
+   <li>로그인과 본인 확인, 계정 보호</li>
+   <li>콘티·악보·편성·메모를 팀원에게 보여 주고 기기 사이에 맞추기</li>
+   <li>콘티 발행·편성·일정 변경 알림 보내기</li>
+   <li>악보 사진에서 코드와 음표를 읽어 주기(AI 기능)</li>
+   <li>오류 확인과 서비스 개선</li>
+  </ul>
+  <p>회사는 <b>광고·마케팅에 쓰지 않으며, 개인정보를 팔지 않습니다.</b></p>
+
+  <h3>3. 맡기는 곳과 국외 이전</h3>
+  <p>서비스를 돌리기 위해 아래에 처리를 맡깁니다. 서버가 <b>국외(미국)</b>에 있어 정보가 국외로 옮겨 저장·처리됩니다.</p>
+  <table class="ltab"><thead><tr><th>받는 곳</th><th>맡기는 일</th><th>옮겨지는 항목</th><th>나라 · 시점</th></tr></thead><tbody>
+   <tr><th>Vercel Inc.</th><td>서비스 호스팅, 파일 저장</td><td>서비스 이용 중 생기는 정보 전부, 올린 악보·녹음 파일</td><td>미국 · 이용 시 수시 전송</td></tr>
+   <tr><th>Neon Inc.</th><td>데이터베이스 운영</td><td>계정·팀·콘티·메모 등 저장 정보</td><td>미국 · 이용 시 수시 전송</td></tr>
+   <tr><th>Google LLC</th><td>악보 사진에서 코드·음표 읽기(Gemini, Cloud Vision)</td><td>이용자가 올린 <b>악보 이미지</b></td><td>미국 · 해당 기능을 쓸 때</td></tr>
+  </tbody></table>
+  <p class="lnote">이전을 원하지 않으시면 서비스를 이용하지 않거나, AI 기능(코드 인식·채보)을 쓰지 않으실 수 있습니다.
+  다만 서버가 국외에 있어 서비스 이용 자체를 위한 이전은 거부할 경우 서비스를 제공할 수 없습니다.</p>
+
+  <h3>4. 얼마나 두나</h3>
+  <ul>
+   <li><b>계정 정보</b> — 계정을 지우면 <b>바로</b> 지웁니다.</li>
+   <li><b>내가 쓴 메모</b> — 계정을 지우면 함께 지웁니다.</li>
+   <li><b>팀과 콘티·악보</b> — 팀을 지우면 <b>30일 뒤</b> 파일까지 완전히 지웁니다. 그 전에는 되돌릴 수 있습니다.</li>
+   <li><b>연습 녹음</b> — 보관으로 잠그지 않으면 정해진 기간이 지나면 자동으로 지웁니다(지우기 7일 전 알림).</li>
+   <li><b>알림 기록</b> — 90일이 지나면 지웁니다.</li>
+   <li><b>로그인 실패 기록</b> — 일정 시간이 지나면 초기화됩니다.</li>
+   <li>법령에서 따로 보관하라고 정한 경우에는 그 기간을 따릅니다.</li>
+  </ul>
+
+  <h3>5. 이용자의 권리</h3>
+  <p>언제든 다음을 하실 수 있습니다.</p>
+  <ul>
+   <li><b>보기·고치기</b> — 설정에서 이름·세션을 고칠 수 있습니다.</li>
+   <li><b>가져가기</b> — 홈의 "내보내기"로 콘티·악보를 파일로 받을 수 있습니다.</li>
+   <li><b>지우기</b> — 설정 → 계정 → 계정 삭제. 되돌릴 수 없습니다.</li>
+   <li><b>알림 끄기</b> — 설정 → 알림에서 종류별로 끄거나 기기에서 완전히 끌 수 있습니다.</li>
+  </ul>
+  <p>문의는 아래 연락처로 주시면 지체 없이 처리합니다.</p>
+
+  <h3>6. 안전하게 지키려고 하는 일</h3>
+  <ul>
+   <li>비밀번호는 <b>되돌릴 수 없는 형태(scrypt)</b>로 저장합니다. 회사도 원래 비밀번호를 알 수 없습니다.</li>
+   <li>모든 통신은 HTTPS로 암호화합니다.</li>
+   <li>악보·녹음 파일은 <b>비공개</b>로 저장하고, 권한이 확인된 사람에게만 한 시간짜리 임시 주소로 내보냅니다.</li>
+   <li>다른 팀의 자료에는 접근할 수 없도록 요청마다 팀 소속과 역할을 확인합니다.</li>
+   <li>비밀번호를 바꾸면 기존 로그인은 모두 끊깁니다.</li>
+  </ul>
+
+  <h3>7. 만 14세 미만</h3>
+  <p>회사는 만 14세 미만 아동의 가입을 받지 않습니다. 만 14세 미만임이 확인되면 계정을 지웁니다.</p>
+
+  <h3>8. 개인정보 보호책임자</h3>
+  ${bizRow}
+
+  <h3>9. 방침이 바뀌면</h3>
+  <p>내용이 바뀌면 시행 7일 전에 서비스 안에 알립니다. 이용자에게 불리한 중요한 변경은 30일 전에 알립니다.</p>
+  <p class="lnote">시행일: ${esc(LEGAL_AT)}</p>`;
+
+ const terms=`
+  <h3>제1조 (목적)</h3>
+  <p>이 약관은 ${esc(BIZ.name)}(이하 "회사")가 제공하는 찬양팀 콘티 서비스 <b>1414</b>(이하 "서비스")의
+  이용 조건과 절차, 회사와 이용자의 권리·의무를 정합니다.</p>
+
+  <h3>제2조 (용어)</h3>
+  <ul>
+   <li><b>이용자</b> — 서비스에 가입해 이용하는 사람</li>
+   <li><b>팀</b> — 콘티를 함께 쓰는 모임</li>
+   <li><b>인도자</b> — 팀을 만들고 콘티를 발행하는 사람</li>
+   <li><b>콘티</b> — 예배 곡 순서와 악보·메모를 묶은 것</li>
+  </ul>
+
+  <h3>제3조 (가입과 계정)</h3>
+  <ul>
+   <li>아이디와 비밀번호를 정해 가입합니다. 만 14세 미만은 가입할 수 없습니다.</li>
+   <li>계정은 본인만 쓸 수 있으며, 남에게 빌려주거나 팔 수 없습니다.</li>
+   <li>비밀번호 관리 책임은 이용자에게 있습니다. 도용이 의심되면 바로 알려 주세요.</li>
+  </ul>
+
+  <h3>제4조 (서비스 내용)</h3>
+  <p>콘티 작성·발행, 악보 보관, 편성·일정 관리, 연습·무대 화면, 인쇄·내보내기, 알림을 제공합니다.
+  회사는 서비스 내용을 개선하거나 바꿀 수 있으며, 중요한 변경은 미리 알립니다.</p>
+
+  <h3>제5조 (요금)</h3>
+  <p>서비스는 현재 <b>무료</b>입니다. 앞으로 유료 기능을 도입할 경우 <b>시행 30일 전</b>에 알리고,
+  이미 이용 중인 기능이 갑자기 막히지 않도록 합니다.</p>
+
+  <h3>제6조 (이용자가 올린 것)</h3>
+  <ul>
+   <li>악보·녹음·메모의 <b>권리는 올린 이용자에게 있습니다.</b> 회사는 서비스를 제공하는 데 필요한 범위에서만
+       저장·표시·전송합니다.</li>
+   <li>회사는 이용자가 올린 것을 <b>다른 목적으로 쓰거나 남에게 제공하지 않습니다.</b></li>
+   <li><b>저작권 주의</b> — 악보와 음원은 대부분 저작권이 있습니다. 이용자는 올릴 권한이 있는 자료만 올려야 하며,
+       그로 인한 책임은 올린 이용자에게 있습니다. 권리자의 요청이 있으면 회사는 해당 자료를 지울 수 있습니다.</li>
+  </ul>
+
+  <h3>제7조 (하지 말아야 할 것)</h3>
+  <ul>
+   <li>남의 계정을 쓰거나 서비스를 부정하게 이용하는 것</li>
+   <li>서버에 과도한 부하를 주거나 자동화된 방법으로 대량 요청하는 것</li>
+   <li>권한 없는 자료를 올리거나, 남의 권리를 침해하는 것</li>
+   <li>서비스를 복제·변조하거나 역분석하는 것</li>
+  </ul>
+
+  <h3>제8조 (이용 제한)</h3>
+  <p>제7조를 어기거나 법령을 위반한 경우 회사는 사전 통지 후 이용을 제한할 수 있습니다.
+  다만 긴급한 경우에는 먼저 조치하고 알릴 수 있습니다.</p>
+
+  <h3>제9조 (탈퇴)</h3>
+  <p>설정에서 언제든 계정을 지울 수 있습니다. 지우면 계정과 본인이 쓴 메모가 <b>되돌릴 수 없이</b> 사라집니다.
+  인도자인 팀이 있으면 먼저 인도자를 넘기거나 팀을 지워야 합니다.</p>
+
+  <h3>제10조 (책임의 한계)</h3>
+  <ul>
+   <li>회사는 서비스를 안정적으로 제공하려 노력하지만, 천재지변·통신 장애·외부 서비스 장애 등
+       회사가 어찌할 수 없는 사유로 인한 중단에는 책임을 지지 않습니다.</li>
+   <li>이용자가 올린 자료의 내용과 그에 따른 분쟁은 <b>올린 이용자의 책임</b>입니다.</li>
+   <li>무료로 제공되는 서비스에 대해서는 회사의 고의 또는 중대한 과실이 없는 한 손해를 배상하지 않습니다.</li>
+   <li>중요한 자료는 "내보내기"로 따로 보관해 두시길 권합니다.</li>
+  </ul>
+
+  <h3>제11조 (분쟁)</h3>
+  <p>이 약관은 대한민국 법을 따릅니다. 분쟁이 생기면 먼저 협의하고, 해결되지 않으면
+  민사소송법에 따른 관할 법원에서 다룹니다.</p>
+
+  <h3>제12조 (문의)</h3>
+  ${bizRow}
+  <p class="lnote">시행일: ${esc(LEGAL_AT)}</p>`;
+
+ const body=`<div class="legal">
+   <div class="seg" style="margin-bottom:18px">
+    <button class="${K==='privacy'?'on':''}" data-act="legal" data-k="privacy">개인정보처리방침</button>
+    <button class="${K==='terms'?'on':''}" data-act="legal" data-k="terms">이용약관</button></div>
+   ${K==='privacy'?privacy:terms}
+   <div class="row" style="margin-top:28px"><button class="btn" data-act="legal-back">${ic('back')}돌아가기</button></div>
+  </div>`;
+ const title=K==='privacy'?'개인정보처리방침':'이용약관';
+ if(!NET.user||!S.team.id)return `<div class="shell"><div class="main">
+   <header class="hd"><div class="ttl"><h1>${title}</h1><span class="date">1414</span></div></header>
+   <main class="w-read">${body}</main></div></div>`;
+ return shellHTML('settings',{title,sub:'1414',body});
+}
+
 /* ---------- 설정 페이지 · 탭 넷 (§6.8) ---------- */
 const ST_TABS=[['profile','프로필'],['noti','알림'],['account','계정'],['app','앱']];
 const SET={tab:'profile'};
@@ -1962,6 +2180,9 @@ function settingsHTML(){
    <div class="hint" style="margin-top:6px">${THEME.get()==='system'?'이 기기의 시스템 설정을 따라요':'항상 이 테마로 보여요'}</div></div>
   ${on?`<div class="card"><b>악보가 안 보일 때</b>
    <div class="row" style="margin-top:8px"><span class="hint grow">이 기기에 저장된 악보를 지우고 서버에서 새로 받아요</span><button class="btn sm" id="sRefetch">${ic('import')}다시 불러오기</button></div></div>`:''}
+  <div class="card"><b>약관 · 개인정보</b>
+   <div class="row" style="margin-top:8px;gap:8px"><button class="btn sm" data-act="legal" data-k="terms">이용약관</button><button class="btn sm" data-act="legal" data-k="privacy">개인정보처리방침</button></div>
+   <div class="hint" style="margin-top:8px">${esc(BIZ.name)} · 대표 ${esc(BIZ.ceo)} · 사업자등록번호 ${esc(BIZ.regNo)}<br>${esc(BIZ.email)}</div></div>
   <div class="card"><b>이 기기</b>
    <div class="row" style="margin-top:8px"><span class="hint grow">${on?'받아 둔 콘티·악보·메모를 지웁니다. 계정은 그대로예요':'모든 데이터를 지웁니다'}</span><button class="btn ghost danger" id="sReset">${on?'기기 데이터 지우기':'전체 초기화'}</button></div>
    ${on?`<div class="hr"></div><div class="row"><span class="hint grow">이 기기에서 로그아웃해요</span><button class="btn" id="sLogout">${ic('logout')}로그아웃</button></div>`:''}</div>`;
@@ -1977,6 +2198,12 @@ function afterSettings(){
  const saveQ=()=>{const from=Math.max(0,Math.min(23,+((qf||{}).value)||0));
   const to=Math.max(0,Math.min(23,+((qt||{}).value)||0));savePrefs({quiet:{...quietOf(),from,to}})};
  if(qf)qf.onchange=saveQ;if(qt)qt.onchange=saveQ;
+ box.onchange=e=>{
+  const nb=e.target.closest('[data-noti]');
+  if(nb){setNotiOn(nb.dataset.noti,nb.checked);
+   savePrefs({notiOff:Object.assign({},(PREFS.data||{}).notiOff||{},{[nb.dataset.noti]:!nb.checked})});return}
+  if(e.target.id==='sQuiet'){const on=e.target.checked;const r=$('#sQuietRow');if(r)r.hidden=!on;
+   savePrefs({quiet:{...quietOf(),on}});return}};
  const firstRun=!String(m.name||'').trim();   // 기기 전용 첫 실행: 이름을 넣고 저장하면 바로 앱으로
  box.onclick=async e=>{
   const sb=e.target.closest('[data-s]');if(sb){sess=sb.dataset.s;extra=extra.filter(x=>x!==sess);
@@ -1986,10 +2213,6 @@ function afterSettings(){
    extra=extra.includes(v)?extra.filter(x=>x!==v):[...extra,v];
    $$('#sSess2 .q').forEach(b=>b.classList.toggle('on2',extra.includes(b.dataset.s2)));return}
   const rb=e.target.closest('[data-r]');if(rb){role=rb.dataset.r;$$('#sRole .q').forEach(b=>b.classList.toggle('on',b.dataset.r===role));return}
-  const nb=e.target.closest('[data-noti]');if(nb){setNotiOn(nb.dataset.noti,nb.checked);
-   savePrefs({notiOff:Object.assign({},(PREFS.data||{}).notiOff||{},{[nb.dataset.noti]:!nb.checked})});return}
-  if(e.target.closest('#sQuiet')){const on=$('#sQuiet').checked;const r=$('#sQuietRow');if(r)r.hidden=!on;
-   savePrefs({quiet:{...quietOf(),on}});return}
   if(e.target.closest('#sPushOn')){markAskedPush();
    let perm='denied';try{perm=await Notification.requestPermission()}catch(err){}
    if(perm==='granted'){const ok=await pushRegister();toast(ok?'알림을 켰어요':'알림을 켜지 못했어요')}
@@ -2338,7 +2561,7 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),
  flush(){const r=route();const svc=svcById(r.a);if(online()&&svc&&/^(edit|view|play)$/.test(r.name)){clearTimeout(SYNC.t);SYNC.pushNotes(svc,true);if(r.name==='edit'&&isLeader()){clearTimeout(SYNC.td);SYNC.pushDraft(svc)}}},
  schedulePush(){if(!online())return;clearTimeout(SYNC.tl);SYNC.tl=setTimeout(()=>{SYNC.pushLibrary();pushDirtySongs();pushSongs()},3000);clearTimeout(SYNC.t);SYNC.t=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&/^(edit|view|play)$/.test(r.name))SYNC.pushNotes(svc)},700);clearTimeout(SYNC.td);SYNC.td=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&r.name==='edit'&&isLeader())SYNC.pushDraft(svc)},2500)}
 };
-const GATE={mode:'login',err:'',user:'',sess:'',preview:null};
+const GATE={mode:'login',err:'',user:'',sess:'',preview:null,agree:false};
 function authShell(inner){return `<div class="auth"><aside class="auth-side"><div class="logostack">${logoSymbol(56)}${logoWordmark(47,'')}</div><div><p class="kick">찬양팀 콘티 · 연습 · 무대 — 1414</p><blockquote>“콘티 한 장으로<br>팀 전체가 같은 곳을 봅니다.”</blockquote><p class="desc">곡 순서와 키, 송폼, 악보, 참고 영상을 한 화면에. 인도자가 발행하면 팀원은 자기 세션 메모와 함께 연습하고 무대에 섭니다.</p>
  <ul><li>${ic('send')}발행 한 번으로 카톡 공유 문구까지 자동 생성</li><li>${ic('marker')}악보 위 마커에 붙는 세션별 메모</li><li>${ic('moon')}네트워크 없이도 열리는 무대 모드</li></ul></div><p class="copy">© 2026 1414 · lets1414.com</p></aside><div class="auth-main"><div class="auth-box">${inner}</div></div></div>`}
 function recoverHTML(){return authShell(`<div class="auth-card"><div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div><h1>비밀번호 재설정</h1><p class="sub">설정에서 발급받아 둔 복구 코드로 새 비밀번호를 정합니다. 코드가 없으면 인도자에게 초기화를 부탁하세요.</p>
@@ -2353,9 +2576,11 @@ function loginHTML(){const m=GATE.mode;if(m==='recover')return recoverHTML();ret
  <div class="lbl">아이디</div><input class="field" id="lgUser" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="영문 소문자·숫자 3~20자" value="${esc(GATE.user)}">
  <div class="lbl">비밀번호</div><input class="field" id="lgPass" type="password" autocomplete="${m==='login'?'current-password':'new-password'}" placeholder="6자 이상">
  ${m==='signup'?`<div class="lbl">이름 <span class="hint">팀원에게 보이는 이름</span></div><input class="field" id="lgName" placeholder="하은">`:''}
+ ${m==='signup'?`<label class="agree"><input type="checkbox" id="lgAgree" ${GATE.agree?'checked':''}><span><a data-act="legal" data-k="terms">이용약관</a>과 <a data-act="legal" data-k="privacy">개인정보처리방침</a>에 동의합니다. <b>(필수)</b><br>만 14세 이상만 가입할 수 있어요.</span></label>`:''}
  <div class="err" id="lgErr" role="alert">${esc(GATE.err)}</div>
  <button class="btn pri wide" data-act="lg-submit">${m==='login'?'로그인':'가입하고 시작'}</button>
- ${route().name==='join'?`<p class="fine">초대 링크로 오셨네요. 로그인하면 팀 가입으로 이어집니다.</p>`:''}${m==='login'?`<p class="fine"><a href="#" data-act="lg-mode" data-m="recover">비밀번호를 잊었어요</a></p>`:''}</div>`)}
+ ${route().name==='join'?`<p class="fine">초대 링크로 오셨네요. 로그인하면 팀 가입으로 이어집니다.</p>`:''}${m==='login'?`<p class="fine"><a href="#" data-act="lg-mode" data-m="recover">비밀번호를 잊었어요</a></p>`:''}
+ <div class="legalfoot"><button data-act="legal" data-k="terms">이용약관</button><button data-act="legal" data-k="privacy">개인정보처리방침</button></div></div>`)}
 function gateHTML(){const u=NET.user||{};return authShell(`<div class="auth-card"><div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div><h1>${esc(u.name||u.username)}님, 반가워요</h1><p class="sub">아직 팀이 없어요. 초대 링크로 들어가거나 새 팀을 만드세요.</p>
  <div class="lbl">초대 링크로 가입</div><div class="row"><input class="field" id="gtLink" placeholder="인도자가 보낸 링크 또는 코드"><button class="btn" data-act="join-go">열기</button></div><div class="err" id="gtErr"></div></div>
  <div class="auth-card"><h2>팀 만들기</h2><p class="sub">인도자가 팀을 만들고 초대 링크를 카톡에 붙여요.</p>
@@ -2386,10 +2611,12 @@ async function afterGate(){const gs=$('#gtSess');if(gs)gs.onclick=e=>{const b=e.
  const r=route();if(r.name==='join'&&NET.user&&!GATE.preview){try{const p=await api('/invite/'+r.a);if(p.alreadyMember){await refreshMe();toast('이미 '+p.teamName+' 팀에 있어요');go('home');return}GATE.preview=p;GATE.sessTouched=false;GATE.sessList=p.role==='pastor'?[]:[(p.sessions||[])[0]].filter(Boolean)}catch(e){GATE.preview={error:e.message}}render()}}
 async function doGate(act,el){
  try{
-  if(act==='lg-mode'){GATE.mode=el.dataset.m;GATE.err='';GATE.user=($('#lgUser')||{value:''}).value;render();return}
+  if(act==='lg-mode'){GATE.mode=el.dataset.m;GATE.err='';GATE.user=($('#lgUser')||{value:''}).value;GATE.agree=!!($('#lgAgree')||{}).checked;render();return}
   if(act==='rc-submit'){const username=$('#lgUser').value.trim(),code=$('#rcCode').value.trim(),next=$('#lgPass').value;GATE.user=username;const m=await api('/auth/recover',{method:'POST',body:{username,code,next}});GATE.err='';GATE.mode='login';await takeMe(m);toast('비밀번호를 바꿨어요. 설정에서 복구 코드를 새로 발급해 두세요');render();return}
   if(act==='lg-submit'){const username=$('#lgUser').value.trim(),password=$('#lgPass').value;GATE.user=username;
-   const m=GATE.mode==='login'?await api('/auth/login',{method:'POST',body:{username,password}}):await api('/auth/signup',{method:'POST',body:{username,password,name:$('#lgName').value.trim()}});
+   if(GATE.mode==='signup'){const ag=$('#lgAgree');GATE.agree=!!(ag&&ag.checked);
+    if(!GATE.agree){GATE.err='이용약관과 개인정보처리방침에 동의해 주세요';render();return}}
+   const m=GATE.mode==='login'?await api('/auth/login',{method:'POST',body:{username,password}}):await api('/auth/signup',{method:'POST',body:{username,password,name:$('#lgName').value.trim(),agreedAt:new Date().toISOString()}});
    GATE.err='';GATE.preview=null;await takeMe(m);render();probeOmr();if(S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()});return}
   if(act==='logout'){try{await api('/auth/logout',{method:'POST'})}catch(e){}NET.user=null;NET.teams=[];await switchScope(scopeKey('',''));S.team=Object.assign(DEF_TEAM(),{id:'',invite:''});save();GATE.preview=null;if(route().name!=='home')go('home');render();return}
   if(act==='join-go'){const v=$('#gtLink').value.trim();const tok=(v.match(/join\/([A-Za-z0-9_-]+)/)||[])[1]||v;if(!tok){$('#gtErr').textContent='링크나 코드를 붙여넣어 주세요';return}GATE.preview=null;go('join/'+tok);return}
@@ -3998,6 +4225,8 @@ async function render(){
  const r=route();const app=$('#app');app.classList.remove('stage');
  if(r.name!=='lineup')document.body.classList.remove('lnopen');const same=lastRoute===location.hash;lastRoute=location.hash;if(same)keepScroll();else{SCROLL.sheet=0;SCROLL.bodies=null}
  // §4.6 목회자 링크: 로그인 없이 여는 페이지
+ // 약관·방침은 로그인 없이 볼 수 있다
+ if(r.name==='legal'){app.innerHTML=legalHTML(r.a||'privacy');restoreScroll();return}
  if(r.name==='word-link'&&r.a){app.innerHTML='<div class="empty" style="margin:40px auto;max-width:420px"><b>여는 중…</b></div>';const h=await wordLinkHTML(r.a);if(stale())return;app.innerHTML=h;afterWordLink(r.a);return}
  if(online()){
   if(!NET.user){app.innerHTML=loginHTML();afterGate();return}
@@ -4089,8 +4318,9 @@ async function render(){
   restoreScroll();return}
  app.innerHTML=homeHTML();
  if(online()&&S.team.id&&NET.user&&Date.now()-NOTI.at>8000)refreshNoti();
- // 앱에 처음 들어왔을 때 한 번만 알림 받을지 묻는다 (야간 여부 포함)
- if(online()&&S.team.id&&NET.user)setTimeout(()=>{if(route().name==='home'&&!$('#modal').firstChild)pushOnboard()},1200);
+ // 약관 동의가 먼저, 그다음 알림
+ if(online()&&NET.user&&needsAgree())setTimeout(()=>{if(!$('#modal').firstChild)agreeModal()},600);
+ if(online()&&S.team.id&&NET.user)setTimeout(()=>{if(route().name==='home'&&!$('#modal').firstChild&&!needsAgree())pushOnboard()},1600);
  if(online()&&NET.user)pullPrefs().then(()=>{if(pushState()==='granted')pushRegister()});
  if(online()&&S.team.id&&NET.user)pullSchedule(monthKey()).then(ch=>{if(ch&&route().name==='home')render()});
  if(online()&&!same)SYNC.pullServices().then(ch=>{if(ch&&route().name==='home')render()});
@@ -5224,6 +5454,8 @@ document.addEventListener('click',async e=>{
     toast(bad?`${ids.length-bad}개 지웠어요 · ${bad}개는 서버에서 못 지웠어요`:`${ids.length}개 지웠어요`);render()}
    break}
   case 'crop-piece':{const s2=svcById(r.a);const it2=curItem(s2);const p2=it2&&it2.pieces.find(x=>x.id===el.dataset.id);if(p2)cropPieceModal(s2,it2,p2);break}
+  case 'legal':go('legal/'+(el.dataset.k||'privacy'));break;
+  case 'legal-back':{if(history.length>1)history.back();else go(NET.user&&S.team.id?'settings':'home');break}
   case 'edzoom':{const s2=svcById(r.a);if(s2)setEdZoom(+el.dataset.d,s2);break}
   case 'split-piece':{const sv=svcById(r.a);const it=sv&&curItem(sv);const p=it&&it.pieces.find(x=>x.id===el.dataset.id);if(!p)break;
    toast('나눌 곳을 찾는 중…');
