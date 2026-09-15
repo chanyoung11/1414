@@ -5032,6 +5032,7 @@ document.addEventListener('click',async e=>{
    api('/teams/'+S.team.id+'/settings',{method:'PATCH',body:{songTags:list}}).then(r2=>{TM.data.settings=r2.settings;TM.open.phrases=true;render()}).catch(err=>toast(err.message));return}
  }
  const el=e.target.closest('[data-act]');if(!el||el.closest('#modal'))return;const act=el.dataset.act;const r=route();const svc=svcById(el.dataset.id||r.a);
+ try{
  switch(act){
   case 'home':go('home');break;
   case 'settings':NOTI.open=false;go('settings');break;
@@ -5288,7 +5289,15 @@ document.addEventListener('click',async e=>{
   case 'zoom':setZoom((PL.zoom||1)+(+el.dataset.d)*0.1);break;
   case 'print':printService(svc);break;
  }
+ }catch(err){   // 액션이 던지면 아무 일도 안 일어난 것처럼 보이던 것
+  console.error('action',act,err);
+  toast((err&&err.message)||'하지 못했어요 · 잠시 뒤 다시 해 주세요')}
 });
+// 어디서든 새는 오류를 한 번은 알려 준다 (조용히 죽는 것보다 낫다)
+window.addEventListener('unhandledrejection',e=>{
+ const m=e&&e.reason&&e.reason.message;
+ console.error('unhandled',e&&e.reason);
+ if(m&&!/aborted|AbortError|NotAllowedError/i.test(m))toast(m)});
 $('#prog')&&0;
 document.addEventListener('click',e=>{const pr=e.target.closest('#prog');if(!pr||!(P.end||P.dur))return;const r=pr.getBoundingClientRect();const [s0,s1]=P.range();P.seek(s0+(e.clientX-r.left)/r.width*(s1-s0))});
 // long-press on markers in play mode also opens composer (touch)

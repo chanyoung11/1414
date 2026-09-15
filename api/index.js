@@ -86,12 +86,23 @@ async function audit(teamId, actorId, action, target, meta) {
 // 유료 AI 호출 한도. 하루 팀당 이만큼까지. ENFORCE_PLAN 과 무관하게 늘 켜 둔다 —
 // 이건 요금제가 아니라 비용 사고를 막는 안전장치다
 const AI_DAILY = { omr: 60, score: 400, ocr: 300 };
-async function aiGuard(teamId, kind) {
+// 한 사람이 하루에 쓸 수 있는 총량. 팀을 여러 개 만들어도 이건 못 넘는다
+const AI_DAILY_USER = { omr: 80, score: 500, ocr: 400 };
+const MAX_TEAMS_PER_USER = 20;   // 요금제가 아니라 스팸·비용 사고 방지선
+async function aiGuard(teamId, kind, uid) {
+  const label = kind === 'ocr' ? '코드 인식' : '채보';
   const cap = +process.env['AI_DAILY_' + kind.toUpperCase()] || AI_DAILY[kind] || 100;
   const row = await one(`select calls from ai_usage where team_id=$1 and day=(now() at time zone 'Asia/Seoul')::date and kind=$2`, [teamId, kind]);
-  if (row && row.calls >= cap) throw new HttpError(429, 'ai_quota', `오늘 ${kind === 'ocr' ? '코드 인식' : '채보'} 한도(${cap}회)를 다 썼어요. 내일 다시 해 주세요`);
+  if (row && row.calls >= cap) throw new HttpError(429, 'ai_quota', `오늘 ${label} 한도(${cap}회)를 다 썼어요. 내일 다시 해 주세요`);
+  if (!uid) return;
+  const ucap = +process.env['AI_DAILY_USER_' + kind.toUpperCase()] || AI_DAILY_USER[kind] || 150;
+  const ur = await one(`select calls from ai_usage_user where user_id=$1 and day=(now() at time zone 'Asia/Seoul')::date and kind=$2`, [uid, kind]);
+  if (ur && ur.calls >= ucap) throw new HttpError(429, 'ai_quota', `오늘 ${label}를 너무 많이 했어요. 내일 다시 해 주세요`);
 }
-async function aiCount(teamId, kind, tokens) {
+async function aiCount(teamId, kind, tokens, uid) {
+  if (uid) await q(`insert into ai_usage_user(user_id, day, kind, calls)
+                    values($1,(now() at time zone 'Asia/Seoul')::date,$2,1)
+                    on conflict (user_id, day, kind) do update set calls = ai_usage_user.calls + 1`, [uid, kind]).catch(() => {});
   await q(`insert into ai_usage(team_id, day, kind, calls, tokens)
            values($1,(now() at time zone 'Asia/Seoul')::date,$2,1,$3)
            on conflict (team_id, day, kind) do update set calls = ai_usage.calls + 1, tokens = ai_usage.tokens + excluded.tokens`,
@@ -310,6 +321,8 @@ on('POST', '/teams', async ({ uid, body }) => {
   if (!myName) throw bad('내 이름을 적어 주세요');
   const owned = await one(`select count(*)::int as n from teams where created_by=$1 and deleted_at is null`, [uid]);
   if (ENFORCE_PLAN && owned.n >= PLAN.free.teamsOwned) throw new HttpError(402, 'plan_limit', `무료로는 팀을 ${PLAN.free.teamsOwned}개까지 만들 수 있어요`);
+  // 요금제가 꺼져 있어도 이건 막는다 — 팀을 늘려 팀당 AI 한도를 우회하는 것을 방지
+  if (owned.n >= MAX_TEAMS_PER_USER) throw new HttpError(429, 'too_many_teams', '팀을 너무 많이 만들었어요');
   const t = await one('insert into teams(name, invite_token, created_by) values($1,$2,$3) returning *', [name, randomToken(12), uid]);
   const session = pickSession(t, str(body.session, 40) || '인도자');
   await q('insert into members(user_id, team_id, name, session, sessions, role) values($1,$2,$3,$4,$5,$6)', [uid, t.id, myName, session, [session], 'leader']);
@@ -1815,14 +1828,14 @@ on('POST', '/omr', async ({ uid, body }) => {
   const mime = /^image\/(jpeg|png|webp)$/.test(String(body.mime || '')) ? String(body.mime) : 'image/jpeg';
   if (b64.length < 100) throw bad('이미지가 비어 있어요');
   if (b64.length > 9e6) throw new HttpError(413, 'too_large', '이미지가 너무 커요 (6MB 이하)');
-  await aiGuard(teamId, 'omr');
+  await aiGuard(teamId, 'omr', uid);
   let r;
   try { r = await transcribeSheet({ b64, mime }); }
   catch (e) {
     if (e.status === 429) throw new HttpError(429, 'omr_quota', '채보 한도에 걸렸어요. 잠시 뒤 다시 해 주세요');
     throw new HttpError(502, 'omr_failed', '채보 실패: ' + (e.message || ''));
   }
-  await aiCount(teamId, 'omr', r.usage && r.usage.total);
+  await aiCount(teamId, 'omr', r.usage && r.usage.total, uid);
   return { songs: r.songs, model: r.model, usage: r.usage, cost: estimateUSD(r.model, r.usage) };
 });
 
@@ -1837,14 +1850,14 @@ on('POST', '/score', async ({ uid, body }) => {
   const mime = /^image\/(jpeg|png|webp)$/.test(String(body.mime || '')) ? String(body.mime) : 'image/jpeg';
   if (b64.length < 100) throw bad('이미지가 비어 있어요');
   if (b64.length > 9e6) throw new HttpError(413, 'too_large', '이미지가 너무 커요');
-  await aiGuard(teamId, 'score');
+  await aiGuard(teamId, 'score', uid);
   let r;
   try { r = await transcribeScore({ b64, mime }, { thinking: 'LOW', repair: body.repair !== false }); }
   catch (e) {
     if (e.status === 429) throw new HttpError(429, 'omr_quota', '채보 한도에 걸렸어요. 잠시 뒤 다시 해 주세요');
     throw new HttpError(502, 'omr_failed', '채보 실패: ' + (e.message || ''));
   }
-  await aiCount(teamId, 'score', r.usage && r.usage.total);
+  await aiCount(teamId, 'score', r.usage && r.usage.total, uid);
   const usd = estimateUSD(r.model, r.usage);
   // 원화는 대략만 보여 준다 (환율은 USD_KRW 로 바꿀 수 있음)
   return { songs: r.songs, model: r.model, usage: r.usage, badMeasures: r.badMeasures, cost: usd, costKRW: Math.round(usd * (+process.env.USD_KRW || 1450) * 10) / 10 };
@@ -1868,9 +1881,9 @@ on('POST', '/ocr', async ({ uid, body }) => {
   const images = (Array.isArray(body.images) ? body.images : []).slice(0, 16).map((im) => ({ b64: String(im.b64 || ''), mime: str(im.mime, 40), w: +im.w || 0, h: +im.h || 0, kind: str(im.kind, 10) })).filter((im) => im.b64.length > 100);
   if (!images.length) throw bad('이미지가 없어요');
   if (images.reduce((n, im) => n + im.b64.length, 0) > 12 * 1024 * 1024) throw new HttpError(413, 'too_large', '이미지가 너무 커요');
-  await aiGuard(teamId, 'ocr');
+  await aiGuard(teamId, 'ocr', uid);
   const results = await ocrBands(images);
-  await aiCount(teamId, 'ocr', 0);
+  await aiCount(teamId, 'ocr', 0, uid);
   return { results };
 });
 

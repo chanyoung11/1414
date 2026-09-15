@@ -430,3 +430,13 @@ create index if not exists push_subs_user_idx on push_subs(user_id);
 
 -- 인도자가 지운 콘티의 날짜를 자동 생성이 다시 만들어 되살리던 것 (실사용 제보)
 alter table service_dates add column if not exists auto_skip boolean not null default false;
+
+-- 비용 안전장치: 팀을 여러 개 만들어 팀당 AI 한도를 우회하는 것을 막는다.
+-- 요금제(ENFORCE_PLAN)와 무관하게 늘 켜 둔다
+create table if not exists ai_usage_user (
+  user_id uuid not null references users(id) on delete cascade,
+  day     date not null,
+  kind    text not null,
+  calls   int  not null default 0,
+  primary key (user_id, day, kind)
+);
