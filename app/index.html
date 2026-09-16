@@ -4949,6 +4949,8 @@ async function appPushRegister(){
   let perm=await P.checkPermissions();
   if(perm.receive!=='granted')perm=await P.requestPermissions();
   if(perm.receive!=='granted')return false;
+  // 안드로이드 8+ 는 채널이 있어야 소리·중요도가 먹는다. 매니페스트의 기본 채널 id 와 같아야 한다
+  if(P.createChannel)await P.createChannel({id:'conti',name:'콘티 알림',description:'콘티·연습·순서 알림',importance:4,visibility:1}).catch(()=>{});
   if(!appPushRegister.bound){
    appPushRegister.bound=true;
    P.addListener('registration',t=>{const token=t&&t.value;if(!token)return;

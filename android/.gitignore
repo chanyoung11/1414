@@ -62,7 +62,8 @@ captures/
 .cxx/
 
 # Google Services (e.g. APIs or Firebase)
-# google-services.json
+# 공개 저장소라 올리지 않는다. 파이어베이스 콘솔에서 다시 받을 수 있다
+google-services.json
 
 # Freeline
 freeline.py

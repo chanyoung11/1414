@@ -8,6 +8,7 @@ import { putBlob, delBlobs, readUrls, presignPut, headBlob } from '../lib/blob.j
 import { ocrBands, visionConfigured } from '../lib/vision.js';
 import { sendPush, pushConfigured, vapidPublicKey } from '../lib/push.js';
 import { fcmConfigured } from '../lib/fcm.js';
+import { apnsConfigured } from '../lib/apns.js';
 import { transcribeSheet, transcribeScore, geminiConfigured, geminiModel, estimateUSD, ocrChordsGemini } from '../lib/gemini.js';
 import { norm as normSong, cho as choSong } from '../lib/song.js';
 import { randomBytes } from 'node:crypto';
@@ -281,7 +282,7 @@ on('POST', '/push/token/remove', async ({ uid, body }) => {
 });
 
 // ---------- 푸시 구독 ----------
-on('GET', '/push/key', async () => ({ configured: pushConfigured(), key: vapidPublicKey(), app: fcmConfigured() }));
+on('GET', '/push/key', async () => ({ configured: pushConfigured(), key: vapidPublicKey(), app: fcmConfigured() || apnsConfigured(), android: fcmConfigured(), ios: apnsConfigured() }));
 on('POST', '/push/subscribe', async ({ uid, body, req }) => {
   if (!uid) throw noAuth();
   const sub = body && body.sub;
