@@ -8,6 +8,17 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHEET = os.path.join(ROOT, 'docs', 'sample_sheet.jpg')
 tag = str(int(time.time()))[-6:]
 H = {'x-conti': '1'}
+
+# 악보를 올려도 인식은 자동으로 돌지 않는다 — '코드 인식' 버튼을 눌러야 한다.
+# 무료 플랜이면 확인 창이 한 번 뜬다
+def run_ocr(pg, wait=90000):
+  pg.wait_for_selector('.chordbar [data-act="ocr"]', timeout=20000)
+  pg.locator('.chordbar [data-act="ocr"]').first.click(); pg.wait_for_timeout(700)
+  go = pg.locator('#ocrGo')
+  if go.count(): go.click(); pg.wait_for_timeout(500)
+  pg.wait_for_function("(()=>{const p=(CONTI.S.services[0].items[0].pieces||[])[0];return p&&p.ocr&&p.ocr!=='pending'})()", timeout=wait)
+  return True
+
 def fail(m): print('FAIL:', m); sys.exit(1)
 
 def add_song_to_new_service(pg, sid, name):
@@ -37,7 +48,7 @@ def run():
     pg.evaluate("CONTI.pullSongs(true)"); pg.wait_for_timeout(1200)
     s1 = add_song_to_new_service(pg, sid, '예배 하나')
     pg.set_input_files('#pieceFile', [SHEET])
-    pg.wait_for_function("(()=>{const p=(CONTI.S.services[0].items[0].pieces||[])[0];return p&&p.ocr&&p.ocr!=='pending'})()", timeout=90000)
+    run_ocr(pg, 90000)
     pg.wait_for_timeout(4500)   # pushSongs 디바운스(3초)로 악보가 편곡에 올라가게
     # 마커 A 를 찍는다 (좌표 대신 데이터로)
     pg.evaluate("""(()=>{const s=CONTI.S.services.find(x=>x.id===CONTI.route().a);const it=s.items[0];

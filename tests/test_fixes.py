@@ -16,6 +16,17 @@ A = ('fa' + tag, 'secret1', '하은')
 B = ('fb' + tag, 'secret1', '민수')
 H = {'x-conti': '1'}
 
+
+# 악보를 올려도 인식은 자동으로 돌지 않는다 — '코드 인식' 버튼을 눌러야 한다.
+# 무료 플랜이면 확인 창이 한 번 뜬다
+def run_ocr(pg, wait=90000):
+  pg.wait_for_selector('.chordbar [data-act="ocr"]', timeout=20000)
+  pg.locator('.chordbar [data-act="ocr"]').first.click(); pg.wait_for_timeout(700)
+  go = pg.locator('#ocrGo')
+  if go.count(): go.click(); pg.wait_for_timeout(500)
+  pg.wait_for_function("(()=>{const p=(CONTI.S.services[0].items[0].pieces||[])[0];return p&&p.ocr&&p.ocr!=='pending'})()", timeout=wait)
+  return True
+
 def fail(msg): print('FAIL:', msg); sys.exit(1)
 
 def signup(pg, u):
@@ -51,7 +62,7 @@ def run():
         pg.click('[data-act="new-svc"]'); pg.wait_for_selector('[data-f="svc.name"]'); pg.fill('[data-f="svc.name"]', 'X팀 예배')
         pg.click('[data-act="add-item"]'); pg.wait_for_selector('[data-f="item.title"]'); pg.fill('[data-f="item.title"]', 'X곡')
         pg.set_input_files('#pieceFile', [SHEET])
-        pg.wait_for_function("(()=>{const p=CONTI.S.services[0].items[0].pieces[0];return p&&p.ocr&&p.ocr!=='pending'})()", timeout=60000)
+        run_ocr(pg, 60000)
         svcX = pg.evaluate('CONTI.S.services[0].id')
         pg.click('[data-act="publish"]'); pg.wait_for_selector('#pubOnly'); pg.click('#pubOnly'); pg.wait_for_timeout(5000)
         if svcX not in ctx.request.get(URL + 'api/services?team=' + teamX).text(): fail('X 발행본이 서버에 없음')

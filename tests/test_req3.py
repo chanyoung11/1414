@@ -8,6 +8,16 @@ SHEET = os.path.join(ROOT, 'docs', 'sample_sheet.jpg')
 tag = str(int(time.time()))[-6:]
 LEADER = ('lead' + tag, 'secret1', '하은')
 
+
+# 악보를 올려도 인식은 자동으로 돌지 않는다 — '코드 인식' 버튼을 눌러야 한다
+def run_ocr(pg, idx=0, wait=90000):
+  pg.wait_for_selector('.chordbar [data-act="ocr"]', timeout=20000)
+  pg.locator('.chordbar [data-act="ocr"]').first.click(); pg.wait_for_timeout(700)
+  go = pg.locator('#ocrGo')
+  if go.count(): go.click(); pg.wait_for_timeout(500)
+  pg.wait_for_function("((i)=>{const it=CONTI.S.services[0].items[i];const p=it&&(it.pieces||[])[0];return p&&p.ocr&&p.ocr!=='pending'})(%d)" % idx, timeout=wait)
+  return True
+
 def fail(msg): print('FAIL:', msg); sys.exit(1)
 
 def login(pg, user, mode='login'):
@@ -31,7 +41,7 @@ def run():
         A.set_input_files('#pieceFile', [SHEET])
         ocr = cA.request.get(URL + 'api/ocr').json()
         if ocr.get('available'):
-            A.wait_for_function("(()=>{const p=CONTI.S.services[0].items[0].pieces[0];return p&&p.ocr==='done'})()", timeout=30000)
+            run_ocr(A, 0, 30000)
         else:
             A.wait_for_timeout(3000)
         svc_id = A.evaluate("CONTI.S.services[0].id")
@@ -114,7 +124,14 @@ def run():
             A.wait_for_function("(()=>{const s=CONTI.S.services.find(x=>x.name==='분리 테스트');const p=s&&s.items[0]&&s.items[0].pieces[0];return p&&p.w>0})()", timeout=120000)
             if A.evaluate("CONTI.S.services.find(x=>x.name==='분리 테스트').items.length") != 1: fail('넣자마자 말없이 쪼개짐')
             A.click('[data-act="split-piece"]'); A.wait_for_timeout(1500)
-            A.wait_for_function("(()=>{const s=CONTI.S.services.find(x=>x.name==='분리 테스트');const its=s?s.items:[];return its.length>=2&&its.every(it=>it.pieces.length&&it.pieces.every(p=>p.ocr&&p.ocr!=='pending'))})()", timeout=120000)
+            # 나누기만 하고 인식은 돌지 않는다. 곡마다 '코드 인식'을 눌러 준다
+            A.wait_for_function("(()=>{const s=CONTI.S.services.find(x=>x.name==='분리 테스트');const its=s?s.items:[];return its.length>=2&&its.every(it=>it.pieces.length)})()", timeout=60000)
+            for i in range(2):
+                A.locator('.list-item').nth(i).click(); A.wait_for_timeout(900)
+                A.wait_for_selector('.chordbar [data-act="ocr"]', timeout=20000)
+                A.locator('.chordbar [data-act="ocr"]').first.click(); A.wait_for_timeout(700)
+                if A.locator('#ocrGo').count(): A.click('#ocrGo'); A.wait_for_timeout(500)
+                A.wait_for_function("((i)=>{const s=CONTI.S.services.find(x=>x.name==='분리 테스트');const p=s.items[i].pieces[0];return p&&p.ocr&&p.ocr!=='pending'})(%d)" % i, timeout=120000)
             two = A.evaluate("CONTI.S.services.find(x=>x.name==='분리 테스트').items.map(it=>({title:it.title,key:it.key,n:it.pieces[0].chords.length}))")
             print('split:', two)
             if len(two) != 2: fail('두 곡으로 나뉘지 않음: %s' % two)
@@ -127,7 +144,7 @@ def run():
             A.wait_for_function("(()=>{const s=CONTI.S.services.find(x=>x.name==='세로 분리');const p=s&&s.items[0]&&s.items[0].pieces[0];return p&&p.w>0})()", timeout=120000)
             if A.evaluate("CONTI.S.services.find(x=>x.name==='세로 분리').items.length") != 1: fail('넣자마자 말없이 쪼개짐')
             A.click('[data-act="split-piece"]'); A.wait_for_timeout(1500)
-            A.wait_for_function("(()=>{const s=CONTI.S.services.find(x=>x.name==='세로 분리');const its=s?s.items:[];return its.length>=2&&its.every(it=>it.pieces.length&&it.pieces.every(p=>p.ocr&&p.ocr!=='pending'))})()", timeout=120000)
+            A.wait_for_function("(()=>{const s=CONTI.S.services.find(x=>x.name==='세로 분리');const its=s?s.items:[];return its.length>=2&&its.every(it=>it.pieces.length)})()", timeout=60000)
             st = A.evaluate("CONTI.S.services.find(x=>x.name==='세로 분리').items.map(it=>({title:it.title,key:it.key,n:it.pieces[0].chords.length,h:it.pieces[0].h}))")
             print('stacked split:', st)
             if len(st) != 2: fail('위아래 두 곡이 나뉘지 않음: %s' % st)

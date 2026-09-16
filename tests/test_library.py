@@ -9,6 +9,17 @@ tag = str(int(time.time()))[-6:]
 H = {'x-conti': '1'}
 L = ('ll' + tag, 'secret1', '하은')
 
+
+# 악보를 올려도 인식은 자동으로 돌지 않는다 — '코드 인식' 버튼을 눌러야 한다.
+# 무료 플랜이면 확인 창이 한 번 뜬다
+def run_ocr(pg, wait=90000):
+  pg.wait_for_selector('.chordbar [data-act="ocr"]', timeout=20000)
+  pg.locator('.chordbar [data-act="ocr"]').first.click(); pg.wait_for_timeout(700)
+  go = pg.locator('#ocrGo')
+  if go.count(): go.click(); pg.wait_for_timeout(500)
+  pg.wait_for_function("(()=>{const p=(CONTI.S.services[0].items[0].pieces||[])[0];return p&&p.ocr&&p.ocr!=='pending'})()", timeout=wait)
+  return True
+
 def fail(msg): print('FAIL:', msg); sys.exit(1)
 
 def login(pg, u, mode='login'):
@@ -34,7 +45,7 @@ def run():
         pa.click('[data-act="add-item"]'); pa.wait_for_selector('[data-f="item.title"]')
         pa.fill('[data-f="item.title"]', '주 은혜임을'); pa.fill('[data-f="item.key"]', 'G'); pa.fill('[data-f="item.form"]', '1414 – AAB')
         pa.set_input_files('#pieceFile', [SHEET])
-        pa.wait_for_function("(()=>{const p=(CONTI.S.services[0].items[0].pieces||[])[0];return p&&p.ocr&&p.ocr!=='pending'})()", timeout=60000)
+        run_ocr(pa, 60000)
         pa.wait_for_timeout(5000)   # 라이브러리 push 디바운스(3초) + 업로드
         srv = cA.request.get(URL + 'api/songs?team=' + team).json()
         if not srv['songs']: fail('서버에 곡이 없음')

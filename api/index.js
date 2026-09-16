@@ -9,6 +9,7 @@ import { ocrBands, visionConfigured } from '../lib/vision.js';
 import { sendPush, pushConfigured, vapidPublicKey } from '../lib/push.js';
 import { fcmConfigured } from '../lib/fcm.js';
 import { apnsConfigured } from '../lib/apns.js';
+import { rcAuthOk, rcConfigured, planFromEvent } from '../lib/iap.js';
 import { transcribeSheet, transcribeScore, geminiConfigured, geminiModel, estimateUSD, ocrChordsGemini } from '../lib/gemini.js';
 import { norm as normSong, cho as choSong } from '../lib/song.js';
 import { randomBytes } from 'node:crypto';
@@ -55,7 +56,7 @@ const memberView = (t, m) => ({
   teamId: t.id, teamName: t.name, sessions: t.sessions, phrases: t.phrases,
   invite: m.role === 'leader' ? t.invite_token : undefined,
   settings: { ...DEF_SETTINGS, ...(t.settings || {}) },
-  plan: t.plan || 'free',
+  plan: planName(t), planUntil: t.plan_until || null, planSource: t.plan_source || null,
   billingUserId: t.billing_user_id || t.created_by,
   deletedAt: t.deleted_at || null,
   me: { userId: m.user_id, name: m.name, session: m.session, mySessions: mySessions(m), role: m.role, capo: +m.capo || 0, active: m.active !== false },
@@ -480,12 +481,81 @@ on('POST', '/teams/:id/undelete', async ({ uid, params }) => {
 
 /* ---------- B.3 초대 링크 ---------- */
 // 팀당 하나뿐이던 링크를 여러 개로. 링크마다 역할·만료·횟수가 다르고 따로 회수한다
+// 이번 달 한국 시간 기준 'YYYY-MM'
+const aiMonth = () => new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 7);
+// 곡 단위 월 한도. 이미 이번 달에 센 곡이면 더 차감하지 않는다.
+// 한도를 넘으면 402 로 막고, 넘지 않으면 그 곡을 이번 달 사용으로 기록한다
+// 인식이 잘 안 됐을 때 이번 달 사용 기록을 지워 준다(= 크레딧 환불).
+// 코드가 적은 악보만 골라 올려 공짜로 쓰는 것을 막으려고 달마다 횟수를 둔다
+async function aiRefund(teamId, kind, songKey) {
+  if (!ENFORCE_PLAN) return false;
+  const key = str(songKey, 64); if (!key) return false;
+  const month = aiMonth();
+  const n = (await one(`select count(*)::int n from credit_refunds where team_id=$1 and month=$2 and kind=$3`, [teamId, month, kind])).n;
+  if (n >= REFUND_PER_MONTH) return false;
+  const gone = await q('delete from ai_songs where team_id=$1 and month=$2 and kind=$3 and song_key=$4 returning 1', [teamId, month, kind, key]);
+  if (!gone.length) return false;
+  await q('insert into credit_refunds(team_id, month, kind, song_key) values($1,$2,$3,$4) on conflict do nothing', [teamId, month, kind, key]);
+  return true;
+}
+
+async function aiSongGuard(teamId, kind, songKey) {
+  if (!ENFORCE_PLAN) return { charged: false, used: 0, cap: null };
+  const key = str(songKey, 64);
+  if (!key) return { charged: false, used: 0, cap: null };   // 곡을 모르면 세지 않는다
+  const t = await one('select plan from teams where id=$1', [teamId]);
+  const cap = planOf(t)[kind === 'omr' ? 'omrSongs' : 'ocrSongs'];
+  const month = aiMonth();
+  const seen = await one('select 1 from ai_songs where team_id=$1 and month=$2 and kind=$3 and song_key=$4', [teamId, month, kind, key]);
+  const used = (await one('select count(*)::int n from ai_songs where team_id=$1 and month=$2 and kind=$3', [teamId, month, kind])).n;
+  if (seen) return { charged: false, used, cap };                // 같은 달 같은 곡은 다시 안 센다
+  const what = kind === 'omr' ? '채보' : '코드 인식';
+  if (cap != null && used >= cap) {
+    // 채보는 크레딧 팩으로 산 횟수가 남아 있으면 거기서 뺀다 (소멸 없음)
+    if (kind === 'omr') {
+      const got = await q(`update credit_balance set omr = omr - 1, updated_at=now()
+                           where team_id=$1 and omr > 0 returning omr`, [teamId]);
+      if (got.length) return { charged: true, used, cap, credits: got[0].omr };
+    }
+    throw new HttpError(402, 'ai_limit', `이번 달 ${what} ${cap}곡을 다 썼어요. 다음 달 1일에 다시 채워집니다`);
+  }
+  await q('insert into ai_songs(team_id, month, kind, song_key) values($1,$2,$3,$4) on conflict do nothing', [teamId, month, kind, key]);
+  return { charged: true, used: used + 1, cap };
+}
+
 // B.9 플랜 한도. 결제가 아직 없어서 검사는 꺼 둔다 (ENFORCE_PLAN=1 이면 켜진다)
+// 2026-09-17 가격표. 숫자를 고치면 화면 안내(설정 → 플랜)도 같이 따라간다.
+// ocrSongs/omrSongs 는 '곡' 단위다 — 악보가 몇 장이든 한 곡은 한 번만 센다.
+// ocrSongs: Infinity 는 화면에 '무제한'으로 보이지만, 뒤에서 OCR_GUARD 로 조용히 지킨다
 const PLAN = {
-  free: { members: 10, pastors: 2, sessions: 10, invites: 2, teamsOwned: 1, songs: 25 },
-  pro: { members: 25, pastors: 2, sessions: 14, invites: 5, teamsOwned: Infinity, songs: Infinity },
+  free: { members: 10, pastors: 2, sessions: 10, invites: 2, teamsOwned: 1,
+          songs: 25, services: 5, versions: 5,
+          ocrSongs: 10, omrSongs: 1, credits: false,
+          storage: 200 * 1024 * 1024, fileSize: 30 * 1024 * 1024,
+          shareSend: false, readonlyViews: 0 },
+  pro: { members: 25, pastors: 2, sessions: 14, invites: 5, teamsOwned: 1,
+         songs: Infinity, services: Infinity, versions: 30,
+         ocrSongs: 100, omrSongs: 15, credits: false,
+         storage: 5 * 1024 * 1024 * 1024, fileSize: 100 * 1024 * 1024,
+         shareSend: true, readonlyViews: 1 },
+  plus: { members: 50, pastors: 2, sessions: 14, invites: 5, teamsOwned: 1,
+          songs: Infinity, services: Infinity, versions: 100,
+          ocrSongs: 300, omrSongs: 50, credits: true,
+          storage: 30 * 1024 * 1024 * 1024, fileSize: 500 * 1024 * 1024,
+          shareSend: true, readonlyViews: Infinity },
 };
-const planOf = (t) => PLAN[(t && t.plan) || 'free'] || PLAN.free;
+// 인식이 잘 안 됐을 때 크레딧을 돌려주는 횟수. 코드가 적은 악보만 골라 올려
+// 공짜로 쓰는 것을 막는다
+const REFUND_PER_MONTH = 3;
+// 유료 기간이 지났으면 무료로 본다. 결제·프로모션이 끝났는데 계속 쓰이는 일이 없게 한다.
+// plan_until 이 없으면 기한 없는 유료(수동 지정)로 본다
+const planName = (t) => {
+  const p = (t && t.plan) || 'free';
+  if (p === 'free') return 'free';
+  if (t && t.plan_until && new Date(t.plan_until) < new Date()) return 'free';
+  return PLAN[p] ? p : 'free';
+};
+const planOf = (t) => PLAN[planName(t)] || PLAN.free;
 const ENFORCE_PLAN = process.env.ENFORCE_PLAN === '1';
 const LEGAL_VERSION = '2026-09-15';   // 약관·개인정보처리방침 시행일. 내용을 고치면 앱과 함께 올린다
 // 한도를 넘었는지 본다. 검사가 꺼져 있으면 언제나 통과 (컬럼과 자리만 미리 만들어 둔 것)
@@ -1145,7 +1215,7 @@ const arrView = (a) => ({
 });
 const songView = (s, extra) => ({
   id: s.id, title: s.title, aliases: s.aliases || [], artist: s.artist, origKey: s.orig_key,
-  firstLine: s.first_line, tags: s.tags || [], tempo: s.tempo, archived: s.archived,
+  firstLine: s.first_line, tags: s.tags || [], tempo: s.tempo, archived: s.archived, folder: s.folder || '',
   notDupOf: s.not_dup_of || [], updatedAt: s.updated_at,
   fromTeam: s.from_team || null, fromAt: s.from_at || null,
   titleNorm: s.title_norm, titleCho: s.title_cho, ...(extra || {}),
@@ -1264,10 +1334,10 @@ on('POST', '/songs', async ({ uid, body }) => {
     if (n.n >= cap) throw new HttpError(402, 'plan_limit', `무료는 ${cap}곡까지예요. 안 부르는 곡을 보관하면 자리가 생겨요`);
   }
   const tn = normSong(title);
-  const s = await one(`insert into songs(team_id, title, title_norm, title_cho, artist, orig_key, tempo, tags, aliases, first_line, created_by)
-    values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning *`,
+  const s = await one(`insert into songs(team_id, title, title_norm, title_cho, artist, orig_key, tempo, tags, aliases, first_line, folder, created_by)
+    values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) returning *`,
     [teamId, title, tn, choSong(tn), str(body.artist, 60), str(body.origKey, 12), str(body.tempo, 8),
-     strList(body.tags) || [], strList(body.aliases) || [], str(body.firstLine, 200), uid]);
+     strList(body.tags) || [], strList(body.aliases) || [], str(body.firstLine, 200), str(body.folder, 30).trim(), uid]);
   const a = await one(`insert into arrangements(song_id, team_id, name, is_default, key, mod, form, song_note, pieces, media, chart, score)
     values($1,$2,'기본',true,$3,$4,$5,$6,$7,$8,$9,$10) returning *`,
     [s.id, teamId, str(body.key, 12), str(body.mod, 12), str(body.form, 500), str(body.songNote, 300),
@@ -1292,6 +1362,7 @@ on('PATCH', '/songs/:id', async ({ uid, params, body }) => {
   if (body.artist !== undefined) put('artist', str(body.artist, 60));
   if (body.origKey !== undefined) put('orig_key', str(body.origKey, 12));
   if (body.tempo !== undefined) put('tempo', str(body.tempo, 8));
+  if (body.folder !== undefined) put('folder', str(body.folder, 30).trim());
   if (body.firstLine !== undefined) put('first_line', str(body.firstLine, 200));
   if (body.tags !== undefined) put('tags', strList(body.tags) || []);
   if (body.aliases !== undefined) put('aliases', strList(body.aliases) || []);
@@ -1882,14 +1953,17 @@ on('POST', '/omr', async ({ uid, body }) => {
   if (b64.length < 100) throw bad('이미지가 비어 있어요');
   if (b64.length > 9e6) throw new HttpError(413, 'too_large', '이미지가 너무 커요 (6MB 이하)');
   await aiGuard(teamId, 'omr', uid);
+  const quota = await aiSongGuard(teamId, 'omr', body.songKey);
   let r;
   try { r = await transcribeSheet({ b64, mime }); }
   catch (e) {
+    await aiRefund(teamId, 'omr', body.songKey);   // 실패했으니 돌려준다
     if (e.status === 429) throw new HttpError(429, 'omr_quota', '채보 한도에 걸렸어요. 잠시 뒤 다시 해 주세요');
     throw new HttpError(502, 'omr_failed', '채보 실패: ' + (e.message || ''));
   }
   await aiCount(teamId, 'omr', r.usage && r.usage.total, uid);
-  return { songs: r.songs, model: r.model, usage: r.usage, cost: estimateUSD(r.model, r.usage) };
+  return { songs: r.songs, model: r.model, usage: r.usage, cost: estimateUSD(r.model, r.usage),
+           quota: { used: quota.used, cap: quota.cap } };
 });
 
 // 악보 재구성 (인도자): 오선 한 줄을 보내면 그 줄의 마디를 악보 데이터로 돌려준다.
@@ -1944,25 +2018,96 @@ on('POST', '/ocr', async ({ uid, body }) => {
   if (!images.length) throw bad('이미지가 없어요');
   if (images.reduce((n, im) => n + im.b64.length, 0) > 12 * 1024 * 1024) throw new HttpError(413, 'too_large', '이미지가 너무 커요');
   await aiGuard(teamId, 'ocr', uid);
+  // 무료 플랜의 월 곡 한도. 악보가 여러 장이어도 곡 하나로 센다
+  const quota = await aiSongGuard(teamId, 'ocr', body.songKey);
   if (useGemini) {
     let g;
     try { g = await ocrChordsGemini(images, { thinking: 'LOW' }); }
     catch (e) {
-      if (!visionConfigured()) throw new HttpError(502, 'ocr_failed', '코드 인식 실패: ' + (e.message || ''));
+      if (!visionConfigured()) {
+        await aiRefund(teamId, 'ocr', body.songKey);   // 실패했으니 돌려준다
+        throw new HttpError(502, 'ocr_failed', '코드 인식 실패: ' + (e.message || ''));
+      }
       g = null;   // Gemini 가 실패하면 예전 방식으로라도 읽는다
     }
     if (g) {
+      // 코드를 거의 못 찾았으면 인식이 안 된 것으로 보고 돌려준다 (달마다 횟수 제한)
+      const found = (g.bands || []).reduce((n, b) => n + ((b.tokens || []).length), 0);
+      const refunded = found < 5 ? await aiRefund(teamId, 'ocr', body.songKey) : false;
       // 장마다 한 번씩 불렀으니 그만큼 센다
       const calls = g.bands.length || 1;
       for (let i = 0; i < calls; i++) await aiCount(teamId, 'ocr', i === 0 ? ((g.usage && (g.usage.input + g.usage.output)) || 0) : 0, uid);
       const usd = estimateUSD(g.model, g.usage);
       return { results: g.bands, engine: 'gemini', title: g.title || '', key: g.key || '',
+               quota: { used: refunded ? Math.max(0, quota.used - 1) : quota.used, cap: quota.cap, refunded },
                usage: g.usage, cost: usd, costKRW: Math.round(usd * (+process.env.USD_KRW || 1400) * 10) / 10 };
     }
   }
   const results = await ocrBands(images);
   await aiCount(teamId, 'ocr', 0, uid);
-  return { results, engine: 'vision' };
+  return { results, engine: 'vision', quota: { used: quota.used, cap: quota.cap } };
+});
+
+/* ---------- 결제 · 프로모션 코드 ---------- */
+// RevenueCat 웹훅. 결제·갱신·환불이 일어나면 여기로 온다.
+// 사용자 id 로 그 사람이 만든 팀을 찾아 플랜을 바꾼다 (한 계정당 팀 하나)
+on('POST', '/iap/webhook', async ({ req, body }) => {
+  if (!rcConfigured()) throw new HttpError(503, 'no_iap', '결제가 아직 연결되지 않았어요');
+  if (!rcAuthOk(req)) throw new HttpError(401, 'bad_sig', '인증 실패');
+  const act = planFromEvent((body && body.event) || body || {});
+  if (act.kind === 'ignore') return { ok: true, skipped: act.why };
+
+  // appUserID 는 앱이 우리 사용자 id 로 정한다
+  const u = await one('select id from users where id=$1', [act.appUserId]).catch(() => null);
+  if (!u) return { ok: true, skipped: '모르는 사용자' };
+  const t = await one('select id from teams where created_by=$1 and deleted_at is null order by created_at limit 1', [u.id]);
+  if (!t) return { ok: true, skipped: '이 사용자가 만든 팀이 없음' };
+
+  if (act.kind === 'grant') {
+    await q('update teams set plan=$2, plan_until=$3, plan_source=$4 where id=$1', [t.id, act.plan, act.until, 'iap']);
+    await audit(t.id, u.id, 'iap.grant', act.product, { plan: act.plan, until: act.until });
+  } else if (act.kind === 'revoke') {
+    // 프로모션으로 받은 기간이 남아 있으면 그건 살려 둔다
+    const cur = await one('select plan_source, plan_until from teams where id=$1', [t.id]);
+    if (cur && cur.plan_source === 'promo' && cur.plan_until && new Date(cur.plan_until) > new Date())
+      return { ok: true, skipped: '프로모션 기간이 남아 있음' };
+    await q(`update teams set plan='free', plan_until=null, plan_source=null where id=$1`, [t.id]);
+    await audit(t.id, u.id, 'iap.revoke', act.product, {});
+  } else if (act.kind === 'credits') {
+    await q(`insert into credit_balance(team_id, omr) values($1,$2)
+             on conflict (team_id) do update set omr = credit_balance.omr + excluded.omr, updated_at=now()`, [t.id, act.omr]);
+    await audit(t.id, u.id, 'iap.credits', act.product, { omr: act.omr });
+  }
+  return { ok: true, kind: act.kind };
+});
+
+
+// 코드를 넣으면 그 팀이 일정 기간 유료가 된다. 이미 유료면 남은 기간에 이어 붙인다
+on('POST', '/promo/redeem', async ({ uid, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  await requireMember(uid, teamId, 'leader');   // 인도자만
+  const code = str(body.code, 40).trim().toUpperCase();
+  if (!code) throw bad('코드를 입력해 주세요');
+  const c = await one('select * from promo_codes where upper(code)=$1', [code]);
+  if (!c) throw new HttpError(404, 'bad_code', '없는 코드예요');
+  if (c.expires_at && new Date(c.expires_at) < new Date()) throw bad('기간이 지난 코드예요');
+  if (c.used >= c.max_uses) throw bad('이미 다 쓰인 코드예요');
+  if (await one('select 1 from promo_redemptions where code=$1 and team_id=$2', [c.code, teamId]))
+    throw bad('이 팀은 이미 쓴 코드예요');
+
+  const t = await one('select plan, plan_until, plan_source from teams where id=$1', [teamId]);
+  // 결제로 유료인 팀에는 코드를 덮어쓰지 않는다 (결제 상태가 꼬인다)
+  if (t && t.plan_source === 'iap' && planName(t) !== 'free')
+    throw bad('이미 구독 중이에요. 구독이 끝난 뒤에 쓸 수 있어요');
+  // 남은 기간이 있으면 거기에 이어 붙인다
+  const base = (t && t.plan_until && new Date(t.plan_until) > new Date()) ? new Date(t.plan_until) : new Date();
+  const until = new Date(base.getTime() + c.days * 86400000);
+  await q('update teams set plan=$2, plan_until=$3, plan_source=$4 where id=$1', [teamId, c.plan, until, 'promo']);
+  await q('update promo_codes set used = used + 1 where code=$1', [c.code]);
+  await q('insert into promo_redemptions(code, team_id, user_id, days) values($1,$2,$3,$4)', [c.code, teamId, uid, c.days]);
+  await audit(teamId, uid, 'promo.redeem', c.code, { plan: c.plan, days: c.days });
+  return { plan: c.plan, days: c.days, until };
 });
 
 /* ---------- §2 정기 예배 · 사역 날짜 ---------- */
@@ -2056,6 +2201,26 @@ async function fillDates(teamId, rec, weeks = 13) {
       [teamId, iso, rec.label, rec.time || null, rec.id]);
   }
 }
+
+// 이번 달 AI 사용량 (상단 바의 크레딧 알약·설정의 플랜 화면에서 쓴다)
+on('GET', '/teams/:id/usage', async ({ uid, params }) => {
+  if (!uid) throw noAuth();
+  await requireMember(uid, params.id);
+  const t = await one('select plan from teams where id=$1', [params.id]);
+  const pl = planOf(t);
+  const month = aiMonth();
+  const rows = await q(`select kind, count(*)::int n from ai_songs where team_id=$1 and month=$2 group by kind`, [params.id, month]);
+  const used = (k) => (rows.find((r) => r.kind === k) || {}).n || 0;
+  // 다음 달 1일 (한국 시간)
+  const [y, m] = month.split('-').map(Number);
+  const next = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
+  const cb = await one('select omr from credit_balance where team_id=$1', [params.id]);
+  return { plan: planName(t), month, resetAt: next, enforced: ENFORCE_PLAN,
+           creditOmr: (cb && cb.omr) || 0,
+           ocr: { used: used('ocr'), cap: pl.ocrSongs },
+           omr: { used: used('omr'), cap: pl.omrSongs },
+           credits: pl.credits };
+});
 
 on('GET', '/teams/:id/dates', async ({ uid, url, params }) => {
   if (!uid) throw noAuth();

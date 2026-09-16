@@ -8,6 +8,16 @@ SHEET = os.environ.get('CONTI_SHEET') or os.path.join(ROOT, 'docs', 'sample_shee
 tag = str(int(time.time()))[-6:]
 LEADER = ('lead' + tag, 'secret1', '하은'); DRUM = ('mem' + tag, 'secret1', '민수'); KEYS = ('key' + tag, 'secret1', '지은')
 
+
+# 악보를 올려도 인식은 자동으로 돌지 않는다 — '코드 인식' 버튼을 눌러야 한다
+def run_ocr(pg, idx=0, wait=90000):
+  pg.wait_for_selector('.chordbar [data-act="ocr"]', timeout=20000)
+  pg.locator('.chordbar [data-act="ocr"]').first.click(); pg.wait_for_timeout(700)
+  go = pg.locator('#ocrGo')
+  if go.count(): go.click(); pg.wait_for_timeout(500)
+  pg.wait_for_function("((i)=>{const it=CONTI.S.services[0].items[i];const p=it&&(it.pieces||[])[0];return p&&p.ocr&&p.ocr!=='pending'})(%d)" % idx, timeout=wait)
+  return True
+
 def fail(msg): print('FAIL:', msg); sys.exit(1)
 
 def signup(pg, user):
@@ -38,7 +48,7 @@ def run():
         pg.click('[data-act="add-item"]'); pg.wait_for_selector('[data-f="item.title"]'); pg.fill('[data-f="item.title"]', '우리 주 하나님'); pg.fill('[data-f="item.key"]', 'A')
         pg.set_input_files('#pieceFile', [SHEET])
         if ocr.get('available'):
-            pg.wait_for_function("(()=>{const p=CONTI.S.services[0].items[0].pieces[0];return p&&p.ocr&&p.ocr!=='pending'})()", timeout=90000)
+            run_ocr(pg, 0, 90000)
             info = pg.evaluate("(()=>{const p=CONTI.S.services[0].items[0].pieces[0];return {n:(p.chords||[]).length,key:p.sheetKey,ocr:p.ocr,err:p.ocrErr,mode:p.ocrMode}})()")
             print('chords:', info)
             if info['ocr'] != 'done': fail('인식 실패: %s' % info)
@@ -62,7 +72,8 @@ def run():
             # 자동 채우기: 제목·키가 빈 곡에 악보를 넣으면 채워진다
             pg.click('[data-act="add-item"]'); pg.wait_for_selector('[data-f="item.title"]'); pg.wait_for_timeout(300)
             pg.set_input_files('#pieceFile', [SHEET])
-            pg.wait_for_function("(()=>{const it=CONTI.S.services[0].items[1];const p=it&&it.pieces[0];return p&&p.ocr&&p.ocr!=='pending'})()", timeout=90000)
+            pg.wait_for_function("(()=>{const it=CONTI.S.services[0].items[1];return it&&(it.pieces||[]).length>0})()", timeout=30000)
+            run_ocr(pg, 1, 90000)
             auto = pg.evaluate("(()=>{const it=CONTI.S.services[0].items[1];return {title:it.title,key:it.key,mode:it.pieces[0].ocrMode,n:it.pieces[0].chords.length}})()")
             print('autofill:', auto)
             if not auto['title'] or not auto['key']: fail('제목/키 자동 채우기 실패: %s' % auto)

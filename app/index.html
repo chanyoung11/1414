@@ -668,7 +668,43 @@ html.dark .msgbody{background:#1C1C1C}
 .slice.tool .chd.edit{pointer-events:auto;cursor:pointer}
 .mkabs .ksb{position:absolute;left:-6px;top:-9px;background:#C0392B;color:#fff;font-size:9px;font-weight:700;border-radius:999px;padding:0 4px;line-height:14px}
 .chdbox{position:absolute;border:1.5px dashed #C0392B;border-radius:3px;pointer-events:auto;cursor:pointer;z-index:2;background:rgba(192,57,43,.06)}
+/* 건반 한 옥타브 */
+.pkeys{position:relative;display:flex;height:150px;margin-top:12px;user-select:none;touch-action:none;
+ border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;background:#fff}
+.pk{cursor:pointer}
+.pk.w{flex:1 1 0;border-right:1px solid #d7d7d2;background:#fff;display:flex;align-items:flex-end;justify-content:center;padding-bottom:8px}
+.pk.w:last-of-type{border-right:0}
+.pk.w span{font-size:11px;color:#8a8a84;font-weight:700}
+.pk.w.on{background:#E8E6DC}
+.pk.b{position:absolute;top:0;width:6.4%;height:62%;background:#1a1b1c;border-radius:0 0 4px 4px;z-index:2}
+.pk.b.on{background:#4a4b4d}
 .chordbar.slim{padding:2px 8px;background:transparent;border-style:dashed;justify-content:flex-end}
+/* 악보 상단 바 — 키 블록 · 상태 줄 · 동작 블록. 좁으면 두 줄로 접힌다 */
+.cb-status{flex:1 1 200px;min-width:0;display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12px}
+.cb-status b{color:var(--fg)}
+.cb-dot{width:8px;height:8px;border-radius:50%;background:var(--line2,#9a9a94);flex:0 0 auto}
+.cb-dot.ok{background:#3AA76D}.cb-dot.bad{background:var(--destructive)}
+.cb-dot.run{background:var(--brand);animation:cbpulse 1s infinite}
+@keyframes cbpulse{50%{opacity:.35}}
+.cb-act{display:flex;align-items:center;gap:6px;flex:0 0 auto;margin-left:auto}
+.cb-credit{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:999px;
+ background:var(--panel);border:1px solid var(--line);font-size:11.5px;font-weight:700;color:var(--fg);white-space:nowrap}
+.cb-credit .gauge{width:52px;height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.cb-credit .gauge i{display:block;height:100%;background:var(--fg)}
+.cb-credit.low .gauge i{background:var(--destructive)}
+.cb-credit.low{color:var(--destructive);border-color:var(--destructive)}
+.cb-note{width:100%;font-size:11.5px;color:var(--muted);margin-top:2px}
+.cb-note.bad{color:var(--destructive)}
+.btn .cost{font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;background:rgba(127,127,127,.22);margin-left:2px}
+.btn.pri .cost{background:rgba(255,255,255,.2)}
+/* 인식 전 확인 창 */
+.cb-pop{position:relative}
+.cb-confirm{position:absolute;right:0;top:38px;width:min(300px,78vw);background:var(--panel);border:1px solid var(--line);
+ border-radius:var(--r-lg);box-shadow:0 10px 30px rgba(0,0,0,.35);padding:14px;z-index:30;color:var(--fg);text-align:left}
+.cb-confirm p{margin:6px 0 10px;color:var(--muted);font-size:12px;line-height:1.5}
+.cb-confirm .cnt{display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px}
+.cb-confirm .cnt .n{font-weight:800;font-size:18px}
+.cb-confirm .row{gap:6px}
 .chordbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 8px -32px;padding:6px 8px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--panel2);font-size:12px}
 .logo{display:block;flex:0 0 auto;color:var(--fg)}
 .side .head{gap:10px}
@@ -986,6 +1022,8 @@ const ICONS={
  import:'<path d="M12 4v11M8 11l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 14v5h14v-5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>',
  trash:'<path d="M5 7h14M9 7V4.5h6V7M8 7l.8 13h6.4L16 7" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>',
  moon:'<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a7 7 0 1 0 10.5 10.5z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/>',
+ piano:'<rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 5v9M12 5v9M16 5v9" stroke="currentColor" stroke-width="1.6"/>',
+ metro:'<path d="M9 3h6l4 18H5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M6.5 15h11" stroke="currentColor" stroke-width="1.6"/><path d="M12 19 16 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
  sun:'<circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>',
  pen:'<path d="M4 20l4.5-1 10-10-3.5-3.5-10 10z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/>',
  marker:'<circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="1.9"/><text x="12" y="16" text-anchor="middle" font-size="10" font-weight="700" fill="currentColor" font-family="sans-serif">A</text>',
@@ -1069,10 +1107,14 @@ function bnavHTML(active){const on=online();const A=v=>active===v?'on':'';
  return `<nav class="bnav"><button class="${A('home')}" data-act="home">${ic('home')}예배</button>${on?`${isPastor()?'':`<button class="${A('cal')}" data-act="cal">${ic('list')}일정</button><button class="${A('library')}" data-act="nav-lib">${ic('music')}라이브러리</button>`}<button class="${A('inbox')}" data-act="inbox" style="position:relative">${ic('bell')}알림<i class="bdot" data-noti-dot ${NOTI.unread?'':'hidden'}></i></button>`:''}<button data-act="more-menu">${ic('list')}더보기</button></nav>`}
 
 /* ---------- HOME ---------- */
-const HOME={pick:false,sel:[]};
+const HOME={pick:false,sel:[],folder:''};
 function homeHTML(){
  const m=me();const lead=isLeader();const on=online();
- const svcs=S.services.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+ const all=S.services.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+ // 폴더는 예배에 적어 둔 이름에서 모은다 (따로 관리하는 목록이 없어 지워질 걱정이 없다)
+ const folders=[...new Set(all.map(x=>(x.folder||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
+ if(HOME.folder&&HOME.folder!=='__none'&&!folders.includes(HOME.folder))HOME.folder='';
+ const svcs=!HOME.folder?all:all.filter(x=>HOME.folder==='__none'?!(x.folder||'').trim():(x.folder||'').trim()===HOME.folder);
  const upcoming=svcs.filter(s=>(s.date||'')>=today()).length;const pubN=svcs.filter(s=>s.published).length;
  const pick=HOME.pick;
  const rows=svcs.map((s,i)=>{const d=fmtDate(s.date);const past=(s.date||'')<today();
@@ -1085,6 +1127,10 @@ function homeHTML(){
     <div class="sect-hd rise d1"><div><h2>예배 목록</h2><p>${on?`${esc(S.team.name)} 팀 · 인도자가 발행하면 자동으로 내려와요`:'이 기기에만 저장돼요. 팀에 보내려면 내보내기 파일을 카톡으로 보내세요'}</p></div>
      <div class="row">${pick?`<button class="btn sm" data-act="pick-all">${HOME.sel.length===svcs.length?'전체 해제':'전체 선택'}</button><span class="pill">${HOME.sel.length}개</span><button class="btn sm danger" data-act="pick-del" ${HOME.sel.length?'':'disabled'}>${ic('trash')}삭제</button><button class="btn sm ghost" data-act="pick-off">취소</button>`
       :`${lead?`<button class="btn sm pri" data-act="new-svc">${ic('plus')}새 예배</button>`:''}<span class="row more-hide">${lead&&svcs.length?`<button class="btn sm" data-act="pick-on">${ic('check')}고르기</button>`:''}${on?`<button class="btn sm" data-act="sync" title="팀 서버에서 최신 발행본 받기">${ic('refresh')}새로고침</button>`:''}${(!on||lead)?`<button class="btn sm" data-act="import">${ic('import')}가져오기</button>`:''}<button class="btn sm" data-act="export">${ic('export')}내보내기</button></span><button class="icon more-only" data-act="home-more" title="더 보기">${ic('list')}</button>`}</div></div>
+    ${folders.length?`<div class="filters rise d1">${
+      [['','전체',all.length]].concat(folders.map(f=>[f,f,all.filter(x=>(x.folder||'').trim()===f).length]))
+       .concat(all.some(x=>!(x.folder||'').trim())?[['__none','폴더 없음',all.filter(x=>!(x.folder||'').trim()).length]]:[])
+       .map(([v,label,n])=>`<button class="chip ${HOME.folder===v?'on':''}" data-act="home-folder" data-v="${esc(v)}">${esc(label)} <span class="muted">${n}</span></button>`).join('')}</div>`:''}
     ${svcs.length?rows:`<div class="empty rise d1"><b>아직 예배가 없어요</b>${lead?'첫 콘티를 만들거나, 받은 파일을 가져오세요.':(on?'인도자가 발행하면 여기에 자동으로 나타나요.':'인도자가 보낸 파일을 "가져오기"로 여세요.')}${lead?`<div><button class="btn pri" data-act="new-svc">${ic('plus')}새 예배 만들기</button></div>`:''}</div>`}`;
  return shellHTML('home',{title:'예배',sub:fmtToday(),body});
 }
@@ -1100,6 +1146,8 @@ function editorHTML(svc){
    <div class="panel">${ptab('예배','날짜 · 공지 · 곡 순서',`<button class="btn sm" data-act="add-lib">${ic('music')}라이브러리</button><button class="btn sm pri" data-act="add-item">${ic('plus')}새 곡</button>`)}
     <div class="pbody">
      <div class="row" style="gap:10px"><input class="field" type="date" data-f="svc.date" value="${esc(svc.date)}" style="width:150px"><textarea class="field grow" data-f="svc.notice" rows="1" placeholder="전체 공지 — 연습 일정, 편성, 집합 장소">${esc(svc.notice)}</textarea></div>
+     <div class="row" style="gap:10px;margin-top:8px"><input class="field grow" data-f="svc.folder" value="${esc(svc.folder||'')}" list="folderList" placeholder="폴더 — 비워 두면 '폴더 없음' (예: 2026 상반기)" maxlength="30">
+      <datalist id="folderList">${[...new Set(S.services.map(x=>(x.folder||'').trim()).filter(Boolean))].map(f=>`<option value="${esc(f)}">`).join('')}</datalist></div>
    ${wordCardHTML(svc)}
    <div class="lbl" style="margin-top:10px">인도자의 글 <span class="hint">말씀·흐름·전할 말을 여기에 적어요. 멤버가 처음 열 때 한 번 보여요</span></div><textarea class="field msgin" data-f="svc.message" placeholder="말씀 본문, 이번 예배에 담은 마음, 콘티 흐름 — 팀에 전할 말을 여기에 적어요." style="min-height:96px">${esc(svc.message||'')}</textarea>
      <div style="margin-top:10px">${svc.items.map((x,i)=>`<div class="list-item ${x.id===sel.item?'sel':''}" data-act="sel-item" data-id="${x.id}"><span class="grip" title="끌어서 순서 바꾸기">${ic('list')}</span><span class="num">${i+1}</span><span class="grow" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600">${esc(x.title||'(제목 없음)')}</span><span class="k">${esc(keyStr(x))}</span><button class="icon sm ghost" data-act="mv-item" data-id="${x.id}" data-d="-1" title="위로">${ic('up')}</button><button class="icon sm ghost" data-act="mv-item" data-id="${x.id}" data-d="1" title="아래로">${ic('down')}</button></div>`).join('')||'<div class="empty" style="padding:14px">곡을 추가하세요</div>'}</div>
@@ -1189,7 +1237,7 @@ function playHTML(svc,idx){
  const my=me();const sess=PL.session||my.session;const k=keyStr(it);const prev=pub.items[idx-1],next=pub.items[idx+1];PL.ml=visMedia(it,sess);
  return `<div class="top"><button class="icon ghost" ${svc.practice?`data-act="lib-song" data-id="${esc(it.songId||'')}"`:`data-act="back-view" data-id="${svc.id}"`}>${ic('back')}</button>
   <div class="songnav grow"><span class="nb prev" ${prev?'data-act="pn" data-d="-1"':''}>${prev?esc(prev.title||'(제목 없음)'):''}</span><button class="icon sm" data-act="pn" data-d="-1" ${prev?'':'disabled'} title="이전 곡">${ic('left')}</button><span class="nb cur"><span class="num">${idx+1}</span>${esc(it.title||'(제목 없음)')}<span class="pill key">${esc(k||'-')}</span></span><button class="icon sm" data-act="pn" data-d="1" ${next?'':'disabled'} title="다음 곡">${ic('right')}</button><span class="nb next" ${next?'data-act="pn" data-d="1"':''}>${next?esc(next.title||'(제목 없음)'):''}</span></div>
-  ${hasNote(svc)?`<button class="icon ghost ${msgUnread(svc)?'dot':''}" data-act="msg" data-id="${svc.id}" title="예배 노트">${ic('note')}</button>`:''}${it.score&&it.score.measures&&it.score.measures.length?`<button class="icon ghost" data-act="score-go" data-id="${svc.id}" data-item="${it.id}" title="재구성한 악보">${ic('music')}</button>`:''}<button class="btn sm" data-act="stage">${ic('moon')}무대 모드</button></div>
+  ${hasNote(svc)?`<button class="icon ghost ${msgUnread(svc)?'dot':''}" data-act="msg" data-id="${svc.id}" title="예배 노트">${ic('note')}</button>`:''}${it.score&&it.score.measures&&it.score.measures.length?`<button class="icon ghost" data-act="score-go" data-id="${svc.id}" data-item="${it.id}" title="재구성한 악보">${ic('music')}</button>`:''}<button class="icon ghost" data-act="piano" title="건반">${ic('piano')}</button><button class="icon ghost" data-act="metro" title="메트로놈">${ic('metro')}</button><button class="btn sm" data-act="stage">${ic('moon')}무대 모드</button></div>
  <div class="ws split" id="ws">
   <div class="stack" id="stack">
    <div class="panel media">${ptab('미디어','',PL.ml.length?PL.ml.map((md,i)=>`<button class="chip t ${i===0?'on':''}" data-act="msel" data-i="${i}" title="${esc(mdTag(md))}"><span class="${md.type==='youtube'?'ytc':'micc'}" style="display:inline-flex">${ic(md.type==='youtube'?'yt':'mic')}</span>${mdSess(md).length?`<span class="tag" style="margin-right:2px">${esc(mdTag(md))}</span>`:''}${esc((md.name||md.url||'').replace(/^https?:\/\//,'').slice(0,20))}</button>`).join(''):'<span class="hint">미디어 없음</span>')}
@@ -1955,7 +2003,7 @@ function publishModal(svc){
   const only=e.target.closest('#pubOnly'),withFile=e.target.closest('#pubOk');if(only||withFile){if(WORD_DIRTY){clearTimeout(WORD_T);await saveWord(svc)}if(!(svc.name||'').trim()){svc.name=svcName(svc);const ti=$('.titlein');if(ti)ti.value=svc.name}const prevPub=svc.published,prevVer=svc.version,prevRev=svc.messageRev;const msg=(svc.message||'').trim();const prevMsg=svc.published?(svc.published.message||''):'';const wk=w=>w?[w.passage,w.title,w.line,w.memo,w.memoPublic?1:0].map(x=>String(x==null?'':x)).join(''):'';if(msg!==prevMsg||wk(svc.word)!==wk(svc.published&&svc.published.word))svc.messageRev=(svc.messageRev||0)+1;
    // 발행본에는 개인·세션 메모를 담지 않는다(메모는 서버에서 권한대로 따로 내려감). 말씀 메모도 뺀다
    const pubWord=svc.word?{...clone(svc.word),memo:svc.word.memoPublic?(svc.word.memo||''):''}:null;
-   svc.published={version:nextV,at:Date.now(),name:svc.name,date:svc.date,notice:svc.notice,message:msg,messageRev:svc.messageRev||0,word:pubWord,author:me().name||'인도자',items:clone(svc.items).map(it=>({...it,notes:undefined,fixedNotes:frozenFixed(it),media:(it.media||[]).map(m=>({...m,notes:undefined}))}))};
+   svc.published={version:nextV,at:Date.now(),name:svc.name,date:svc.date,folder:svc.folder||'',notice:svc.notice,message:msg,messageRev:svc.messageRev||0,word:pubWord,author:me().name||'인도자',items:clone(svc.items).map(it=>({...it,notes:undefined,fixedNotes:frozenFixed(it),media:(it.media||[]).map(m=>({...m,notes:undefined}))}))};
    svc.published.changes=diffPub(prevPub,svc.published);   // 팀원에게 무엇이 바뀌었는지 보여 주려고
    S.readRev=S.readRev||{};S.readRev[svc.id]=svc.messageRev||0;save();closeModal();
    if(online()){toast('팀 서버에 올리는 중…');try{await SYNC.pushPublish(svc);toast('v'+nextV+' 발행 · 팀에 공유됐어요')}catch(err){if(err.code==='version_conflict'){svc.published=prevPub;svc.version=prevVer;svc.messageRev=prevRev;save();alert(err.message);try{await SYNC.pullService(svc.id)}catch(e2){}}else{svc.pubPending=true;save();toast('서버에 못 올렸어요. 홈에서 "서버에 다시 올리기"로 다시 시도하세요')}}}else toast('v'+nextV+' 발행');
@@ -2207,14 +2255,56 @@ function legalHTML(kind){
 }
 
 /* ---------- 설정 페이지 · 탭 넷 (§6.8) ---------- */
-const ST_TABS=[['profile','프로필'],['noti','알림'],['account','계정'],['app','앱']];
+const ST_TABS=[['profile','프로필'],['noti','알림'],['plan','플랜'],['account','계정'],['app','앱']];
 const SET={tab:'profile'};
+// 설정 → 플랜. 이번 달 사용량과 프로모션 코드 입력 (인도자만)
+const PLAN_LABEL={free:'무료',pro:'Pro',plus:'Pro Plus'};
+// 플랜 올리기. 결제는 앱에서만 된다 (애플·구글 인앱결제)
+const PLANS=[
+ {id:'pro',name:'Pro',won:'4,900',year:'49,000',lines:['멤버 25명','라이브러리 무제한','코드 인식 월 100곡','채보 월 15곡','저장 5GB']},
+ {id:'plus',name:'Pro Plus',won:'12,900',year:'129,000',lines:['멤버 50명','코드 인식 월 300곡','채보 월 50곡 + 크레딧 팩','저장 30GB','읽기 전용 뷰 무제한']},
+];
+function upgradeModal(){
+ const card=p=>`<div class="card" style="margin:0">
+  <div class="row" style="align-items:baseline"><b style="font-size:16px">${p.name}</b><span class="grow"></span>
+   <b style="font-size:18px">${p.won}</b><span class="hint">원/월</span></div>
+  <div class="hint" style="margin-top:2px">1년에 ${p.year}원 (두 달 무료)</div>
+  <ul style="margin:10px 0 12px;padding-left:18px;line-height:1.7;font-size:13px">${p.lines.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>
+  <button class="btn pri wide" data-act="buy" data-p="${p.id}">${p.name} 시작하기</button></div>`;
+ modal(`<b style="font-size:17px">플랜 올리기</b>
+  <div class="hint" style="margin:6px 0 12px">팀 단위로 결제해요 · 언제든 해지할 수 있어요</div>
+  <div style="display:grid;gap:10px">${PLANS.map(card).join('')}</div>
+  ${NATIVE?'':`<div class="cb-note" style="margin-top:12px">결제는 <b>앱에서만</b> 할 수 있어요 · 1414 앱을 설치한 뒤 같은 계정으로 로그인하세요</div>`}`);
+}
+function planCardHTML(){
+ const q=PLANQ,pl=q.plan||'free';
+ const line=(name,x)=>x.cap==null?`<div class="row"><span class="hint grow">${name}</span><b>넉넉함</b></div>`
+  :`<div class="row"><span class="hint grow">${name}</span><b>${x.used}/${x.cap}곡</b></div>`;
+ const until=S.team.planUntil?new Date(S.team.planUntil):null;
+ return `<div class="card"><b>플랜</b>
+  <div class="row" style="margin-top:8px"><span class="pill">${PLAN_LABEL[pl]||pl}</span>
+   ${until?`<span class="hint">${until.getFullYear()}.${until.getMonth()+1}.${until.getDate()}까지</span>`:''}<span class="grow"></span></div>
+  <div class="hr"></div>
+  <div class="hint" style="margin-bottom:6px">이번 달 사용량${q.resetAt?` · ${esc(q.resetAt)}에 다시 채워져요`:''}</div>
+  ${line('코드 인식',q.ocr)}${line('채보',q.omr)}
+  <div class="hr"></div>
+  ${(pl==='free'&&NET.enforcePlan)?`<div class="hr"></div>
+   <div class="row"><span class="hint grow">더 많은 멤버 · 더 많은 인식이 필요하면</span>
+    <button class="btn pri" data-act="upgrade">${ic('check')}플랜 올리기</button></div>`:''}
+  ${q.creditOmr?`<div class="row" style="margin-top:8px"><span class="hint grow">크레딧(채보)</span><b>${q.creditOmr}곡</b></div>`:''}
+  <div class="hr"></div>
+  <div class="lbl">프로모션 코드</div>
+  <div class="row" style="gap:6px"><input class="field grow" id="sPromo" placeholder="받으신 코드" maxlength="40" autocapitalize="characters">
+   <button class="btn" id="sPromoGo">${ic('check')}적용</button></div>
+  <div class="hint" id="sPromoMsg" style="margin-top:6px"></div></div>`;
+}
 function settingsHTML(){
  const m=me();const on=online();const lead=isLeader();
  const t=ST_TABS.some(([k])=>k===SET.tab)?SET.tab:'profile';
- const tabs=`<div class="tabs">${ST_TABS.filter(([k])=>on||k!=='noti').map(([k,label])=>`<button class="${k===t?'on':''}" data-act="set-tab" data-t="${k}">${label}</button>`).join('')}</div>`;
+ const tabs=`<div class="tabs">${ST_TABS.filter(([k])=>on||(k!=='noti'&&k!=='plan')).map(([k,label])=>`<button class="${k===t?'on':''}" data-act="set-tab" data-t="${k}">${label}</button>`).join('')}</div>`;
  let pane='';
- if(t==='profile')pane=`<div class="card">
+ if(t==='plan')pane=(S.team.id&&isLeader())?planCardHTML():'<div class="card"><b>플랜</b><div class="hint" style="margin-top:6px">인도자만 볼 수 있어요</div></div>';
+ else if(t==='profile')pane=`<div class="card">
    <div class="lbl">내 이름</div><input class="field" id="sName" value="${esc(m.name)}" placeholder="하은">
    ${isPastor()?'':`<div class="lbl">내 세션</div><div id="sSess">${S.team.sessions.map(x=>`<button class="q ${x===m.session?'on':''}" data-s="${esc(x)}">${esc(x)}</button>`).join('')}</div>
    <div class="lbl">겸임 세션 <span class="hint">선택 · 편성에서 이 세션 후보에도 들어가요</span></div><div id="sSess2">${S.team.sessions.map(x=>`<button class="q ${(m.mySessions||[]).includes(x)&&x!==m.session?'on2':''}" data-s2="${esc(x)}" ${x===m.session?'hidden':''}>${esc(x)}</button>`).join('')}</div>`}
@@ -2265,6 +2355,18 @@ function settingsHTML(){
  return shellHTML('settings',{title:'설정',sub,body:tabs+`<div class="setpane">${pane}</div>`})}
 function afterSettings(){
  const m=me();const on=online();const lead=isLeader();
+ // 프로모션 코드
+ const pg=$('#sPromoGo');
+ if(pg)pg.onclick=async()=>{
+  const inp=$('#sPromo'),msg=$('#sPromoMsg');const code=(inp&&inp.value||'').trim();
+  if(!code){if(msg)msg.textContent='코드를 입력해 주세요';return}
+  pg.disabled=true;if(msg)msg.textContent='확인 중…';
+  try{const r=await api('/promo/redeem',{method:'POST',body:{teamId:S.team.id,code}});
+   const d=new Date(r.until);
+   toast(`${PLAN_LABEL[r.plan]||r.plan} ${r.days}일이 적용됐어요`);
+   await refreshMe();await pullUsage();render();
+  }catch(e){if(msg)msg.textContent=e.message||'적용하지 못했어요';pg.disabled=false}};
+
  const split=el=>el.value.split(',').map(x=>x.trim()).filter(Boolean);
  let sess=m.session,role=m.role;let extra=(m.mySessions||[]).filter(x=>x!==m.session);
  const mySessNow=()=>[sess,...extra.filter(x=>x!==sess)];
@@ -2518,7 +2620,7 @@ function probeOmr(){if(!online()||!NET.user)return;api('/omr').then(r=>{const on
 async function applyMembership(t){const next=scopeKey(NET.user&&NET.user.id,t.teamId);
  if(next!==CUR_SCOPE){const prev=S.team.id;await switchScope(next);if(prev&&prev!==t.teamId&&route().name!=='home')go('home');
   if(typeof SYNC!=='undefined'&&online())setTimeout(()=>{SYNC.pullLibrary();if(typeof pullSongs!=='undefined')pullSongs(true)},0)}   // 팀이 바뀌면 그 팀 라이브러리를 받아온다
- S.team.id=t.teamId;S.team.name=t.teamName;S.team.invite=t.invite||'';S.team.sessions=t.sessions.slice();S.team.phrases=t.phrases.slice();S.team.settings=t.settings||S.team.settings||{};S.team.me={userId:t.me.userId,name:t.me.name,session:t.me.session,mySessions:t.me.mySessions||[],role:t.me.role,capo:+t.me.capo||0};save()}
+ S.team.id=t.teamId;S.team.name=t.teamName;S.team.plan=t.plan||'free';S.team.planUntil=t.planUntil||null;S.team.invite=t.invite||'';S.team.sessions=t.sessions.slice();S.team.phrases=t.phrases.slice();S.team.settings=t.settings||S.team.settings||{};S.team.me={userId:t.me.userId,name:t.me.name,session:t.me.session,mySessions:t.me.mySessions||[],role:t.me.role,capo:+t.me.capo||0};save()}
 async function takeMe(m){NET.user=m.user;NET.teams=m.teams||[];NET.blocked=m.blocked||null;const cur=NET.teams.find(x=>x.teamId===S.team.id)||m.team;
  if(cur){if(S.team.id&&cur.teamId!==S.team.id)toast((cur.teamName||'다른')+' 팀으로 전환했어요');await applyMembership(cur)}
  else{await switchScope(scopeKey(m.user&&m.user.id,''));S.team.id='';S.team.invite='';save()}}
@@ -2548,12 +2650,12 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),
   if(d.word!==undefined){const cur0=svcById(id);if(cur0)cur0.word=d.word||null}
   if(d.readRev){S.readRev=S.readRev||{};S.readRev[id]=Math.max(S.readRev[id]||0,d.readRev)}
   let cur=svcById(id);
-  if(!cur){cur={id,name:doc.name,date:doc.date,notice:doc.notice||'',version:0,items:[],published:null};S.services.push(cur);if(d.word!==undefined)cur.word=d.word||null;
+  if(!cur){cur={id,name:doc.name,date:doc.date,folder:doc.folder||'',notice:doc.notice||'',version:0,items:[],published:null};S.services.push(cur);if(d.word!==undefined)cur.word=d.word||null;
    if(S.noteShadow)delete S.noteShadow[id]}   // 처음 받아오는 콘티는 메모 그림자를 새로 세운다(옛 그림자가 남아 있으면 서버 메모를 지운다)
   const old=new Map(cur.items.map(it=>[it.id,it]));
-  cur.published={version:doc.version,at:new Date(d.updatedAt).getTime()||Date.now(),name:doc.name,date:doc.date,notice:doc.notice||'',message:doc.message||'',messageRev:doc.messageRev||0,word:doc.word||null,author:doc.author||'',items:clone(doc.items),changes:doc.changes||[]};
+  cur.published={version:doc.version,at:new Date(d.updatedAt).getTime()||Date.now(),name:doc.name,date:doc.date,folder:doc.folder||'',notice:doc.notice||'',message:doc.message||'',messageRev:doc.messageRev||0,word:doc.word||null,author:doc.author||'',items:clone(doc.items),changes:doc.changes||[]};
   if(!isLeader()||cur.version<=doc.version){ // 인도자 기기의 더 새로운 초안은 건드리지 않음
-   cur.name=doc.name;cur.date=doc.date;cur.notice=doc.notice||'';cur.message=doc.message||'';cur.messageRev=doc.messageRev||0;cur.version=doc.version;
+   cur.name=doc.name;cur.date=doc.date;cur.folder=doc.folder||'';cur.notice=doc.notice||'';cur.message=doc.message||'';cur.messageRev=doc.messageRev||0;cur.version=doc.version;
    cur.items=clone(doc.items).map(it=>{const o=old.get(it.id);it.notes=o?(o.notes||[]):[];it.media=(it.media||[]).map(m=>{const om=o&&(o.media||[]).find(x=>x.id===m.id);return {...m,notes:om?(om.notes||[]):[]}});return it})}
   save();return cur},
  // 파일 내려받기. 한 번 실패한 파일은 기억해 뒀다가 다음 진입 때 다시 시도한다
@@ -2601,9 +2703,9 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),
   await Promise.all(list.map(blobURL));
   return got},
  // 초안(인도자): 기기 간 이어서 편집
- draftDoc(svc){return {id:svc.id,name:svc.name,date:svc.date,notice:svc.notice||'',message:svc.message||'',messageRev:svc.messageRev||0,word:svc.word||null,version:svc.version||0,editedAt:svc.editedAt||0,items:clone(svc.items).map(it=>({...it,notes:undefined,media:(it.media||[]).map(m=>({...m,notes:undefined}))}))}},
+ draftDoc(svc){return {id:svc.id,name:svc.name,date:svc.date,folder:svc.folder||'',notice:svc.notice||'',message:svc.message||'',messageRev:svc.messageRev||0,word:svc.word||null,version:svc.version||0,editedAt:svc.editedAt||0,items:clone(svc.items).map(it=>({...it,notes:undefined,media:(it.media||[]).map(m=>({...m,notes:undefined}))}))}},
  async pushDraft(svc){if(!online()||!isLeader()||!svc||!svc.editedAt)return;if(svc.draftPushedAt===svc.editedAt)return;try{await SYNC.ensureBlobs(svc.items,true);await api('/services/'+svc.id+'/draft',{method:'PUT',body:{teamId:S.team.id,doc:SYNC.draftDoc(svc)}});svc.draftPushedAt=svc.editedAt;save()}catch(e){console.warn('draft push',e.message)}},
- applyDraft(svc,doc){scrubIds(doc);const old=new Map(svc.items.map(it=>[it.id,it]));if(doc.word&&!svc.word)svc.word=doc.word;svc.name=doc.name;svc.date=doc.date;svc.notice=doc.notice||'';svc.message=doc.message||'';svc.messageRev=doc.messageRev||0;svc.version=Math.max(svc.version||0,doc.version||0);svc.editedAt=doc.editedAt||Date.now();svc.draftPushedAt=svc.editedAt;
+ applyDraft(svc,doc){scrubIds(doc);const old=new Map(svc.items.map(it=>[it.id,it]));if(doc.word&&!svc.word)svc.word=doc.word;svc.name=doc.name;svc.date=doc.date;svc.folder=doc.folder||'';svc.notice=doc.notice||'';svc.message=doc.message||'';svc.messageRev=doc.messageRev||0;svc.version=Math.max(svc.version||0,doc.version||0);svc.editedAt=doc.editedAt||Date.now();svc.draftPushedAt=svc.editedAt;
   svc.items=clone(doc.items).map(it=>{const o=old.get(it.id);it.notes=o?(o.notes||[]):[];it.media=(it.media||[]).map(m=>{const om=o&&(o.media||[]).find(x=>x.id===m.id);return {...m,notes:om?(om.notes||[]):[]}});return it});save()},
  async pullDraft(svc){if(!online()||!isLeader()||!svc)return false;let d;try{d=await api('/services/'+svc.id+'/draft?team='+S.team.id)}catch(e){return false}
   if(!d||!d.doc)return false;const remote=+d.doc.editedAt||0;if(remote<=(svc.editedAt||0)+500)return false;
@@ -2612,7 +2714,7 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),
   await SYNC.fetchBlobs(d.blobs);SYNC.applyDraft(svc,d.doc);toast('다른 기기의 초안을 가져왔어요');return true},
  // 발행(인도자): 새 파일 업로드 → 스냅샷 저장
  async pushPublish(svc){if(!online()||!isLeader())return false;const pub=svc.published;await SYNC.ensureBlobs(pub.items);
-  await api('/services/'+svc.id,{method:'PUT',body:{teamId:S.team.id,doc:{id:svc.id,name:pub.name,date:pub.date,notice:pub.notice,message:pub.message||'',messageRev:pub.messageRev||0,word:pub.word||null,author:pub.author||'',version:pub.version,items:pub.items,changes:pub.changes||[]}}});return true},
+  await api('/services/'+svc.id,{method:'PUT',body:{teamId:S.team.id,doc:{id:svc.id,name:pub.name,date:pub.date,folder:pub.folder||'',notice:pub.notice,message:pub.message||'',messageRev:pub.messageRev||0,word:pub.word||null,author:pub.author||'',version:pub.version,items:pub.items,changes:pub.changes||[]}}});return true},
  async deleteService(id){if(!online()||!isLeader())return false;try{await api('/services/'+id+'?team='+S.team.id,{method:'DELETE'});return true}catch(e){toast(e.message);return false}},
  // 메모: 로컬 ↔ 서버 차이만 올림 (실패하면 다음 저장 때 다시)
  localNotes(svc){const out=[];svc.items.forEach(it=>{(it.notes||[]).forEach(n=>out.push({...n,itemId:it.id,markerId:n.marker||null,mediaId:null}));(it.media||[]).forEach(m=>(m.notes||[]).forEach(n=>out.push({...n,itemId:it.id,markerId:n.marker||null,mediaId:m.id})))});return out},
@@ -4168,6 +4270,43 @@ function scoreMenuModal(svc,it){const sc=it.score;
   if(e.target.closest('#smDel')){if(!confirm('이 악보를 지울까요? 사진은 그대로 있어요'))return;
    delete it.score;touch(svc);syncLib(it);save();closeModal();go('edit/'+svc.id);return}}}
 
+// 유료 플랜은 악보를 올리면 바로 키를 인식한다. 무료는 '키 인식' 버튼을 눌러야 하고
+// 그때 월 한도에서 한 곡이 차감된다. 한도 검사가 꺼져 있으면 예전처럼 모두 자동이다
+// 이번 달 AI 사용량. 상단 바의 크레딧 알약과 설정 → 플랜에서 쓴다.
+// cap 이 null 이면 한도 검사가 꺼져 있다는 뜻이라 '무제한'으로 보여 준다
+const PLANQ={plan:'free',ocr:{used:0,cap:null},omr:{used:0,cap:null},resetAt:'',enforced:false,credits:false};
+async function pullUsage(){
+ if(!online()||!NET.user||!S.team.id)return;
+ try{const u=await api('/teams/'+S.team.id+'/usage');
+  Object.assign(PLANQ,u);
+  if(!u.enforced){PLANQ.ocr={...u.ocr,cap:null};PLANQ.omr={...u.omr,cap:null}}   // 검사가 꺼져 있으면 숫자를 보이지 않는다
+ }catch(e){}}
+// 인식 뒤 서버가 알려준 사용량으로 바로 갱신한다 (다시 부르지 않기 위해)
+function takeQuota(kind,q){if(!q||q.cap==null)return;PLANQ[kind]={used:q.used,cap:q.cap}}
+// 악보를 올려도 인식은 돌지 않는다 — '코드 인식'을 눌러야 한다 (누를 때 한 곡이 차감된다).
+// Pro 이상은 확인 창 없이 바로 실행된다
+const askBeforeOcr=()=>(PLANQ.ocr.cap!=null)&&PREFS.confirmOcr!==false;
+// 누르면 확인 창을 띄운다 (무료만). Pro 이상은 바로 실행 (명세서 §3)
+function askOcr(svc,it,piece){
+ if(!askBeforeOcr())return recognizeChords(svc,it,piece);
+ const q=PLANQ.ocr,left=Math.max(0,q.cap-q.used),again=(piece.chords||[]).length>0;
+ const n=(it.pieces||[]).length;
+ modal(`<b style="font-size:17px">코드 인식</b>
+  <p class="hint" style="margin:6px 0 10px;line-height:1.55">${again
+   ?'지금 결과를 지우고 새로 인식해요. 손으로 고친 코드도 사라져요.'
+   :`이 곡의 악보 ${n}장을 인식하고, 연주 키 코드를 빨간색으로 병기해요.`}</p>
+  <div class="row" style="align-items:center;gap:8px;margin-bottom:12px">
+   <b style="font-size:18px">${left}</b><span class="hint">→</span><b style="font-size:18px">${Math.max(0,left-1)}</b>
+   <span class="hint">이번 달 남은 곡</span></div>
+  <label class="row" style="gap:8px;align-items:center;margin-bottom:12px;cursor:pointer">
+   <input type="checkbox" id="ocrNoAsk"><span class="hint">다음부터 묻지 않기 (설정에서 다시 켤 수 있어요)</span></label>
+  <div class="row" style="justify-content:flex-end;gap:6px">
+   <button class="btn" data-act="close">취소</button>
+   <button class="btn pri" id="ocrGo">인식 <span class="cost">1</span></button></div>`);
+ const go=$('#ocrGo');if(go)go.onclick=()=>{
+  const no=$('#ocrNoAsk');if(no&&no.checked)savePrefs({confirmOcr:false});
+  closeModal();recognizeChords(svc,it,piece)};
+}
 async function recognizeChords(svc,it,piece){if(!online()||!isLeader()||!piece)return;piece.ocr='pending';piece.ocrErr='';save();if(route().name==='edit')drawEditorSheet(svc);
  try{const blob=await IDB.get('blobs',piece.blob);if(!blob)throw new Error('이 기기에 악보 파일이 없어요');const img=await loadImg(URL.createObjectURL(blob));
   // 예전에는 오선 위 '코드 띠'를 12~13장으로 잘라 일반 OCR 에 보냈다. 위첨자(Bm⁷, A⁹)와
@@ -4177,7 +4316,7 @@ async function recognizeChords(svc,it,piece){if(!online()||!isLeader()||!piece)r
   const cv=document.createElement('canvas');cv.width=Math.round(img.naturalWidth*sc);cv.height=Math.round(img.naturalHeight*sc);
   cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
   const b64=cv.toDataURL('image/jpeg',0.9).split(',')[1];
-  const r=await api('/ocr',{method:'POST',body:{teamId:S.team.id,images:[{b64,mime:'image/jpeg',w:cv.width,h:cv.height}]}});
+  const r=await api('/ocr',{method:'POST',body:{teamId:S.team.id,songKey:it&&it.id,images:[{b64,mime:'image/jpeg',w:cv.width,h:cv.height}]}});
   const res=(r.results||[])[0]||{tokens:[]};
   const kx=piece.w/cv.width;const found=[];
   (res.tokens||[]).forEach(t=>{const text=normAcc(t.text);if(!isChordText(text))return;
@@ -4191,8 +4330,14 @@ async function recognizeChords(svc,it,piece){if(!online()||!isLeader()||!piece)r
   const filled=[];const title=(r.title||'').trim();
   if(title&&!(it.title||'').trim()){it.title=title;filled.push('제목')}
   if(piece.sheetKey&&!(it.key||'').trim()){it.key=piece.sheetKey;filled.push('키 '+piece.sheetKey)}
-  toast((uniq.length?`코드 ${uniq.length}개 인식 · 악보 키 ${piece.sheetKey||'?'}`:'코드를 찾지 못했어요')+(filled.length?` · ${filled.join('·')} 채움`:''));
- }catch(e){piece.ocr=e.code==='no_ocr'?'none':'error';piece.ocrErr=e.message||'';if(piece.ocr==='error')toast('코드 인식 실패: '+piece.ocrErr)}
+  // 무료 플랜이면 이번 달 남은 곡 수를 함께 알려 준다
+  takeQuota('ocr',r.quota);
+  const qa=r.quota&&r.quota.cap!=null?` · 이번 달 ${r.quota.used}/${r.quota.cap}곡`:'';
+  toast((uniq.length?`코드 ${uniq.length}개 인식 · 악보 키 ${piece.sheetKey||'?'}`:'코드를 찾지 못했어요')+(filled.length?` · ${filled.join('·')} 채움`:'')+qa);
+ }catch(e){
+  // 한도 초과는 실패가 아니라 안내다. 다시 누를 수 있게 상태를 되돌린다
+  if(e.code==='ai_limit'){piece.ocr='';piece.ocrErr='';toast(e.message)}
+  else{piece.ocr=e.code==='no_ocr'?'none':'error';piece.ocrErr=e.message||'';if(piece.ocr==='error')toast('코드 인식 실패: '+piece.ocrErr)}}
  touch(svc);save();syncLib(it);
  // 인식은 10초 넘게 걸린다. 다 되었다고 편집기를 통째로 다시 그리면 그 사이 하던 일
  // (조각 끌기, 글 쓰던 칸)이 날아간다. 악보만 다시 그리고 채워진 칸만 손본다
@@ -4284,7 +4429,33 @@ function sheetHTML(item,W,ctx){
   html+=`<div class="piece${span>1?' sp'+span:''}" data-piece="${p.id}" style="width:${Math.round(pw)}px">`;
   if(pieces.length>1)html+=`<div class="phead${ctx.mode==='edit'?' drag':''}" ${ctx.mode==='edit'?`data-pdrag="${p.id}"`:''}><span class="ln"></span>${ctx.mode==='edit'?ic('list'):''}조각 ${pi+1}${p.name?' · '+esc(p.name):''}<span class="ln"></span></div>`;
   const capo=ctx.mode==='edit'?0:(+me().capo||0);const off=chordOffset(item,p)-capo;const nCh=(p.chords||[]).length;const showRed=off!==0&&(ctx.f?ctx.f.chords!==false:true);const chordTool=ctx.mode==='edit'&&ctx.tool==='chord';
-  if(ctx.mode==='edit')html+=`<div class="chordbar ${(nCh||p.sheetKey||p.ocr==='pending')?'':'slim'}">${p.ocr==='pending'?'<span class="hint">코드 인식 중…</span>':''}${(nCh||p.sheetKey)?`<button class="btn sm" data-act="sheet-key" data-id="${p.id}">악보 키 ${esc(p.sheetKey||'?')}${p.keyConfirmed?'':' <span class="muted">(추정)</span>'}</button><span class="hint">→ 연주 키 ${esc(item.key||'?')}</span><span class="pill">${off>0?'+':''}${off}</span><button class="icon sm ghost" data-act="chord-off" data-id="${p.id}" data-d="-1" title="반음 내림">${ic('down')}</button><button class="icon sm ghost" data-act="chord-off" data-id="${p.id}" data-d="1" title="반음 올림">${ic('up')}</button><span class="hint">${nCh}개 코드${off?' · 전조 코드 병기':' · 같은 키'}</span>`:''}${p.ocr==='none'?'<span class="hint">인식 엔진 미연결 — "코드" 도구로 직접 추가</span>':''}${p.ocr==='error'?`<span class="hint" style="color:var(--destructive)">인식 실패: ${esc(p.ocrErr||'')}</span>`:''}<span class="grow"></span>${p.ocr!=='pending'?`<button class="btn sm ghost" data-act="ocr" data-id="${p.id}">${ic('marker')}${nCh?'다시 인식':'코드 인식'}</button>`:''}${NET.omr&&p.ocr!=='pending'?`<button class="btn sm ghost" data-act="omr" data-id="${p.id}" title="코드·가사·구성을 읽어 곡 정보에 채움">${ic('music')}채보</button><button class="btn sm ghost" data-act="score-make" data-id="${p.id}" title="오선·음표·코드·가사를 새로 그린 악보로 만듭니다">${ic('pen')}악보 만들기</button>`:''}${item.score&&pi===0?`<button class="btn sm" data-act="score-open" title="재구성한 악보 열기">${ic('music')}악보 ${item.score.measures.length}마디</button>`:''}</div>`;
+  if(ctx.mode==='edit'){
+   // 상단 바 — 키 블록 · 상태 줄 · 동작 블록 (시안 1414_악보상단바_크레딧)
+   const st=p.ocr==='pending'?'run':(p.ocr==='error'?'bad':(nCh?'done':(p.sheetKey?'keyonly':'none')));
+   const q=PLANQ.ocr, unl=q.cap==null, left=unl?null:Math.max(0,q.cap-q.used), out=!unl&&left<=0;
+   const keyBlk=(nCh||p.sheetKey||st==='none')?`<button class="btn sm" data-act="sheet-key" data-id="${p.id}">악보 키 ${esc(p.sheetKey||'?')}${(p.sheetKey&&!p.keyConfirmed)?' <span class="muted">(추정)</span>':''}</button><span class="hint">→ 연주 키 ${esc(item.key||'?')}</span>${(nCh||p.sheetKey)?`<span class="pill">${off>0?'+':''}${off}</span><button class="icon sm ghost" data-act="chord-off" data-id="${p.id}" data-d="-1" title="반음 내림">${ic('down')}</button><button class="icon sm ghost" data-act="chord-off" data-id="${p.id}" data-d="1" title="반음 올림">${ic('up')}</button>`:''}`:'';
+   const STATUS={
+    none:['','코드 <b>아직 인식 안 함</b> · 인식하면 연주 키 코드를 빨간색으로 병기해요'],
+    run:['run','코드 <b>인식 중</b> · 보통 10초 안'],
+    done:['ok',`<b>${nCh}개 코드</b> 인식 · 오탈자는 코드를 탭해서 고쳐요${off?' · 전조 코드 병기':''}`],
+    bad:['bad',`인식이 <b>잘 안 됐어요</b>${p.ocrErr?' ('+esc(p.ocrErr)+')':''}`],
+    keyonly:['','코드 인식 없이 <b>키만 설정</b> · 연주 키는 콘티에 표시돼요'],
+   }[st];
+   const pill=unl?`<span class="cb-credit" title="이 플랜은 코드 인식이 넉넉해요">∞ 코드 인식</span>`
+    :`<span class="cb-credit ${left<=2?'low':''}" title="매월 1일에 다시 채워져요"><span>코드 인식 ${left}/${q.cap}</span><span class="gauge"><i style="width:${Math.round(left/q.cap*100)}%"></i></span></span>`;
+   const cost=`<span class="cost">${unl?'무제한':'1'}</span>`;
+   const oq=PLANQ.omr, oleft=oq.cap==null?null:Math.max(0,oq.cap-oq.used);
+   const omrBtn=(NET.omr&&p.ocr!=='pending')?`<button class="btn sm ghost" data-act="omr" data-id="${p.id}" title="코드·가사·구성을 읽어 곡 정보에 채움">${ic('music')}채보${oq.cap!=null?` <span class="cost">${oleft}/${oq.cap}</span>`:''}</button>`:'';
+   let act='';
+   if(p.ocr==='pending')act=`${pill}<span class="hint">인식 중…</span>`;
+   else if(st==='bad')act=`${pill}<button class="btn sm pri" data-act="ocr" data-id="${p.id}">다시 시도${cost}</button><button class="btn sm ghost" data-act="sheet-key" data-id="${p.id}">키만 직접 설정</button>${omrBtn}`;
+   else if(nCh)act=`${pill}<button class="btn sm" data-act="ocr" data-id="${p.id}">${ic('marker')}다시 인식${cost}</button>${omrBtn}`;
+   else act=`${pill}<button class="btn sm pri" data-act="ocr" data-id="${p.id}" ${out?'disabled':''}>${ic('marker')}코드 인식${cost}</button>${omrBtn}`;
+   const note=out?`<div class="cb-note bad">이번 달 코드 인식 ${q.cap}곡을 다 썼어요 · ${esc(PLANQ.resetAt||'다음 달 1일')}에 다시 채워져요 · 키는 위에서 직접 고를 수 있어요</div>`:'';
+   html+=`<div class="chordbar">${keyBlk}<div class="cb-status"><span class="cb-dot ${STATUS[0]}"></span><span>${STATUS[1]}</span></div><div class="cb-act">${act}</div>${note}</div>`;
+   if(item.score&&pi===0)html+=`<div class="chordbar slim"><button class="btn sm" data-act="score-open" title="재구성한 악보 열기">${ic('music')}악보 ${item.score.measures.length}마디</button><button class="btn sm ghost" data-act="score-make" data-id="${p.id}">${ic('pen')}악보 다시 만들기</button></div>`;
+   else if(NET.omr&&p.ocr!=='pending')html+=`<div class="chordbar slim"><button class="btn sm ghost" data-act="score-make" data-id="${p.id}" title="오선·음표·코드·가사를 새로 그린 악보로 만듭니다">${ic('pen')}악보 만들기</button></div>`;
+  }
   for(let i=0;i<bounds.length-1;i++){
    const a=bounds[i],b=bounds[i+1];
    if(i>0){const m=stripMarkers[i-1];html+=stripHTML(m,notesBy[m.id],mods,ctx)}
@@ -4351,7 +4522,8 @@ async function render(){
   if(online()&&r.name==='view'&&!SCH.at)pullSchedule(monthKey(),true).catch(()=>{});
   await preload(svc);
   if(stale())return;
-  if(r.name==='edit'){if(online()&&!same&&isLeader()){try{await SYNC.pullDraft(svc)}catch(e){}}if(stale())return;app.innerHTML=editorHTML(svc);afterEditor(svc);restoreScroll();return}
+  if(r.name==='edit'){if(online()&&!same&&isLeader()){try{await SYNC.pullDraft(svc)}catch(e){}}
+   if(online()&&isLeader())pullUsage().then(()=>{if(route().name==='edit')drawEditorSheet(svcById(route().a))});if(stale())return;app.innerHTML=editorHTML(svc);afterEditor(svc);restoreScroll();return}
   if(r.name==='view'){app.innerHTML=viewerHTML(svc);restoreScroll();if(!same&&msgUnread(svc))setTimeout(()=>{if(!stale())messageSheet(svc,true)},150);return}
   app.innerHTML=playHTML(svc,+r.b||0);afterPlay(svc,+r.b||0);restoreScroll();return}
  // 라이브러리 (A부)
@@ -4395,7 +4567,8 @@ async function render(){
   $$('[data-wsel]').forEach(el2=>el2.onclick=()=>go('word/'+el2.dataset.wsel));
   restoreScroll();return}
  // 설정 페이지 (§6.8)
- if(r.name==='settings'){app.innerHTML=settingsHTML();afterSettings();restoreScroll();return}
+ if(r.name==='settings'){if(SET.tab==='plan'&&online()&&isLeader()&&S.team.id){await pullUsage();if(stale())return}
+  app.innerHTML=settingsHTML();afterSettings();restoreScroll();return}
  // 알림 페이지 (§6.7)
  if(r.name==='inbox'){
   if(!online()||!S.team.id)return go('home');
@@ -4423,6 +4596,7 @@ async function render(){
  if(online()&&NET.user&&needsAgree())setTimeout(()=>{if(!$('#modal').firstChild)agreeModal()},600);
  if(online()&&S.team.id&&NET.user)setTimeout(()=>{if(route().name==='home'&&!$('#modal').firstChild&&!needsAgree())pushOnboard()},1600);
  if(online()&&NET.user)pullPrefs().then(()=>{if(NATIVE)appPushRegister();else if(pushState()==='granted')pushRegister()});
+ if(online()&&S.team.id&&NET.user)pullUsage();
  if(online()&&S.team.id&&NET.user)pullSchedule(monthKey()).then(ch=>{if(ch&&route().name==='home')render()});
  if(online()&&!same)SYNC.pullServices().then(ch=>{if(ch&&route().name==='home')render()});
 }
@@ -4538,7 +4712,7 @@ async function cropPieceModal(svc,it,p){
    touch(svc);save();syncLib(it);await preload(svc);
    toast(gone.size?`잘랐어요 · 밖으로 나간 마커 ${gone.size}개는 뺐어요`:'잘랐어요');render()}}}
 async function addPieces(svc,it,files){files=Array.from(files||[]).filter(f=>/^image\//.test(f.type));if(!it||!files.length){if(files&&!files.length)toast('이미지 파일만 넣을 수 있어요');return}toast('이미지 처리 중…');let fixes=[];let split=0;
- const pushPiece=async(target,r)=>{const id=uid();await IDB.put('blobs',id,r.blob);target.pieces.push({id,blob:id,w:r.w,h:r.h,gaps:r.gaps,markers:[],hls:[],name:'',chords:[],sheetKey:'',keyConfirmed:false,offset:null});const np=target.pieces[target.pieces.length-1];if(online()&&isLeader())setTimeout(()=>recognizeChords(svc,target,np),100);
+ const pushPiece=async(target,r)=>{const id=uid();await IDB.put('blobs',id,r.blob);target.pieces.push({id,blob:id,w:r.w,h:r.h,gaps:r.gaps,markers:[],hls:[],name:'',chords:[],sheetKey:'',keyConfirmed:false,offset:null});const np=target.pieces[target.pieces.length-1];
   const fx=[];if(Math.abs(r.fix.angle)>=0.3)fx.push('기울기 '+(r.fix.angle>0?'+':'')+r.fix.angle.toFixed(1)+'°');if(r.fix.photo)fx.push('명암');if(r.fix.trimmed)fx.push('여백');if(fx.length)fixes.push(fx.join('·'))};
  // 예전에는 여기서 "여러 곡"을 알아서 갈라 새 곡을 만들었다. 그런데 같은 악보가 1·2·3곡으로
  // 제각각 갈려서 못 믿을 추측이었다. 이제는 그냥 한 조각으로 넣고, 나누기는 조각 메뉴에서 직접 누른다
@@ -4554,7 +4728,7 @@ function afterEditor(svc){
    svc.word=Object.assign({passage:'',title:'',line:'',memo:'',memoPublic:false},svc.word,{[wf]:e.target.value});WORD_DIRTY=true;save();
    clearTimeout(WORD_T);WORD_T=setTimeout(()=>saveWord(svc),900);const s=$('#wSaved');if(s)s.textContent='저장 중…';return}
   const f=e.target.dataset.f;if(!f)return;const it=curItem(svc);
-  if(f==='svc.name')svc.name=e.target.value;else if(f==='svc.date')svc.date=e.target.value;else if(f==='svc.notice')svc.notice=e.target.value;else if(f==='svc.message'){svc.message=e.target.value;autoGrow(e.target)}
+  if(f==='svc.name')svc.name=e.target.value;else if(f==='svc.folder')svc.folder=e.target.value.trim();else if(f==='svc.date')svc.date=e.target.value;else if(f==='svc.notice')svc.notice=e.target.value;else if(f==='svc.message'){svc.message=e.target.value;autoGrow(e.target)}
   else if(it){const k=f.split('.')[1];it[k]=e.target.value;if(k==='form'){$('#formchips').innerHTML=chipsHTML(it.form,'t');autoGrow(e.target)}if(k==='title'){const tab=$$('.ptab .tab').find(t=>t.textContent==='곡 편집');const sub=tab&&tab.parentElement.querySelector('.sub');if(sub)sub.textContent=it.title||'(제목 없음)'}if(k==='key')drawEditorSheet(svc);if(k==='title'||k==='key'||k==='mod'){const li=$$('.list-item').find(l=>l.dataset.id===it.id);if(li){const t=li.querySelector('.grow'),k=li.querySelector('.k');if(t)t.textContent=it.title||'(제목 없음)';if(k)k.textContent=keyStr(it)}}
    markOverride(it,k);paintOvBar(it);syncLib(it)}
   svc.version=Math.max(svc.version,(svc.published?svc.published.version:0));touch(svc);save()};
@@ -4687,7 +4861,7 @@ function kakaoText(svc){
 }
 function diffSvc(prev,cur){const out=[];const pm=new Map(prev.items.map(i=>[i.id,i]));cur.items.forEach((it,i)=>{const p=pm.get(it.id);if(!p){out.push(`${i+1}번 추가`);return}if((p.mod||'')!==(it.mod||'')||p.key!==it.key)out.push(`${i+1}번 키 변경`);if(p.form!==it.form)out.push(`${i+1}번 송폼 수정`);if((p.media||[]).length!==(it.media||[]).length)out.push(`${i+1}번 미디어 변경`)});prev.items.forEach(p=>{if(!cur.items.find(i=>i.id===p.id))out.push(`"${p.title}" 삭제`)});return out}
 /* ---------- VIEWER ---------- */
-const draftOf=svc=>({name:svc.name,date:svc.date,notice:svc.notice,message:svc.message||'',messageRev:svc.messageRev||0,word:svc.word||null,author:me().name||'인도자',items:svc.items,version:svc.version||0,draft:true});
+const draftOf=svc=>({name:svc.name,date:svc.date,folder:svc.folder||'',notice:svc.notice,message:svc.message||'',messageRev:svc.messageRev||0,word:svc.word||null,author:me().name||'인도자',items:svc.items,version:svc.version||0,draft:true});
 function pubOrDraft(svc){if(VF.draft&&isLeader()&&route().name==='view')return draftOf(svc);return svc.published?{...svc.published,draft:false}:draftOf(svc)}
 let VF={session:null,draft:false};
 /* ---------- PRACTICE / STAGE ---------- */
@@ -5058,6 +5232,108 @@ async function nativeSetup(){
    if(S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()}).catch(()=>{})}})}catch(e){}
  try{P.SplashScreen&&P.SplashScreen.hide()}catch(e){}}
 // 무대 모드에서는 화면이 꺼지면 안 된다 (예배 중)
+/* ---------- 메트로놈 · 건반 (연습 화면 도구) ---------- */
+// 소리는 Web Audio 로 직접 만든다. 음원 파일이 없어 앱 용량이 늘지 않고,
+// setTimeout 대신 오디오 시계에 미리 예약해 박이 밀리지 않는다
+const AUD={ctx:null};
+function actx(){if(!AUD.ctx){const C=window.AudioContext||window.webkitAudioContext;if(!C)return null;AUD.ctx=new C()}
+ if(AUD.ctx.state==='suspended')AUD.ctx.resume();return AUD.ctx}
+// 한 번 '딱'. 첫 박은 높게
+function click(t,strong){const c=actx();if(!c)return;
+ const o=c.createOscillator(),g=c.createGain();
+ o.type='square';o.frequency.value=strong?1600:1100;
+ g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(strong?0.5:0.3,t+0.001);
+ g.gain.exponentialRampToValueAtTime(0.0001,t+0.05);
+ o.connect(g);g.connect(c.destination);o.start(t);o.stop(t+0.06)}
+
+// 건반 한 옥타브. 음 높이를 귀로 확인할 때 쓴다 (키 맞추기·시작음 잡기)
+const PIANO={oct:4,held:{}};
+const SEMI={C:0,'C#':1,D:2,'D#':3,E:4,F:5,'F#':6,G:7,'G#':8,A:9,'A#':10,B:11};
+const noteHz=(name,oct)=>440*Math.pow(2,((SEMI[name]+(oct-4)*12)-9)/12);
+function noteOn(id,name,oct){const c=actx();if(!c||PIANO.held[id])return;
+ const o=c.createOscillator(),g=c.createGain();
+ o.type='triangle';o.frequency.value=noteHz(name,oct);
+ g.gain.setValueAtTime(0.0001,c.currentTime);
+ g.gain.exponentialRampToValueAtTime(0.28,c.currentTime+0.01);
+ o.connect(g);g.connect(c.destination);o.start();
+ PIANO.held[id]={o,g}}
+function noteOff(id){const h=PIANO.held[id];if(!h)return;delete PIANO.held[id];
+ const c=actx();if(!c){try{h.o.stop()}catch(e){}return}
+ h.g.gain.cancelScheduledValues(c.currentTime);
+ h.g.gain.setValueAtTime(h.g.gain.value,c.currentTime);
+ h.g.gain.exponentialRampToValueAtTime(0.0001,c.currentTime+0.25);
+ try{h.o.stop(c.currentTime+0.3)}catch(e){}}
+const WHITE=['C','D','E','F','G','A','B'];
+const BLACK=[{n:'C#',at:0},{n:'D#',at:1},{n:'F#',at:3},{n:'G#',at:4},{n:'A#',at:5}];
+function pianoOpen(){
+ const keys=`<div class="pkeys" id="pkeys">
+  ${WHITE.map((n,i)=>`<div class="pk w" data-n="${n}" data-i="${i}"><span>${n}</span></div>`).join('')}
+  ${BLACK.map(b=>`<div class="pk b" data-n="${b.n}" style="left:calc((100% / 7) * ${b.at+1} - 3.2%)"></div>`).join('')}
+ </div>`;
+ modal(`<div class="row" style="align-items:center"><b style="font-size:17px" class="grow">건반</b>
+   <button class="icon" data-act="oct" data-d="-1" title="한 옥타브 낮게">${ic('down')}</button>
+   <span class="pill" id="pOct">${PIANO.oct}옥타브</span>
+   <button class="icon" data-act="oct" data-d="1" title="한 옥타브 높게">${ic('up')}</button></div>
+  ${keys}
+  <div class="hint" style="margin-top:10px">누르고 있는 동안 소리가 나요 · 여러 개를 같이 눌러도 됩니다</div>`);
+ const box=$('#pkeys');if(!box)return;
+ const at=e=>{const el=document.elementFromPoint(e.clientX,e.clientY);return el&&el.closest('.pk')};
+ const down=e=>{const k=at(e);if(!k)return;e.preventDefault();
+  const id=e.pointerId;noteOn(id,k.dataset.n,PIANO.oct);k.classList.add('on');
+  box.setPointerCapture&&box.setPointerCapture(id)};
+ const up=e=>{noteOff(e.pointerId);$$('#pkeys .pk.on').forEach(x=>x.classList.remove('on'))};
+ box.addEventListener('pointerdown',down);
+ box.addEventListener('pointerup',up);box.addEventListener('pointercancel',up);
+ box.addEventListener('pointerleave',up);
+ $('#modal').addEventListener('click',e=>{const b=e.target.closest('[data-act="oct"]');if(!b)return;
+  PIANO.oct=Math.max(1,Math.min(7,PIANO.oct+ +b.dataset.d));const o=$('#pOct');if(o)o.textContent=PIANO.oct+'옥타브'});
+}
+
+const MET={on:false,bpm:90,beats:4,beat:0,next:0,timer:null,tapAt:[]};
+function metStop(){MET.on=false;if(MET.timer)clearInterval(MET.timer);MET.timer=null;MET.beat=0;metPaint()}
+function metStart(){const c=actx();if(!c){toast('이 기기에서는 소리를 낼 수 없어요');return}
+ MET.on=true;MET.beat=0;MET.next=c.currentTime+0.1;
+ // 0.1초마다 깨어나 앞으로 0.25초 안에 올 박을 미리 예약한다
+ MET.timer=setInterval(()=>{const c=actx();if(!c||!MET.on)return;
+  while(MET.next<c.currentTime+0.25){
+   click(MET.next,MET.beat%MET.beats===0);
+   MET.beat++;MET.next+=60/MET.bpm}},100);
+ metPaint()}
+function metSet(bpm){MET.bpm=Math.max(30,Math.min(280,Math.round(bpm)||90));
+ if(MET.on){const c=actx();MET.next=Math.max(MET.next,c?c.currentTime+0.05:0)}
+ metPaint();savePrefs({bpm:MET.bpm})}
+// 버튼을 박에 맞춰 두드리면 빠르기를 잡아 준다
+function metTap(){const now=Date.now();MET.tapAt=MET.tapAt.filter(t=>now-t<2500);MET.tapAt.push(now);
+ if(MET.tapAt.length<2){metPaint();return}
+ const gaps=[];for(let i=1;i<MET.tapAt.length;i++)gaps.push(MET.tapAt[i]-MET.tapAt[i-1]);
+ const avg=gaps.reduce((a,b)=>a+b,0)/gaps.length;
+ if(avg>150&&avg<2000)metSet(60000/avg)}
+function metPaint(){const el=$('#metBpm');if(el)el.textContent=MET.bpm;
+ const b=$('#metGo');if(b){b.textContent=MET.on?'멈춤':'시작';b.classList.toggle('pri',!MET.on)}
+ const t=$('#metTap');if(t)t.textContent=MET.tapAt.length>1?`탭 ${MET.tapAt.length}`:'탭';}
+function metOpen(){
+ MET.bpm=+PREFS.bpm||MET.bpm;
+ modal(`<b style="font-size:17px">메트로놈</b>
+  <div class="row" style="align-items:center;gap:10px;margin:12px 0">
+   <button class="icon" data-act="met-d" data-d="-5">${ic('down')}</button>
+   <div style="text-align:center;min-width:110px"><b id="metBpm" style="font-size:38px;line-height:1">${MET.bpm}</b><div class="hint">BPM</div></div>
+   <button class="icon" data-act="met-d" data-d="5">${ic('up')}</button>
+   <span class="grow"></span>
+   <button class="btn" id="metTap">탭</button>
+   <button class="btn pri" id="metGo">${MET.on?'멈춤':'시작'}</button></div>
+  <input type="range" id="metRange" min="30" max="240" value="${MET.bpm}" style="width:100%">
+  <div class="lbl">박자</div>
+  <div class="row" style="gap:6px">${[2,3,4,6].map(n=>`<button class="q ${MET.beats===n?'on':''}" data-act="met-beats" data-n="${n}">${n}/4</button>`).join('')}</div>
+  <div class="hint" style="margin-top:10px">첫 박이 높게 울려요 · 창을 닫아도 계속 울립니다</div>`,{onclose(){}});
+ const go=$('#metGo');if(go)go.onclick=()=>{MET.on?metStop():metStart()};
+ const tp=$('#metTap');if(tp)tp.onclick=metTap;
+ const rg=$('#metRange');if(rg)rg.oninput=()=>{metSet(+rg.value)};
+ $('#modal').addEventListener('click',e=>{
+  const d=e.target.closest('[data-act="met-d"]');if(d){metSet(MET.bpm+ +d.dataset.d);if(rg)rg.value=MET.bpm;return}
+  const b=e.target.closest('[data-act="met-beats"]');if(b){MET.beats=+b.dataset.n;MET.beat=0;
+   $$('#modal [data-act="met-beats"]').forEach(x=>x.classList.toggle('on',+x.dataset.n===MET.beats))}});
+ metPaint()}
+
 async function keepAwake(on){
  if(!NATIVE)return;const K=CapPlug().KeepAwake;if(!K)return;
  try{on?await K.keepAwake():await K.allowSleep()}catch(e){}}
@@ -5650,6 +5926,11 @@ document.addEventListener('click',async e=>{
   case 'pick-on':{HOME.pick=true;HOME.sel=[];render();break}
   case 'pick-off':{HOME.pick=false;HOME.sel=[];render();break}
   case 'pick-svc':{const id=el.dataset.id;HOME.sel=HOME.sel.includes(id)?HOME.sel.filter(x=>x!==id):HOME.sel.concat(id);render();break}
+  case 'upgrade':upgradeModal();break;
+  case 'buy':{
+   if(!NATIVE){toast('결제는 앱에서만 할 수 있어요');break}
+   toast('결제 준비 중이에요');break}
+  case 'home-folder':{HOME.folder=el.dataset.v===HOME.folder?'':el.dataset.v;render();break}
   case 'pick-all':{const all=S.services.map(x=>x.id);HOME.sel=HOME.sel.length===all.length?[]:all;render();break}
   case 'pick-del':{
    if(!isLeader()){toast('인도자만 지울 수 있어요');break}
@@ -5685,11 +5966,11 @@ document.addEventListener('click',async e=>{
      const id2=uid();await IDB.put('blobs',id2,rr.blob);
      const np={id:id2,blob:id2,w:rr.w,h:rr.h,gaps:rr.gaps,markers:[],hls:[],name:'',chords:[],sheetKey:'',keyConfirmed:false,offset:null};
      if(k===0)target.pieces.splice(idx,0,np);else target.pieces.push(np);
-     if(online()&&isLeader())setTimeout(()=>recognizeChords(sv,target,np),100)}
+     }
     touch(sv);save();syncLib(it);await preload(sv);toast(`${parts.length}곡으로 나눴어요`);render()}break}
   case 'del-piece':{const s=svcById(r.a);const it=curItem(s);if(!confirm('조각을 삭제할까요? 마커와 메모도 지워집니다.'))break;const p=it.pieces.find(x=>x.id===el.dataset.id);const mids=new Set(p.markers.map(m=>m.id));it.notes=it.notes.filter(n=>!mids.has(n.marker));it.pieces=it.pieces.filter(x=>x.id!==p.id);touch(s);save();syncLib(it);render();break}
   case 'add-yt':{const s=svcById(r.a);const it=curItem(s);const u=$('#ytUrl').value.trim();if(!ytId(u)){toast('유튜브 링크가 아니에요');break}it.media.push({id:uid(),type:'youtube',url:u,name:'',start:ytStart(u)||0,end:0,notes:[],sessions:((SEL[s.id]||{}).mdTarget||[]).slice()});touch(s);save();syncLib(it);render();break}
-  case 'ocr':{const s=svcById(r.a);const it=curItem(s);const p=it&&it.pieces.find(x=>x.id===el.dataset.id);if(!p)break;if(!online()){toast('서버에 연결돼 있을 때만 인식할 수 있어요');break}recognizeChords(s,it,p);break}
+  case 'ocr':{const s=svcById(r.a);const it=curItem(s);const p=it&&it.pieces.find(x=>x.id===el.dataset.id);if(!p)break;if(!online()){toast('서버에 연결돼 있을 때만 인식할 수 있어요');break}askOcr(s,it,p);break}
   case 'omr':{const s=svcById(r.a);const it=curItem(s);const p=it&&it.pieces.find(x=>x.id===el.dataset.id);if(!p)break;if(!online()){toast('서버에 연결돼 있을 때만 채보할 수 있어요');break}transcribePiece(s,it,p);break}
   case 'score-make':{const s=svcById(r.a);const it=curItem(s);const p=it&&it.pieces.find(x=>x.id===el.dataset.id);if(!p)break;if(!online()){toast('서버에 연결돼 있을 때만 악보를 만들 수 있어요');break}rebuildScore(s,it,p);break}
   case 'score-open':{const s=svcById(r.a);const it=curItem(s);if(it&&it.score)go(`score/${s.id}/${it.id}`);break}
@@ -5729,6 +6010,8 @@ document.addEventListener('click',async e=>{
   case 'tnote':{const s=PL.svc;const pub=pubOrDraft(s);const it=pub.items[PL.idx];const live=s.items.find(x=>x.id===it.id)||it;const md=(PL.ml||[])[PL.mi];if(!md){toast('미디어가 없어요');break}const lmd=live.media.find(x=>x.id===md.id);if(!lmd){toast('발행본에 없는 미디어');break}P.pauseForComposer();openComposer(s,live,{leader:isLeader(),t:P.t,mediaId:lmd.id});break}
   case 'psess':PL.session=el.dataset.s;render();break;
   case 'pf':PL.f[el.dataset.k]=!PL.f[el.dataset.k];$$('[data-act="pf"]').forEach(b=>b.classList.toggle('on',PL.f[b.dataset.k]));redrawPlay();break;
+  case 'piano':pianoOpen();break;
+  case 'metro':metOpen();break;
   case 'stage':{const s2=PL.svc||svc;if(s2){await preload(s2);stageOpen(s2,PL.idx||0)}break}
   case 'zoom':setZoom((PL.zoom||1)+(+el.dataset.d)*0.1);break;
   case 'print':printService(svc);break;
@@ -5767,7 +6050,7 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
  if(!online()&&!me().name){location.hash='#/settings';render()}else render();
  if(online()&&S.team.id){SYNC.pullServices().then(ch=>{if(ch)render()});SYNC.pullLibrary();pullSongs(true).then(ch=>{if(ch&&/^(edit|view|play|library)$/.test(route().name))render()}).catch(()=>{})}
  probeOmr();startNotiPoll();nativeSetup();
- window.CONTI={HOME,PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go};
+ window.CONTI={MET,PIANO,metOpen,metStart,metStop,metSet,pianoOpen,HOME,PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go};
 })();
 })();
 </script>

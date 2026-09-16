@@ -6,6 +6,17 @@ URL = os.environ.get('CONTI_URL', 'http://localhost:8766/')
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHEET = os.path.join(ROOT, 'docs', 'sample_sheet.jpg')
 tag = str(int(time.time()))[-6:]
+
+# 악보를 올려도 인식은 자동으로 돌지 않는다 — '코드 인식' 버튼을 눌러야 한다.
+# 무료 플랜이면 확인 창이 한 번 뜬다
+def run_ocr(pg, wait=90000):
+  pg.wait_for_selector('.chordbar [data-act="ocr"]', timeout=20000)
+  pg.locator('.chordbar [data-act="ocr"]').first.click(); pg.wait_for_timeout(700)
+  go = pg.locator('#ocrGo')
+  if go.count(): go.click(); pg.wait_for_timeout(500)
+  pg.wait_for_function("(()=>{const p=(CONTI.S.services[0].items[0].pieces||[])[0];return p&&p.ocr&&p.ocr!=='pending'})()", timeout=wait)
+  return True
+
 def fail(m): print('FAIL:', m); sys.exit(1)
 
 def run():
@@ -22,7 +33,7 @@ def run():
     pg.click('[data-act="new-svc"]'); pg.wait_for_selector('[data-f="svc.name"]'); pg.fill('[data-f="svc.name"]', '하이 예배')
     pg.click('[data-act="add-item"]'); pg.wait_for_selector('[data-f="item.title"]'); pg.fill('[data-f="item.title"]', '곡')
     pg.set_input_files('#pieceFile', [SHEET])
-    pg.wait_for_function("(()=>{const p=(CONTI.S.services[0].items[0].pieces||[])[0];return p&&p.ocr&&p.ocr!=='pending'})()", timeout=90000)
+    run_ocr(pg, 90000)
     pg.wait_for_timeout(1200)
 
     def drag(x0, y0, x1, y1):

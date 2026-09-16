@@ -443,6 +443,63 @@ create table if not exists ai_usage_user (
 );
 
 -- 약관·개인정보처리방침 동의 기록 (언제, 어느 판에 동의했는지)
+-- 무료 플랜의 월 AI 한도는 '곡' 단위로 센다. 한 곡에 악보가 여러 장이어도 한 번만 차감된다.
+-- 같은 달에 같은 곡을 다시 인식해도 더 차감하지 않는다 (행이 이미 있으므로)
+create table if not exists ai_songs (
+  team_id    uuid not null references teams(id) on delete cascade,
+  month      text not null,                    -- 'YYYY-MM' (한국 시간 기준)
+  kind       text not null,                    -- ocr | omr | score
+  song_key   text not null,                    -- 곡(item) id
+  created_at timestamptz not null default now(),
+  primary key (team_id, month, kind, song_key)
+);
+
+-- 유료 기간과 어디서 왔는지. plan_until 이 지나면 무료로 돌아간다
+alter table teams add column if not exists plan_until  timestamptz;
+alter table teams add column if not exists plan_source text;   -- iap | promo | manual
+
+-- 프로모션 코드. 코드를 넣으면 그 팀이 일정 기간 유료가 된다
+create table if not exists promo_codes (
+  code       text primary key,
+  plan       text not null default 'pro',       -- pro | plus
+  days       int  not null default 30,
+  max_uses   int  not null default 1,
+  used       int  not null default 0,
+  expires_at timestamptz,                       -- 코드 자체의 만료 (null 이면 없음)
+  note       text,
+  created_at timestamptz not null default now()
+);
+-- 한 팀은 같은 코드를 한 번만 쓴다
+create table if not exists promo_redemptions (
+  code       text not null references promo_codes(code) on delete cascade,
+  team_id    uuid not null references teams(id) on delete cascade,
+  user_id    uuid references users(id) on delete set null,
+  days       int  not null,
+  created_at timestamptz not null default now(),
+  primary key (code, team_id)
+);
+
+-- 크레딧 팩으로 산 채보 횟수. 월 한도를 다 쓰면 여기서 빠진다 (소멸 없음)
+create table if not exists credit_balance (
+  team_id uuid primary key references teams(id) on delete cascade,
+  omr     int not null default 0,
+  updated_at timestamptz not null default now()
+);
+
+-- 라이브러리 폴더. 곡 하나는 폴더 하나에만 들어간다 (태그는 여러 개 가능, 성격 표시용)
+alter table songs add column if not exists folder text not null default '';
+create index if not exists songs_folder_idx on songs(team_id, folder);
+
+-- 인식이 잘 안 됐을 때 돌려준 기록. 달마다 횟수를 제한하려고 남긴다
+create table if not exists credit_refunds (
+  team_id    uuid not null references teams(id) on delete cascade,
+  month      text not null,
+  kind       text not null,
+  song_key   text not null,
+  created_at timestamptz not null default now(),
+  primary key (team_id, month, kind, song_key)
+);
+
 -- 기존 DB 의 source 제약을 넓힌다 ('service' 추가)
 do $$ begin
   alter table service_dates drop constraint if exists service_dates_source_check;
