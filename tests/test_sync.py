@@ -52,8 +52,9 @@ def run():
         pm.wait_for_selector('.shell[data-page]', timeout=8000); pm.wait_for_selector('.svcrow', timeout=15000)
         if '동기화 예배' not in pm.locator('.svcrow').first.inner_text(): fail('멤버 홈에 발행본 없음')
         pm.goto(URL + '#/view/' + svc_id); pm.wait_for_selector('.thumb', timeout=15000)
-        bg = pm.locator('.thumb').first.evaluate("el=>getComputedStyle(el).backgroundImage")
-        if 'blob:' not in bg: fail('멤버 악보 썸네일이 blob이 아님: ' + bg)
+        # 썸네일은 이제 <img> 다 (폰에서 크게 보이도록 바꿨다)
+        src = pm.locator('.thumb img').first.get_attribute('src') or ''
+        if 'blob:' not in src: fail('멤버 악보가 blob이 아님: ' + src)
         pm.goto(URL + '#/play/' + svc_id + '/0'); pm.wait_for_selector('#sheet [data-marker]', timeout=15000)
         pm.click('#sheet [data-marker]'); pm.wait_for_selector('#cText'); pm.fill('#cText', '드럼 필 주의'); pm.click('[data-sc="session"]'); pm.click('#cSave')
         saved = False
@@ -68,10 +69,15 @@ def run():
         # 메모 칩 → 삭제 → 서버에서도 삭제
         pm.click('#sheet .m[data-note]'); pm.wait_for_selector('#nmDel'); pm.click('#nmDel')
         gone = False
-        for _ in range(40):   # 저장 0.7초 뒤 전송 + 운영 지연 → 최대 20초 폴링
+        for _ in range(80):   # 저장 0.7초 뒤 전송 + 서버 지연 → 최대 40초 폴링 (바쁠 때 20초로는 모자랐다)
             pm.wait_for_timeout(500)
             if '드럼 필 주의' not in c2.request.get(URL + 'api/notes?team=' + pm.evaluate("CONTI.S.team.id") + '&service=' + svc_id).text(): gone = True; break
-        if not gone: fail('삭제 후에도 서버에 메모가 남음')
+        if not gone:
+            print('DBG 로컬메모=', pm.evaluate("(CONTI.S.services.find(s=>s.id==='%s')||{items:[]}).items.map(i=>(i.notes||[]).length)" % svc_id))
+            print('DBG 그림자=', pm.evaluate("((CONTI.S.noteShadow||{})['%s']||[]).length" % svc_id))
+            print('DBG route=', pm.evaluate("JSON.stringify(CONTI.route())"))
+            print('DBG 칩=', pm.locator('#sheet .m[data-note]').count())
+            fail('삭제 후에도 서버에 메모가 남음')
         # 예배를 로컬에서만 지웠다가 다시 받아도 서버 메모는 남아야 한다 (그림자 오염 방지)
         pm.click('#sheet [data-marker]'); pm.wait_for_selector('#cText'); pm.fill('#cText', '그림자 확인'); pm.click('[data-sc="session"]'); pm.click('#cSave')
         pm.wait_for_timeout(2500)

@@ -46,7 +46,16 @@ def run():
             A.click('.chordbar [data-act="sheet-key"]'); A.wait_for_selector('#modal [data-k="A"]'); A.click('#modal [data-k="A"]'); A.wait_for_timeout(500)
             info = A.evaluate("(()=>{const it=CONTI.S.services[0].items[0];const p=it.pieces[0];const my=p.markers[0].y;const above=p.chords.filter(c=>c.y<my).length;const below=p.chords.filter(c=>c.y>=my).length;return {above,below,red:document.querySelectorAll('#sheet .chd').length}})()")
             print('keyShift render:', info)
-            if info['red'] != info['below'] or info['below'] == 0: fail('전조 마커 아래 코드만 빨간 글씨여야 함: %s' % info)
+            if info['red'] != info['below'] or info['below'] == 0:
+                dbg = A.evaluate("""(()=>{const it=CONTI.S.services[0].items[0];const p=it.pieces[0];const my=p.markers[0].y;
+                  const slices=[...document.querySelectorAll('#sheet .slice')].map(s=>[+s.dataset.start,Math.round(s.getBoundingClientRect().height)]);
+                  const drawn=[...document.querySelectorAll('#sheet .chd')].length;
+                  const bounds=p.markers.filter(m=>m.cut!=null).map(m=>m.cut);
+                  return {h:p.h,markerY:my,cut:p.markers[0].cut,slices:slices.length,firstSlices:slices.slice(0,4),drawn,
+                          chordYmin:Math.min(...p.chords.map(c=>c.y)),chordYmax:Math.max(...p.chords.map(c=>c.y)),
+                          sel:(CONTI.S.services[0].items[0].id)}})()""")
+                print('DBG', dbg)
+                fail('전조 마커 아래 코드만 빨간 글씨여야 함: %s' % info)
         # 발행 (v1)
         A.click('[data-act="publish"]'); A.wait_for_selector('#pubOnly'); A.click('#pubOnly'); A.wait_for_timeout(6000)
         print('A published v1')

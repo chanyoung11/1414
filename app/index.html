@@ -451,6 +451,32 @@ html.dark .pill.role-pastor{color:#B4A7F5}
 .piece.dropafter{box-shadow:3px 0 0 var(--primary)}
 .pbreak{flex:0 0 100%;height:0;display:block}
 @media(max-width:640px){.piece.sp2,.piece.sp3{width:100%!important}}
+/* ---------- 폰에서 멤버가 보는 화면 (콘티 보기) ---------- */
+@media(max-width:640px){
+ /* 악보를 손톱만 하게 두지 않는다. 멤버는 폰에서 이걸 본다 */
+ .thumb.vsheet{width:100%;height:auto;max-height:52vh;border-radius:var(--r-lg);border:1px solid var(--border);background:#fff;overflow:hidden}
+ .thumb.vsheet img{display:block;width:100%;height:auto}
+ .vrow{flex-direction:column;align-items:stretch!important;gap:10px!important}
+ /* 폰에서 인쇄는 쓰지 않는다 */
+ .top [data-act="print"]{display:none}
+ .top h1{font-size:15px}
+ .top h1 .pill{display:none}
+ .ptab .sesslbl{display:none}
+ .ptab{gap:6px;padding:0 8px}
+}
+/* 폰 편성: 표 대신 날짜별 목록 */
+.schlist{display:none}
+.schrow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r-lg);background:var(--card);margin-bottom:8px;color:inherit}
+.schrow.on{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary)}
+.schrow .d{flex:0 0 46px;text-align:center}
+.schrow .d b{display:block;font-size:15px;font-weight:800;letter-spacing:-.02em}
+.schrow .d small{font-size:11px;color:var(--muted-fg)}
+.schrow .grow b{display:block;font-size:14px;font-weight:600}
+.schrow .grow small{font-size:12px;color:var(--muted-fg)}
+.schrow .av{display:flex;gap:6px;flex:0 0 auto;font-size:12px;font-weight:700;font-style:normal}
+.schrow .av i{font-style:normal}
+.schrow svg.ic{width:16px;height:16px;color:var(--faint-fg);flex:0 0 auto}
+@media(max-width:640px){.schwrap{display:none}.schlist{display:block}}
 @media (min-width:1024px){.side{display:block}.bnav{display:none}.shell{padding-bottom:24px}}
 /* ---------- 반응형 (§7) ---------- */
 /* 1024+ : 사이드바 224 고정 · 하단 탭 없음 (아래 기존 규칙) */
@@ -501,6 +527,7 @@ html.dark .pill.role-pastor{color:#B4A7F5}
 .ptab{display:flex;align-items:center;gap:8px;height:40px;padding:0 10px 0 14px;background:var(--card);border-bottom:1px solid var(--border);flex:0 0 auto;overflow-x:auto;scrollbar-width:none}
 .ptab::-webkit-scrollbar{display:none}
 .ptab .tab,.ptab .sub,.ptab .btn,.seg button,.ptab .chip{white-space:nowrap;flex:0 0 auto}
+.ptab .seg{flex-wrap:nowrap}   /* 줄바꿈되면 40px 안에서 잘린다. 옆으로 흐르게 */
 .ptab .tab{height:40px;display:inline-flex;align-items:center;font-size:12px;font-weight:700;letter-spacing:.02em;color:var(--fg);position:relative}
 .ptab .sub{font-size:12px;color:var(--muted-fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .pbody{flex:1 1 auto;min-height:0;overflow:auto;padding:12px 14px;-webkit-overflow-scrolling:touch}
@@ -603,7 +630,8 @@ html.dark .sheet{box-shadow:0 10px 40px rgba(0,0,0,.5);border-color:transparent}
 .tl:hover{background:var(--surface)}
 .tl.now{background:var(--accent)}
 .tl .t{font-family:"Geist Mono",ui-monospace,Menlo,monospace;font-size:12px;color:var(--fg);min-width:40px;font-weight:600;font-variant-numeric:tabular-nums}
-.thumb{width:96px;height:66px;border-radius:var(--r-lg);background-size:cover;background-position:top left;flex:0 0 auto;background-color:#fff;border:1px solid var(--border)}
+.thumb{width:96px;height:66px;border-radius:var(--r-lg);background-size:cover;background-position:top left;flex:0 0 auto;background-color:#fff;border:1px solid var(--border);overflow:hidden;cursor:pointer}
+.thumb img{display:block;width:100%;height:auto}   /* 큰 화면에서는 위쪽만 보이게 잘린다 */
 .lower{border-top:1px solid var(--border);padding:12px 14px;display:flex;flex-direction:column;gap:10px}
 .switch{display:inline-flex;align-items:center;gap:10px;cursor:pointer;font-weight:600}
 .switch i{width:38px;height:22px;border-radius:11px;background:var(--accent);border:1px solid var(--border);position:relative;display:block;transition:background .15s}
@@ -1121,7 +1149,7 @@ function viewerHTML(svc){
  return `<div class="top"><button class="icon ghost" data-act="home">${ic('back')}</button><h1>${esc(pub.name||'예배')}<span class="pill ${pub.draft?'':'amber'}">${pub.draft?(svc.published?`초안 미리보기 · 발행본 v${svc.published.version}${svc.version>svc.published.version?'과 다름':'과 같음'}`:'미발행 초안'):'v'+pub.version}</span></h1>
   ${hasNote(svc)?`<button class="icon ghost ${msgUnread(svc)?'dot':''}" data-act="msg" data-id="${svc.id}" title="예배 노트">${ic('note')}</button>`:''}<button class="icon ghost" data-act="print" data-id="${svc.id}" title="인쇄 · PDF로 저장">${ic('print')}</button><button class="btn" data-act="play" data-id="${svc.id}" data-i="0">${ic('play')}연습</button><button class="btn pri" data-act="play" data-id="${svc.id}" data-i="0" data-stage="1">${ic('moon')}무대</button></div>
   <div class="ws" style="grid-template-columns:minmax(0,1fr)">
-   <div class="panel">${ptab('콘티',pub.items.length+'곡',`<span class="hint" style="margin-right:6px">세션</span><div class="seg">${S.team.sessions.filter(s=>s!=='인도자').map(s=>`<button class="${s===sess?'on':''}" data-act="vsess" data-s="${esc(s)}">${esc(s)}</button>`).join('')}</div>`)}
+   <div class="panel">${ptab('콘티',pub.items.length+'곡',`<span class="hint sesslbl" style="margin-right:6px">세션</span><div class="seg">${S.team.sessions.filter(s=>s!=='인도자').map(s=>`<button class="${s===sess?'on':''}" data-act="vsess" data-s="${esc(s)}">${esc(s)}</button>`).join('')}</div>`)}
    <div class="pbody"><div style="max-width:900px;margin:0 auto">
    ${changesHTML(svc)}
    ${lineupLine(svc)}
@@ -1134,7 +1162,7 @@ function viewerHTML(svc){
     ${rehItemNotes(svc,it.id)}
     ${it.form?`<div class="songbar" style="margin-top:10px">${esc(it.form)}</div>`:''}
     ${it.chart?`<details class="cwrap"><summary>코드 차트 보기</summary>${chartHTML(it,{play:true})}</details>`:''}
-    <div class="row" style="align-items:flex-start;gap:14px;margin-top:12px">${it.pieces[0]?`<div class="thumb" style="background-image:url('${url(it.pieces[0].blob)}')"></div>`:''}
+    <div class="row vrow" style="align-items:flex-start;gap:14px;margin-top:12px">${it.pieces[0]?`<div class="thumb vsheet" data-act="play" data-id="${esc(svc.id)}" data-i="${i}" title="탭하면 크게 보기"><img src="${url(it.pieces[0].blob)}" alt="" loading="lazy"></div>`:''}
      <div class="grow small">${visMedia(it,sess).map(md=>`<div class="row" style="margin-bottom:4px"><span class="icon sm ${md.type==='youtube'?'ytc':'micc'}">${ic(md.type==='youtube'?'yt':'mic')}</span>${mdSess(md).length?`<span class="tag">${esc(mdTag(md))}</span>`:''}<span class="grow muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(md.name||md.url)}${md.type==='youtube'&&(md.start||md.end)?` <span class="pill">${fmtT(md.start||0)}–${md.end?fmtT(md.end):'끝'}</span>`:''}</span>${md.type==='youtube'?`<a class="btn sm ghost" href="https://youtu.be/${ytId(md.url)}?t=${md.start||0}" target="_blank" rel="noopener">${ic('open')}열기</a>`:''}</div>
       ${(live.media.find(x=>x.id===md.id)||md).notes.filter(n=>noteVisible(n,ctx)).sort((a,b)=>a.t-b.t).map(n=>`<div class="tl" ${md.type==='youtube'?`data-act="ytopen" data-url="https://youtu.be/${ytId(md.url)}?t=${Math.round(n.t)}"`:''}><span class="t">${fmtT(n.t)}</span>${n.session?`<span class="tag">${esc(n.session)}</span>`:n.layer==='leader'?'<span class="tag">전체</span>':'<span class="tag me">나</span>'}<span>${esc(n.text)}</span></div>`).join('')}`).join('')||'<span class="hint">미디어 없음</span>'}</div></div>
     ${notes.length||it.songNote?`<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)">${it.songNote?`<div class="muted small" style="margin-bottom:6px">${esc(it.songNote)}</div>`:''}<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">${notes.map(n=>`<span class="row" style="gap:4px"><span class="mk" style="width:24px;height:24px;font-size:11px">${esc((markerOf(live,n.marker)||{}).label||'?')}</span>${noteChip(n)}</span>`).join('')}</div></div>`:''}
@@ -1694,9 +1722,28 @@ function schedHTML(){const k=SCH.month||monthKey();
      return `<td class="${AVN[st].cls} ${on?(notified?'lined':'lined pending'):''}" title="${esc(m.name+' · '+fmtDate(d.date).md+' '+AVN[st].label+(memo?' — '+memo:''))}">${AVN[st].sym}</td>`}).join('')+'</tr>'}).join('')}).join('');
  const body=`${maybeSoon?`<div class="todo-card" style="margin-bottom:12px"><span class="icon sm">${ic('marker')}</span><div class="grow"><b>가까운 날짜에 보류 ${maybeSoon}명 — 확인해 보세요</b></div></div>`:''}
    ${ds.length?`<div class="schwrap"><table class="schtab"><thead><tr><th class="corner"></th>${ds.map(d=>`<th class="dcol ${route().name==='lineup'&&route().a===d.id?'on':''}" data-act="lineup" data-id="${esc(d.id)}" title="${esc(d.label)} — 눌러서 이 날 편성"><span>${esc(fmtDate(d.date).md)}<small>${esc(fmtDate(d.date).w)} · ${esc(shortLabel(d.label))}</small></span></th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>
-   <div class="cal-leg">${Object.entries(AVN).map(([k2,v])=>`<span class="${v.cls}"><i>${v.sym}</i>${v.label}</span>`).join('')}<span class="hint">위쪽 날짜 버튼을 누르면 그날 편성이 옆에서 열려요 · 칸 테두리는 편성됨(점선은 통보 전)</span></div>`
+   ${schListHTML(ds,ms)}
+   <div class="cal-leg">${Object.entries(AVN).map(([k2,v])=>`<span class="${v.cls}"><i>${v.sym}</i>${v.label}</span>`).join('')}<span class="hint">날짜를 누르면 그날 편성이 열려요 · 칸 테두리는 편성됨(점선은 통보 전)</span></div>`
    :`<div class="empty"><span class="icon">${ic('users')}</span><b>열린 사역 날짜가 없어요</b>팀 설정에서 정기 예배를 등록하거나 날짜를 열어 주세요<div><button class="btn" data-act="team">팀 설정으로</button></div></div>`}`;
  return shellHTML('sched',{title:'편성',sub:`${fmtDate(from).md} ~ ${fmtDate(to).md} · 석 달`,body,wide:true})}
+// 폰에서는 가로로 긴 표 대신 날짜별 목록으로 본다 (표는 날짜 세 개밖에 안 보인다)
+function schListHTML(ds,ms){
+ if(!ds.length)return '';
+ const st=S.team.settings||{};const slots=st.slots||{};
+ const total=(d)=>{const s2={...slots,...(d.slots||{})};
+  return S.team.sessions.reduce((a,x)=>a+(s2[x]!=null?s2[x]:(x==='싱어'?3:1)),0)};
+ return `<div class="schlist">${ds.map(d=>{
+  const lineup=d.lineup||[];const filled=lineup.filter(r=>r.memberId).length;
+  const notified=lineup.some(r=>r.notifiedAt);
+  const cnt={ok:0,maybe:0,no:0,unset:0};
+  ms.forEach(m=>{cnt[myAv(m.userId,d.date)]=(cnt[myAv(m.userId,d.date)]||0)+1});
+  const dd=fmtDate(d.date);
+  return `<button class="schrow ${route().name==='lineup'&&route().a===d.id?'on':''}" data-act="lineup" data-id="${esc(d.id)}">
+   <span class="d"><b>${esc(dd.md)}</b><small>${esc(dd.w)}</small></span>
+   <span class="grow"><b>${esc(shortLabel(d.label))}</b>
+    <small>편성 ${filled}/${total(d)} · ${notified?'통보함':'통보 전'}</small></span>
+   <span class="av"><i class="a-ok">${cnt.ok||0}</i><i class="a-maybe">${cnt.maybe||0}</i><i class="a-no">${cnt.no||0}</i>${cnt.unset?`<i class="a-unset">${cnt.unset}</i>`:''}</span>
+   ${ic('right')}</button>`}).join('')}</div>`}
 // 그날 편성 (§3.4)
 const LN={dateId:null,slots:null};   // 그날만 바꾼 세션 인원 (저장 전 임시)
 function lineupHTML(dateId){const d=SCH.dates.find(x=>x.id===dateId);
