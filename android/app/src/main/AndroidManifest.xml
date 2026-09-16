@@ -18,6 +18,15 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- 웹 링크를 누르면 앱이 열린다 (앱 링크). 도메인의 assetlinks.json 과 짝이다 -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="lets1414.com" />
+                <data android:scheme="https" android:host="www.lets1414.com" />
+            </intent-filter>
         </activity>
 
         <provider

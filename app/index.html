@@ -14,7 +14,7 @@
 <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
 <meta property="og:title" content="1414 — 찬양팀 콘티 · 연습 · 무대">
 <meta property="og:description" content="곡 순서·키·송폼·악보·참고 영상을 한 화면에. 인도자가 발행하면 팀원은 자기 세션 메모와 함께 연습하고 무대에 섭니다.">
-<meta property="og:image" content="https://lets1414.vercel.app/og.png">
+<meta property="og:image" content="https://lets1414.com/og.png">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
 
@@ -2601,7 +2601,7 @@ const whoStr=m=>[m.name||'이름 없음',m.session,roleLabel(m.role)].filter((x,
 // 네이티브 앱은 화면이 https://localhost 라 서버 주소를 붙여 부른다.
 // 웹에서는 지금처럼 같은 출처. x-conti-app 을 보면 서버가 쿠키를 SameSite=None 으로 준다
 const NATIVE=/^(capacitor|ionic):/.test(location.protocol)||(location.hostname==='localhost'&&!location.port&&location.protocol==='https:');
-const API_BASE=NATIVE?'https://lets1414.vercel.app':'';
+const API_BASE=NATIVE?'https://lets1414.com':'';
 // iOS 는 다른 도메인 쿠키를 앱 재시작 때 버린다(ITP). 그래서 앱은 로그인할 때 받은
 // 토큰을 직접 들고 다닌다. 웹은 예전처럼 쿠키만 쓴다
 const TOKEN_KEY='conti-app-token';
@@ -2854,7 +2854,7 @@ function relDate(d){if(!d)return '—';const t=new Date(d);if(isNaN(t))return '�
  if(days<7)return '이번 주';if(days<31)return Math.max(1,Math.floor(days/7))+'주 전';
  if(days<365)return Math.floor(days/30)+'달 전';return Math.floor(days/365)+'년 전'}
 
-const LIB={at:0,q:'',key:'',tempo:'',tag:'',last:'',sort:'recent',archived:false,season:false,pick:null,sel:[],detail:null,tab:'arr',dups:null};
+const LIB={at:0,q:'',key:'',tempo:'',tag:'',folder:'',last:'',sort:'recent',archived:false,season:false,pick:null,sel:[],detail:null,tab:'arr',dups:null};
 async function pullSongs(force){if(!online()||!S.team.id)return false;
  if(!force&&Date.now()-LIB.at<8000)return false;
  const tid=S.team.id;   // 받는 사이에 팀을 바꿨으면 그 응답은 버린다
@@ -3068,6 +3068,8 @@ function libFiltered(){
  if(LIB.key)list=list.filter(x=>songKeys(x.s).some(k=>k.startsWith(LIB.key)));
  if(LIB.tempo)list=list.filter(x=>x.s.tempo===LIB.tempo);
  if(LIB.tag)list=list.filter(x=>(x.s.tags||[]).includes(LIB.tag));
+ // 폴더는 곡 하나에 하나. '__none' 은 폴더가 없는 곡
+ if(LIB.folder)list=list.filter(x=>LIB.folder==='__none'?!(x.s.folder||'').trim():(x.s.folder||'').trim()===LIB.folder);
  if(LIB.season){const ok=new Set(seasonSongs().map(x=>x.id));list=list.filter(x=>ok.has(x.s.id))}
  if(LIB.last){const days=LIB.last==='30'?30:LIB.last==='90'?90:180;
   list=list.filter(x=>{const d=x.s.lastUsed?Math.floor((Date.now()-new Date(x.s.lastUsed))/864e5):1e9;
@@ -3098,13 +3100,16 @@ function songRow(x,opts){const s=x.s;const a=defArr(s);const o=opts||{};const ke
  </div>`}
 function libraryHTML(){
  const lead=isLeader();const list=libFiltered();const q=LIB.q.trim();
- const plain=!q&&!LIB.key&&!LIB.tempo&&!LIB.tag&&!LIB.last&&!LIB.archived&&!LIB.season&&LIB.pick!=='multi';
+ const plain=!q&&!LIB.key&&!LIB.tempo&&!LIB.tag&&!LIB.folder&&!LIB.last&&!LIB.archived&&!LIB.season&&LIB.pick!=='multi';
  const all=(S.songs||[]).filter(s=>!s.archived);
  const year=new Date().getFullYear();
  const thisYear=all.filter(s=>s.lastUsed&&new Date(s.lastUsed).getFullYear()===year).length;
  const top=all.slice().sort((a,b)=>(b.useCount||0)-(a.useCount||0))[0];
  const stale=staleSongs();const season=seasonSongs();
  const tags=[...new Set(all.flatMap(s=>s.tags||[]))].slice(0,20);
+ // 폴더는 곡에 적힌 이름에서 모은다 (따로 관리하는 목록이 없어 지워질 걱정이 없다)
+ const lfolders=[...new Set(all.map(s=>(s.folder||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
+ const noFolder=all.filter(s=>!(s.folder||'').trim()).length;
  const chip=(on,act,val,label)=>`<button class="q ${on?'on':''}" data-lf="${act}" data-v="${esc(val)}">${esc(label)}</button>`;
  const card=s=>{const th=songThumb(s);return `<button class="scard" data-songopen="${esc(s.id)}">
    <span class="sthumb big" style="${th?`background-image:url('${th}')`:''}"></span>
@@ -3118,6 +3123,7 @@ function libraryHTML(){
   <div class="filters">
    ${KEYS7.map(k=>chip(LIB.key===k,'key',k,k)).join('')}
    <span class="sep"></span>${TEMPOS.map(t=>chip(LIB.tempo===t,'tempo',t,t)).join('')}
+   ${lfolders.length?`<span class="sep"></span>${lfolders.map(f=>chip(LIB.folder===f,'folder',f,f+' '+all.filter(s=>(s.folder||'').trim()===f).length)).join('')}${noFolder?chip(LIB.folder==='__none','folder','__none','폴더 없음 '+noFolder):''}`:''}
    ${tags.length?`<span class="sep"></span>${tags.map(t=>chip(LIB.tag===t,'tag',t,'#'+t)).join('')}`:''}
    <span class="sep"></span>${chip(LIB.last==='30','last','30','30일 안')}${chip(LIB.last==='90','last','90','90일 안')}${chip(LIB.last==='180','last','180','반년 넘음')}
    <span class="grow"></span>
@@ -3358,7 +3364,10 @@ function songInfoModal(s){
    <label class="grow"><div class="lbl">아티스트</div><input class="field" id="siA" value="${esc(s.artist||'')}"></label>
    <label><div class="lbl">원키</div><input class="field mono" id="siK" value="${esc(s.origKey||'')}" style="width:72px;text-align:center"></label></div>
   <div class="lbl">템포</div><div id="siTe">${TEMPOS.map(t=>`<button class="q ${s.tempo===t?'on':''}" data-sit="${t}">${t}</button>`).join('')}</div>
-  <div class="lbl">태그 <span class="hint">쉼표로</span></div><input class="field" id="siTa" value="${esc((s.tags||[]).join(', '))}">
+  <div class="lbl">폴더 <span class="hint">하나만 · 비우면 '폴더 없음'</span></div>
+  <input class="field" id="siFd" value="${esc(s.folder||'')}" list="libFolders" maxlength="30" placeholder="예: 경배와 찬양">
+  <datalist id="libFolders">${[...new Set((S.songs||[]).map(x=>(x.folder||'').trim()).filter(Boolean))].map(f=>`<option value="${esc(f)}">`).join('')}</datalist>
+  <div class="lbl">태그 <span class="hint">여러 개 가능 · 쉼표로</span></div><input class="field" id="siTa" value="${esc((s.tags||[]).join(', '))}">
   <div class="lbl">다른 이름 <span class="hint">검색에 걸려요 · 쉼표로</span></div><input class="field" id="siAl" value="${esc((s.aliases||[]).join(', '))}">
   <div class="lbl">가사 첫 줄 <span class="hint">검색용 · 화면에는 안 나와요</span></div><input class="field" id="siF" value="${esc(s.firstLine||'')}">
   <div class="row" style="margin-top:18px;justify-content:flex-end;gap:6px"><button class="btn" data-close="1">취소</button><button class="btn pri" id="siOk2">${ic('check')}저장</button></div>`,{center:true});
@@ -3368,9 +3377,10 @@ function songInfoModal(s){
   if(e.target.closest('[data-close]')){closeModal();return}
   const t=e.target.closest('[data-sit]');if(t){tempo=tempo===t.dataset.sit?'':t.dataset.sit;$$('[data-sit]').forEach(x=>x.classList.toggle('on',x.dataset.sit===tempo));return}
   if(e.target.closest('#siOk2')){const f={title:$('#siT').value.trim(),artist:$('#siA').value.trim(),origKey:$('#siK').value.trim(),
+    folder:$('#siFd').value.trim(),
     tempo,tags:split($('#siTa').value),aliases:split($('#siAl').value),firstLine:$('#siF').value.trim()};
    if(!f.title){toast('곡 제목을 적어 주세요');return}
-   Object.assign(s,{title:f.title,artist:f.artist,origKey:f.origKey,tempo:f.tempo,tags:f.tags,aliases:f.aliases,firstLine:f.firstLine,
+   Object.assign(s,{title:f.title,artist:f.artist,origKey:f.origKey,folder:f.folder,tempo:f.tempo,tags:f.tags,aliases:f.aliases,firstLine:f.firstLine,
     titleNorm:nrm(f.title),titleCho:chos(nrm(f.title))});
    await saveSong(s,f);closeModal();render()}}}
 function songMoreModal(s){
@@ -5323,7 +5333,7 @@ function metOpen(){
    <button class="btn pri" id="metGo">${MET.on?'멈춤':'시작'}</button></div>
   <input type="range" id="metRange" min="30" max="240" value="${MET.bpm}" style="width:100%">
   <div class="lbl">박자</div>
-  <div class="row" style="gap:6px">${[2,3,4,6].map(n=>`<button class="q ${MET.beats===n?'on':''}" data-act="met-beats" data-n="${n}">${n}/4</button>`).join('')}</div>
+  <div class="row" style="gap:6px">${[[2,'2/4'],[3,'3/4'],[4,'4/4'],[6,'6/8']].map(([n,l])=>`<button class="q ${MET.beats===n?'on':''}" data-act="met-beats" data-n="${n}">${l}</button>`).join('')}</div>
   <div class="hint" style="margin-top:10px">첫 박이 높게 울려요 · 창을 닫아도 계속 울립니다</div>`,{onclose(){}});
  const go=$('#metGo');if(go)go.onclick=()=>{MET.on?metStop():metStart()};
  const tp=$('#metTap');if(tp)tp.onclick=metTap;

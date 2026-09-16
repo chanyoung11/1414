@@ -20,5 +20,15 @@ export PORT="${PORT:-8766}"
 export VAPID_PUBLIC_KEY="${VAPID_PUBLIC_KEY:-BBq9nqw8YvL_wusVh4V6jQIXo-nph79oqnhr8VhzTfO67ssHN4FwThabeFwyq7YKeYl3lIOHJRklS6kfO8sbEVo}"
 export VAPID_PRIVATE_KEY="${VAPID_PRIVATE_KEY:-Qy2iS5vLHI40osMnj_7AQwXeTtFRf0aP24RkV21cMY8}"
 
+# AI 는 기본으로 '가짜'다. 테스트를 돌릴 때마다 진짜로 부르면 한 번에 300~400원이 나간다.
+# 저장해 둔 진짜 결과(docs/ocr_fixture.json)를 돌려주므로 코드 개수·제목·키까지 같다.
+# 진짜로 확인하려면:  REAL_AI=1 sh scripts/dev-local.sh
+if [ "${REAL_AI:-}" = "1" ]; then
+  echo "⚠️  진짜 AI 를 부릅니다 — 전체 테스트 한 번에 300~400원쯤 듭니다"
+else
+  export GEMINI_API_KEY=mock
+  unset GOOGLE_VISION_KEY GOOGLE_APPLICATION_CREDENTIALS
+fi
+
 node scripts/migrate.mjs
 exec node scripts/dev.mjs

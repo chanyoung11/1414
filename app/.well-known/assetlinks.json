@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.lets1414.app",
+      "sha256_cert_fingerprints": [
+        "A2:8D:2F:9F:A1:D6:AA:AA:86:3F:18:11:C9:63:05:08:F1:04:31:51:BC:19:28:BB:22:5F:D2:CE:FE:B1:87:96"
+      ]
+    }
+  }
+]

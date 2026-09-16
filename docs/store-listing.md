@@ -12,11 +12,11 @@
 | 카테고리 | 생산성 (2순위: 라이프스타일) |
 | 연령 등급 | 전체 이용가 / 만 4세 이상 |
 | 지원 언어 | 한국어 |
-| 웹사이트 | https://lets1414.vercel.app |
+| 웹사이트 | https://lets1414.com |
 | 지원 이메일 | chanyoung07119@gmail.com |
 | 지원 전화 | 010-2445-0711 |
-| 개인정보처리방침 | https://lets1414.vercel.app/#/legal/privacy |
-| 이용약관 | https://lets1414.vercel.app/#/legal/terms |
+| 개인정보처리방침 | https://lets1414.com/#/legal/privacy |
+| 이용약관 | https://lets1414.com/#/legal/terms |
 | 사업자 | 바디페인팅 · 대표 박찬영 · 469-06-03606 |
 
 ## 한 줄 소개 (30자 이내)

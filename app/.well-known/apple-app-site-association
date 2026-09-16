@@ -1,0 +1,13 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["S26G86V3G7.com.lets1414.app"],
+        "components": [
+          { "/": "/", "comment": "홈" },
+          { "/": "/*", "comment": "모든 경로 — 앱이 있으면 앱에서 연다" }
+        ]
+      }
+    ]
+  }
+}
