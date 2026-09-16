@@ -1585,7 +1585,7 @@ function rehAddModal(svc){
 const DIRECT_OVER=3.5*1024*1024;
 async function uploadBlob(id,b,onProgress,force){
  if(b.size<=DIRECT_OVER){
-  const r=await fetch(API_BASE+'/api/blobs/'+id+'?team='+S.team.id+(force?'&force=1':''),{method:'POST',headers:{'x-conti':'1',...(NATIVE?{'x-conti-app':'1'}:{}),'content-type':b.type||'application/octet-stream'},body:b,credentials:NATIVE?'include':'same-origin'});
+  const r=await fetch(API_BASE+'/api/blobs/'+id+'?team='+S.team.id+(force?'&force=1':''),{method:'POST',headers:{'x-conti':'1',...(NATIVE?{'x-conti-app':'1'}:{}),...(NATIVE&&APP_TOKEN?{authorization:'Bearer '+APP_TOKEN}:{}),'content-type':b.type||'application/octet-stream'},body:b,credentials:NATIVE?'include':'same-origin'});
   if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.message||'파일 업로드 실패')}
   return true}
  const u=await api('/blobs/'+id+'/upload-url',{method:'POST',body:{teamId:S.team.id,size:b.size,mime:b.type||'application/octet-stream'}});
@@ -2497,8 +2497,15 @@ const whoStr=m=>[m.name||'이름 없음',m.session,roleLabel(m.role)].filter((x,
 // 웹에서는 지금처럼 같은 출처. x-conti-app 을 보면 서버가 쿠키를 SameSite=None 으로 준다
 const NATIVE=/^(capacitor|ionic):/.test(location.protocol)||(location.hostname==='localhost'&&!location.port&&location.protocol==='https:');
 const API_BASE=NATIVE?'https://lets1414.vercel.app':'';
-async function api(path,o){const opt={method:(o&&o.method)||'GET',headers:{'x-conti':'1',...(NATIVE?{'x-conti-app':'1'}:{})},credentials:NATIVE?'include':'same-origin',cache:'no-store'};if(o&&o.keepalive)opt.keepalive=true;if(o&&o.body){opt.headers['content-type']='application/json';opt.body=JSON.stringify(o.body)}
+// iOS 는 다른 도메인 쿠키를 앱 재시작 때 버린다(ITP). 그래서 앱은 로그인할 때 받은
+// 토큰을 직접 들고 다닌다. 웹은 예전처럼 쿠키만 쓴다
+const TOKEN_KEY='conti-app-token';
+let APP_TOKEN=NATIVE?(()=>{try{return localStorage.getItem(TOKEN_KEY)||''}catch(e){return ''}})():'';
+function setAppToken(t){if(!NATIVE)return;APP_TOKEN=t||'';
+ try{if(t)localStorage.setItem(TOKEN_KEY,t);else localStorage.removeItem(TOKEN_KEY)}catch(e){}}
+async function api(path,o){const opt={method:(o&&o.method)||'GET',headers:{'x-conti':'1',...(NATIVE?{'x-conti-app':'1'}:{}),...(NATIVE&&APP_TOKEN?{authorization:'Bearer '+APP_TOKEN}:{})},credentials:NATIVE?'include':'same-origin',cache:'no-store'};if(o&&o.keepalive)opt.keepalive=true;if(o&&o.body){opt.headers['content-type']='application/json';opt.body=JSON.stringify(o.body)}
  const r=await fetch(API_BASE+'/api'+path,opt);let j=null;try{j=await r.json()}catch(e){}
+ if(j&&j.token)setAppToken(j.token);            // 로그인·가입·비밀번호 변경 때 새 토큰이 온다
  if(!r.ok){const err=new Error((j&&j.message)||('오류 '+r.status));err.status=r.status;err.code=j&&j.error;throw err}return j}
 async function probeServer(){try{const r=await fetch(API_BASE+'/api/health',{cache:'no-store',credentials:NATIVE?'include':'same-origin',headers:NATIVE?{'x-conti-app':'1'}:{}});if(!r.ok)return false;const j=await r.json();
  if(j&&j.app==='conti')NET.enforcePlan=!!j.enforcePlan;
@@ -2695,7 +2702,7 @@ async function doGate(act,el){
     if(!GATE.agree){GATE.err='이용약관과 개인정보처리방침에 동의해 주세요';render();return}}
    const m=GATE.mode==='login'?await api('/auth/login',{method:'POST',body:{username,password}}):await api('/auth/signup',{method:'POST',body:{username,password,name:$('#lgName').value.trim(),agreedAt:new Date().toISOString()}});
    GATE.err='';GATE.preview=null;await takeMe(m);render();probeOmr();if(S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()});return}
-  if(act==='logout'){try{await api('/auth/logout',{method:'POST'})}catch(e){}NET.user=null;NET.teams=[];await switchScope(scopeKey('',''));S.team=Object.assign(DEF_TEAM(),{id:'',invite:''});save();GATE.preview=null;if(route().name!=='home')go('home');render();return}
+  if(act==='logout'){try{await api('/auth/logout',{method:'POST'})}catch(e){}setAppToken('');NET.user=null;NET.teams=[];await switchScope(scopeKey('',''));S.team=Object.assign(DEF_TEAM(),{id:'',invite:''});save();GATE.preview=null;if(route().name!=='home')go('home');render();return}
   if(act==='join-go'){const v=$('#gtLink').value.trim();const tok=(v.match(/join\/([A-Za-z0-9_-]+)/)||[])[1]||v;if(!tok){$('#gtErr').textContent='링크나 코드를 붙여넣어 주세요';return}GATE.preview=null;go('join/'+tok);return}
   if(act==='team-create'){const t=await api('/teams',{method:'POST',body:{name:$('#gtTeam').value.trim(),myName:$('#gtName').value.trim(),session:GATE.sess||'인도자'}});await applyMembership(t);NET.teams.push(t);toast('팀을 만들었어요');go('home');render();return}
   if(act==='team-join'){const p=GATE.preview;
@@ -4950,7 +4957,8 @@ async function appPushRegister(){
   if(perm.receive!=='granted')perm=await P.requestPermissions();
   if(perm.receive!=='granted')return false;
   // 안드로이드 8+ 는 채널이 있어야 소리·중요도가 먹는다. 매니페스트의 기본 채널 id 와 같아야 한다
-  if(P.createChannel)await P.createChannel({id:'conti',name:'콘티 알림',description:'콘티·연습·순서 알림',importance:4,visibility:1}).catch(()=>{});
+  const plat=(window.Capacitor.getPlatform&&window.Capacitor.getPlatform())||'';
+  if(plat==='android'&&P.createChannel)await P.createChannel({id:'conti',name:'콘티 알림',description:'콘티·연습·순서 알림',importance:4,visibility:1}).catch(()=>{});
   if(!appPushRegister.bound){
    appPushRegister.bound=true;
    P.addListener('registration',t=>{const token=t&&t.value;if(!token)return;
@@ -5747,7 +5755,12 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
  // 서버 감지: /api 가 있으면 로그인·팀 흐름, 없으면(정적 호스팅) 기기 안에서만. 네트워크가 끊겼으면 마지막으로 받은 팀 정보로 그대로 진행
  clearStalePending();   // 인식 중에 앱이 닫혀 pending 으로 굳은 조각을 풀어 준다
  NET.server=await probeServer();
- if(NET.server===true){try{await takeMe(await api('/me'))}catch(e){if(e.status===401)NET.user=null;else NET.server=null}}
+ if(NET.server===true){try{await takeMe(await api('/me'))}catch(e){
+  // 401 은 그냥 로그인 안 된 것. 그 밖의 실패는 서버가 닿지 않는 것으로 보되,
+  // 건강검진이 방금 통과했으므로 오프라인으로 굳히지 않고 한 번 더 확인한다
+  if(e.status===401)NET.user=null;
+  else if(await probeServer()!==true)NET.server=null;
+  else console.warn('me 실패',e&&e.message)}}
  if(!online()&&!me().name){location.hash='#/settings';render()}else render();
  if(online()&&S.team.id){SYNC.pullServices().then(ch=>{if(ch)render()});SYNC.pullLibrary();pullSongs(true).then(ch=>{if(ch&&/^(edit|view|play|library)$/.test(route().name))render()}).catch(()=>{})}
  probeOmr();startNotiPoll();nativeSetup();

@@ -2,7 +2,7 @@
 // vercel.json 의 rewrite 가 /api/* 를 /api?p=<경로> 로 보내고, 여기서 p(또는 원래 pathname)로 라우팅합니다.
 // 로컬: npm run dev (scripts/dev.mjs가 이 핸들러를 /api/* 에 그대로 붙임)
 import { q, one } from '../lib/db.js';
-import { sessionClaims, sessionCookie, clearSessionCookie, randomToken, isApp } from '../lib/session.js';
+import { sessionClaims, sessionCookie, clearSessionCookie, randomToken, isApp, appSessionToken } from '../lib/session.js';
 import { hashPassword, verifyPassword, USERNAME_RE, PASSWORD_MIN } from '../lib/password.js';
 import { putBlob, delBlobs, readUrls, presignPut, headBlob } from '../lib/blob.js';
 import { ocrBands, visionConfigured } from '../lib/vision.js';
@@ -154,8 +154,10 @@ on('POST', '/auth/signup', async ({ req, body }) => {
   const agreedAt = /^\d{4}-\d{2}-\d{2}T/.test(String(body.agreedAt || '')) ? new Date(body.agreedAt) : new Date();
   const u = await one('insert into users(username, password_hash, display_name, last_login_at, agreed_at, agreed_ver) values($1,$2,$3,now(),$4,$5) returning id',
     [username, hashPassword(password), name, agreedAt, LEGAL_VERSION]);
-  return { data: await meView(u.id), headers: { 'Set-Cookie': sessionCookie(req, u.id) } };
+  return { data: withAppToken(req, await meView(u.id), u.id), headers: { 'Set-Cookie': sessionCookie(req, u.id) } };
 });
+
+const withAppToken = (req, data, uid) => (isApp(req) ? { ...data, token: appSessionToken(uid) } : data);
 
 const clientIp = (req) => String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim().slice(0, 45) || '-';
 on('POST', '/auth/login', async ({ req, body }) => {
@@ -172,7 +174,7 @@ on('POST', '/auth/login', async ({ req, body }) => {
   }
   try { await q('delete from login_attempts where username=$1', [lockKey]); } catch (e) {}
   await q('update users set last_login_at=now() where id=$1', [u.id]);
-  return { data: await meView(u.id), headers: { 'Set-Cookie': sessionCookie(req, u.id) } };
+  return { data: withAppToken(req, await meView(u.id), u.id), headers: { 'Set-Cookie': sessionCookie(req, u.id) } };
 });
 
 on('POST', '/auth/logout', async ({ req }) => ({ data: { ok: true }, headers: { 'Set-Cookie': clearSessionCookie(req) } }));
@@ -219,7 +221,7 @@ on('POST', '/auth/password', async ({ req, uid, body }) => {
   if (!verifyPassword(cur, u.password_hash)) throw new HttpError(401, 'bad_login', '현재 비밀번호가 맞지 않아요');
   // 다른 기기의 로그인은 끊고, 이 기기는 새 쿠키로 이어간다
   await q('update users set password_hash=$2, auth_epoch=to_timestamp($3) where id=$1', [uid, hashPassword(next), nowSec()]);
-  return { data: { ok: true }, headers: { 'Set-Cookie': sessionCookie(req, uid) } };
+  return { data: withAppToken(req, { ok: true }, uid), headers: { 'Set-Cookie': sessionCookie(req, uid) } };
 });
 
 on('GET', '/me', async ({ uid }) => { if (!uid) throw noAuth(); const r = await meView(uid); const u = await one('select recovery_hash is not null as has from users where id=$1', [uid]); r.user.hasRecovery = !!(u && u.has); return r; });
@@ -322,7 +324,7 @@ on('POST', '/auth/recover', async ({ req, body }) => {
   const u = await one('select id, recovery_hash from users where username=$1', [username]);
   if (!u || !u.recovery_hash || !verifyPassword(code, u.recovery_hash)) throw new HttpError(401, 'bad_recovery', '아이디 또는 복구 코드가 맞지 않아요');
   await q('update users set password_hash=$2, recovery_hash=null, last_login_at=now(), auth_epoch=to_timestamp($3) where id=$1', [u.id, hashPassword(next), nowSec()]);
-  return { data: await meView(u.id), headers: { 'Set-Cookie': sessionCookie(req, u.id) } };
+  return { data: withAppToken(req, await meView(u.id), u.id), headers: { 'Set-Cookie': sessionCookie(req, u.id) } };
 });
 
 // 내 이름·세션(팀 안에서) 바꾸기
@@ -2455,7 +2457,7 @@ function applyCors(req, res) {
   if (!origin || !APP_ORIGINS.has(origin)) return false;
   res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Headers', 'content-type, x-conti, x-conti-app');
+  res.setHeader('Access-Control-Allow-Headers', 'content-type, x-conti, x-conti-app, authorization');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   res.setHeader('Access-Control-Max-Age', '86400');
   res.setHeader('Vary', 'Origin');
