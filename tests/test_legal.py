@@ -80,7 +80,8 @@ def run():
           import("pg").then(async ({default:pg})=>{const c=new pg.Client({connectionString:process.env.DATABASE_URL});
           await c.connect();const r=await c.query("select agreed_ver v from users where username=$1",["lg%s"]);
           console.log((r.rows[0]||{}).v||"none");await c.end()})' 2>/dev/null""" % (ROOT, tag)).read().strip()
-        if got != '2026-09-15': fail('재동의가 서버에 안 남음: %s' % got)
+        ver = pg.evaluate("CONTI.NET.user && CONTI.NET.user.legalVer")
+        if got != ver: fail('재동의가 서버에 안 남음: %s (시행일 %s)' % (got, ver))
         print('옛 사용자 재동의 ok:', got)
 
         if errs: fail('JS 오류: %s' % errs[:3])

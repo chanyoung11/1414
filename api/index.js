@@ -557,7 +557,7 @@ const planName = (t) => {
 };
 const planOf = (t) => PLAN[planName(t)] || PLAN.free;
 const ENFORCE_PLAN = process.env.ENFORCE_PLAN === '1';
-const LEGAL_VERSION = '2026-09-15';   // 약관·개인정보처리방침 시행일. 내용을 고치면 앱과 함께 올린다
+const LEGAL_VERSION = '2026-09-17';   // 약관·개인정보처리방침 시행일. 내용을 고치면 앱과 함께 올린다
 // 한도를 넘었는지 본다. 검사가 꺼져 있으면 언제나 통과 (컬럼과 자리만 미리 만들어 둔 것)
 function checkLimit(team, key, count, msg) {
   if (!ENFORCE_PLAN) return;

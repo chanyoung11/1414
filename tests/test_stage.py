@@ -19,7 +19,7 @@ def run():
         b = p.chromium.launch()
         c = b.new_context(viewport={'width':1180,'height':820})   # iPad 가로
         pg = c.new_page()
-        errs=[]; pg.on('pageerror', lambda e: errs.append(str(e))); pg.on('dialog', lambda d: d.accept())
+        errs=[]; pg.on('pageerror', lambda e: errs.append(repr(e)[:300])); pg.on('dialog', lambda d: d.accept())
         pg.goto(URL); pg.wait_for_selector('#lgUser')
         pg.click('[data-act="lg-mode"][data-m="signup"]'); pg.wait_for_selector('#lgName')
         pg.check('#lgAgree')   # 약관·개인정보처리방침 동의 (필수)

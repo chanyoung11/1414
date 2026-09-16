@@ -10,6 +10,7 @@
     "db:migrate": "node scripts/migrate.mjs"
   },
   "dependencies": {
+    "@capacitor-community/admob": "^8.1.0",
     "@capacitor-community/keep-awake": "^8.0.1",
     "@capacitor/android": "^8.5.2",
     "@capacitor/app": "^8.1.1",

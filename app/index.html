@@ -668,6 +668,24 @@ html.dark .msgbody{background:#1C1C1C}
 .slice.tool .chd.edit{pointer-events:auto;cursor:pointer}
 .mkabs .ksb{position:absolute;left:-6px;top:-9px;background:#C0392B;color:#fff;font-size:9px;font-weight:700;border-radius:999px;padding:0 4px;line-height:14px}
 .chdbox{position:absolute;border:1.5px dashed #C0392B;border-radius:3px;pointer-events:auto;cursor:pointer;z-index:2;background:rgba(192,57,43,.06)}
+/* 웹 광고 자리 — 목록과 붙지 않게 여백을 준다 */
+.webad{margin:16px 0 4px;min-height:1px}
+/* 광고 배너가 뜨면 그만큼 아래를 비운다 — 하단 탭이 가려지면 안 된다 */
+body.hasad .bnav{bottom:calc(50px + env(safe-area-inset-bottom,0px))}
+body.hasad .shell{padding-bottom:50px}
+/* 건반·메트로놈은 왼쪽에서 나온다 — 악보를 가리지 않아야 쳐 보면서 볼 수 있다 */
+.sidetool{position:fixed;left:0;top:0;bottom:0;width:min(420px,44vw);z-index:60;
+ background:var(--panel);border-right:1px solid var(--line);box-shadow:8px 0 28px rgba(0,0,0,.28);
+ padding:14px;overflow:auto;transform:translateX(-100%);transition:transform .18s ease}
+.sidetool.on{transform:none}
+.sidetool .sthd{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.sidetool .sthd b{font-size:17px}
+@media(max-width:640px){
+ /* 폰은 가로가 좁아 왼쪽에 둘 자리가 없다. 아래에서 올라오되 악보가 위에 남게 낮게 둔다 */
+ .sidetool{left:0;right:0;top:auto;width:auto;max-height:52vh;border-right:0;border-top:1px solid var(--line);
+  border-radius:var(--r-lg) var(--r-lg) 0 0;box-shadow:0 -8px 28px rgba(0,0,0,.28);transform:translateY(100%)}
+ .sidetool.on{transform:none}
+}
 /* 건반 한 옥타브 */
 .pkeys{position:relative;display:flex;height:150px;margin-top:12px;user-select:none;touch-action:none;
  border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;background:#fff}
@@ -1131,6 +1149,7 @@ function homeHTML(){
       [['','전체',all.length]].concat(folders.map(f=>[f,f,all.filter(x=>(x.folder||'').trim()===f).length]))
        .concat(all.some(x=>!(x.folder||'').trim())?[['__none','폴더 없음',all.filter(x=>!(x.folder||'').trim()).length]]:[])
        .map(([v,label,n])=>`<button class="chip ${HOME.folder===v?'on':''}" data-act="home-folder" data-v="${esc(v)}">${esc(label)} <span class="muted">${n}</span></button>`).join('')}</div>`:''}
+    ${webAdSlotHTML()}
     ${svcs.length?rows:`<div class="empty rise d1"><b>아직 예배가 없어요</b>${lead?'첫 콘티를 만들거나, 받은 파일을 가져오세요.':(on?'인도자가 발행하면 여기에 자동으로 나타나요.':'인도자가 보낸 파일을 "가져오기"로 여세요.')}${lead?`<div><button class="btn pri" data-act="new-svc">${ic('plus')}새 예배 만들기</button></div>`:''}</div>`}`;
  return shellHTML('home',{title:'예배',sub:fmtToday(),body});
 }
@@ -1752,7 +1771,7 @@ function calHTML(){const me0=me();
  const acts=`${unsetN?`<button class="btn sm ${SCH.onlyUnset?'pri':''}" data-act="cal-only">미선택만 보기</button>`:''}<span class="pill">${open.length?`${answered}/${open.length} 답함`:'사역 날짜 없음'}</span>`;
  const body=`${open.length?months.map(calMonthHTML).join(''):`<div class="empty"><span class="icon">${ic('list')}</span><b>아직 사역 날짜가 없어요</b>인도자가 날짜를 열면 여기에 나타나요</div>`}
    <div class="cal-leg">${Object.entries(AVN).map(([k2,v])=>`<span class="${v.cls}"><i>${v.sym}</i>${v.label}</span>`).join('')}<span class="hint">탭할 때마다 바뀌어요 · 보류·불가능은 꾹 눌러 메모</span></div>`;
- return shellHTML('cal',{title:'내 일정',sub:'가능한 날을 눌러서 알려주세요',acts,body,bodyClass:'calpage'})}
+ return shellHTML('cal',{title:'내 일정',sub:'가능한 날을 눌러서 알려주세요',acts,body:body+webAdSlotHTML(),bodyClass:'calpage'})}
 async function setAv(date,state,memo){SCH.seq++;const me0=me();const prev=SCH.availability.find(a=>a.userId===me0.userId&&a.date===date);const before=prev?{...prev}:null;
  SCH.availability=SCH.availability.filter(a=>!(a.userId===me0.userId&&a.date===date));
  if(state!=='unset')SCH.availability.push({userId:me0.userId,date,state,memo:memo!==undefined?memo:(before?before.memo:'')});
@@ -1938,7 +1957,7 @@ function inboxHTML(){
  const body=list.length
   ? groups.map(([k,ns])=>`<section class="ngrp"><div class="lbl">${esc(k)}</div>${ns.map(row).join('')}</section>`).join('')
   : `<div class="empty"><span class="icon">${ic('bell')}</span><b>아직 알림이 없어요</b>콘티가 발행되거나 편성이 오면 여기에 떠요</div>`;
- return shellHTML('inbox',{title:'알림',sub:NOTI.unread?`안 읽음 ${NOTI.unread}개`:'',acts,body})}
+ return shellHTML('inbox',{title:'알림',sub:NOTI.unread?`안 읽음 ${NOTI.unread}개`:'',acts,body:body+webAdSlotHTML()})}
 async function markAllRead(){if(!NOTI.unread)return;
  const now=new Date().toISOString();NOTI.list.forEach(n=>n.readAt=n.readAt||now);NOTI.unread=0;NOTI.sig='';updateBadges();
  try{await api('/notifications/read',{method:'POST',body:{teamId:S.team.id,all:true}})}catch(e){toast(e.message)}}
@@ -2082,7 +2101,7 @@ const BIZ={name:'바디페인팅',ceo:'박찬영',regNo:'469-06-03606',
 // 결제를 붙이기 전까지 '결제 담당' 화면을 숨긴다. 결제가 없는데 이 말이 보이면
 // 앱 심사에서 외부 결제로 오해받는다. 서버의 billing_user_id 기록은 그대로 둔다
 const BILLING_UI=false;
-const LEGAL_AT='2026-09-15';       // 시행일. 내용을 고치면 같이 올린다
+const LEGAL_AT='2026-09-17';       // 시행일. 내용을 고치면 같이 올린다
 function legalHTML(kind){
  const K=kind==='terms'?'terms':'privacy';
  const bizRow=`<table class="ltab"><tbody>
@@ -2106,6 +2125,7 @@ function legalHTML(kind){
    <tr><th>파일</th><td>올린 악보 사진, 연습 녹음</td><td>직접 올릴 때</td></tr>
    <tr><th>알림</th><td>푸시 알림 주소(구독 정보), 기기 정보(브라우저 종류)</td><td>알림을 켤 때</td></tr>
    <tr><th>보안</th><td>로그인 실패 횟수와 시각</td><td>로그인 시도 시</td></tr>
+   <tr><th>광고</th><td>광고 식별자(IDFA·광고 ID), 광고를 본 기록과 기기 정보</td><td>무료 플랜에서 광고가 보일 때</td></tr>
   </tbody></table>
   <p class="lnote">이름·세션·메모는 <b>같은 팀 사람들에게 보입니다.</b> 다만 "나만 보기"로 적은 메모는 본인에게만,
   세션 메모는 그 세션 사람과 인도자에게만 보입니다.</p>
@@ -2118,7 +2138,10 @@ function legalHTML(kind){
    <li>악보 사진에서 코드와 음표를 읽어 주기(AI 기능)</li>
    <li>오류 확인과 서비스 개선</li>
   </ul>
-  <p>회사는 <b>광고·마케팅에 쓰지 않으며, 개인정보를 팔지 않습니다.</b></p>
+  <p>무료 플랜에서는 광고를 보여 주고, 광고 사업자가 광고를 고르고 효과를 재는 데 광고 식별자를 씁니다.
+   <b>유료 플랜에서는 광고가 나오지 않습니다.</b> 회사는 어느 경우에도 개인정보를 팔지 않습니다.</p>
+  <p class="hint">아이폰·아이패드에서는 앱이 추적 허용을 먼저 묻습니다. 허락하지 않으셔도 서비스는 그대로 쓰실 수 있고,
+   광고가 이용자와 덜 맞을 뿐입니다. 안드로이드는 휴대폰 설정 → Google → 광고에서 맞춤 광고를 끌 수 있습니다.</p>
 
   <h3>3. 맡기는 곳과 국외 이전</h3>
   <p>서비스를 돌리기 위해 아래에 처리를 맡깁니다. 서버가 <b>국외(미국)</b>에 있어 정보가 국외로 옮겨 저장·처리됩니다.</p>
@@ -2126,6 +2149,7 @@ function legalHTML(kind){
    <tr><th>Vercel Inc.</th><td>서비스 호스팅, 파일 저장</td><td>서비스 이용 중 생기는 정보 전부, 올린 악보·녹음 파일</td><td>미국 · 이용 시 수시 전송</td></tr>
    <tr><th>Neon Inc.</th><td>데이터베이스 운영</td><td>계정·팀·콘티·메모 등 저장 정보</td><td>미국 · 이용 시 수시 전송</td></tr>
    <tr><th>Google LLC</th><td>악보 사진에서 코드·음표 읽기(Gemini, Cloud Vision)</td><td>이용자가 올린 <b>악보 이미지</b></td><td>미국 · 해당 기능을 쓸 때</td></tr>
+   <tr><th>Google LLC</th><td>광고 보여주기(AdMob · Google 광고)</td><td>광고 식별자, 기기 정보, 광고를 본 기록</td><td>미국 · 무료 플랜에서 광고가 보일 때</td></tr>
   </tbody></table>
   <p class="lnote">이전을 원하지 않으시면 서비스를 이용하지 않거나, AI 기능(코드 인식·채보)을 쓰지 않으실 수 있습니다.
   다만 서버가 국외에 있어 서비스 이용 자체를 위한 이전은 거부할 경우 서비스를 제공할 수 없습니다.</p>
@@ -2195,8 +2219,13 @@ function legalHTML(kind){
   회사는 서비스 내용을 개선하거나 바꿀 수 있으며, 중요한 변경은 미리 알립니다.</p>
 
   <h3>제5조 (요금)</h3>
-  <p>서비스는 현재 <b>무료</b>입니다. 앞으로 유료 기능을 도입할 경우 <b>시행 30일 전</b>에 알리고,
-  이미 이용 중인 기능이 갑자기 막히지 않도록 합니다.</p>
+  <p>서비스는 <b>무료 플랜</b>과 <b>유료 플랜</b>으로 나뉩니다. 각 플랜에서 쓸 수 있는 범위(팀원 수, 저장 용량,
+   AI 인식 횟수 등)는 앱 안 <b>설정 → 플랜</b>에서 볼 수 있습니다.</p>
+  <p><b>무료 플랜에는 광고가 나옵니다.</b> 유료 플랜에서는 광고가 나오지 않습니다.</p>
+  <p>유료 플랜 결제는 애플 App Store·구글 Play를 통한 <b>인앱결제</b>로만 이루어집니다. 결제·갱신·환불은 각 스토어의
+   정책을 따르며, 해지는 스토어의 구독 관리 화면에서 언제든 할 수 있습니다. 해지해도 이미 결제한 기간이 끝날 때까지는
+   유료 기능을 그대로 쓰실 수 있습니다.</p>
+  <p>요금이나 플랜 내용을 바꿀 때는 <b>시행 30일 전</b>에 알리고, 이미 이용 중인 기능이 갑자기 막히지 않도록 합니다.</p>
 
   <h3>제6조 (이용자가 올린 것)</h3>
   <ul>
@@ -3115,7 +3144,8 @@ function libraryHTML(){
    <span class="sthumb big" style="${th?`background-image:url('${th}')`:''}"></span>
    <b>${esc(s.title||'(제목 없음)')}</b><span class="hint">${esc(songKeys(s).join(' · ')||'-')} · ${relDate(s.lastUsed)}</span></button>`};
  const acts=lead?`<button class="btn sm ${LIB.sel.length?'pri':''}" data-act="lib-multi">${LIB.sel.length?`${LIB.sel.length}곡 선택`:'여러 곡 고르기'}</button>
-   ${LIB.sel.length?`<button class="btn sm" data-act="lib-add-sel">${ic('plus')}예배에 넣기</button>`:''}
+   ${LIB.sel.length?`<button class="btn sm" data-act="lib-add-sel">${ic('plus')}예배에 넣기</button>
+    <button class="btn sm" data-act="lib-move">${ic('list')}폴더로 옮기기</button>`:''}
    <button class="btn sm" data-act="lib-receive">${ic('import')}코드로 받기</button>
    <button class="btn sm pri" data-act="lib-new">${ic('plus')}새 곡</button>`:'';
  const body=`<div class="libpage">
@@ -3142,6 +3172,7 @@ function libraryHTML(){
    <div class="lbl">전체 ${all.length}곡</div>`:''}
   <div id="libList">${list.length?list.map(x=>songRow(x,{multi:LIB.pick==='multi',picked:LIB.sel.includes(x.s.id)})).join('')
    :`<div class="empty"><span class="icon">${ic('music')}</span><b>${q?'찾는 곡이 없어요':'아직 곡이 없어요'}</b>${q?'다른 말로 찾아 보세요':(lead?'"새 곡"으로 만들면 라이브러리에 들어가요':'인도자가 곡을 넣으면 여기 보여요')}${!q&&lead?`<div><button class="btn" data-act="lib-new">${ic('plus')}새 곡</button></div>`:''}</div>`}</div>
+  ${webAdSlotHTML()}
  </div>`;
  const sub=`${all.length}곡${thisYear?` · 올해 ${thisYear}곡`:''}`;
  return shellHTML('library',{title:'라이브러리',sub,acts,body})}
@@ -3357,6 +3388,25 @@ async function mergeModal(){
  }catch(err){toast(err.message)}}}
 
 /* ---------- 곡 정보 수정 · ⋯ ---------- */
+// 고른 곡들을 한 번에 폴더로 옮긴다. 기존 폴더를 누르거나 새로 적을 수 있다
+function libMoveModal(ids){
+ const folders=[...new Set((S.songs||[]).map(x=>(x.folder||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
+ modal(`<b style="font-size:17px">${ids.length}곡을 폴더로</b>
+  <div class="hint" style="margin:6px 0 12px">곡 하나는 폴더 하나에만 들어가요 · 옮기면 원래 폴더에서는 빠져요</div>
+  ${folders.length?`<div class="lbl">있는 폴더</div><div class="filters" id="mvList">${folders.map(f=>`<button class="q" data-mv="${esc(f)}">${esc(f)}</button>`).join('')}</div>`:''}
+  <div class="lbl">새 폴더</div>
+  <div class="row" style="gap:6px"><input class="field grow" id="mvNew" maxlength="30" placeholder="예: 경배와 찬양"><button class="btn" id="mvGo">${ic('check')}옮기기</button></div>
+  <div class="hr"></div>
+  <button class="btn ghost wide" data-mv="">폴더에서 빼기 ('폴더 없음'으로)</button>`);
+ const move=async folder=>{
+  closeModal();
+  const list=ids.map(id=>(S.songs||[]).find(x=>x.id===id)).filter(Boolean);
+  for(const song of list){song.folder=folder;await saveSong(song,{folder})}
+  save();LIB.sel=[];LIB.pick=null;render();
+  toast(folder?`${list.length}곡을 '${folder}'(으)로 옮겼어요`:`${list.length}곡을 폴더에서 뺐어요`)};
+ const go=$('#mvGo');if(go)go.onclick=()=>{const v=($('#mvNew')||{value:''}).value.trim();if(!v){toast('폴더 이름을 적어 주세요');return}move(v)};
+ $('#modal').addEventListener('click',e=>{const b=e.target.closest('[data-mv]');if(b)move(b.dataset.mv)});
+}
 function songInfoModal(s){
  modal(`<b style="font-size:17px">곡 정보</b>
   <div class="lbl">제목</div><input class="field" id="siT" value="${esc(s.title)}">
@@ -4505,6 +4555,7 @@ let RENDER_SEQ=0;
 async function render(){
  const my=++RENDER_SEQ;const stale=()=>my!==RENDER_SEQ;
  const r=route();const app=$('#app');app.classList.remove('stage');
+ if(NATIVE)setTimeout(adsSync,0);else setTimeout(webAdsRender,0);   // 화면이 바뀔 때마다 광고를 켜고 끈다 (예배 화면에서는 내린다)
  if(r.name!=='lineup')document.body.classList.remove('lnopen');const same=lastRoute===location.hash;lastRoute=location.hash;if(same)keepScroll();else{SCROLL.sheet=0;SCROLL.bodies=null}
  // §4.6 목회자 링크: 로그인 없이 여는 페이지
  // 약관·방침은 로그인 없이 볼 수 있다
@@ -5242,9 +5293,105 @@ async function nativeSetup(){
    if(S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()}).catch(()=>{})}})}catch(e){}
  try{P.SplashScreen&&P.SplashScreen.hide()}catch(e){}}
 // 무대 모드에서는 화면이 꺼지면 안 된다 (예배 중)
+/* ---------- 광고 (무료 플랜만) ---------- */
+// 애드몹 앱·광고 단위 id. 애드몹에서 만든 값으로 바꾼다.
+// 비워 두면 광고를 아예 시도하지 않는다 (지금이 그 상태)
+const ADS={
+ ios:{banner:'ca-app-pub-5011605715320185/7209052890'},
+ android:{banner:'ca-app-pub-5011605715320185/9271100292'},
+};
+// 웹 광고(애드센스). 승인 뒤 아래 두 값을 채우면 무료 플랜 화면 아래에 뜬다.
+// 비어 있으면 아무것도 하지 않는다
+const WEBADS={client:'ca-pub-5011605715320185',slot:'3461379578'};
+let WEBAD_LOADED=false;
+// 애드센스는 승인된 주소에서만 부른다. 로컬·미리보기에서 부르면 오류가 나고,
+// 승인되지 않은 곳에 광고를 띄우는 것은 정책 위반이기도 하다
+const AD_HOSTS=new Set(['lets1414.com','www.lets1414.com']);
+function webAdsAllowed(){
+ if(NATIVE||!WEBADS.client||!WEBADS.slot)return false;
+ if(!AD_HOSTS.has(location.hostname))return false;
+ if(!NET.user||!S.team.id)return false;              // 로그인 전 화면에는 안 넣는다
+ return (S.team.plan||'free')==='free';
+}
+function webAdSlotHTML(){
+ return webAdsAllowed()
+  ? `<ins class="adsbygoogle webad" style="display:block" data-ad-client="${esc(WEBADS.client)}" data-ad-slot="${esc(WEBADS.slot)}" data-ad-format="auto" data-full-width-responsive="true"></ins>`
+  : '';
+}
+function webAdsRender(){
+ if(!webAdsAllowed())return;
+ if(!WEBAD_LOADED){WEBAD_LOADED=true;
+  const sc=document.createElement('script');
+  sc.async=true;sc.crossOrigin='anonymous';
+  sc.src='https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client='+encodeURIComponent(WEBADS.client);
+  document.head.appendChild(sc)}
+ // 아직 채워지지 않은 자리만 요청한다
+ $$('.webad').forEach(el=>{if(el.dataset.done)return;el.dataset.done='1';
+  try{(window.adsbygoogle=window.adsbygoogle||[]).push({})}catch(e){}});
+}
+const ADSTATE={on:false,ready:false,consent:false};
+// 유료 플랜이면 광고를 띄우지 않는다. 한도 검사가 꺼져 있으면(결제 전) 모두 무료로 본다
+const adsAllowed=()=>{
+ if(!NATIVE)return false;
+ const plat=(window.Capacitor&&window.Capacitor.getPlatform&&window.Capacitor.getPlatform())||'';
+ const unit=(ADS[plat]||{}).banner;
+ if(!unit)return false;
+ return (S.team.plan||'free')==='free';
+};
+// 유럽·영국은 광고 동의를 먼저 받아야 한다 (구글 UMP). 다른 곳에서는 그냥 지나간다
+async function adsConsent(A){
+ try{
+  const r=await A.requestConsentInfo();
+  if(r&&(r.isConsentFormAvailable||r.status==='REQUIRED')){
+   try{await A.showConsentForm()}catch(e){}
+  }
+  ADSTATE.consent=true;
+ }catch(e){ADSTATE.consent=true}   // 동의 절차가 안 되면 맞춤 광고 없이 진행된다
+}
+async function adsShow(){
+ const A=CapPlug().AdMob;if(!A||!adsAllowed()){await adsHide();return}
+ const plat=(window.Capacitor.getPlatform&&window.Capacitor.getPlatform())||'android';
+ try{
+  if(!ADSTATE.ready){await A.initialize({initializeForTesting:false});await adsConsent(A);ADSTATE.ready=true}
+  if(ADSTATE.on)return;
+  await A.showBanner({adId:ADS[plat].banner,position:'BOTTOM_CENTER',margin:0,isTesting:false});
+  ADSTATE.on=true;document.body.classList.add('hasad');
+ }catch(e){console.warn('ads',e)}
+}
+async function adsHide(){
+ const A=CapPlug().AdMob;if(!A||!ADSTATE.on)return;
+ try{await A.hideBanner()}catch(e){}
+ ADSTATE.on=false;document.body.classList.remove('hasad');
+}
+// 예배 중에는 광고를 내린다 — 무대 모드·연습·콘티 보기
+const AD_FREE_ROUTES=/^(play|view|stage)$/;
+function adsSync(){
+ if(!NATIVE)return;
+ const r=route().name;
+ if(AD_FREE_ROUTES.test(r)||document.getElementById('stageWrap'))adsHide();else adsShow();
+}
+
+// 무대 모드·연습 중에는 화면이 꺼지지 않게 한다
+async function keepAwake(on){
+ if(!NATIVE)return;const K=CapPlug().KeepAwake;if(!K)return;
+ try{on?await K.keepAwake():await K.allowSleep()}catch(e){}}
+
 /* ---------- 메트로놈 · 건반 (연습 화면 도구) ---------- */
 // 소리는 Web Audio 로 직접 만든다. 음원 파일이 없어 앱 용량이 늘지 않고,
 // setTimeout 대신 오디오 시계에 미리 예약해 박이 밀리지 않는다
+// 왼쪽에서 나오는 도구 패널. 악보를 가리지 않는다
+function sideTool(title,html,onOpen){
+ let el=$('#sidetool');
+ if(!el){el=document.createElement('div');el.id='sidetool';el.className='sidetool';document.body.appendChild(el)}
+ el.innerHTML=`<div class="sthd"><b>${title}</b><span class="grow"></span>
+   <button class="icon ghost" data-act="sidetool-close" title="닫기">${ic('x')}</button></div>${html}`;
+ requestAnimationFrame(()=>el.classList.add('on'));
+ el.onclick=e=>{if(e.target.closest('[data-act="sidetool-close"]'))sideToolClose()};
+ if(onOpen)onOpen(el);
+ return el}
+function sideToolClose(){const el=$('#sidetool');if(!el)return;el.classList.remove('on');
+ setTimeout(()=>{if(el&&!el.classList.contains('on'))el.remove()},200)}
+
 const AUD={ctx:null};
 function actx(){if(!AUD.ctx){const C=window.AudioContext||window.webkitAudioContext;if(!C)return null;AUD.ctx=new C()}
  if(AUD.ctx.state==='suspended')AUD.ctx.resume();return AUD.ctx}
@@ -5280,23 +5427,22 @@ function pianoOpen(){
   ${WHITE.map((n,i)=>`<div class="pk w" data-n="${n}" data-i="${i}"><span>${n}</span></div>`).join('')}
   ${BLACK.map(b=>`<div class="pk b" data-n="${b.n}" style="left:calc((100% / 7) * ${b.at+1} - 3.2%)"></div>`).join('')}
  </div>`;
- modal(`<div class="row" style="align-items:center"><b style="font-size:17px" class="grow">건반</b>
+ sideTool('건반', `<div class="row" style="align-items:center;margin-bottom:4px">
+   <span class="hint grow">누르고 있는 동안 소리가 나요</span>
    <button class="icon" data-act="oct" data-d="-1" title="한 옥타브 낮게">${ic('down')}</button>
    <span class="pill" id="pOct">${PIANO.oct}옥타브</span>
    <button class="icon" data-act="oct" data-d="1" title="한 옥타브 높게">${ic('up')}</button></div>
-  ${keys}
-  <div class="hint" style="margin-top:10px">누르고 있는 동안 소리가 나요 · 여러 개를 같이 눌러도 됩니다</div>`);
- const box=$('#pkeys');if(!box)return;
- const at=e=>{const el=document.elementFromPoint(e.clientX,e.clientY);return el&&el.closest('.pk')};
- const down=e=>{const k=at(e);if(!k)return;e.preventDefault();
-  const id=e.pointerId;noteOn(id,k.dataset.n,PIANO.oct);k.classList.add('on');
-  box.setPointerCapture&&box.setPointerCapture(id)};
- const up=e=>{noteOff(e.pointerId);$$('#pkeys .pk.on').forEach(x=>x.classList.remove('on'))};
- box.addEventListener('pointerdown',down);
- box.addEventListener('pointerup',up);box.addEventListener('pointercancel',up);
- box.addEventListener('pointerleave',up);
- $('#modal').addEventListener('click',e=>{const b=e.target.closest('[data-act="oct"]');if(!b)return;
-  PIANO.oct=Math.max(1,Math.min(7,PIANO.oct+ +b.dataset.d));const o=$('#pOct');if(o)o.textContent=PIANO.oct+'옥타브'});
+  ${keys}`, el=>{
+  const box=el.querySelector('#pkeys');if(!box)return;
+  const at=e=>{const t=document.elementFromPoint(e.clientX,e.clientY);return t&&t.closest('.pk')};
+  box.addEventListener('pointerdown',e=>{const k=at(e);if(!k)return;e.preventDefault();
+   noteOn(e.pointerId,k.dataset.n,PIANO.oct);k.classList.add('on');
+   box.setPointerCapture&&box.setPointerCapture(e.pointerId)});
+  const up=e=>{noteOff(e.pointerId);box.querySelectorAll('.pk.on').forEach(x=>x.classList.remove('on'))};
+  box.addEventListener('pointerup',up);box.addEventListener('pointercancel',up);box.addEventListener('pointerleave',up);
+  el.addEventListener('click',e=>{const b=e.target.closest('[data-act="oct"]');if(!b)return;
+   PIANO.oct=Math.max(1,Math.min(7,PIANO.oct+ +b.dataset.d));
+   const o=el.querySelector('#pOct');if(o)o.textContent=PIANO.oct+'옥타브'})});
 }
 
 const MET={on:false,bpm:90,beats:4,beat:0,next:0,timer:null,tapAt:[]};
@@ -5323,10 +5469,10 @@ function metPaint(){const el=$('#metBpm');if(el)el.textContent=MET.bpm;
  const t=$('#metTap');if(t)t.textContent=MET.tapAt.length>1?`탭 ${MET.tapAt.length}`:'탭';}
 function metOpen(){
  MET.bpm=+PREFS.bpm||MET.bpm;
- modal(`<b style="font-size:17px">메트로놈</b>
-  <div class="row" style="align-items:center;gap:10px;margin:12px 0">
+ sideTool('메트로놈',`
+  <div class="row" style="align-items:center;gap:10px;margin:8px 0">
    <button class="icon" data-act="met-d" data-d="-5">${ic('down')}</button>
-   <div style="text-align:center;min-width:110px"><b id="metBpm" style="font-size:38px;line-height:1">${MET.bpm}</b><div class="hint">BPM</div></div>
+   <div style="text-align:center;min-width:100px"><b id="metBpm" style="font-size:36px;line-height:1">${MET.bpm}</b><div class="hint">BPM</div></div>
    <button class="icon" data-act="met-d" data-d="5">${ic('up')}</button>
    <span class="grow"></span>
    <button class="btn" id="metTap">탭</button>
@@ -5334,19 +5480,16 @@ function metOpen(){
   <input type="range" id="metRange" min="30" max="240" value="${MET.bpm}" style="width:100%">
   <div class="lbl">박자</div>
   <div class="row" style="gap:6px">${[[2,'2/4'],[3,'3/4'],[4,'4/4'],[6,'6/8']].map(([n,l])=>`<button class="q ${MET.beats===n?'on':''}" data-act="met-beats" data-n="${n}">${l}</button>`).join('')}</div>
-  <div class="hint" style="margin-top:10px">첫 박이 높게 울려요 · 창을 닫아도 계속 울립니다</div>`,{onclose(){}});
- const go=$('#metGo');if(go)go.onclick=()=>{MET.on?metStop():metStart()};
- const tp=$('#metTap');if(tp)tp.onclick=metTap;
- const rg=$('#metRange');if(rg)rg.oninput=()=>{metSet(+rg.value)};
- $('#modal').addEventListener('click',e=>{
-  const d=e.target.closest('[data-act="met-d"]');if(d){metSet(MET.bpm+ +d.dataset.d);if(rg)rg.value=MET.bpm;return}
-  const b=e.target.closest('[data-act="met-beats"]');if(b){MET.beats=+b.dataset.n;MET.beat=0;
-   $$('#modal [data-act="met-beats"]').forEach(x=>x.classList.toggle('on',+x.dataset.n===MET.beats))}});
- metPaint()}
-
-async function keepAwake(on){
- if(!NATIVE)return;const K=CapPlug().KeepAwake;if(!K)return;
- try{on?await K.keepAwake():await K.allowSleep()}catch(e){}}
+  <div class="hint" style="margin-top:10px">첫 박이 높게 울려요 · 닫아도 계속 울립니다</div>`, el=>{
+  const go=el.querySelector('#metGo');if(go)go.onclick=()=>{MET.on?metStop():metStart()};
+  const tp=el.querySelector('#metTap');if(tp)tp.onclick=metTap;
+  const rg=el.querySelector('#metRange');if(rg)rg.oninput=()=>{metSet(+rg.value)};
+  el.addEventListener('click',e=>{
+   const d=e.target.closest('[data-act="met-d"]');if(d){metSet(MET.bpm+ +d.dataset.d);if(rg)rg.value=MET.bpm;return}
+   const b=e.target.closest('[data-act="met-beats"]');if(b){MET.beats=+b.dataset.n;MET.beat=0;
+    el.querySelectorAll('[data-act="met-beats"]').forEach(x=>x.classList.toggle('on',+x.dataset.n===MET.beats))}});
+  metPaint()});
+}
 
 /* ---------- 무대 모드 = 자동 조판 (인쇄·내보내기 명세 §1-A) ----------
    한 곡이 한 화면에. 스크롤 없음. 조판은 사람·곡·기기 구간마다 따로 저장된다 */
@@ -5395,7 +5538,7 @@ async function stageOpen(svc,idx){
  let el=$('#stageWrap');if(el)el.remove();
  el=document.createElement('div');el.id='stageWrap';el.className='stgw';
  document.body.appendChild(el);document.body.classList.add('stgon');
- stageRender();keepAwake(true);
+ stageRender();keepAwake(true);if(NATIVE)adsHide();
  el.onclick=stageClick;
  window.addEventListener('keydown',stageKey);
  window.addEventListener('resize',stageResize);
@@ -5403,7 +5546,7 @@ async function stageOpen(svc,idx){
  el.addEventListener('touchstart',e=>{x0=e.touches[0].clientX},{passive:true});
  el.addEventListener('touchend',e=>{if(x0==null)return;const dx=e.changedTouches[0].clientX-x0;x0=null;
   if(Math.abs(dx)>60)stageGo(dx<0?1:-1)},{passive:true})}
-function stageClose(){keepAwake(false);const el=$('#stageWrap');if(el)el.remove();
+function stageClose(){keepAwake(false);if(NATIVE)setTimeout(adsSync,0);const el=$('#stageWrap');if(el)el.remove();
  document.body.classList.remove('stgon');
  window.removeEventListener('keydown',stageKey);window.removeEventListener('resize',stageResize);
  STG.svc=null}
@@ -5784,6 +5927,7 @@ document.addEventListener('click',async e=>{
    if(isLeader()){LIB.pick='multi';LIB.sel=ids.slice(0,8)}else{LIB.pick=null;LIB.sel=[]}
    LIB.season=true;render();break}
   case 'lib-multi':{LIB.pick=LIB.pick==='multi'?null:'multi';if(!LIB.pick)LIB.sel=[];render();break}
+  case 'lib-move':{if(!LIB.sel.length){toast('곡을 고르세요');break}libMoveModal(LIB.sel.slice());break}
   case 'lib-add-sel':{if(!LIB.sel.length){toast('곡을 고르세요');break}addToServiceSheet(LIB.sel.slice());break}
   case 'lib-receive':shareTakeModal();break;
   case 'lib-shares':shareListModal();break;
@@ -6060,7 +6204,7 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
  if(!online()&&!me().name){location.hash='#/settings';render()}else render();
  if(online()&&S.team.id){SYNC.pullServices().then(ch=>{if(ch)render()});SYNC.pullLibrary();pullSongs(true).then(ch=>{if(ch&&/^(edit|view|play|library)$/.test(route().name))render()}).catch(()=>{})}
  probeOmr();startNotiPoll();nativeSetup();
- window.CONTI={MET,PIANO,metOpen,metStart,metStop,metSet,pianoOpen,HOME,PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go};
+ window.CONTI={ADS,WEBADS,AD_HOSTS,adsAllowed,webAdsAllowed,MET,PIANO,metOpen,metStart,metStop,metSet,pianoOpen,HOME,PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go};
 })();
 })();
 </script>

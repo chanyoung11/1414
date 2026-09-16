@@ -22,6 +22,8 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>GADApplicationIdentifier</key>
+	<string>ca-app-pub-5011605715320185~3299307052</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
@@ -34,6 +36,8 @@
 	<string>만든 악보 이미지를 사진 보관함에 저장합니다.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>악보 사진을 콘티에 넣기 위해 사진 보관함을 엽니다.</string>
+	<key>NSUserTrackingUsageDescription</key>
+	<string>허용하시면 관심사에 맞는 광고를 보여 드려요. 허용하지 않아도 1414의 모든 기능은 그대로 쓰실 수 있어요.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
