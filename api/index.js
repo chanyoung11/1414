@@ -1912,7 +1912,10 @@ on('POST', '/ocr', async ({ uid, body }) => {
   // 절반 넘게 틀렸다. Gemini 는 코드 어휘를 알아 95~100% 를 읽는다 (docs/sample_sheet 기준)
   const useGemini = geminiConfigured() && body.engine !== 'vision';
   if (!useGemini && !visionConfigured()) throw new HttpError(503, 'no_ocr', '코드 인식 엔진이 아직 연결되지 않았어요');
-  const images = (Array.isArray(body.images) ? body.images : []).slice(0, 16).map((im) => ({ b64: String(im.b64 || ''), mime: str(im.mime, 40), w: +im.w || 0, h: +im.h || 0, kind: str(im.kind, 10) })).filter((im) => im.b64.length > 100);
+  // Gemini 는 장마다 한 번씩 부른다. Vision 처럼 16장을 받으면 한도 1회로 16번을 쓰게 되므로
+  // 엔진에 따라 받는 장수를 다르게 한다 (클라이언트는 이제 통째로 한 장만 보낸다)
+  const maxImages = useGemini ? 2 : 16;
+  const images = (Array.isArray(body.images) ? body.images : []).slice(0, maxImages).map((im) => ({ b64: String(im.b64 || ''), mime: str(im.mime, 40), w: +im.w || 0, h: +im.h || 0, kind: str(im.kind, 10) })).filter((im) => im.b64.length > 100);
   if (!images.length) throw bad('이미지가 없어요');
   if (images.reduce((n, im) => n + im.b64.length, 0) > 12 * 1024 * 1024) throw new HttpError(413, 'too_large', '이미지가 너무 커요');
   await aiGuard(teamId, 'ocr', uid);
@@ -1924,7 +1927,9 @@ on('POST', '/ocr', async ({ uid, body }) => {
       g = null;   // Gemini 가 실패하면 예전 방식으로라도 읽는다
     }
     if (g) {
-      await aiCount(teamId, 'ocr', (g.usage && (g.usage.input + g.usage.output)) || 0, uid);
+      // 장마다 한 번씩 불렀으니 그만큼 센다
+      const calls = g.bands.length || 1;
+      for (let i = 0; i < calls; i++) await aiCount(teamId, 'ocr', i === 0 ? ((g.usage && (g.usage.input + g.usage.output)) || 0) : 0, uid);
       const usd = estimateUSD(g.model, g.usage);
       return { results: g.bands, engine: 'gemini', title: g.title || '', key: g.key || '',
                usage: g.usage, cost: usd, costKRW: Math.round(usd * (+process.env.USD_KRW || 1400) * 10) / 10 };
