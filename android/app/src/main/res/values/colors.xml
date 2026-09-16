@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorPrimary">#111213</color>
+    <color name="colorPrimaryDark">#111213</color>
+    <color name="colorAccent">#F0B24B</color>
+    <!-- 첫 화면 배경. 앱 본문이 어두운 색이라 흰 번쩍임을 없앤다 -->
+    <color name="splash_background">#111213</color>
+</resources>

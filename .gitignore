@@ -27,3 +27,8 @@ ios/App/output/
 ios/DerivedData/
 *.keystore
 *.jks
+
+# 안드로이드 출시 서명 (비밀번호가 들어 있다)
+android/keystore.properties
+*.jks
+*.keystore
