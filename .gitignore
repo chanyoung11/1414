@@ -11,3 +11,19 @@ scratch-omr.json
 .venv/
 scratch-reh.m4a
 scratch-big.m4a
+
+# ---------- 네이티브 앱 (Capacitor) ----------
+# 프로젝트는 깃에 넣되 빌드 산출물·로컬 설정은 뺀다
+android/build/
+android/app/build/
+android/.gradle/
+android/local.properties
+android/app/src/main/assets/public/
+android/app/release/
+ios/App/build/
+ios/App/Pods/
+ios/App/App/public/
+ios/App/output/
+ios/DerivedData/
+*.keystore
+*.jks

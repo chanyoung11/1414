@@ -1573,7 +1573,7 @@ function rehAddModal(svc){
 const DIRECT_OVER=3.5*1024*1024;
 async function uploadBlob(id,b,onProgress,force){
  if(b.size<=DIRECT_OVER){
-  const r=await fetch('/api/blobs/'+id+'?team='+S.team.id+(force?'&force=1':''),{method:'POST',headers:{'x-conti':'1','content-type':b.type||'application/octet-stream'},body:b,credentials:'same-origin'});
+  const r=await fetch(API_BASE+'/api/blobs/'+id+'?team='+S.team.id+(force?'&force=1':''),{method:'POST',headers:{'x-conti':'1',...(NATIVE?{'x-conti-app':'1'}:{}),'content-type':b.type||'application/octet-stream'},body:b,credentials:NATIVE?'include':'same-origin'});
   if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.message||'파일 업로드 실패')}
   return true}
  const u=await api('/blobs/'+id+'/upload-url',{method:'POST',body:{teamId:S.team.id,size:b.size,mime:b.type||'application/octet-stream'}});
@@ -2480,10 +2480,14 @@ const RL={leader:'인도자',session_lead:'세션리더',member:'멤버',pastor:
 const isPastor=()=>me().role==='pastor';   // 목회자: 세션 없음, 편성·라이브러리 편집 없음, 말씀을 쓴다 (§0)
 const roleLabel=r=>RL[r]||'멤버';
 const whoStr=m=>[m.name||'이름 없음',m.session,roleLabel(m.role)].filter((x,i,a)=>x&&a.indexOf(x)===i).map(esc).join(' · ');
-async function api(path,o){const opt={method:(o&&o.method)||'GET',headers:{'x-conti':'1'},credentials:'same-origin',cache:'no-store'};if(o&&o.keepalive)opt.keepalive=true;if(o&&o.body){opt.headers['content-type']='application/json';opt.body=JSON.stringify(o.body)}
- const r=await fetch('/api'+path,opt);let j=null;try{j=await r.json()}catch(e){}
+// 네이티브 앱은 화면이 https://localhost 라 서버 주소를 붙여 부른다.
+// 웹에서는 지금처럼 같은 출처. x-conti-app 을 보면 서버가 쿠키를 SameSite=None 으로 준다
+const NATIVE=/^(capacitor|ionic):/.test(location.protocol)||(location.hostname==='localhost'&&!location.port&&location.protocol==='https:');
+const API_BASE=NATIVE?'https://lets1414.vercel.app':'';
+async function api(path,o){const opt={method:(o&&o.method)||'GET',headers:{'x-conti':'1',...(NATIVE?{'x-conti-app':'1'}:{})},credentials:NATIVE?'include':'same-origin',cache:'no-store'};if(o&&o.keepalive)opt.keepalive=true;if(o&&o.body){opt.headers['content-type']='application/json';opt.body=JSON.stringify(o.body)}
+ const r=await fetch(API_BASE+'/api'+path,opt);let j=null;try{j=await r.json()}catch(e){}
  if(!r.ok){const err=new Error((j&&j.message)||('오류 '+r.status));err.status=r.status;err.code=j&&j.error;throw err}return j}
-async function probeServer(){try{const r=await fetch('/api/health',{cache:'no-store'});if(!r.ok)return false;const j=await r.json();
+async function probeServer(){try{const r=await fetch(API_BASE+'/api/health',{cache:'no-store',credentials:NATIVE?'include':'same-origin',headers:NATIVE?{'x-conti-app':'1'}:{}});if(!r.ok)return false;const j=await r.json();
  if(j&&j.app==='conti')NET.enforcePlan=!!j.enforcePlan;
  return !!(j&&j.app==='conti')}catch(e){return null}}
 // 채보 엔진 연결 여부 (인도자 편집기의 '채보' 버튼 표시용)

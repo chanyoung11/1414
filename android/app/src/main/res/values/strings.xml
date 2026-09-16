@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">1414</string>
+    <string name="title_activity_main">1414</string>
+    <string name="package_name">com.lets1414.app</string>
+    <string name="custom_url_scheme">com.lets1414.app</string>
+</resources>

@@ -2,7 +2,7 @@
 // vercel.json 의 rewrite 가 /api/* 를 /api?p=<경로> 로 보내고, 여기서 p(또는 원래 pathname)로 라우팅합니다.
 // 로컬: npm run dev (scripts/dev.mjs가 이 핸들러를 /api/* 에 그대로 붙임)
 import { q, one } from '../lib/db.js';
-import { sessionClaims, sessionCookie, clearSessionCookie, randomToken } from '../lib/session.js';
+import { sessionClaims, sessionCookie, clearSessionCookie, randomToken, isApp } from '../lib/session.js';
 import { hashPassword, verifyPassword, USERNAME_RE, PASSWORD_MIN } from '../lib/password.js';
 import { putBlob, delBlobs, readUrls, presignPut, headBlob } from '../lib/blob.js';
 import { ocrBands, visionConfigured } from '../lib/vision.js';
@@ -2427,7 +2427,24 @@ on('GET', '/cron/remind', async ({ req }) => {
 });
 
 /* ---------- 진입점 ---------- */
+// 네이티브 앱(화면이 https://localhost)만 다른 출처에서 부를 수 있게 한다.
+// 아무 사이트나 열어 두면 남의 웹페이지가 로그인한 사용자 몰래 API 를 부를 수 있다
+const APP_ORIGINS = new Set(['https://localhost', 'capacitor://localhost', 'ionic://localhost', 'http://localhost']);
+function applyCors(req, res) {
+  const origin = req.headers.origin;
+  if (!origin || !APP_ORIGINS.has(origin)) return false;
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Headers', 'content-type, x-conti, x-conti-app');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Max-Age', '86400');
+  res.setHeader('Vary', 'Origin');
+  return true;
+}
+
 export default async function handler(req, res) {
+  const cors = applyCors(req, res);
+  if (req.method === 'OPTIONS') { res.statusCode = cors ? 204 : 403; return res.end(); }
   try {
     const url = new URL(req.url, 'http://local');
     const raw = url.searchParams.has('p') ? '/' + url.searchParams.get('p') : url.pathname.replace(/^\/api/, '');
