@@ -1064,8 +1064,11 @@ on('DELETE', '/services/:id', async ({ uid, url, params }) => {
   await q('delete from drafts where team_id=$1 and id=$2', [teamId, params.id]);
   await q('delete from notes where team_id=$1 and service_id=$2', [teamId, params.id]);
   await q('delete from song_usages where team_id=$1 and service_id=$2', [teamId, params.id]);   // 이력은 발행본에서만 나온다
-  // 날짜는 다시 쓸 수 있게 비우되, 자동 생성이 같은 날짜에 새 콘티를 만들어 되살리지 않게 막는다.
-  // 손으로 새 콘티를 만들어 이 날짜에 붙이면 auto_skip 은 풀린다 (linkDate)
+  // 이 콘티 때문에 생긴 날짜는 같이 지운다. 안 그러면 콘티를 지워도 홈의 D-day 카드에 남아
+  // '콘티 만들기'를 누르면 되살아난 것처럼 보인다
+  await q(`delete from service_dates where team_id=$1 and service_id=$2 and source='service'`, [teamId, params.id]);
+  // 인도자가 직접 연 날짜나 반복 일정은 그대로 두되, 자동 생성이 같은 날짜에 새 콘티를 만들어
+  // 되살리지 않게 막는다. 손으로 새 콘티를 만들어 붙이면 auto_skip 은 풀린다 (linkDate)
   await q('update service_dates set service_id=null, auto_skip=true where team_id=$1 and service_id=$2', [teamId, params.id]);
   let freed = 0;
   if (row) {
@@ -1992,7 +1995,9 @@ async function linkDate(teamId, serviceId, date, label) {
   if (await one('select id from service_dates where team_id=$1 and service_id=$2', [teamId, serviceId])) return;
   const free = await one(`select id from service_dates where team_id=$1 and date=$2 and service_id is null order by (source='recurring') desc, created_at asc limit 1`, [teamId, date]);
   if (free) await q('update service_dates set service_id=$2, auto_skip=false where id=$1', [free.id, serviceId]);
-  else await q(`insert into service_dates(team_id, date, label, source, open, service_id) values($1,$2,$3,'manual',true,$4)
+  // source='service' 는 이 콘티 때문에 생긴 날짜라는 뜻이다. 인도자가 직접 연 날짜('manual')와
+  // 구분해야, 콘티를 지웠을 때 남길지 같이 지울지 정할 수 있다
+  else await q(`insert into service_dates(team_id, date, label, source, open, service_id) values($1,$2,$3,'service',true,$4)
                 on conflict (team_id, date, label) do update set service_id=coalesce(service_dates.service_id, excluded.service_id)`, [teamId, date, str(label, 40) || '예배', serviceId]);
 }
 // D-N주 안의 열린 날짜에 콘티가 없으면 초안을 자동 생성한다 (§2.2). 이름 = 팀 이름 규칙

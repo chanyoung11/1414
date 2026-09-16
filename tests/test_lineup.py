@@ -41,8 +41,12 @@ def run():
         print('multi-session ok:', ses)
 
         # ---- 날짜 두 개 열기 ----
-        d1 = (datetime.date.today() + datetime.timedelta(days=7)).isoformat()
-        d2 = (datetime.date.today() + datetime.timedelta(days=14)).isoformat()
+        # 달력은 달마다 따로 진행을 센다. 두 날짜가 다른 달에 걸치면 '2일 중 1일'이 나오지 않으므로
+        # 다음 달 안에서만 두 날짜를 고른다 (오늘이 며칠이든 같은 달에 들어간다)
+        _t = datetime.date.today()
+        _nm = (_t.replace(day=1) + datetime.timedelta(days=32)).replace(day=1)
+        d1 = (_nm + datetime.timedelta(days=6)).isoformat()
+        d2 = (_nm + datetime.timedelta(days=13)).isoformat()
         for d, lb in ((d1, '주일 2부'), (d2, '수요예배')):
             r = cL.request.post(URL + 'api/teams/%s/dates' % team, headers=H, data={'date': d, 'label': lb, 'time': '11:00'})
             if r.status != 200: fail('날짜 열기 실패: ' + r.text()[:120])

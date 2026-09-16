@@ -123,7 +123,8 @@ create table if not exists service_dates (
   date         date not null,
   label        text not null,
   time         text,
-  source       text not null default 'manual' check (source in ('recurring','manual')),
+  -- recurring: 반복 일정에서 · manual: 인도자가 직접 연 날짜 · service: 콘티 때문에 생긴 날짜
+  source       text not null default 'manual' check (source in ('recurring','manual','service')),
   recurring_id uuid references recurring(id) on delete set null,
   open         bool not null default true,
   service_id   text,                                          -- 연결된 콘티(Service.id)
@@ -442,6 +443,13 @@ create table if not exists ai_usage_user (
 );
 
 -- 약관·개인정보처리방침 동의 기록 (언제, 어느 판에 동의했는지)
+-- 기존 DB 의 source 제약을 넓힌다 ('service' 추가)
+do $$ begin
+  alter table service_dates drop constraint if exists service_dates_source_check;
+  alter table service_dates add constraint service_dates_source_check
+    check (source in ('recurring','manual','service'));
+end $$;
+
 alter table users add column if not exists agreed_at timestamptz;
 alter table users add column if not exists agreed_ver text;
 
