@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- development 로 두면 Xcode 빌드는 sandbox, 배포 빌드는 애플이 production 으로 바꿔 준다 -->
+	<key>aps-environment</key>
+	<string>development</string>
+</dict>
+</plist>
