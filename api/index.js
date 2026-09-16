@@ -7,6 +7,7 @@ import { hashPassword, verifyPassword, USERNAME_RE, PASSWORD_MIN } from '../lib/
 import { putBlob, delBlobs, readUrls, presignPut, headBlob } from '../lib/blob.js';
 import { ocrBands, visionConfigured } from '../lib/vision.js';
 import { sendPush, pushConfigured, vapidPublicKey } from '../lib/push.js';
+import { fcmConfigured } from '../lib/fcm.js';
 import { transcribeSheet, transcribeScore, geminiConfigured, geminiModel, estimateUSD, ocrChordsGemini } from '../lib/gemini.js';
 import { norm as normSong, cho as choSong } from '../lib/song.js';
 import { randomBytes } from 'node:crypto';
@@ -261,8 +262,26 @@ on('PUT', '/me/prefs/stage/:key', async ({ uid, params, body }) => {
   return { ok: true };
 });
 
+// ---------- 네이티브 앱 푸시 토큰 (FCM) ----------
+on('POST', '/push/token', async ({ uid, body }) => {
+  if (!uid) throw noAuth();
+  const token = str(body.token, 400);
+  const platform = ['android', 'ios'].includes(str(body.platform, 10)) ? str(body.platform, 10) : 'android';
+  if (!token) throw bad('토큰이 없어요');
+  await q(`insert into push_tokens(token, user_id, platform) values($1,$2,$3)
+           on conflict (token) do update set user_id=excluded.user_id, platform=excluded.platform, last_ok_at=now()`,
+    [token, uid, platform]);
+  return { ok: true };
+});
+on('POST', '/push/token/remove', async ({ uid, body }) => {
+  if (!uid) throw noAuth();
+  const token = str(body.token, 400);
+  if (token) await q('delete from push_tokens where token=$1 and user_id=$2', [token, uid]);
+  return { ok: true };
+});
+
 // ---------- 푸시 구독 ----------
-on('GET', '/push/key', async () => ({ configured: pushConfigured(), key: vapidPublicKey() }));
+on('GET', '/push/key', async () => ({ configured: pushConfigured(), key: vapidPublicKey(), app: fcmConfigured() }));
 on('POST', '/push/subscribe', async ({ uid, body, req }) => {
   if (!uid) throw noAuth();
   const sub = body && body.sub;

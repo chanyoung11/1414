@@ -444,3 +444,13 @@ create table if not exists ai_usage_user (
 -- 약관·개인정보처리방침 동의 기록 (언제, 어느 판에 동의했는지)
 alter table users add column if not exists agreed_at timestamptz;
 alter table users add column if not exists agreed_ver text;
+
+-- 네이티브 앱 푸시 토큰 (FCM: 안드로이드, APNs: iOS). 웹푸시(push_subs)와 따로 둔다
+create table if not exists push_tokens (
+  token      text primary key,
+  user_id    uuid not null references users(id) on delete cascade,
+  platform   text not null,                  -- android | ios
+  created_at timestamptz not null default now(),
+  last_ok_at timestamptz
+);
+create index if not exists push_tokens_user_idx on push_tokens(user_id);

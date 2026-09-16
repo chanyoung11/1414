@@ -457,8 +457,9 @@ html.dark .pill.role-pastor{color:#B4A7F5}
  .thumb.vsheet{width:100%;height:auto;max-height:52vh;border-radius:var(--r-lg);border:1px solid var(--border);background:#fff;overflow:hidden}
  .thumb.vsheet img{display:block;width:100%;height:auto}
  .vrow{flex-direction:column;align-items:stretch!important;gap:10px!important}
- /* 폰에서 인쇄는 쓰지 않는다 */
+ /* 폰 웹에서는 인쇄를 숨긴다. 앱은 네이티브 인쇄가 되므로 보여 준다 */
  .top [data-act="print"]{display:none}
+ body.native .top [data-act="print"]{display:inline-flex}
  .top h1{font-size:15px}
  .top h1 .pill{display:none}
  .ptab .sesslbl{display:none}
@@ -746,6 +747,17 @@ body.stgon{overflow:hidden}
 .ppage .psum .sl .t{font-weight:700;font-size:13px}
 .ppage .psum .sl .k{font-weight:800}
 .ppage .psum .sl .f{flex:1;font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:#444;text-align:right}
+/* 앱(WebView)은 인쇄할 때 @media print 를 적용하지 않고 화면 그대로를 찍는다.
+   그래서 같은 규칙을 화면 CSS 로도 쓴다 (body.nprint 동안만) */
+body.nprint{background:#fff!important}
+body.nprint #app,body.nprint #modal,body.nprint #toast,body.nprint .pvbar{display:none!important}
+body.nprint #printArea{display:block!important;position:static!important;background:#fff!important;overflow:visible!important}
+body.nprint .pvout{padding:0;gap:0;display:block;align-items:stretch}
+body.nprint .ppage{box-shadow:none;break-after:page;page-break-after:always;margin:0 auto}
+body.nprint .ppage:last-child{break-after:auto;page-break-after:auto}
+body.nprint #printArea.osmdout{position:static!important;left:auto!important;top:auto!important;width:auto!important}
+body.nprint .osmdpage{page-break-after:always;break-after:page}
+body.nprint #printArea svg{max-width:100%;height:auto}
 @media print{
  html,body{background:#fff!important}
  body.printing #app,body.printing #modal,body.printing #toast,body.printing .pvbar{display:none!important}
@@ -2273,11 +2285,12 @@ function afterSettings(){
    extra=extra.includes(v)?extra.filter(x=>x!==v):[...extra,v];
    $$('#sSess2 .q').forEach(b=>b.classList.toggle('on2',extra.includes(b.dataset.s2)));return}
   const rb=e.target.closest('[data-r]');if(rb){role=rb.dataset.r;$$('#sRole .q').forEach(b=>b.classList.toggle('on',b.dataset.r===role));return}
-  if(e.target.closest('#sPushOn')){markAskedPush();
+  if(e.target.closest('#sPushOn')){markAskedPush();appPushRegister.asked=true;
+   if(NATIVE){const ok=await appPushRegister();toast(ok?'알림을 켰어요':'알림을 켜지 못했어요 · 휴대폰 설정에서 켤 수 있어요');render();return}
    let perm='denied';try{perm=await Notification.requestPermission()}catch(err){}
    if(perm==='granted'){const ok=await pushRegister();toast(ok?'알림을 켰어요':'알림을 켜지 못했어요')}
    else toast('브라우저에서 알림을 막았어요');render();return}
-  if(e.target.closest('#sPushOff')){await pushUnregister();toast('이 기기에서 알림을 껐어요');render();return}
+  if(e.target.closest('#sPushOff')){if(NATIVE)await appPushUnregister();else await pushUnregister();toast('이 기기에서 알림을 껐어요');render();return}
   if(e.target.closest('#sPushTest')){try{const r=await api('/push/test',{method:'POST'});
     toast(r.sent?'보냈어요 — 잠시 뒤 알림이 떠요':'보낼 기기가 없어요. 알림 켜기를 먼저 눌러 주세요')}catch(err){toast(err.message)}return}
   if(e.target.closest('#sOk')){const name=$('#sName').value.trim();
@@ -4399,7 +4412,7 @@ async function render(){
  // 약관 동의가 먼저, 그다음 알림
  if(online()&&NET.user&&needsAgree())setTimeout(()=>{if(!$('#modal').firstChild)agreeModal()},600);
  if(online()&&S.team.id&&NET.user)setTimeout(()=>{if(route().name==='home'&&!$('#modal').firstChild&&!needsAgree())pushOnboard()},1600);
- if(online()&&NET.user)pullPrefs().then(()=>{if(pushState()==='granted')pushRegister()});
+ if(online()&&NET.user)pullPrefs().then(()=>{if(NATIVE)appPushRegister();else if(pushState()==='granted')pushRegister()});
  if(online()&&S.team.id&&NET.user)pullSchedule(monthKey()).then(ch=>{if(ch&&route().name==='home')render()});
  if(online()&&!same)SYNC.pullServices().then(ch=>{if(ch&&route().name==='home')render()});
 }
@@ -4921,12 +4934,40 @@ const quietOf=()=>Object.assign({},QUIET_DEF,((PREFS.data||{}).quiet)||{});
 
 // 사파리로 연 아이폰·아이패드에서만 참. 홈 화면에 추가해야 푸시가 온다
 const iosNeedsInstall=()=>{
+ if(NATIVE)return false;   // 앱에서는 홈 화면 추가가 필요 없다
  const ua=navigator.userAgent||'';
  const ios=/iPad|iPhone|iPod/.test(ua)||(/Macintosh/.test(ua)&&navigator.maxTouchPoints>1);
  if(!ios)return false;
  const standalone=window.navigator.standalone===true||matchMedia('(display-mode: standalone)').matches;
  return !standalone};
 const iosTip='아이폰·아이패드는 <b>공유 → 홈 화면에 추가</b>를 해야 알림을 받을 수 있어요';
+// 앱은 웹푸시 대신 FCM/APNs 토큰을 쓴다. 서버는 둘 다 같은 규칙으로 걸러 보낸다
+const CapPlug=()=>(window.Capacitor&&window.Capacitor.Plugins)||{};
+async function appPushRegister(){
+ const P=CapPlug().PushNotifications;if(!NATIVE||!P)return false;
+ try{
+  let perm=await P.checkPermissions();
+  if(perm.receive!=='granted')perm=await P.requestPermissions();
+  if(perm.receive!=='granted')return false;
+  if(!appPushRegister.bound){
+   appPushRegister.bound=true;
+   P.addListener('registration',t=>{const token=t&&t.value;if(!token)return;
+    APP_PUSH_TOKEN=token;
+    api('/push/token',{method:'POST',body:{token,platform:(window.Capacitor.getPlatform&&window.Capacitor.getPlatform())||'android'}}).catch(()=>{})});
+   P.addListener('registrationError',e=>console.warn('push reg',e));
+   // 알림을 눌러 앱이 열렸을 때 그 화면으로 간다
+   P.addListener('pushNotificationActionPerformed',a=>{
+    const link=a&&a.notification&&a.notification.data&&a.notification.data.link;
+    if(link)go(String(link).replace(/^#\/?/,''));refreshNoti&&refreshNoti()});
+   P.addListener('pushNotificationReceived',()=>{refreshNoti&&refreshNoti()});
+  }
+  await P.register();
+  return true}catch(e){console.warn('appPush',e);return false}}
+let APP_PUSH_TOKEN='';
+async function appPushUnregister(){
+ const P=CapPlug().PushNotifications;if(!NATIVE||!P)return;
+ try{if(APP_PUSH_TOKEN)await api('/push/token/remove',{method:'POST',body:{token:APP_PUSH_TOKEN}}).catch(()=>{});
+  await P.removeAllListeners();appPushRegister.bound=false;APP_PUSH_TOKEN=''}catch(e){}}
 const PUSH={key:'',configured:false,sub:null};
 const pushSupported=()=>'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;
 function b64ToU8(b64){const pad='='.repeat((4-b64.length%4)%4);const s=(b64+pad).replace(/-/g,'+').replace(/_/g,'/');
@@ -4949,7 +4990,7 @@ async function pushUnregister(){
  try{const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();
   if(sub){await api('/push/unsubscribe',{method:'POST',body:{endpoint:sub.endpoint}}).catch(()=>{});await sub.unsubscribe()}
   PUSH.sub=null}catch(e){}}
-const pushState=()=>!pushSupported()?'unsupported':Notification.permission;
+const pushState=()=>NATIVE?(APP_PUSH_TOKEN?'granted':(appPushRegister.asked?'denied':'default')):(!pushSupported()?'unsupported':Notification.permission);
 // 앱에 처음 들어올 때 한 번: 알림을 켤지 + 야간에도 울릴지
 function askedPush(){try{return localStorage.getItem('conti-push-asked')==='1'}catch(e){return true}}
 function markAskedPush(){try{localStorage.setItem('conti-push-asked','1')}catch(e){}}
@@ -4970,10 +5011,43 @@ async function pushOnboard(){
    const night=$('#pbNight').checked;   // 체크 = 밤에도 울림 = 조용한 시간 끔
    markAskedPush();closeModal();
    await savePrefs({quiet:{...quietOf(),on:!night}});
+   appPushRegister.asked=true;
+   if(NATIVE){const ok=await appPushRegister();toast(ok?'알림을 켰어요':'알림을 켜지 못했어요 · 휴대폰 설정에서 켤 수 있어요');render();return}
    let perm='denied';try{perm=await Notification.requestPermission()}catch(err){}
    if(perm==='granted'){const ok=await pushRegister();toast(ok?'알림을 켰어요':'알림을 켜지 못했어요')}
    else toast('브라우저에서 알림을 막았어요 · 설정에서 다시 켤 수 있어요');
    render();return}}}
+
+// ---------- 앱에서만 하는 것들 ----------
+async function nativeSetup(){
+ if(!NATIVE)return;
+ document.body.classList.add('native');
+ const P=CapPlug();
+ // 상태바 색을 테마에 맞춘다 (흰 배경에 흰 글씨로 묻히던 것)
+ const paintBar=async()=>{try{if(!P.StatusBar)return;
+  const dark=document.documentElement.classList.contains('dark');
+  await P.StatusBar.setStyle({style:dark?'DARK':'LIGHT'});
+  if(window.Capacitor.getPlatform&&window.Capacitor.getPlatform()==='android')
+   await P.StatusBar.setBackgroundColor({color:dark?'#17181A':'#FFFFFF'})}catch(e){}};
+ paintBar();
+ new MutationObserver(paintBar).observe(document.documentElement,{attributes:true,attributeFilter:['class']});
+ // 안드로이드 뒤로가기: 겹쳐 있는 것부터 닫고, 홈에서 누르면 앱을 내린다
+ try{P.App&&P.App.addListener('backButton',()=>{
+  if($('#stageWrap')){stageClose();render();return}
+  const pa=$('#printArea');if(pa){pa.remove();document.body.classList.remove('printing');return}
+  if($('#modal')&&$('#modal').firstChild){closeModal();return}
+  if(NOTI.open){NOTI.open=false;render();return}
+  if(route().name!=='home'){go('home');return}
+  P.App.exitApp&&P.App.exitApp()})}catch(e){}
+ // 앱이 다시 앞으로 오면 알림·콘티를 새로 받는다
+ try{P.App&&P.App.addListener('appStateChange',({isActive})=>{
+  if(isActive&&online()&&NET.user){refreshNoti&&refreshNoti();
+   if(S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()}).catch(()=>{})}})}catch(e){}
+ try{P.SplashScreen&&P.SplashScreen.hide()}catch(e){}}
+// 무대 모드에서는 화면이 꺼지면 안 된다 (예배 중)
+async function keepAwake(on){
+ if(!NATIVE)return;const K=CapPlug().KeepAwake;if(!K)return;
+ try{on?await K.keepAwake():await K.allowSleep()}catch(e){}}
 
 /* ---------- 무대 모드 = 자동 조판 (인쇄·내보내기 명세 §1-A) ----------
    한 곡이 한 화면에. 스크롤 없음. 조판은 사람·곡·기기 구간마다 따로 저장된다 */
@@ -5022,7 +5096,7 @@ async function stageOpen(svc,idx){
  let el=$('#stageWrap');if(el)el.remove();
  el=document.createElement('div');el.id='stageWrap';el.className='stgw';
  document.body.appendChild(el);document.body.classList.add('stgon');
- stageRender();
+ stageRender();keepAwake(true);
  el.onclick=stageClick;
  window.addEventListener('keydown',stageKey);
  window.addEventListener('resize',stageResize);
@@ -5030,7 +5104,7 @@ async function stageOpen(svc,idx){
  el.addEventListener('touchstart',e=>{x0=e.touches[0].clientX},{passive:true});
  el.addEventListener('touchend',e=>{if(x0==null)return;const dx=e.changedTouches[0].clientX-x0;x0=null;
   if(Math.abs(dx)>60)stageGo(dx<0?1:-1)},{passive:true})}
-function stageClose(){const el=$('#stageWrap');if(el)el.remove();
+function stageClose(){keepAwake(false);const el=$('#stageWrap');if(el)el.remove();
  document.body.classList.remove('stgon');
  window.removeEventListener('keydown',stageKey);window.removeEventListener('resize',stageResize);
  STG.svc=null}
@@ -5123,6 +5197,18 @@ function stageExport(){
   session:PL.session||me().session||'전체',only:it?it.id:null});
  stageClose();printSheet(svc)}
 
+// 앱(WebView)에서는 window.print() 가 아무 일도 하지 않는다. 네이티브 인쇄로 넘긴다.
+// 인쇄 CSS 가 이미 #printArea 만 남기므로 화면 그대로가 종이에 나온다
+async function doPrint(name){
+ const P=CapPlug().Printer;
+ if(NATIVE&&P){
+  // 앱은 화면에 보이는 것을 찍으므로, 찍는 동안 인쇄 조판만 남긴다
+  document.body.classList.add('nprint');
+  try{await new Promise(r=>setTimeout(r,120));
+   await P.print({name:name||document.title||'1414'});return true}
+  catch(e){if(!/취소|cancel/i.test((e&&e.message)||''))toast('인쇄를 열지 못했어요 · '+((e&&e.message)||''));return false}
+  finally{setTimeout(()=>document.body.classList.remove('nprint'),1500)}}
+ window.print();return true}
 // 인쇄 설정 시트 → 미리보기 → window.print() (§2·§5)
 async function printService(svc,opts){
  await preload(svc);
@@ -5186,7 +5272,7 @@ function printPreview(svc){
   const a=b.dataset.pv;
   if(a==='close'){done();return}
   if(a==='opt'){done();printSheet(svc);return}
-  if(a==='print'){window.print();return}};
+  if(a==='print'){doPrint(printName(pub.name,pub.date,pub.version));return}};
  area.scrollTop=0}
 // 브라우저가 'PDF로 저장' 할 때 쓰는 이름. 파일 이름에 못 쓰는 글자는 뺀다
 function printName(name,date,version){
@@ -5212,7 +5298,7 @@ async function printScore(svc,it){
  document.body.classList.add('printing');
  const t0=document.title;document.title=printName(it.title||(it.score&&it.score.title)||'악보','',0);
  const done=()=>{document.title=t0;document.body.classList.remove('printing');area.remove();window.removeEventListener('afterprint',done)};
- window.addEventListener('afterprint',done);setTimeout(()=>window.print(),300)}
+ window.addEventListener('afterprint',done);setTimeout(()=>doPrint(document.title),300)}
 function setZoom(z){z=Math.round(Math.max(0.6,Math.min(2.5,z))*100)/100;if(z===PL.zoom)return;PL.zoom=z;try{localStorage.setItem('conti-zoom',z)}catch(e){}if(route().name==='play')redrawPlay()}
 // 두 손가락 벌리기(핀치) · 트랙패드 ctrl+휠 로 악보 크기 조절
 let pinch=null;
@@ -5662,7 +5748,7 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
  if(NET.server===true){try{await takeMe(await api('/me'))}catch(e){if(e.status===401)NET.user=null;else NET.server=null}}
  if(!online()&&!me().name){location.hash='#/settings';render()}else render();
  if(online()&&S.team.id){SYNC.pullServices().then(ch=>{if(ch)render()});SYNC.pullLibrary();pullSongs(true).then(ch=>{if(ch&&/^(edit|view|play|library)$/.test(route().name))render()}).catch(()=>{})}
- probeOmr();startNotiPoll();
+ probeOmr();startNotiPoll();nativeSetup();
  window.CONTI={HOME,PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go};
 })();
 })();
