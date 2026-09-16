@@ -833,15 +833,32 @@ on('GET', '/words', async ({ uid, url }) => {
                         order by sd.date asc`, [teamId]);
   const svcNames = Object.fromEntries((await q('select id, name from services where team_id=$1', [teamId])).map((r) => [r.id, r.name]));
   const drafts = Object.fromEntries((await q('select id, doc from drafts where team_id=$1', [teamId])).map((r) => [r.id, r.doc && r.doc.name]));
-  return {
-    services: rows.map((r) => ({
-      dateId: r.dateId, date: r.date, label: r.label, serviceId: r.serviceId,
-      name: (r.serviceId && (svcNames[r.serviceId] || drafts[r.serviceId])) || `${mdOf(r.date)} ${r.label}`,
-      past: r.date < new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10),
-      word: wordView(r.word, m),
-    })),
-    role: m.role,
-  };
+  const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+  const out = rows.map((r) => ({
+    dateId: r.dateId, date: r.date, label: r.label, serviceId: r.serviceId,
+    name: (r.serviceId && (svcNames[r.serviceId] || drafts[r.serviceId])) || `${mdOf(r.date)} ${r.label}`,
+    past: r.date < today,
+    word: wordView(r.word, m),
+  }));
+  // 사역 날짜가 아직 없는 콘티도 보여 준다. 안 그러면 그 예배는 말씀을 적을 곳이 없다
+  if (m.role === 'leader') {
+    const seen = new Set(out.map((x) => x.serviceId).filter(Boolean));
+    const loose = await q(`select s.id, s.name, s.d as date, w.word
+                             from (select id, coalesce(name,'')::text as name, date::text as d from services
+                                    where team_id=$1 and date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+                                   union all
+                                   select id, coalesce(doc->>'name','')::text as name, (doc->>'date')::text as d
+                                     from drafts where team_id=$1 and (doc->>'date') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$') s
+                             left join service_words w on w.team_id=$1 and w.service_id=s.id
+                            where s.d::date >= current_date - interval '30 days' and s.d::date < current_date + interval '28 days'`, [teamId]);
+    for (const r of loose) {
+      if (seen.has(r.id)) continue;
+      seen.add(r.id);
+      out.push({ dateId: null, date: r.date, label: '', serviceId: r.id, name: r.name || `${mdOf(r.date)} 예배`, past: r.date < today, word: wordView(r.word, m) });
+    }
+    out.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  }
+  return { services: out, role: m.role };
 });
 
 // §4.6 목회자 링크 만들기 (인도자)

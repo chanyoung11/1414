@@ -439,6 +439,18 @@ html.dark .pill.role-pastor{color:#B4A7F5}
 .legalfoot{margin-top:16px;font-size:12px;color:var(--faint-fg);display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
 .legalfoot button{color:inherit;text-decoration:underline}
 .legalfoot button:hover{color:var(--fg)}
+/* 조각을 가로로 나란히 (실사용 제보) */
+.sheet{display:flex;flex-wrap:wrap;align-items:flex-start;gap:10px}
+.piece{position:relative}
+.piece.sp2,.piece.sp3{min-width:80px}
+.phead.drag{cursor:grab;-webkit-user-select:none;user-select:none}
+.phead.drag:active{cursor:grabbing}
+.phead.drag svg.ic{width:13px;height:13px;opacity:.5;margin-right:4px}
+.piece.dragging{opacity:.4}
+.piece.dropbefore{box-shadow:-3px 0 0 var(--primary)}
+.piece.dropafter{box-shadow:3px 0 0 var(--primary)}
+.pbreak{flex:0 0 100%;height:0;display:block}
+@media(max-width:640px){.piece.sp2,.piece.sp3{width:100%!important}}
 @media (min-width:1024px){.side{display:block}.bnav{display:none}.shell{padding-bottom:24px}}
 /* ---------- 반응형 (§7) ---------- */
 /* 1024+ : 사이드바 224 고정 · 하단 탭 없음 (아래 기존 규칙) */
@@ -1049,7 +1061,7 @@ function editorHTML(svc){
     <div class="pbody">
      <div class="row" style="gap:10px"><input class="field" type="date" data-f="svc.date" value="${esc(svc.date)}" style="width:150px"><textarea class="field grow" data-f="svc.notice" rows="1" placeholder="전체 공지 — 연습 일정, 편성, 집합 장소">${esc(svc.notice)}</textarea></div>
    ${wordCardHTML(svc)}
-   <div class="lbl" style="margin-top:10px">인도자의 글 <span class="hint">예배에 담은 마음, 콘티 흐름. 멤버가 처음 열 때 한 번 보여요</span></div><textarea class="field msgin" data-f="svc.message" placeholder="이번 예배에 담은 마음, 콘티 흐름을 적어요. 멤버가 처음 열 때 한 번 보여요." style="min-height:72px">${esc(svc.message||'')}</textarea>
+   <div class="lbl" style="margin-top:10px">인도자의 글 <span class="hint">말씀·흐름·전할 말을 여기에 적어요. 멤버가 처음 열 때 한 번 보여요</span></div><textarea class="field msgin" data-f="svc.message" placeholder="말씀 본문, 이번 예배에 담은 마음, 콘티 흐름 — 팀에 전할 말을 여기에 적어요." style="min-height:96px">${esc(svc.message||'')}</textarea>
      <div style="margin-top:10px">${svc.items.map((x,i)=>`<div class="list-item ${x.id===sel.item?'sel':''}" data-act="sel-item" data-id="${x.id}"><span class="grip" title="끌어서 순서 바꾸기">${ic('list')}</span><span class="num">${i+1}</span><span class="grow" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600">${esc(x.title||'(제목 없음)')}</span><span class="k">${esc(keyStr(x))}</span><button class="icon sm ghost" data-act="mv-item" data-id="${x.id}" data-d="-1" title="위로">${ic('up')}</button><button class="icon sm ghost" data-act="mv-item" data-id="${x.id}" data-d="1" title="아래로">${ic('down')}</button></div>`).join('')||'<div class="empty" style="padding:14px">곡을 추가하세요</div>'}</div>
     </div></div>
    <div class="vgutter" title="드래그해서 높이 조절"></div>
@@ -1059,7 +1071,7 @@ function editorHTML(svc){
   <div class="gutter" title="드래그해서 폭 조절"></div>
   <div class="panel" id="edsheet">${ptab('악보',it?'':'',`<div class="seg"><button class="${sel.tool==='marker'?'on':''}" data-act="tool" data-t="marker">${ic('marker')}마커</button><button class="${sel.tool==='hl'?'on':''}" data-act="tool" data-t="hl">${ic('hl')}하이라이트</button><button class="${sel.tool==='mask'?'on':''}" data-act="tool" data-t="mask">${ic('x')}마스크</button><button class="${sel.tool==='chord'?'on':''}" data-act="tool" data-t="chord">${ic('music')}코드</button><button class="${sel.tool==='memo'?'on':''}" data-act="tool" data-t="memo">${ic('note')}메모</button></div><span class="row" style="gap:2px;margin-left:8px"><button class="icon sm ghost" data-act="edzoom" data-d="-1" title="악보 작게">${ic('down')}</button><span class="hint edzoomlbl" style="min-width:36px;text-align:center">${Math.round(edZoom()*100)}%</span><button class="icon sm ghost" data-act="edzoom" data-d="1" title="악보 크게">${ic('up')}</button></span>${it?`<label class="btn sm" for="pieceFile">${ic('camera')}조각 추가</label><input id="pieceFile" type="file" accept="image/*" multiple style="display:none">`:''}`)}
    <div class="sheetwrap" id="sheetwrap"><div class="sheet" id="sheet">${it?'':'<div class="empty">왼쪽에서 곡을 추가하세요</div>'}</div></div>
-   ${it&&it.pieces.length?`<div class="pfoot">${it.pieces.map((p,i)=>`<span class="chip t">조각 ${i+1}<button class="icon sm ghost" data-act="mv-piece" data-id="${p.id}" data-d="-1">${ic('left')}</button><button class="icon sm ghost" data-act="mv-piece" data-id="${p.id}" data-d="1">${ic('right')}</button><button class="icon sm ghost" data-act="crop-piece" data-id="${p.id}" title="사진 자르기">${ic('crop')}</button><button class="icon sm ghost" data-act="split-piece" data-id="${p.id}" title="이 조각에 곡이 여러 개면 나누기">${ic('scissors')}</button><button class="icon sm ghost" data-act="del-piece" data-id="${p.id}">${ic('x')}</button></span>`).join('')}<span class="hint">${sel.tool==='marker'?'악보를 탭하면 마커 · 마커를 탭하면 절단선·삭제 · 사진은 끌어다 놓거나 붙여넣기(⌘V)':sel.tool==='hl'?'드래그해서 노란 사각형 · 탭하면 삭제':sel.tool==='mask'?'드래그해서 가릴 영역(반투명) · 탭하면 삭제 · 가사·다른 파트 숨기기에':sel.tool==='chord'?'코드를 탭하면 고치기·삭제 · 빈 곳을 탭하면 코드 추가 · 빨간 글씨가 연주 키로 옮긴 코드':'마커를 탭하면 인도자 메모'}</span></div>`:''}
+   ${it&&it.pieces.length?`<div class="pfoot">${it.pieces.map((p,i)=>`<span class="chip t">조각 ${i+1}<button class="icon sm ghost" data-act="mv-piece" data-id="${p.id}" data-d="-1">${ic('left')}</button><button class="icon sm ghost" data-act="mv-piece" data-id="${p.id}" data-d="1">${ic('right')}</button><button class="icon sm ghost" data-act="span-piece" data-id="${p.id}" title="가로로 나란히 놓기 (전체 → ½ → ⅓)">${(+p.span>1?('½⅓'[Math.min(3,+p.span)-2]):'1')}</button><button class="icon sm ghost" data-act="crop-piece" data-id="${p.id}" title="사진 자르기">${ic('crop')}</button><button class="icon sm ghost" data-act="split-piece" data-id="${p.id}" title="이 조각에 곡이 여러 개면 나누기">${ic('scissors')}</button><button class="icon sm ghost" data-act="del-piece" data-id="${p.id}">${ic('x')}</button></span>`).join('')}<span class="hint">${sel.tool==='marker'?'악보를 탭하면 마커 · 마커를 탭하면 절단선·삭제 · 사진은 끌어다 놓거나 붙여넣기(⌘V)':sel.tool==='hl'?'드래그해서 노란 사각형 · 탭하면 삭제':sel.tool==='mask'?'드래그해서 가릴 영역(반투명) · 탭하면 삭제 · 가사·다른 파트 숨기기에':sel.tool==='chord'?'코드를 탭하면 고치기·삭제 · 빈 곳을 탭하면 코드 추가 · 빨간 글씨가 연주 키로 옮긴 코드':'마커를 탭하면 인도자 메모'}</span></div>`:''}
   </div>
  </div>`;
 }
@@ -1260,12 +1272,13 @@ function wordBlockHTML(w,opts){if(!hasWord(w))return '';const o=opts||{};
   ${!o.lock&&src?`<div class="wfrom">${esc(src)}</div>`:''}
   ${w.memo?`<div class="wmemo"><span class="pill">${w.memoPublic?'전체 공개':'인도자만'}</span><div>${esc(w.memo).replace(/\n/g,'<br>')}</div></div>`:''}</div>`}
 // 에디터 말씀 카드 (§4.3): 목회자·링크 입력이 있으면 잠기고, 없으면 인도자가 직접 입력
-function wordCardHTML(svc){const w=svc.word;const locked=hasWord(w)&&w.from&&w.from.type!=='leader';
- return `<div class="lbl" style="margin-top:10px">말씀 <span class="hint">${locked?'목사님이 보낸 내용이라 여기서는 고치지 않아요':'본문·제목·한 줄은 팀 전원에게 보여요'}</span></div>
-  ${locked?`${wordBlockHTML(w,{lock:true})}<div class="row" style="margin-top:6px"><button class="btn sm ghost" data-act="word-req">수정 요청</button></div>`
-   :`<div class="row" style="gap:8px"><input class="field" data-w="passage" placeholder="시편 103:1-5" value="${esc((w&&w.passage)||'')}" style="width:180px"><input class="field grow" data-w="title" placeholder="잊지 말아야 할 은혜" value="${esc((w&&w.title)||'')}"></div>
-    <input class="field" data-w="line" placeholder="받은 은혜를 세어보는 예배" value="${esc((w&&w.line)||'')}" style="margin-top:6px">
-    <div class="row" style="margin-top:6px"><span class="hint" id="wSaved">${hasWord(w)?'저장됨':'적으면 자동 저장돼요'}</span><span class="grow"></span><button class="btn sm ghost" data-act="word-link">${ic('export')}목사님께 링크 보내기</button></div>`}`}
+function wordCardHTML(svc){const w=svc.word;const got=hasWord(w)&&w.from&&w.from.type!=='leader';
+ // 인도자가 여기서 말씀을 적지는 않는다. 적을 것은 '인도자의 글' 하나로 모았다.
+ // 목사님이 보낸 것만 읽기로 보여 주고, 링크 보내기·수정 요청은 남긴다
+ if(got)return `<div class="lbl" style="margin-top:10px">말씀 <span class="hint">목사님이 보낸 내용이에요</span></div>
+  ${wordBlockHTML(w,{lock:true})}
+  <div class="row" style="margin-top:6px"><button class="btn sm ghost" data-act="word-req">수정 요청</button></div>`;
+ return `<div class="row" style="margin-top:10px;justify-content:flex-end"><button class="btn sm ghost" data-act="word-link">${ic('export')}목사님께 말씀 링크 보내기</button></div>`}
 let WORD_T,WORD_DIRTY=false;   // DIRTY: 아직 서버에 안 올라간 편집이 있음 → 서버 값으로 덮어쓰지 않는다
 async function saveWord(svc){if(!online()||!S.team.id||!svc)return;
  try{const r=await api('/services/'+svc.id+'/word',{method:'PUT',body:{teamId:S.team.id,word:svc.word||{}}});svc.word=r.word||svc.word;WORD_DIRTY=false;touch(svc);save();const s=$('#wSaved');if(s)s.textContent='저장됨'}
@@ -4176,20 +4189,25 @@ function noteChip(n){const all=n.layer==='leader'&&!n.session;const who=n.layer=
 function sheetHTML(item,W,ctx){
  const mods=modsFor(item.form);let html='';
  const pieces=item.pieces||[];
+ const gap=10;
  pieces.forEach((p,pi)=>{
-  const s=W/p.w;const notesBy={};
+  const span=+p.span>1?Math.min(3,+p.span):1;                 // 1=전체, 2=반, 3=삼분의 일
+  const pw=span>1?Math.max(80,(W-gap*(span-1))/span):W;       // 가로로 놓으면 그만큼 좁아진다
+  const s=pw/p.w;const notesBy={};
   (p.markers||[]).forEach(m=>{notesBy[m.id]=fixedNotesOf(item,m.id,ctx).concat(notesOfMarker(item,m.id).filter(n=>noteVisible(n,ctx)))});
   const stripMarkers=(p.markers||[]).filter(m=>m.cut!=null&&notesBy[m.id].length>0).sort((a,b)=>a.cut-b.cut);
   const bounds=[0,...stripMarkers.map(m=>m.cut),p.h];
-  html+=`<div class="piece" data-piece="${p.id}">`;
-  if(pieces.length>1)html+=`<div class="phead"><span class="ln"></span>조각 ${pi+1}${p.name?' · '+esc(p.name):''}<span class="ln"></span></div>`;
+  // 전체 폭 조각은 언제나 제 줄을 쓴다. 많이 줄였다고 멋대로 옆에 붙지 않게
+  if(span===1&&pi>0)html+='<i class="pbreak"></i>';
+  html+=`<div class="piece${span>1?' sp'+span:''}" data-piece="${p.id}" style="width:${Math.round(pw)}px">`;
+  if(pieces.length>1)html+=`<div class="phead${ctx.mode==='edit'?' drag':''}" ${ctx.mode==='edit'?`data-pdrag="${p.id}"`:''}><span class="ln"></span>${ctx.mode==='edit'?ic('list'):''}조각 ${pi+1}${p.name?' · '+esc(p.name):''}<span class="ln"></span></div>`;
   const capo=ctx.mode==='edit'?0:(+me().capo||0);const off=chordOffset(item,p)-capo;const nCh=(p.chords||[]).length;const showRed=off!==0&&(ctx.f?ctx.f.chords!==false:true);const chordTool=ctx.mode==='edit'&&ctx.tool==='chord';
   if(ctx.mode==='edit')html+=`<div class="chordbar ${(nCh||p.sheetKey||p.ocr==='pending')?'':'slim'}">${p.ocr==='pending'?'<span class="hint">코드 인식 중…</span>':''}${(nCh||p.sheetKey)?`<button class="btn sm" data-act="sheet-key" data-id="${p.id}">악보 키 ${esc(p.sheetKey||'?')}${p.keyConfirmed?'':' <span class="muted">(추정)</span>'}</button><span class="hint">→ 연주 키 ${esc(item.key||'?')}</span><span class="pill">${off>0?'+':''}${off}</span><button class="icon sm ghost" data-act="chord-off" data-id="${p.id}" data-d="-1" title="반음 내림">${ic('down')}</button><button class="icon sm ghost" data-act="chord-off" data-id="${p.id}" data-d="1" title="반음 올림">${ic('up')}</button><span class="hint">${nCh}개 코드${off?' · 전조 코드 병기':' · 같은 키'}</span>`:''}${p.ocr==='none'?'<span class="hint">인식 엔진 미연결 — "코드" 도구로 직접 추가</span>':''}${p.ocr==='error'?`<span class="hint" style="color:var(--destructive)">인식 실패: ${esc(p.ocrErr||'')}</span>`:''}<span class="grow"></span>${p.ocr!=='pending'?`<button class="btn sm ghost" data-act="ocr" data-id="${p.id}">${ic('marker')}${nCh?'다시 인식':'코드 인식'}</button>`:''}${NET.omr&&p.ocr!=='pending'?`<button class="btn sm ghost" data-act="omr" data-id="${p.id}" title="코드·가사·구성을 읽어 곡 정보에 채움">${ic('music')}채보</button><button class="btn sm ghost" data-act="score-make" data-id="${p.id}" title="오선·음표·코드·가사를 새로 그린 악보로 만듭니다">${ic('pen')}악보 만들기</button>`:''}${item.score&&pi===0?`<button class="btn sm" data-act="score-open" title="재구성한 악보 열기">${ic('music')}악보 ${item.score.measures.length}마디</button>`:''}</div>`;
   for(let i=0;i<bounds.length-1;i++){
    const a=bounds[i],b=bounds[i+1];
    if(i>0){const m=stripMarkers[i-1];html+=stripHTML(m,notesBy[m.id],mods,ctx)}
    if(b-a<=0)continue;
-   html+=`<div class="slice ${ctx.tool?'tool':''}" data-piece="${p.id}" data-start="${a}" data-s="${s}" style="height:${(b-a)*s}px;background-image:url('${url(p.blob)}');background-size:${W}px ${p.h*s}px;background-position:0 ${-a*s}px">`;
+   html+=`<div class="slice ${ctx.tool?'tool':''}" data-piece="${p.id}" data-start="${a}" data-s="${s}" style="height:${(b-a)*s}px;background-image:url('${url(p.blob)}');background-size:${pw}px ${p.h*s}px;background-position:0 ${-a*s}px">`;
    (p.hls||[]).forEach(h=>{if(h.y>=a&&h.y<b)html+=`<div class="hl ${h.kind==='mask'?'mask':''}" data-hl="${h.id}" style="left:${h.x*s}px;top:${(h.y-a)*s}px;width:${h.w*s}px;height:${Math.min(h.h,b-h.y)*s}px"></div>`});
    (p.chords||[]).forEach(c=>{if(c.y<a||c.y>=b)return;const fs=Math.max(9,Math.min(24,c.h*s*0.92));
     if(chordTool)html+=`<span class="chdbox" data-chord="${c.id}" style="left:${c.x*s-2}px;top:${(c.y-a)*s-2}px;width:${c.w*s+4}px;height:${c.h*s+4}px"></span>`;
@@ -4204,6 +4222,7 @@ function sheetHTML(item,W,ctx){
    html+=`</div>`;
   }
   html+=`</div>`;
+  if(span===1&&pi<pieces.length-1)html+='<i class="pbreak"></i>';   // 다음 조각은 새 줄에서
  });
  if(!pieces.length)html+=`<div class="muted" style="padding:40px 20px;text-align:center">${ctx.mode==='edit'?'오른쪽 위 "조각 추가"로 악보 이미지를 넣으세요.<br><span class="hint">스크린샷·스캔 권장. 사진도 됩니다.</span>':'악보가 없습니다.'}</div>`;
  return html;
@@ -4346,8 +4365,9 @@ function initSongDrag(svc){const first=$('.list-item');if(!first)return;const li
  const done=()=>{if(!row)return;const order=$$('.list-item',list).map(r=>r.dataset.id);row.classList.remove('dragging');const r0=row;row=null;if(moved){svc.items.sort((a,b)=>order.indexOf(a.id)-order.indexOf(b.id));SEL[svc.id].item=r0.dataset.id;touch(svc);save();render()}};
  list.addEventListener('pointerup',done);list.addEventListener('pointercancel',done)}
 function autoGrow(t){if(!t||t.tagName!=='TEXTAREA')return;t.style.height='auto';t.style.height=(t.scrollHeight+2)+'px'}
-const edZoom=()=>{const v=+lsGet('conti-edzoom');return v>=0.5&&v<=3?v:1};
-function setEdZoom(d,svc){const z=d?Math.max(0.5,Math.min(3,+(edZoom()+d*0.1).toFixed(2))):1;
+const edZoom=()=>{const v=+lsGet('conti-edzoom');return v>=0.2&&v<=4?v:1};
+function setEdZoom(d,svc){const cur=edZoom();const step=cur<0.5?0.05:0.1;
+ const z=d?Math.max(0.2,Math.min(4,+(cur+d*step).toFixed(2))):1;
  try{localStorage.setItem('conti-edzoom',z)}catch(e){}
  $$('.edzoomlbl').forEach(e=>e.textContent=Math.round(z*100)+'%');drawEditorSheet(svc)}
 function drawEditorSheet(svc){const it=curItem(svc);const sh=$('#sheet');if(!it||!sh)return;
@@ -4537,6 +4557,32 @@ function afterEditor(svc){
  window.onresize=()=>{if(route().name==='edit')drawEditorSheet(svc)};
  // 창 크기가 그대로여도 판을 접거나 가운데 손잡이를 끌면 악보 폭이 바뀐다.
  // 다시 안 그리면 그림과 좌표계가 어긋나 하이라이트가 엉뚱한 곳에 찍힌다
+ // 조각 머리를 잡고 끌어 순서 바꾸기. 반쪽끼리는 옆에 붙으므로 가로 배치가 된다
+ {let pd=null;
+  sh.addEventListener('pointerdown',e=>{const h=e.target.closest('[data-pdrag]');if(!h)return;
+   const el=h.closest('.piece');if(!el)return;
+   pd={id:h.dataset.pdrag,el,over:null,side:null,moved:false};
+   el.classList.add('dragging');h.setPointerCapture(e.pointerId);e.preventDefault()},true);
+  sh.addEventListener('pointermove',e=>{if(!pd)return;pd.moved=true;
+   const el=document.elementFromPoint(e.clientX,e.clientY);
+   const t=el&&el.closest('.piece');
+   $$('.piece',sh).forEach(x=>x.classList.remove('dropbefore','dropafter'));
+   if(!t||t===pd.el){pd.over=null;return}
+   const r=t.getBoundingClientRect();
+   pd.side=(e.clientX-r.left)<r.width/2?'before':'after';pd.over=t.dataset.piece;
+   t.classList.add(pd.side==='before'?'dropbefore':'dropafter')},true);
+  const pdEnd=()=>{if(!pd)return;const d=pd;pd=null;
+   $$('.piece',sh).forEach(x=>x.classList.remove('dragging','dropbefore','dropafter'));
+   if(!d.moved||!d.over||d.over===d.id)return;
+   const it=curItem(svc);if(!it)return;
+   const from=it.pieces.findIndex(x=>x.id===d.id);
+   if(from<0)return;const [moved]=it.pieces.splice(from,1);
+   let to=it.pieces.findIndex(x=>x.id===d.over);
+   if(to<0){it.pieces.splice(from,0,moved);return}
+   it.pieces.splice(d.side==='after'?to+1:to,0,moved);
+   // 아래 조각 칩 순서도 같이 따라와야 한다 — 안 그러면 엉뚱한 조각을 건드린다
+   touch(svc);save();syncLib(it);render()};
+  sh.addEventListener('pointerup',pdEnd,true);sh.addEventListener('pointercancel',pdEnd,true);}
  if(SHEET_RO){SHEET_RO.disconnect();SHEET_RO=null}   // 앞 예배의 감시자가 남아 있으면 남의 악보를 그려 버린다
  if(window.ResizeObserver){const sheetEl=$('#sheet');if(sheetEl){let lastW=sheetEl.clientWidth,rz=null;
   SHEET_RO=new ResizeObserver(()=>{const r=route();if(r.name!=='edit'||r.a!==svc.id)return;
@@ -4801,12 +4847,16 @@ async function pullPrefs(force){if(!online()||!NET.user)return null;
  try{const r=await api('/me/prefs');PREFS.data=r.prefs||{};PREFS.at=Date.now();
   if(r.push)PUSH.key=r.push.key||'',PUSH.configured=!!r.push.configured;
   return PREFS.data}catch(e){return PREFS.data}}
-// 부분 병합으로 올린다. 통째로 덮으면 다른 기기가 방금 저장한 것이 날아간다
-async function savePrefs(patch){
+// 부분 병합으로 올린다. 통째로 덮으면 다른 기기가 방금 저장한 것이 날아간다.
+// 요청은 줄 세워 보낸다 — 두 개가 동시에 날아가면 먼저 보낸 것이 늦게 닿아 값이 되돌아간다
+let PREFS_Q=Promise.resolve();
+function savePrefs(patch){
  PREFS.data=Object.assign({},PREFS.data||{},patch);
- if(!online()||!NET.user)return;
- try{const r=await api('/me/prefs',{method:'PATCH',body:{prefs:patch}});PREFS.data=r.prefs||PREFS.data;PREFS.at=Date.now()}
- catch(e){}}
+ if(!online()||!NET.user)return PREFS_Q;
+ PREFS_Q=PREFS_Q.then(async()=>{
+  try{const r=await api('/me/prefs',{method:'PATCH',body:{prefs:patch}});PREFS.data=r.prefs||PREFS.data;PREFS.at=Date.now()}
+  catch(e){}});
+ return PREFS_Q}
 const QUIET_DEF={on:true,from:22,to:8};
 const quietOf=()=>Object.assign({},QUIET_DEF,((PREFS.data||{}).quiet)||{});
 
@@ -4999,7 +5049,8 @@ function stageClick(e){
  if(a==='next'){stageGo(1);return}
  if(a==='cfg'){STG.open=!STG.open;stageRender();return}
  if(a==='baron'){STG.pref.bar=true;stgSave(song);stageRender();return}
- if(a==='z'){STG.pref.zoom=Math.max(.6,Math.min(1.5,+(STG.pref.zoom+ +b.dataset.d*0.1).toFixed(2)));stgSave(song);stageRender();return}
+ if(a==='z'){const cur=STG.pref.zoom;const step=cur<0.5?0.05:0.1;   // 작을수록 잘게
+  STG.pref.zoom=Math.max(.1,Math.min(3,+(cur+ +b.dataset.d*step).toFixed(2)));stgSave(song);stageRender();return}
  if(a==='cols'){STG.pref.cols=b.dataset.v==='auto'?'auto':+b.dataset.v;stgSave(song);stageRender();return}
  if(a==='reset'){STG.pref={...STG_DEF};stgSave(song);stageRender();return}
  if(a==='export'){stageExport();return}}
@@ -5453,6 +5504,9 @@ document.addEventListener('click',async e=>{
    {let bad=0;for(const id of ids){const ok=await SYNC.deleteService(id);if(ok===false)bad++}
     toast(bad?`${ids.length-bad}개 지웠어요 · ${bad}개는 서버에서 못 지웠어요`:`${ids.length}개 지웠어요`);render()}
    break}
+  case 'span-piece':{const sv=svcById(r.a);const it=sv&&curItem(sv);const p=it&&it.pieces.find(x=>x.id===el.dataset.id);if(!p)break;
+   p.span=(+p.span>1?+p.span:1)%3+1;if(p.span===1)delete p.span;   // 전체 → ½ → ⅓ → 전체
+   touch(sv);save();syncLib(it);render();break}
   case 'crop-piece':{const s2=svcById(r.a);const it2=curItem(s2);const p2=it2&&it2.pieces.find(x=>x.id===el.dataset.id);if(p2)cropPieceModal(s2,it2,p2);break}
   case 'legal':go('legal/'+(el.dataset.k||'privacy'));break;
   case 'legal-back':{if(history.length>1)history.back();else go(NET.user&&S.team.id?'settings':'home');break}

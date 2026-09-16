@@ -32,14 +32,18 @@ def run():
 
         # ---- 인도자: 말씀 입력(자동 저장) + 곡별 이유 + 인도자의 글 ----
         pl.click('[data-act="new-svc"]'); pl.wait_for_selector('[data-f="svc.name"]'); pl.fill('[data-f="svc.name"]', '말씀 예배')
-        pl.wait_for_selector('[data-w="passage"]', timeout=5000)
-        pl.fill('[data-w="passage"]', '시편 103:1-5')
-        pl.fill('[data-w="title"]', '잊지 말아야 할 은혜')
-        pl.fill('[data-w="line"]', '받은 은혜를 세어보는 예배')
+        # 인도자는 말씀을 편집 화면이 아니라 말씀 페이지에서 적는다 (실사용 제보로 편집 화면에서는 뺐다)
         pl.fill('[data-f="svc.message"]', '이번 예배는 "돌아옴"으로 잡았어요.')
-        pl.wait_for_function("document.querySelector('#wSaved') && document.querySelector('#wSaved').textContent==='저장됨'", timeout=10000)
         svc_id = pl.evaluate('CONTI.S.services[0].id')
+        # 초안이 서버에 올라가야 말씀 페이지 목록에 뜬다
+        pl.wait_for_timeout(2500)
+        pl.goto(URL + '#/word'); pl.wait_for_selector('#wpPassage', timeout=15000)
+        pl.fill('#wpPassage', '시편 103:1-5')
+        pl.fill('#wpTitle', '잊지 말아야 할 은혜')
+        pl.fill('#wpLine', '받은 은혜를 세어보는 예배')
+        pl.click('[data-act="word-save"]'); pl.wait_for_timeout(1500)
         w = cL.request.get(URL + 'api/services/%s?team=%s&draft=1' % (svc_id, team))
+        pl.goto(URL + '#/edit/' + svc_id); pl.wait_for_selector('[data-act="add-item"]', timeout=10000)
         pl.click('[data-act="add-item"]'); pl.wait_for_selector('[data-f="item.title"]'); pl.fill('[data-f="item.title"]', '예수로 나의 구주 삼고')
         pl.fill('[data-f="item.reason"]', '“은혜를 세어보라”는 구절과 이어지는 곡')
         pl.wait_for_timeout(500)
@@ -71,8 +75,10 @@ def run():
         print('bottom sheet ok')
 
         # ---- 말씀만 바꿔 재발행 → 점 + 다시 한 번 ----
-        pl.goto(URL + '#/edit/' + svc_id); pl.wait_for_selector('[data-w="line"]', timeout=10000)
-        pl.fill('[data-w="line"]', '은혜를 세어보는 예배 (수정)')
+        pl.goto(URL + '#/word'); pl.wait_for_selector('#wpLine', timeout=10000)
+        pl.fill('#wpLine', '은혜를 세어보는 예배 (수정)')
+        pl.click('[data-act="word-save"]'); pl.wait_for_timeout(1200)
+        pl.goto(URL + '#/edit/' + svc_id); pl.wait_for_selector('[data-act="publish"]', timeout=10000)
         pl.wait_for_function("CONTI.S.services[0].word && CONTI.S.services[0].word.line.includes('수정')", timeout=10000)
         pl.wait_for_timeout(1500)
         pl.click('[data-act="publish"]'); pl.wait_for_selector('#pubOnly'); pl.click('#pubOnly'); pl.wait_for_timeout(5000)
