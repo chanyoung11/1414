@@ -2,10 +2,25 @@
   "appId": "com.lets1414.app",
   "appName": "1414",
   "webDir": "app",
-  "server": { "androidScheme": "https", "iosScheme": "https" },
-  "android": { "allowMixedContent": false },
-  "ios": { "contentInset": "always", "limitsNavigationsToAppBoundDomains": false },
+  "server": {
+    "androidScheme": "https",
+    "iosScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#111213"
+  },
+  "ios": {
+    "contentInset": "never",
+    "limitsNavigationsToAppBoundDomains": false,
+    "backgroundColor": "#111213"
+  },
   "plugins": {
-    "SplashScreen": { "launchShowDuration": 600, "backgroundColor": "#111213", "androidScaleType": "CENTER_CROP", "showSpinner": false }
+    "SplashScreen": {
+      "launchShowDuration": 600,
+      "backgroundColor": "#111213",
+      "androidScaleType": "CENTER_CROP",
+      "showSpinner": false
+    }
   }
 }
