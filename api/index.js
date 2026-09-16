@@ -7,7 +7,7 @@ import { hashPassword, verifyPassword, USERNAME_RE, PASSWORD_MIN } from '../lib/
 import { putBlob, delBlobs, readUrls, presignPut, headBlob } from '../lib/blob.js';
 import { ocrBands, visionConfigured } from '../lib/vision.js';
 import { sendPush, pushConfigured, vapidPublicKey } from '../lib/push.js';
-import { transcribeSheet, transcribeScore, geminiConfigured, geminiModel, estimateUSD } from '../lib/gemini.js';
+import { transcribeSheet, transcribeScore, geminiConfigured, geminiModel, estimateUSD, ocrChordsGemini } from '../lib/gemini.js';
 import { norm as normSong, cho as choSong } from '../lib/song.js';
 import { randomBytes } from 'node:crypto';
 
@@ -1900,19 +1900,39 @@ on('POST', '/score/musicxml', async ({ uid, body }) => {
 });
 
 // 코드 OCR (인도자): 클라이언트가 자른 코드 띠 이미지들을 Vision 에 넘김
-on('GET', '/ocr', async ({ uid }) => { if (!uid) throw noAuth(); return { available: visionConfigured(), mock: process.env.GOOGLE_VISION_KEY === 'mock' }; });
+on('GET', '/ocr', async ({ uid }) => { if (!uid) throw noAuth();
+  return { available: geminiConfigured() || visionConfigured(),
+           engine: geminiConfigured() ? 'gemini' : (visionConfigured() ? 'vision' : ''),
+           mock: process.env.GOOGLE_VISION_KEY === 'mock' }; });
 on('POST', '/ocr', async ({ uid, body }) => {
   if (!uid) throw noAuth();
   const teamId = str(body.teamId, 64);
   await requireMember(uid, teamId, 'leader');
-  if (!visionConfigured()) throw new HttpError(503, 'no_ocr', '코드 인식 엔진이 아직 연결되지 않았어요 (GOOGLE_VISION_KEY)');
+  // 코드 인식은 Gemini 가 먼저다. 일반 OCR 은 위첨자(Bm⁷, A⁹)와 sus4 를 못 읽어
+  // 절반 넘게 틀렸다. Gemini 는 코드 어휘를 알아 95~100% 를 읽는다 (docs/sample_sheet 기준)
+  const useGemini = geminiConfigured() && body.engine !== 'vision';
+  if (!useGemini && !visionConfigured()) throw new HttpError(503, 'no_ocr', '코드 인식 엔진이 아직 연결되지 않았어요');
   const images = (Array.isArray(body.images) ? body.images : []).slice(0, 16).map((im) => ({ b64: String(im.b64 || ''), mime: str(im.mime, 40), w: +im.w || 0, h: +im.h || 0, kind: str(im.kind, 10) })).filter((im) => im.b64.length > 100);
   if (!images.length) throw bad('이미지가 없어요');
   if (images.reduce((n, im) => n + im.b64.length, 0) > 12 * 1024 * 1024) throw new HttpError(413, 'too_large', '이미지가 너무 커요');
   await aiGuard(teamId, 'ocr', uid);
+  if (useGemini) {
+    let g;
+    try { g = await ocrChordsGemini(images, { thinking: 'LOW' }); }
+    catch (e) {
+      if (!visionConfigured()) throw new HttpError(502, 'ocr_failed', '코드 인식 실패: ' + (e.message || ''));
+      g = null;   // Gemini 가 실패하면 예전 방식으로라도 읽는다
+    }
+    if (g) {
+      await aiCount(teamId, 'ocr', (g.usage && (g.usage.input + g.usage.output)) || 0, uid);
+      const usd = estimateUSD(g.model, g.usage);
+      return { results: g.bands, engine: 'gemini', title: g.title || '', key: g.key || '',
+               usage: g.usage, cost: usd, costKRW: Math.round(usd * (+process.env.USD_KRW || 1400) * 10) / 10 };
+    }
+  }
   const results = await ocrBands(images);
   await aiCount(teamId, 'ocr', 0, uid);
-  return { results };
+  return { results, engine: 'vision' };
 });
 
 /* ---------- §2 정기 예배 · 사역 날짜 ---------- */

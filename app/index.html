@@ -4096,31 +4096,39 @@ function scoreMenuModal(svc,it){const sc=it.score;
 
 async function recognizeChords(svc,it,piece){if(!online()||!isLeader()||!piece)return;piece.ocr='pending';piece.ocrErr='';save();if(route().name==='edit')drawEditorSheet(svc);
  try{const blob=await IDB.get('blobs',piece.blob);if(!blob)throw new Error('이 기기에 악보 파일이 없어요');const img=await loadImg(URL.createObjectURL(blob));
-  const cv=document.createElement('canvas');cv.width=img.naturalWidth;cv.height=img.naturalHeight;cv.getContext('2d').drawImage(img,0,0);
-  let sys=[];try{sys=detectSystems(cv)}catch(e){console.warn('detectSystems',e)}let mode=sys.length?'bands':'tiles';
-  const H=cv.height,W=cv.width;const bands=[];
-  sys.forEach((s0,i)=>{const above=sys.filter((o,j)=>j<i&&o.x1>s0.x0&&o.x0<s0.x1);const prevB=above.length?Math.max(...above.map(o=>o.bottom)):0;const top=Math.max(prevB+Math.round(H*0.008),s0.top-Math.round(H*0.055));const bot=s0.top-1;if(bot-top>=8)bands.push({top,bot,x0:s0.x0,x1:s0.x1})});
-  if(!bands.length){mode='tiles'}
-  if(mode==='tiles'){bands.length=0;const th=Math.round(H/7),ov=Math.round(th*0.15);for(let y=0;y<H;y+=th-ov)bands.push({top:y,bot:Math.min(H,y+th),x0:0,x1:W})}
-  // 제목 띠: 첫 시스템 위(없으면 위 18%)
-  const titleBot=sys.length?Math.max(40,Math.min(...sys.map(o=>o.top))-2):Math.round(H*0.18);
-  const scale=W<1600?2:1;const mk=(b,kind)=>{const bw=b.x1-b.x0;const c=document.createElement('canvas');c.width=bw*scale;c.height=(b.bot-b.top)*scale;c.getContext('2d').drawImage(cv,b.x0,b.top,bw,b.bot-b.top,0,0,c.width,c.height);return {b64:c.toDataURL('image/jpeg',0.85).split(',')[1],mime:'image/jpeg',w:c.width,h:c.height,top:b.top,left:b.x0,kind}};
-  const titleImg=titleBot>12?mk({top:0,bot:titleBot,x0:0,x1:W},'title'):null;
-  const images=bands.slice(0,32).map(b=>{const bw=b.x1-b.x0;const c=document.createElement('canvas');c.width=bw*scale;c.height=(b.bot-b.top)*scale;c.getContext('2d').drawImage(cv,b.x0,b.top,bw,b.bot-b.top,0,0,c.width,c.height);return {b64:c.toDataURL('image/jpeg',0.85).split(',')[1],mime:'image/jpeg',w:c.width,h:c.height,top:b.top,left:b.x0}});
-  const all=images.concat(titleImg?[titleImg]:[]);const results=[];for(let k0=0;k0<all.length;k0+=16){const part=all.slice(k0,k0+16);const r=await api('/ocr',{method:'POST',body:{teamId:S.team.id,images:part.map(({b64,mime,w,h,kind})=>({b64,mime,w,h,kind}))}});results.push(...(r.results||[]))}
-  const titleRes=titleImg?results.pop():null;
-  const kx=piece.w/W;const found=[];
-  results.forEach((res,i)=>{(res.tokens||[]).forEach(t=>{const text=normAcc(t.text);if((t.conf||0)<30||!isChordText(text))return;found.push({id:uid(),text,x:Math.round((images[i].left+t.x/scale)*kx),y:Math.round((images[i].top+t.y/scale)*kx),w:Math.round(t.w/scale*kx),h:Math.round(t.h/scale*kx),conf:t.conf,fixed:false})})});
-  // 겹치는 타일에서 같은 코드가 두 번 잡힌 것 제거
+  // 예전에는 오선 위 '코드 띠'를 12~13장으로 잘라 일반 OCR 에 보냈다. 위첨자(Bm⁷, A⁹)와
+  // sus4 를 못 읽어 절반 넘게 틀렸다. 이제는 악보 한 장을 통째로 한 번 보낸다 —
+  // 앞뒤 진행을 보고 읽으니 훨씬 정확하고, 제목·키도 같이 온다
+  const MAXW=1600;const sc=Math.min(1,MAXW/img.naturalWidth);
+  const cv=document.createElement('canvas');cv.width=Math.round(img.naturalWidth*sc);cv.height=Math.round(img.naturalHeight*sc);
+  cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+  const b64=cv.toDataURL('image/jpeg',0.9).split(',')[1];
+  const r=await api('/ocr',{method:'POST',body:{teamId:S.team.id,images:[{b64,mime:'image/jpeg',w:cv.width,h:cv.height}]}});
+  const res=(r.results||[])[0]||{tokens:[]};
+  const kx=piece.w/cv.width;const found=[];
+  (res.tokens||[]).forEach(t=>{const text=normAcc(t.text);if(!isChordText(text))return;
+   found.push({id:uid(),text,x:Math.round(t.x*kx),y:Math.round(t.y*kx),w:Math.round(t.w*kx),h:Math.round(t.h*kx),conf:t.conf||90,fixed:false})});
+  // 같은 자리에 두 번 잡힌 것 제거
   const uniq=[];found.sort((a,b)=>a.y-b.y||a.x-b.x).forEach(c=>{if(!uniq.some(u=>u.text===c.text&&Math.abs(u.x-c.x)<c.h&&Math.abs(u.y-c.y)<c.h))uniq.push(c)});
-  piece.chords=(piece.chords||[]).filter(c=>c.fixed).concat(uniq);if(!piece.keyConfirmed)piece.sheetKey=estimateKey(piece.chords)||piece.sheetKey||'';piece.ocr='done';piece.ocrMode=mode;
+  piece.chords=(piece.chords||[]).filter(c=>c.fixed).concat(uniq);
+  if(!piece.keyConfirmed)piece.sheetKey=(r.key&&keySemi(r.key)!=null?r.key:'')||estimateKey(piece.chords)||piece.sheetKey||'';
+  piece.ocr='done';piece.ocrMode=r.engine||'gemini';
   // 자동 채우기: 제목 · 연주 키 (비어 있을 때만)
-  const filled=[];const title=titleRes?guessTitle(titleRes.tokens||[]):'';
+  const filled=[];const title=(r.title||'').trim();
   if(title&&!(it.title||'').trim()){it.title=title;filled.push('제목')}
   if(piece.sheetKey&&!(it.key||'').trim()){it.key=piece.sheetKey;filled.push('키 '+piece.sheetKey)}
-  toast((uniq.length?`코드 ${uniq.length}개 인식 · 악보 키 ${piece.sheetKey||'?'} (추정)`:'코드를 찾지 못했어요')+(mode==='tiles'?' · 오선 없이 전체 읽기':'')+(filled.length?` · ${filled.join('·')} 채움`:''));
+  toast((uniq.length?`코드 ${uniq.length}개 인식 · 악보 키 ${piece.sheetKey||'?'}`:'코드를 찾지 못했어요')+(filled.length?` · ${filled.join('·')} 채움`:''));
  }catch(e){piece.ocr=e.code==='no_ocr'?'none':'error';piece.ocrErr=e.message||'';if(piece.ocr==='error')toast('코드 인식 실패: '+piece.ocrErr)}
- touch(svc);save();syncLib(it);if(route().name==='edit')render()}
+ touch(svc);save();syncLib(it);
+ // 인식은 10초 넘게 걸린다. 다 되었다고 편집기를 통째로 다시 그리면 그 사이 하던 일
+ // (조각 끌기, 글 쓰던 칸)이 날아간다. 악보만 다시 그리고 채워진 칸만 손본다
+ if(route().name==='edit'&&curItem(svc)===it){
+  drawEditorSheet(svc);
+  const ti=$('[data-f="item.title"]');if(ti&&ti.value!==(it.title||'')&&document.activeElement!==ti)ti.value=it.title||'';
+  const ki=$('[data-f="item.key"]');if(ki&&ki.value!==(it.key||'')&&document.activeElement!==ki)ki.value=it.key||'';
+  const li=$$('.list-item').find(l=>l.dataset.id===it.id);
+  if(li){const t=li.querySelector('.grow'),k=li.querySelector('.k');
+   if(t)t.textContent=it.title||'(제목 없음)';if(k)k.textContent=keyStr(it)}}}
 // 제목 추정: 상단 띠의 토큰을 줄로 묶고, 글자 높이가 가장 큰 줄(메타 정보 제외)
 function guessTitle(tokens){const bad=/작사|작곡|채보|편곡|Words|Music|Arranged|Lyrics|Public Domain|=\s*\d+|♩|^[\d\s+\-.,:]+$/;
  const lines=[];tokens.slice().sort((a,b)=>a.y-b.y||a.x-b.x).forEach(t=>{const L=lines.find(l=>Math.abs(l.y-t.y)<Math.max(l.h,t.h)*0.6);if(L){L.toks.push(t);L.h=Math.max(L.h,t.h)}else lines.push({y:t.y,h:t.h,toks:[t]})});

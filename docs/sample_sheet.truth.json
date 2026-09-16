@@ -1,0 +1,13 @@
+{"file":"docs/sample_sheet.jpg","systems":[
+ ["A","Bm7","A9/C#","D","A/C#"],
+ ["D","A/C#","D","E(sus4)","E"],
+ ["A","Bm7","A9/C#","D","A9/C#"],
+ ["D","A9/C#","D/F#","E","A"],
+ ["A/C#","D","A/C#","D","E","F#m7","A/C#","D"],
+ ["A/C#","D/F#","E","A","A(sus4)","A(sus4)"],
+ ["A","F#m7","D","E"],
+ ["A","F#m7","D","E"],
+ ["F#m7","E/G#","A","A/C#","D","E"],
+ ["Fb","Cb/Eb","Fb","Gb","Abm7","Cb/Eb"],
+ ["Fb","Cb/Eb","Fb/Ab","Gb","Cb","Cb"]
+]}
