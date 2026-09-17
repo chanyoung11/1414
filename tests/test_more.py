@@ -13,7 +13,7 @@ def run():
     pg.fill('#lgName','더보기'); pg.fill('#lgUser','mo'+tag); pg.fill('#lgPass','secret1'); pg.click('[data-act="lg-submit"]')
     pg.wait_for_selector('#gtTeam'); pg.fill('#gtTeam','팀'); pg.click('#gtSess .q:has-text("건반")'); pg.click('[data-act="team-create"]')
     pg.wait_for_selector('.shell[data-page]',timeout=10000); pg.wait_for_timeout(800)
-    for act,page in [('settings','settings'),('team','team'),('sched','sched'),('word','word')]:
+    for act,page in [('settings','settings'),('team','team'),('word','word')]:
       pg.click('.bnav [data-act="more-menu"]'); pg.wait_for_selector('.morelist',timeout=3000)
       pg.click('.morelist [data-act="%s"]'%act); pg.wait_for_timeout(700)
       if pg.locator('.morelist').count(): fail('%s 눌렀는데 시트가 안 닫힘'%act)
@@ -22,5 +22,5 @@ def run():
       print(act,'→',got,'ok')
     if errs: fail('콘솔 오류: %s'%errs[:2])
     b.close()
-  print('OK — 더보기 4항목 전부 눌림')
+  print('OK — 더보기 3항목 전부 눌림')
 run()

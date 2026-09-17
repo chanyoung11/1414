@@ -58,11 +58,15 @@ def run():
         # 종을 누르면 드롭다운, 「모두 보기」로 알림 페이지 (§6.7)
         pm.click('.hd .bell'); pm.wait_for_selector('.dd.open .ddit', timeout=5000)
         if '콘티 v1' not in pm.locator('.dd.open').inner_text(): fail('종 드롭다운에 발행 알림 없음')
-        pm.click('.dd.open .ddall'); pm.wait_for_selector('.shell[data-page="inbox"] .nrow2.unread', timeout=5000)
+        # 종을 열어 보면 그것으로 읽은 것 (열었다 닫으면 배지가 사라지게 — 실사용 요청)
+        pm.wait_for_timeout(800)
+        if cM.request.get(URL + 'api/notifications?team=' + team).json()['unread'] != 0: fail('종을 열었는데 읽음 처리 안 됨')
+        pm.click('.dd.open .ddall'); pm.wait_for_selector('.shell[data-page="inbox"] .nrow2', timeout=5000)
+        if pm.locator('.nrow2.unread').count(): fail('종을 열어 봤는데 알림함에 안 읽음이 남음')
         if '콘티 v1' not in pm.locator('.setpane, main').first.inner_text(): fail('알림 페이지에 발행 알림 없음')
+        if pm.locator('[data-noti-badge]:not([hidden])').count() and pm.locator('[data-noti-badge]').first.inner_text().strip() not in ('','0'): fail('배지가 안 사라짐')
         pm.click('.nrow2'); pm.wait_for_timeout(1500)
         if not pm.evaluate('location.hash').startswith('#view/') and '/view/' not in pm.evaluate('location.hash'): fail('알림 탭 후 콘티 보기로 안 감: ' + pm.evaluate('location.hash'))
-        if cM.request.get(URL + 'api/notifications?team=' + team).json()['unread'] != 0: fail('탭 후 읽음 처리 안 됨')
         print('publish notification ok')
 
         # ---- 날짜 열기 → date.opened 카드(홈) → 확인 → 사라짐 ----

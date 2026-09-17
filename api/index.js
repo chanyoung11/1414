@@ -2390,9 +2390,24 @@ const cleanLineup = (v, teamSessions) => (Array.isArray(v) ? v : []).slice(0, 60
 const lineupKey = (l) => (l || []).map((r) => r.session + ':' + r.memberId).sort().join(',');
 
 // 달력·표에 필요한 것을 한 번에: 사역 날짜(편성 포함) + 가능 여부(인도자는 전원, 멤버는 자기 것) + 멤버 목록
+// 편성 표는 service_dates 를 본다. 콘티를 지웠는데 날짜가 남거나, 콘티는 있는데 날짜가 없으면
+// 표가 실제와 어긋난다 → 읽을 때마다 맞춘다 (지운 콘티가 보이고 있는 콘티가 안 보이던 것)
+async function reconcileDates(teamId) {
+  const live = await q(`select id, name, date::text as date from services where team_id=$1 and date is not null
+                        union select id, doc->>'name' as name, doc->>'date' as date from drafts where team_id=$1 and doc->>'date' <> ''`, [teamId]);
+  const ids = live.map((r) => r.id);
+  // 콘티가 사라진 날짜: 콘티 때문에 생긴 날짜는 지우고, 직접 연 날짜는 연결만 푼다
+  await q(`delete from service_dates where team_id=$1 and source='service' and service_id is not null and not (service_id = any($2::text[]))`, [teamId, ids]);
+  await q(`update service_dates set service_id=null where team_id=$1 and service_id is not null and not (service_id = any($2::text[]))`, [teamId, ids]);
+  // 날짜가 없는 콘티: 연결한다 (빈 날짜가 있으면 거기에, 없으면 새로)
+  const linked = new Set((await q('select service_id from service_dates where team_id=$1 and service_id is not null', [teamId])).map((r) => r.service_id));
+  for (const r of live) if (!linked.has(r.id) && /^\d{4}-\d{2}-\d{2}$/.test(r.date || '')) await linkDate(teamId, r.id, r.date, r.name);
+}
+
 on('GET', '/teams/:id/schedule', async ({ uid, url, params }) => {
   if (!uid) throw noAuth();
   const m = await requireMember(uid, params.id);
+  try { await reconcileDates(params.id); } catch (e) { console.error('reconcile', e.message); }
   const from = /^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get('from') || '') ? url.searchParams.get('from') : null;
   const to = /^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get('to') || '') ? url.searchParams.get('to') : null;
   const range = from && to ? 'and date between $2 and $3' : "and date >= current_date - interval '1 month'";
