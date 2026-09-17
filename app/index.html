@@ -508,7 +508,7 @@ html.dark .pill.role-pastor{color:#B4A7F5}
 @media (max-width:767px){
  .side{display:none}
  .bnav{display:grid}
- .shell{padding:10px 12px 92px}
+ .shell{padding:10px 12px 112px}
  .hd{min-height:56px}
  .hd .acts .btn{display:none}       /* 좁은 폭에서는 제목 + 종만 (§7) */
  .hd .acts .btn.pri{display:inline-flex}
@@ -687,7 +687,7 @@ html.dark .msgbody{background:#1C1C1C}
 ins.adsbygoogle[data-ad-status="unfilled"]{display:none!important}
 /* 광고 배너가 뜨면 그만큼 아래를 비운다 — 하단 탭이 가려지면 안 된다 */
 body.hasad .bnav{bottom:calc(12px + var(--adh,50px) + var(--sab))}
-body.hasad .shell{padding-bottom:calc(92px + var(--adh,50px))}
+body.hasad .shell{padding-bottom:calc(112px + var(--adh,50px))}
 /* 건반·메트로놈은 왼쪽에서 나온다 — 악보를 가리지 않아야 쳐 보면서 볼 수 있다 */
 .sidetool{position:fixed;left:0;top:0;bottom:0;width:min(420px,44vw);z-index:60;
  background:var(--panel);border-right:1px solid var(--line);box-shadow:8px 0 28px rgba(0,0,0,.28);
@@ -2778,7 +2778,11 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),
   // 여기에는 영원히 남아, 같은 이름이 두 번씩 보이거나 지운 예배가 살아 있는 것처럼 보인다.
   // 아직 서버에 못 올린 내 초안(발행 전·발행 대기)은 건드리지 않는다
   const onServer=new Set(list.map(r=>r.id).concat(drafts.map(d=>d.id)));
-  const gone=S.services.filter(x=>!onServer.has(x.id)&&x.published&&!x.pubPending);
+  const sig=x=>(x.date||'')+'|'+(x.items||[]).map(it=>(it.title||'').trim()).join('|');
+  const serverSigs=new Set(S.services.filter(x=>onServer.has(x.id)).map(sig));
+  const gone=S.services.filter(x=>!onServer.has(x.id)&&((x.published&&!x.pubPending)||
+   // 서버에 없는 초안인데 서버 것과 날짜·곡이 똑같다 → 예전 동기화가 남긴 복사본
+   (!x.published&&serverSigs.has(sig(x)))));
   if(gone.length){
    const ids=new Set(gone.map(x=>x.id));
    S.services=S.services.filter(x=>!ids.has(x.id));
@@ -5523,8 +5527,9 @@ async function adsShow(){
   // 배너 뷰는 투명한 채로 떠 있어서, 그때 자리를 비우면 바만 공중에 뜬다
   if(!ADSTATE.bound){ADSTATE.bound=true;
    A.addListener('bannerAdSizeChanged',sz=>{let h=(sz&&sz.height)||0;if(h>120)h=60;   // 말도 안 되는 값이면 배너 한 줄 높이로
-    document.documentElement.style.setProperty('--adh',h+'px');
-    document.body.classList.toggle('hasad',h>0)});
+    document.documentElement.style.setProperty('--adh',h+'px')});
+   // 자리는 광고가 진짜로 들어왔을 때만 비운다. 크기 이벤트는 채워지기 전에도 와서 빈 띠가 생겼다
+   A.addListener('bannerAdLoaded',()=>document.body.classList.add('hasad'));
    A.addListener('bannerAdFailedToLoad',()=>document.body.classList.remove('hasad'))}
   // 크기는 고정 배너(320×50). 적응형은 안드로이드에서 화면 절반을 차지하는 시안이 와서 하단바가 한가운데로 밀렸다
   await A.showBanner({adId:ADS[plat].banner,adSize:'BANNER',position:'BOTTOM_CENTER',margin:0,isTesting:false});
