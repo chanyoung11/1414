@@ -3229,6 +3229,11 @@ function songRow(x,opts){const s=x.s;const a=defArr(s);const o=opts||{};const ke
   <span class="hint" style="white-space:nowrap">${s.useCount||0}회 · ${relDate(s.lastUsed)}</span>
   ${o.multi?'':`<button class="btn sm ${isLeader()?'pri':''}" data-songgo="${esc(s.id)}">${isLeader()?ic('plus')+'예배에':ic('play')+'연습'}</button>`}
  </div>`}
+// 썸네일은 기기에 있는 파일이라도 미리보기 URL 을 만든 뒤에야 보인다. 그린 뒤에 만들고 한 번 다시 그린다
+const libThumbs=(()=>{const tried=new Set();return function(){
+ const ids=[];(S.library||[]).forEach(x=>{const a=defArr(x);const p=(a.pieces||[])[0];if(p&&p.blob&&!urlCache.has(p.blob)&&!tried.has(p.blob)){tried.add(p.blob);ids.push(p.blob)}});
+ if(!ids.length)return;
+ Promise.all(ids.map(blobURL)).then(us=>{if(us.some(Boolean)&&route().name==='library')render()}).catch(()=>{})}})();
 function libraryHTML(){
  const lead=isLeader();const list=libFiltered();const q=LIB.q.trim();
  const plain=!q&&!LIB.key&&!LIB.tempo&&!LIB.tag&&!LIB.folder&&!LIB.last&&!LIB.archived&&!LIB.season&&LIB.pick!=='multi';
@@ -4713,7 +4718,7 @@ async function render(){
    app.innerHTML=songHTML(song);restoreScroll();return}
   if(isLeader()&&LIB.dups===null)api('/songs/dups?team='+S.team.id).then(x=>{LIB.dups=x.pairs||[];if(route().name==='library'&&!route().a&&LIB.dups.length)render()}).catch(()=>{LIB.dups=[]});
   await songURLs();if(stale())return;
-  app.innerHTML=libraryHTML();afterLibrary();restoreScroll();return}
+  app.innerHTML=libraryHTML();afterLibrary();restoreScroll();libThumbs();return}
  // 팀 화면 (B부)
  if(r.name==='team'){
   if(!online()||!S.team.id)return go('home');
