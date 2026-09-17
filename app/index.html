@@ -759,6 +759,7 @@ body.stgon{overflow:hidden}
 .stgw .sbtn[disabled]{opacity:.3;pointer-events:none}
 .stgw .sbtn2{width:30px;height:30px;border-radius:8px;background:var(--surface-medium);display:inline-flex;align-items:center;justify-content:center;font-weight:700;flex:0 0 auto}
 .stgshow{position:absolute;right:10px;top:calc(var(--sat) + 8px);z-index:3;background:#17181A}
+@media(max-width:640px){.stgbar{gap:6px;padding:0 8px}.stgbar [data-stg="export"],.stgbar .stgpg{display:none}.stgbar b{font-size:14px;overflow:hidden;text-overflow:ellipsis;min-width:0}}
 .stgcanvas{position:absolute;left:16px;right:16px;bottom:12px;display:flex;justify-content:center}
 .stgpage{position:relative;background:#fff;color:#000;border-radius:10px;overflow:hidden}
 .stgpage .blk{position:absolute}
@@ -2726,6 +2727,8 @@ const whoStr=m=>[m.name||'이름 없음',m.session,roleLabel(m.role)].filter((x,
 // 웹에서는 지금처럼 같은 출처. x-conti-app 을 보면 서버가 쿠키를 SameSite=None 으로 준다
 const NATIVE=/^(capacitor|ionic):/.test(location.protocol)||(location.hostname==='localhost'&&!location.port&&location.protocol==='https:');
 const API_BASE=NATIVE?'https://lets1414.com':'';
+// 카톡에 붙는 링크의 주소. 앱 안에서는 location 이 localhost 라 그대로 쓰면 아무도 못 연다
+const SITE=NATIVE?'https://lets1414.com/':location.origin+location.pathname;
 // iOS 는 다른 도메인 쿠키를 앱 재시작 때 버린다(ITP). 그래서 앱은 로그인할 때 받은
 // 토큰을 직접 들고 다닌다. 웹은 예전처럼 쿠키만 쓴다
 const TOKEN_KEY='conti-app-token';
@@ -2965,7 +2968,7 @@ async function doGate(act,el){
  }catch(e){const box=$('#lgErr')||$('#jnErr')||$('#gtErr2')||$('#gtErr');if(box)box.textContent=e.message;else toast(e.message)}
 }
 function copyText(t){if(navigator.clipboard&&navigator.clipboard.writeText)return navigator.clipboard.writeText(t);const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();return Promise.resolve()}
-const inviteLink=()=>location.origin+location.pathname+'#/join/'+(S.team.invite||'');
+const inviteLink=()=>SITE+'#/join/'+(S.team.invite||'');
 /* ---------- 라이브러리 A부: 곡 → 편곡 → 사용 이력 ---------- */
 // 서버가 진실이고 기기에는 거울을 둔다(오프라인에서 보기 위해). 고친 것은 dirty 표를 달아 나중에 올린다.
 const CHO_L=['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
@@ -3980,7 +3983,7 @@ function inviteModal(){let role='member',days=30,once=false;
    closeModal();await pullTeam(true);TM.open.invites=true;render();
    await copyText(joinLink(r2.invite.code));toast('링크를 만들고 복사했어요')}catch(err){toast(err.message);const b2=$('#ivOk');if(b2)b2.disabled=false}}}};
  wire()}
-const joinLink=code=>location.origin+location.pathname+'#/join/'+code;
+const joinLink=code=>SITE+'#/join/'+code;
 
 /* ---------- 정기 예배 · 사역 날짜 (§2) ---------- */
 const WD=['일','월','화','수','목','금','토'];
@@ -5060,7 +5063,7 @@ function kakaoText(svc){
  svc.items.forEach((it,i)=>{const k=keyStr(it);lines.push(`${i+1}. ${it.title||'(제목 없음)'}${k?' / '+k:''}`)});
  if(svc.notice)lines.push('',svc.notice.split('\n')[0]);
  const msg=(svc.message||'').trim();if(msg){const paras=msg.split(/\n\s*\n/);lines.push('',paras[0].trim()+(paras.length>1?' …':''),'(앱에서 전문 보기)')}
- lines.push('',online()?'👉 '+location.origin+location.pathname+'#/view/'+svc.id:'👉 (앱에서 "'+(svcName(svc))+'" 열기 — 파일 가져오기)');
+ lines.push('',online()?'👉 '+SITE+'#/view/'+svc.id:'👉 (앱에서 "'+(svcName(svc))+'" 열기 — 파일 가져오기)');
  if(svc.published){const d=diffSvc(svc.published,svc);if(d.length)lines.push('',`v${svc.version} 변경: `+d.join(', '))}
  return lines.join('\n');
 }
@@ -5670,8 +5673,8 @@ const STG_DEF={zoom:1,cols:'auto',memos:true,hl:true,bar:true,form:'auto'};
 // 송폼을 어디에 보여줄지 (기획 §4)
 const STG_FORM=[['auto','자동'],['bar','상단 바'],['block','조각 위'],['hide','숨김']];
 // 기기 구간: 11인치와 13인치 아이패드, 폰, 데스크톱이 같은 조판을 쓸 이유가 없다
-function deviceClass(){const w=Math.max(window.innerWidth,window.innerHeight);
- return w<760?'phone':w<1100?'tab-s':w<1500?'tab-l':'desktop'}
+function deviceClass(){const s=Math.min(window.innerWidth,window.innerHeight),l=Math.max(window.innerWidth,window.innerHeight);
+ return s<600?'phone':l<1100?'tab-s':l<1500?'tab-l':'desktop'}
 // v2 부터 한 화면에 여러 곡이 들어간다. 크기·열 같은 값은 곡이 아니라
 // 예배 하나에 하나다 (블록 조판과 같은 단위)
 function stgKey(){const u=(NET.user&&NET.user.id)||'local';return `stage:${u}:${STG.svc?STG.svc.id:'-'}:${deviceClass()}`}
@@ -5997,7 +6000,7 @@ async function stageOpen(svc,idx){
  el=document.createElement('div');el.id='stageWrap';el.className='stgw';
  document.body.appendChild(el);document.body.classList.add('stgon');
  stageRender();keepAwake(true);if(NATIVE)adsHide();
- if(NATIVE&&window.Capacitor.getPlatform&&window.Capacitor.getPlatform()==='android'){try{CapPlug().StatusBar&&CapPlug().StatusBar.hide()}catch(e){}}
+ if(NATIVE&&window.Capacitor.getPlatform&&window.Capacitor.getPlatform()==='android'){try{CapPlug().StatusBar&&CapPlug().StatusBar.hide()}catch(e){}document.documentElement.style.setProperty('--sat','0px')}
  el.onclick=stageClick;
  window.addEventListener('keydown',stageKey);
  window.addEventListener('resize',stageResize);
@@ -6021,7 +6024,7 @@ async function stageOpen(svc,idx){
 // 무대 모드를 닫는다. 곡이 바뀌었을 때만 아래 화면을 다시 그린다 —
 // 그냥 다시 그리면 재생 중이던 영상·녹음이 새로 만들어지며 끊긴다
 function stageExit(){const moved=STG.idx!==STG.from;stageClose();if(moved)render()}
-function stageClose(){keepAwake(false);if(NATIVE)setTimeout(adsSync,0);if(NATIVE&&window.Capacitor.getPlatform&&window.Capacitor.getPlatform()==='android'){try{CapPlug().StatusBar&&CapPlug().StatusBar.show()}catch(e){}}const el=$('#stageWrap');if(el)el.remove();
+function stageClose(){keepAwake(false);if(NATIVE)setTimeout(adsSync,0);if(NATIVE&&window.Capacitor.getPlatform&&window.Capacitor.getPlatform()==='android'){try{CapPlug().StatusBar&&CapPlug().StatusBar.show()}catch(e){}document.documentElement.style.removeProperty('--sat')}const el=$('#stageWrap');if(el)el.remove();
  document.body.classList.remove('stgon');
  window.removeEventListener('keydown',stageKey);window.removeEventListener('resize',stageResize);
  STG.svc=null}
@@ -6583,7 +6586,7 @@ document.addEventListener('click',async e=>{
    catch(e){if(st)st.textContent='저장 실패';toast(e.message)}break}
   case 'word-link':{const svc2=svcById(route().a);if(!svc2)break;
    try{const r2=await api('/services/'+svc2.id+'/word-link',{method:'POST',body:{teamId:S.team.id}});
-    const url2=location.origin+location.pathname+'#/word-link/'+r2.token;
+    const url2=SITE+'#/word-link/'+r2.token;
     const txt=`[${r2.serviceName}] 말씀을 알려주세요\n아래 링크에 적어 주시면 찬양팀에 전달돼요. (7일 안에, 한 번만)\n${url2}`;
     try{await copyText(txt)}catch(e2){}
     // 복사가 안 될 수 있으니 링크를 화면에도 보여준다 (한 번 만들면 다시 볼 수 없으므로)
