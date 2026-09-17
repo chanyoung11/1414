@@ -1136,7 +1136,9 @@ function moreMenu(){
  if(on)items.push(['team','users','팀']);
  items.push(['settings','gear','설정']);
  modal(`<b style="font-size:17px">더보기</b>
-  <div class="morelist">${items.map(([act,i,t])=>`<button class="btn" data-act="${act}">${ic(i)}${esc(t)}</button>`).join('')}</div>`,{sheet:true})}
+  <div class="morelist">${items.map(([act,i,t])=>`<button class="btn" data-act="${act}">${ic(i)}${esc(t)}</button>`).join('')}</div>`,{sheet:true});
+ // 전역 클릭은 #modal 안을 건너뛴다 → 여기서 직접 받는다 (눌러도 반응이 없던 것)
+ $('#modal').onclick=e=>{const b=e.target.closest('.morelist [data-act]');if(!b)return;const act=b.dataset.act;closeModal();NOTI.open=false;go(act)}}
 /* ---------- 앱 셸: 사이드바·페이지 헤더 한 벌 (UI 통일 §1·§2) ---------- */
 // 사이드바 항목. 역할에 따라 숨는다 (멤버: 편성·말씀 없음 / 목회자: 내 일정·편성 없음)
 function navItems(){
