@@ -72,6 +72,9 @@ a{color:inherit}
 ::selection{background:rgba(10,10,10,.14)}html.dark ::selection{background:rgba(240,240,240,.14)}
 :focus-visible{outline:2px solid var(--fg);outline-offset:2px;border-radius:var(--r-sm)}
 svg.ic{width:20px;height:20px;flex:0 0 auto;display:block}
+/* 더블탭·두 손가락으로 페이지 자체가 확대되는 걸 막는다 (앱 안에서 화면이 갑자기 커지던 것).
+   악보 확대는 우리가 직접 그린다 — 연습·무대의 두 손가락 제스처는 터치 이벤트라 그대로 산다 */
+html,body{touch-action:pan-x pan-y}
 #app{height:100%;display:flex;flex-direction:column;color:var(--fg);padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)} /* iOS 홈 화면 설치 시 상태바·홈 인디케이터 피함 */
 .display{font-family:"Satoshi","Pretendard Variable","Pretendard",sans-serif}
 .tnum{font-variant-numeric:tabular-nums}
@@ -674,8 +677,8 @@ html.dark .msgbody{background:#1C1C1C}
    400px 짜리 빈 구멍이 남는다 (애드센스 승인 전에는 늘 안 들어온다) */
 ins.adsbygoogle[data-ad-status="unfilled"]{display:none!important}
 /* 광고 배너가 뜨면 그만큼 아래를 비운다 — 하단 탭이 가려지면 안 된다 */
-body.hasad .bnav{bottom:calc(50px + env(safe-area-inset-bottom,0px))}
-body.hasad .shell{padding-bottom:50px}
+body.hasad .bnav{bottom:calc(12px + var(--adh,50px) + env(safe-area-inset-bottom,0px))}
+body.hasad .shell{padding-bottom:calc(92px + var(--adh,50px))}
 /* 건반·메트로놈은 왼쪽에서 나온다 — 악보를 가리지 않아야 쳐 보면서 볼 수 있다 */
 .sidetool{position:fixed;left:0;top:0;bottom:0;width:min(420px,44vw);z-index:60;
  background:var(--panel);border-right:1px solid var(--line);box-shadow:8px 0 28px rgba(0,0,0,.28);
@@ -4577,10 +4580,16 @@ function sheetHTML(item,W,ctx){
    if(b-a<=0)continue;
    html+=`<div class="slice ${ctx.tool?'tool':''}" data-piece="${p.id}" data-start="${a}" data-s="${s}" style="height:${(b-a)*s}px;background-image:url('${url(p.blob)}');background-size:${pw}px ${p.h*s}px;background-position:0 ${-a*s}px">`;
    (p.hls||[]).forEach(h=>{if(h.y>=a&&h.y<b)html+=`<div class="hl ${h.kind==='mask'?'mask':''}" data-hl="${h.id}" style="left:${h.x*s}px;top:${(h.y-a)*s}px;width:${h.w*s}px;height:${Math.min(h.h,b-h.y)*s}px"></div>`});
-   (p.chords||[]).forEach(c=>{if(c.y<a||c.y>=b)return;const fs=Math.max(9,Math.min(24,c.h*s*0.92));
+   const chs=(p.chords||[]).slice().sort((u,v)=>(u.y-v.y)||(u.x-v.x));
+   chs.forEach((c,ci)=>{if(c.y<a||c.y>=b)return;const fs=Math.max(9,Math.min(24,c.h*s*0.92));
+    // 오른쪽에 붙일 자리가 다음 코드에 닿으면 코드 바로 위에 놓는다 — 라벨끼리 겹쳐 읽히지 않게
     if(chordTool)html+=`<span class="chdbox" data-chord="${c.id}" style="left:${c.x*s-2}px;top:${(c.y-a)*s-2}px;width:${c.w*s+4}px;height:${c.h*s+4}px"></span>`;
     const offC=off+shiftAt(item,pi,c.y);if(!(offC!==0&&(ctx.f?ctx.f.chords!==false:true))&&!chordTool)return;
-    if(showRed||chordTool||offC)html+=`<span class="chd ${chordTool?'edit':''}" data-chord="${c.id}" style="left:${(c.x+c.w)*s+4}px;top:${(c.y-a)*s}px;font-size:${fs}px;line-height:${Math.max(c.h*s,fs)}px">${esc(offC?transposeChord(c.text,offC,item.key):c.text)}</span>`});
+    const txt=offC?transposeChord(c.text,offC,item.key):c.text;
+    const nx=chs[ci+1];const lw=txt.length*fs*0.62;
+    const sameLine=nx&&Math.abs(nx.y-c.y)<c.h;
+    const up=sameLine&&((c.x+c.w)*s+4+lw>nx.x*s-2);
+    if(showRed||chordTool||offC)html+=`<span class="chd ${chordTool?'edit':''} ${up?'up':''}" data-chord="${c.id}" style="left:${up?c.x*s:(c.x+c.w)*s+4}px;top:${up?(c.y-a)*s-fs-1:(c.y-a)*s}px;font-size:${fs}px;line-height:${up?fs:Math.max(c.h*s,fs)}px">${esc(txt)}</span>`});
    (p.markers||[]).forEach(m=>{
     const inStrip=stripMarkers.includes(m);
     if(ctx.mode==='edit'&&m.cut!=null&&m.cut>a&&m.cut<b&&!inStrip)html+=`<div class="cutline" data-cut="${m.id}" style="top:${(m.cut-a)*s}px"><i></i><b>${esc(m.label)}</b></div>`;
@@ -5428,8 +5437,15 @@ async function adsShow(){
  try{
   if(!ADSTATE.ready){await adsTracking(A);await A.initialize({initializeForTesting:false});await adsConsent(A);ADSTATE.ready=true}
   if(ADSTATE.on)return;
+  // 배너가 실제 높이를 가질 때만 본문을 밀어 올린다. 광고가 안 오면(승인 전·무필)
+  // 배너 뷰는 투명한 채로 떠 있어서, 그때 자리를 비우면 바만 공중에 뜬다
+  if(!ADSTATE.bound){ADSTATE.bound=true;
+   A.addListener('bannerAdSizeChanged',sz=>{const h=(sz&&sz.height)||0;
+    document.documentElement.style.setProperty('--adh',h+'px');
+    document.body.classList.toggle('hasad',h>0)});
+   A.addListener('bannerAdFailedToLoad',()=>document.body.classList.remove('hasad'))}
   await A.showBanner({adId:ADS[plat].banner,position:'BOTTOM_CENTER',margin:0,isTesting:false});
-  ADSTATE.on=true;document.body.classList.add('hasad');
+  ADSTATE.on=true;
  }catch(e){console.warn('ads',e)}
 }
 async function adsHide(){
