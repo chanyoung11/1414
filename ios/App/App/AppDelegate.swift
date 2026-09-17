@@ -11,8 +11,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // 화면을 꺼도 음원·영상 소리가 이어지게 한다. 연습 중 화면을 끄면 소리가
         // 끊기는 게 불편하다는 제보. Info.plist 의 UIBackgroundModes(audio)와 짝이다
         do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
-            try AVAudioSession.sharedInstance().setActive(true)
+            // 켜자마자 세션을 잡으면 듣고 있던 다른 앱 음악이 끊긴다. 처음엔 '섞어서'로 두고,
+            // 우리 미디어를 실제로 틀 때 Printer.audioFocus 가 잡는다 (그때 다른 음악이 멈추는 건 정상)
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
         } catch {
             print("audio session:", error)
         }
