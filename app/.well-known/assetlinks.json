@@ -1,11 +1,14 @@
 [
   {
-    "relation": ["delegate_permission/common.handle_all_urls"],
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
     "target": {
       "namespace": "android_app",
       "package_name": "com.lets1414.app",
       "sha256_cert_fingerprints": [
-        "A2:8D:2F:9F:A1:D6:AA:AA:86:3F:18:11:C9:63:05:08:F1:04:31:51:BC:19:28:BB:22:5F:D2:CE:FE:B1:87:96"
+        "A2:8D:2F:9F:A1:D6:AA:AA:86:3F:18:11:C9:63:05:08:F1:04:31:51:BC:19:28:BB:22:5F:D2:CE:FE:B1:87:96",
+        "7D:73:9F:64:D3:39:7A:24:39:05:E3:19:A3:05:90:ED:90:23:90:74:68:0B:7F:FB:09:E7:13:29:BF:0B:7F:7E"
       ]
     }
   }
