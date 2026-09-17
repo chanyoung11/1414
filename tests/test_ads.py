@@ -36,6 +36,13 @@ def run():
       if not L.locator('.webad').count(): fail('%s 에 광고 자리가 없음' % name)
     L.evaluate("()=>{location.hash='#/home'}"); L.wait_for_timeout(1000)
 
+    # 광고가 안 들어오면 자리를 접는다 — 안 접으면 예배 목록에 400px 빈 구멍이 남는다
+    collapsed = L.evaluate("""(()=>{const e=document.querySelector('.webad');
+      if(!e)return 'no-slot';
+      e.setAttribute('data-ad-status','unfilled');
+      return getComputedStyle(e).display})()""")
+    if collapsed != 'none': fail('광고가 비었는데 자리가 안 접힘: %s' % collapsed)
+
     # 유료 플랜에서는 사라져야 한다
     for plan in ['pro', 'plus']:
       L.evaluate("(p)=>{CONTI.S.team.plan=p;CONTI.render()}", plan)
