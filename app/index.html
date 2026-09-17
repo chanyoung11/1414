@@ -78,6 +78,7 @@ svg.ic{width:20px;height:20px;flex:0 0 auto;display:block}
 /* 더블탭·두 손가락으로 페이지 자체가 확대되는 걸 막는다 (앱 안에서 화면이 갑자기 커지던 것).
    악보 확대는 우리가 직접 그린다 — 연습·무대의 두 손가락 제스처는 터치 이벤트라 그대로 산다 */
 html,body{touch-action:pan-x pan-y}
+body.authbg{background:#111213}   /* 로그인 화면은 테마와 상관없이 어둡다 — 상태바 뒤까지 */
 #app{height:100%;display:flex;flex-direction:column;color:var(--fg);padding-top:var(--sat);padding-bottom:var(--sab)} /* iOS 홈 화면 설치 시 상태바·홈 인디케이터 피함 */
 .display{font-family:"Satoshi","Pretendard Variable","Pretendard",sans-serif}
 .tnum{font-variant-numeric:tabular-nums}
@@ -1194,7 +1195,9 @@ function shellHTML(active,o){
 function afterPaint(){
  const nav=$('.bnav');const h=nav?Math.max(0,window.innerHeight-nav.getBoundingClientRect().top):0;
  document.documentElement.style.setProperty('--bnavh',h+'px');
- if(NATIVE&&!afterPaint.awake){afterPaint.awake=true;keepAwake(true)}}
+ if(NATIVE&&!afterPaint.awake){afterPaint.awake=true;keepAwake(true)}
+ document.body.classList.toggle('authbg',!!document.querySelector('.auth-main'));
+ if(NATIVE&&window.__paintBar)window.__paintBar()}   // 로그인 ↔ 앱 화면이 바뀌면 상태바 색도
 new MutationObserver(()=>requestAnimationFrame(afterPaint)).observe(document.getElementById('app'),{childList:true});
 window.addEventListener('resize',()=>requestAnimationFrame(afterPaint));
 function bnavHTML(active){const on=online();const A=v=>active===v?'on':'';
@@ -5454,13 +5457,14 @@ async function nativeSetup(){
  const P=CapPlug();
  // 상태바 색을 테마에 맞춘다 (흰 배경에 흰 글씨로 묻히던 것)
  const paintBar=async()=>{try{if(!P.StatusBar)return;
-  const dark=document.documentElement.classList.contains('dark');
+  // 로그인 화면은 테마와 상관없이 늘 어둡다 → 상태바도 어둡게 (밝은 테마 폰에서 흰 띠가 뜨던 것)
+  const dark=document.documentElement.classList.contains('dark')||!NET.user||!!document.querySelector('.auth-main');
   await P.StatusBar.setStyle({style:dark?'DARK':'LIGHT'});
   if(window.Capacitor.getPlatform&&window.Capacitor.getPlatform()==='android'){
    // 15 부터는 setBackgroundColor 가 안 먹고 상태바 뒤에 '창 배경'이 보인다 → 창 배경을 테마 색으로
    try{await P.StatusBar.setBackgroundColor({color:dark?'#111213':'#FAFAFA'})}catch(e){}
    if(P.Printer&&P.Printer.setWindowBackground)await P.Printer.setWindowBackground({color:dark?'#111213':'#FAFAFA'})}}catch(e){}};
- paintBar();
+ paintBar();window.__paintBar=paintBar;
  new MutationObserver(paintBar).observe(document.documentElement,{attributes:true,attributeFilter:['class']});
  // 안드로이드 뒤로가기: 겹쳐 있는 것부터 닫고, 홈에서 누르면 앱을 내린다
  try{P.App&&P.App.addListener('backButton',()=>{
