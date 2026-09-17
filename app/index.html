@@ -309,7 +309,7 @@ html.dark .a-ok{color:#5FBF8A}html.dark .a-maybe{color:#E9C35C}html.dark .a-no{c
 .sect-hd{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:6px 2px 12px}
 .sect-hd h2{margin:0;font-size:17px;font-weight:700;letter-spacing:-.03em}
 .sect-hd p{margin:3px 0 0;font-size:12.5px;color:var(--muted-fg)}
-.bnav{position:fixed;left:12px;right:12px;bottom:calc(12px + var(--sab));z-index:40;border:1px solid var(--surface-border);border-radius:var(--r-xl);background:var(--card);padding:6px;box-shadow:0 24px 56px -28px rgba(0,0,0,.6);backdrop-filter:blur(10px);display:grid;grid-auto-flow:column;gap:4px}
+.bnav{position:fixed;left:0;right:0;bottom:0;z-index:40;border-top:1px solid var(--surface-border);background:color-mix(in srgb,var(--card) 88%,transparent);padding:6px 6px calc(6px + var(--sab));backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);display:grid;grid-auto-flow:column;gap:4px}
 .bnav button{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 4px;border-radius:var(--r-lg);font-size:11px;font-weight:600;color:var(--muted-fg)}
 .bnav button svg.ic{width:22px;height:22px}
 .bnav button.on{color:var(--fg)}
@@ -509,7 +509,8 @@ html.dark .pill.role-pastor{color:#B4A7F5}
 @media (max-width:767px){
  .side{display:none}
  .bnav{display:grid}
- .shell{padding:10px 12px calc(var(--bnavh,100px) + 16px)}
+ .shell{padding:10px 12px 10px}
+ .main>main{padding-bottom:calc(var(--bnavh,100px) + 16px)}
  .hd{min-height:56px}
  .hd .acts .btn{display:none}       /* 좁은 폭에서는 제목 + 종만 (§7) */
  .hd .acts .btn.pri{display:inline-flex}
@@ -687,8 +688,7 @@ html.dark .msgbody{background:#1C1C1C}
    400px 짜리 빈 구멍이 남는다 (애드센스 승인 전에는 늘 안 들어온다) */
 ins.adsbygoogle[data-ad-status="unfilled"]{display:none!important}
 /* 광고 배너가 뜨면 그만큼 아래를 비운다 — 하단 탭이 가려지면 안 된다 */
-body.hasad .bnav{bottom:calc(12px + var(--adh,50px) + var(--sab))}
-body.hasad .shell{padding-bottom:calc(var(--bnavh,100px) + 16px)}
+body.hasad #app{padding-bottom:calc(var(--sab) + var(--adh,50px))}   /* 연습 화면 아래 배너 자리 */
 /* 건반·메트로놈은 왼쪽에서 나온다 — 악보를 가리지 않아야 쳐 보면서 볼 수 있다 */
 .sidetool{position:fixed;left:0;top:0;bottom:0;width:min(420px,44vw);z-index:60;
  background:var(--panel);border-right:1px solid var(--line);box-shadow:8px 0 28px rgba(0,0,0,.28);
@@ -1039,7 +1039,7 @@ body.lnopen .main>main,body.lnopen .main>.hd{padding-right:min(476px,100%)}
  .nb.prev,.nb.next{display:none}.nb.cur{max-width:100%;font-size:14px}
  .songnav{gap:6px}
  .titlein.big{font-size:16px}
- .shell{padding:10px 10px calc(var(--bnavh,100px) + 16px)}.hd{padding:0 14px}.metrics{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.metric{padding:10px 12px}.metric .v{font-size:19px}
+ .shell{padding:10px 10px 10px}.main>main{padding-bottom:calc(var(--bnavh,100px) + 16px)}.hd{padding:0 14px}.metrics{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.metric{padding:10px 12px}.metric .v{font-size:19px}
 }
 </style>
 </head>
@@ -1227,7 +1227,7 @@ function homeHTML(){
        .concat(all.some(x=>!(x.folder||'').trim())?[['__none','폴더 없음',all.filter(x=>!(x.folder||'').trim()).length]]:[])
        .map(([v,label,n])=>`<button class="chip ${HOME.folder===v?'on':''}" data-act="home-folder" data-v="${esc(v)}">${esc(label)} <span class="muted">${n}</span></button>`).join('')}</div>`:''}
     ${svcs.length?rows:`<div class="empty rise d1"><b>아직 예배가 없어요</b>${lead?'첫 콘티를 만들거나, 받은 파일을 가져오세요.':(on?'인도자가 발행하면 여기에 자동으로 나타나요.':'인도자가 보낸 파일을 "가져오기"로 여세요.')}${lead?`<div><button class="btn pri" data-act="new-svc">${ic('plus')}새 예배 만들기</button></div>`:''}</div>`}
-    ${webAdSlotHTML()}`;
+`;
  return shellHTML('home',{title:'예배',sub:fmtToday(),body});
 }
 /* ---------- EDITOR ---------- */
@@ -1344,7 +1344,7 @@ function playHTML(svc,idx){
       <div class="row" style="margin-top:6px"><span class="mono muted" id="tCur">0:00</span><div class="prog" id="prog"><div class="fill" id="fill" style="width:0"></div></div><span class="mono muted" id="tDur">0:00</span><button class="btn sm" data-act="tnote">${ic('note')}여기에 메모</button></div>
      </div>
      <div id="tlist" class="small"></div>
-    </div></div>
+    </div>${webAdSlotHTML()}</div>
    <div class="vgutter" title="드래그해서 높이 조절"></div>
    <div class="panel">${ptab('송폼','메모 필터')}
     <div class="pbody" style="display:flex;flex-direction:column;gap:10px">
@@ -1849,7 +1849,7 @@ function calHTML(){const me0=me();
  const acts=`${unsetN?`<button class="btn sm ${SCH.onlyUnset?'pri':''}" data-act="cal-only">미선택만 보기</button>`:''}<span class="pill">${open.length?`${answered}/${open.length} 답함`:'사역 날짜 없음'}</span>`;
  const body=`<div class="cal-leg" style="margin:0 0 12px">${Object.entries(AVN).map(([k2,v])=>`<span class="${v.cls}"><i>${v.sym}</i>${v.label}</span>`).join('')}<span class="hint">탭할 때마다 바뀌어요 · 보류·불가능은 꾹 눌러 메모</span></div>
    ${open.length?months.map(calMonthHTML).join(''):`<div class="empty"><span class="icon">${ic('cal2')}</span><b>아직 사역 날짜가 없어요</b>인도자가 날짜를 열면 여기에 나타나요</div>`}`;
- return shellHTML('cal',{title:'내 일정',sub:'가능한 날을 눌러서 알려주세요',acts,body:body+webAdSlotHTML(),bodyClass:'calpage'})}
+ return shellHTML('cal',{title:'내 일정',sub:'가능한 날을 눌러서 알려주세요',acts,body,bodyClass:'calpage'})}
 async function setAv(date,state,memo){SCH.seq++;const me0=me();const prev=SCH.availability.find(a=>a.userId===me0.userId&&a.date===date);const before=prev?{...prev}:null;
  SCH.availability=SCH.availability.filter(a=>!(a.userId===me0.userId&&a.date===date));
  if(state!=='unset')SCH.availability.push({userId:me0.userId,date,state,memo:memo!==undefined?memo:(before?before.memo:'')});
@@ -2046,7 +2046,7 @@ function inboxHTML(){
  const body=list.length
   ? groups.map(([k,ns])=>`<section class="ngrp"><div class="lbl">${esc(k)}</div>${ns.map(row).join('')}</section>`).join('')
   : `<div class="empty"><span class="icon">${ic('bell')}</span><b>아직 알림이 없어요</b>콘티가 발행되거나 편성이 오면 여기에 떠요</div>`;
- return shellHTML('inbox',{title:'알림',sub:NOTI.unread?`안 읽음 ${NOTI.unread}개`:'',acts,body:body+webAdSlotHTML()})}
+ return shellHTML('inbox',{title:'알림',sub:NOTI.unread?`안 읽음 ${NOTI.unread}개`:'',acts,body})}
 async function markAllRead(){if(!NOTI.unread)return;
  const now=new Date().toISOString();NOTI.list.forEach(n=>n.readAt=n.readAt||now);NOTI.unread=0;NOTI.sig='';updateBadges();
  try{await api('/notifications/read',{method:'POST',body:{teamId:S.team.id,all:true}})}catch(e){toast(e.message)}}
@@ -3332,7 +3332,6 @@ function libraryHTML(){
    <div class="lbl">전체 ${all.length}곡</div>`:''}
   <div id="libList">${list.length?list.map(x=>songRow(x,{multi:LIB.pick==='multi',picked:LIB.sel.includes(x.s.id)})).join('')
    :`<div class="empty"><span class="icon">${ic('music')}</span><b>${q?'찾는 곡이 없어요':'아직 곡이 없어요'}</b>${q?'다른 말로 찾아 보세요':(lead?'"새 곡"으로 만들면 라이브러리에 들어가요':'인도자가 곡을 넣으면 여기 보여요')}${!q&&lead?`<div><button class="btn" data-act="lib-new">${ic('plus')}새 곡</button></div>`:''}</div>`}</div>
-  ${webAdSlotHTML()}
  </div>`;
  const sub=`${all.length}곡${thisYear?` · 올해 ${thisYear}곡`:''}`;
  return shellHTML('library',{title:'라이브러리',sub,acts,body})}
@@ -5499,7 +5498,7 @@ function webAdsAllowed(){
 }
 function webAdSlotHTML(){
  return webAdsAllowed()
-  ? `<ins class="adsbygoogle webad" style="display:block" data-ad-client="${esc(WEBADS.client)}" data-ad-slot="${esc(WEBADS.slot)}" data-ad-format="auto" data-full-width-responsive="true"></ins>`
+  ? `<ins class="adsbygoogle webad" style="display:block" data-ad-client="${esc(WEBADS.client)}" data-ad-slot="${esc(WEBADS.slot)}" data-ad-format="horizontal" data-full-width-responsive="false"></ins>`
   : '';
 }
 function webAdsRender(){
@@ -5555,7 +5554,7 @@ async function adsShow(){
    A.addListener('bannerAdLoaded',()=>document.body.classList.add('hasad'));
    A.addListener('bannerAdFailedToLoad',()=>document.body.classList.remove('hasad'))}
   // 크기는 고정 배너(320×50). 적응형은 안드로이드에서 화면 절반을 차지하는 시안이 와서 하단바가 한가운데로 밀렸다
-  await A.showBanner({adId:ADS[plat].banner,adSize:'BANNER',position:'BOTTOM_CENTER',margin:0,isTesting:false});
+  await A.showBanner({adId:ADS[plat].banner,adSize:window.innerWidth>=728?'LEADERBOARD':'BANNER',position:'BOTTOM_CENTER',margin:0,isTesting:false});
   ADSTATE.on=true;
  }catch(e){console.warn('ads',e)}
 }
@@ -5565,13 +5564,14 @@ async function adsHide(){
  ADSTATE.on=false;document.body.classList.remove('hasad');
 }
 // 예배 중에는 광고를 내린다 — 무대 모드·연습·콘티 보기
-const AD_FREE_ROUTES=/^(play|view|stage)$/;
+// 광고는 연습 화면에만 — 체류 시간이 길고, 탭바가 없어서 아무것도 안 가린다. 무대(연습 안 스위치 포함)에서는 내린다
+const AD_ROUTES=/^play$/;
 function adsSync(){
  // 약관 동의·인도자의 글 같은 팝업이 떠 있으면 광고(→ATT 창)는 나중에. 창 세 개가 한꺼번에 뜨지 않게
  if(NATIVE&&$('#modal')&&$('#modal').firstChild){clearTimeout(adsSync.t);adsSync.t=setTimeout(adsSync,2500);return}
  if(!NATIVE)return;
  const r=route().name;
- if(AD_FREE_ROUTES.test(r)||document.getElementById('stageWrap'))adsHide();else adsShow();
+ if(AD_ROUTES.test(r)&&!document.getElementById('stageWrap')&&!(typeof PL!=='undefined'&&PL.stage))adsShow();else adsHide();
 }
 
 // 무대 모드·연습 중에는 화면이 꺼지지 않게 한다

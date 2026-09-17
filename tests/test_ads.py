@@ -29,12 +29,18 @@ def run():
       CONTI.S.team.plan='free';CONTI.render()}""")
     L.wait_for_timeout(1200)
     if not L.evaluate("CONTI.webAdsAllowed()"): fail('무료 플랜인데 광고가 안 나옴')
-    if not L.locator('.webad').count(): fail('무료 플랜인데 광고 자리가 없음')
-    # 예배 목록·라이브러리·일정·알림함 네 곳에 자리가 있다
+    # 광고는 연습 화면에만 — 홈·라이브러리·일정·알림함에는 자리가 없어야 한다
+    if L.locator('.webad').count(): fail('홈에 광고 자리가 남음')
     for name, h in [('라이브러리','#/library'), ('일정','#/cal'), ('알림함','#/inbox')]:
-      L.evaluate("(x)=>{location.hash=x}", h); L.wait_for_timeout(1200)
-      if not L.locator('.webad').count(): fail('%s 에 광고 자리가 없음' % name)
-    L.evaluate("()=>{location.hash='#/home'}"); L.wait_for_timeout(1000)
+      L.evaluate("(x)=>{location.hash=x}", h); L.wait_for_timeout(900)
+      if L.locator('.webad').count(): fail('%s 에 광고 자리가 남음' % name)
+    # 연습 화면에는 자리가 있다 (곡 하나 있는 예배를 만들어 들어간다)
+    L.evaluate("()=>{location.hash='#/home'}"); L.wait_for_timeout(600)
+    L.click('[data-act="new-svc"]'); L.wait_for_selector('[data-f="svc.name"]', timeout=8000)
+    L.fill('[data-f="svc.name"]', '광고 예배'); L.click('[data-act="add-item"]'); L.wait_for_selector('[data-f="item.title"]'); L.fill('[data-f="item.title"]', '곡'); L.wait_for_timeout(500)
+    sid = L.evaluate("CONTI.S.services[0].id")
+    L.evaluate("(x)=>{location.hash=x}", '#/play/'+sid); L.wait_for_timeout(1500)
+    if not L.locator('.webad').count(): fail('연습 화면에 광고 자리가 없음')
 
     # 광고가 안 들어오면 자리를 접는다 — 안 접으면 예배 목록에 400px 빈 구멍이 남는다
     collapsed = L.evaluate("""(()=>{const e=document.querySelector('.webad');
@@ -42,6 +48,7 @@ def run():
       e.setAttribute('data-ad-status','unfilled');
       return getComputedStyle(e).display})()""")
     if collapsed != 'none': fail('광고가 비었는데 자리가 안 접힘: %s' % collapsed)
+    L.evaluate("()=>{location.hash='#/home'}"); L.wait_for_timeout(800)
 
     # 유료 플랜에서는 사라져야 한다
     for plan in ['pro', 'plus']:
