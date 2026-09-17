@@ -3232,7 +3232,7 @@ function songRow(x,opts){const s=x.s;const a=defArr(s);const o=opts||{};const ke
 // 썸네일은 기기에 있는 파일이라도 미리보기 URL 을 만든 뒤에야 보인다. 그린 뒤에 만들고 한 번 다시 그린다
 // 파일이 아직 내려오는 중이면 다음 그리기 때 다시 시도한다. 새로 만든 URL 이 있을 때만 다시 그리므로 무한 반복은 없다
 function libThumbs(){
- const ids=[];(S.library||[]).forEach(x=>{const a=defArr(x);const p=(a.pieces||[])[0];if(p&&p.blob&&!urlCache.has(p.blob))ids.push(p.blob)});
+ const ids=[];(S.songs||[]).forEach(x=>{const a=defArr(x);const p=(a.pieces||[])[0];if(p&&p.blob&&!urlCache.has(p.blob))ids.push(p.blob)});
  if(!ids.length)return;
  Promise.all(ids.map(blobURL)).then(us=>{if(us.some(Boolean)&&route().name==='library')render()}).catch(()=>{})}
 function libraryHTML(){
