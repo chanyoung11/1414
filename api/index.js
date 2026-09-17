@@ -4,7 +4,7 @@
 import { q, one } from '../lib/db.js';
 import { sessionClaims, sessionCookie, clearSessionCookie, randomToken, isApp, appSessionToken } from '../lib/session.js';
 import { hashPassword, verifyPassword, USERNAME_RE, PASSWORD_MIN } from '../lib/password.js';
-import { putBlob, delBlobs, readUrls, presignPut, headBlob } from '../lib/blob.js';
+import { putBlob, delBlobs, readUrls, presignPut, headBlob, blobExists } from '../lib/blob.js';
 import { ocrBands, visionConfigured } from '../lib/vision.js';
 import { sendPush, pushConfigured, vapidPublicKey } from '../lib/push.js';
 import { fcmConfigured } from '../lib/fcm.js';
@@ -1760,6 +1760,20 @@ on('POST', '/blobs/:id/upload-url', async ({ uid, params, body }) => {
   return { uploadUrl: p.url, pathname, mime: type };
 });
 // 직접 올린 파일을 DB 에 등록 (실제로 있는지 확인)
+// 클라이언트가 내려받다 404 를 만나면 알려 준다. 진짜 없으면 기록을 지워, 파일을 가진 기기가
+// 다음 동기화 때 다시 올린다 (기록만 남고 파일이 사라진 경우의 자가 치유)
+on('POST', '/blobs/:id/gone', async ({ uid, url, params, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str((body && body.teamId) || url.searchParams.get('team'), 64);
+  await requireMember(uid, teamId);
+  const row = await one('select url, pathname from blobs where team_id=$1 and id=$2', [teamId, params.id]);
+  if (!row) return { gone: true };
+  const exists = await blobExists(row);
+  if (exists) return { gone: false };
+  await q('delete from blobs where team_id=$1 and id=$2', [teamId, params.id]);
+  return { gone: true };
+});
+
 on('POST', '/blobs/:id/register', async ({ uid, params, body }) => {
   if (!uid) throw noAuth();
   const teamId = str(body.teamId, 64);

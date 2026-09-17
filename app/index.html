@@ -2792,7 +2792,12 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),
  // 파일 내려받기. 한 번 실패한 파일은 기억해 뒀다가 다음 진입 때 다시 시도한다
  async fetchBlobs(map,onProgress){const ids=Object.keys(map||{});let done=0,failed=0;
   for(const id of ids){done++;if(await IDB.get('blobs',id)){if(onProgress)onProgress(done,ids.length);continue}
-   try{const r=await fetch(map[id]);if(!r.ok){failed++;continue}const b=await r.blob();await IDB.put('blobs',id,b);SYNC.missing.delete(id)}
+   try{const r=await fetch(map[id]);
+    if(!r.ok){failed++;
+     // 기록은 있는데 파일이 없다 → 서버에 알려 기록을 지우게 한다. 파일을 가진 기기가 다시 올린다
+     if(r.status===404)api('/blobs/'+id+'/gone',{method:'POST',body:{teamId:S.team.id}}).catch(()=>{});
+     continue}
+    const b=await r.blob();await IDB.put('blobs',id,b);SYNC.missing.delete(id)}
    catch(e){failed++;SYNC.missing.add(id);console.warn('blob',id,e.message)}
    if(onProgress)onProgress(done,ids.length)}
   return {failed}},
@@ -2800,6 +2805,14 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),
   const todo=ids.filter(id=>!have[id]);let k=0;
   for(const id of todo){k++;if(!quiet)toast(`파일 올리는 중 ${k}/${todo.length}…`);const b=await IDB.get('blobs',id);if(!b)throw new Error('이 기기에 없는 파일이 있어요');
    await uploadBlob(id,b,quiet?null:p=>{if(p<100)toast(`파일 올리는 중 ${k}/${todo.length} · ${p}%`)})}},
+ // 서버에 기록이 없는 파일 중 이 기기에 있는 것만 조용히 올린다 (없는 건 건너뜀).
+ // 라이브러리 곡의 악보가 다른 기기에서 안 보이던 것을 파일 가진 기기가 스스로 고친다
+ async healBlobs(items){const ids=SYNC.blobIds(items);if(!ids.length||!online())return 0;
+  let have={};for(let i=0;i<ids.length;i+=40){const part=ids.slice(i,i+40);
+   try{Object.assign(have,(await api('/blobs?team='+S.team.id+'&ids='+part.join(','))).blobs||{})}catch(e){return 0}}
+  let n=0;for(const id of ids){if(have[id])continue;const b=await IDB.get('blobs',id);if(!b)continue;
+   try{await uploadBlob(id,b,null);n++}catch(e){console.warn('heal',id,e.message)}}
+  return n},
  // 라이브러리: 팀이 함께 쓰는 곡 보관함. 내려받고(전원) 올린다(인도자)
  libIds(songs){const ids=[];(songs||[]).forEach(s=>{(s.pieces||[]).forEach(p=>p.blob&&ids.push(p.blob));(s.media||[]).forEach(m=>m.blob&&ids.push(m.blob))});return [...new Set(ids)]},
  async pullLibrary(){if(!online()||!S.team.id)return false;
@@ -2999,6 +3012,10 @@ async function pullSongs(force){if(!online()||!S.team.id)return false;
  (r.deleted||[]).forEach(id=>{const i=(S.songs||[]).findIndex(x=>x.id===id);if(i>=0){S.songs.splice(i,1);changed=true}});
  S.songsAt=r.now||S.songsAt;LIB.at=Date.now();if(changed){refreshFromArr();save()}
  await songURLs();
+ // 인도자 기기: 서버에 파일이 빠진 곡이 있으면 이 기기에 있는 것으로 채워 준다 (세션당 한 번)
+ if(isLeader()&&!pullSongs.healed){pullSongs.healed=true;
+  const arrs=(S.songs||[]).map(x=>defArr(x)).filter(a=>a&&((a.pieces||[]).length||(a.media||[]).length));
+  SYNC.healBlobs(arrs).then(n=>{if(n)console.log('악보 파일 보수',n)}).catch(()=>{})}
  return changed}
 // 목록 썸네일은 url() 로 그리는데 그건 캐시만 본다. 미리 만들어 둔다
 async function songURLs(){const ids=[];
@@ -3176,6 +3193,8 @@ async function pushSongs(){
      const hit=(S.songs||[]).find(x=>!x.archived&&(x.titleNorm||nrm(x.title))===tn&&(x.arrangements||[]).length);
      // 이어 붙였으면 다음 바퀴에 값 비교를 다시 태운다 (여기서 ov 를 비웠기 때문에)
      if(hit){linkItemToArr(it,hit,defArr(hit));relink=true;changed=true;continue}
+     // 새 곡도 악보·녹음 파일을 먼저 올린다 — 안 올리면 다른 기기에서 곡은 보이는데 악보가 없다
+     try{await SYNC.ensureBlobs([{pieces:snap.pieces,media:snap.media}],true)}catch(e){console.warn('song blobs',e.message)}
      try{const r=await api('/songs',{method:'POST',body:{teamId:S.team.id,title:it.title,origKey:it.key||'',...snap}});
       S.songs.push(r.song);linkItemToArr(it,r.song,r.song.arrangements[0]||{});changed=true}
      catch(e){console.warn('song create',e.message);return false}
