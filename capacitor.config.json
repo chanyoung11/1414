@@ -8,7 +8,9 @@
   },
   "android": {
     "allowMixedContent": false,
-    "backgroundColor": "#111213"
+    "backgroundColor": "#111213",
+    "adjustMarginsForEdgeToEdge": "disable",
+    "webContentsDebuggingEnabled": true
   },
   "ios": {
     "contentInset": "never",

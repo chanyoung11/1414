@@ -1,11 +1,19 @@
 package com.lets1414.app;
 
+import android.content.pm.ApplicationInfo;
+import android.os.Bundle;
+import android.webkit.WebView;
+
+
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
-  @Override public void onCreate(android.os.Bundle savedInstanceState) {
+  @Override public void onCreate(Bundle savedInstanceState) {
     registerPlugin(PrinterPlugin.class);
     super.onCreate(savedInstanceState);
+
+    // 디버그 빌드에서는 크롬 devtools 로 웹뷰를 들여다볼 수 있게 한다 (chrome://inspect)
+    if ((getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0) WebView.setWebContentsDebuggingEnabled(true);
   }
 
   // 화면을 꺼도 유튜브·녹음 소리는 계속 나야 한다.

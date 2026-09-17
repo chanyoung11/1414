@@ -16,6 +16,20 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 @CapacitorPlugin(name = "Printer")
 public class PrinterPlugin extends Plugin {
 
+  // 상태바 뒤 띠 = 창 배경. 안드로이드 15 부터 상태바 색 지정이 무시돼서 창 배경을 테마 색으로 칠한다
+  @PluginMethod
+  public void setWindowBackground(final PluginCall call) {
+    final String color = call.getString("color", "#111213");
+    getActivity().runOnUiThread(new Runnable() {
+      @Override public void run() {
+        try {
+          getActivity().getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor(color)));
+          call.resolve();
+        } catch (Exception e) { call.reject(e.getMessage()); }
+      }
+    });
+  }
+
   @PluginMethod
   public void print(final PluginCall call) {
     final String name = call.getString("name", "1414");
