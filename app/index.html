@@ -2151,7 +2151,7 @@ const BIZ={name:'바디페인팅',ceo:'박찬영',regNo:'469-06-03606',
 const BILLING_UI=false;
 const LEGAL_AT='2026-09-17';       // 시행일. 내용을 고치면 같이 올린다
 function legalHTML(kind){
- const K=kind==='terms'?'terms':'privacy';
+ const K=kind==='terms'?'terms':kind==='delete'?'delete':'privacy';
  const bizRow=`<table class="ltab"><tbody>
   <tr><th>상호</th><td>${esc(BIZ.name)}</td></tr>
   <tr><th>대표자</th><td>${esc(BIZ.ceo)}</td></tr>
@@ -2317,14 +2317,41 @@ function legalHTML(kind){
   ${bizRow}
   <p class="lnote">시행일: ${esc(LEGAL_AT)}</p>`;
 
+ // 계정 삭제 안내 — 스토어(구글·애플)가 요구하는 '로그인 없이 열리는 삭제 절차 페이지'
+ const del=`<h2>계정 삭제</h2>
+  <p>1414 계정과 그 계정에 딸린 데이터는 <b>앱 안에서 직접</b> 지울 수 있습니다. 별도 요청이나 심사 없이 즉시 처리됩니다.</p>
+  <h3>앱에서 지우기</h3>
+  <ol>
+   <li>1414 앱(또는 lets1414.com)에 로그인합니다.</li>
+   <li><b>더보기 → 설정 → 계정</b>으로 갑니다.</li>
+   <li><b>계정 삭제</b>를 누르고, 아이디와 비밀번호를 한 번 더 입력해 확인합니다.</li>
+  </ol>
+  <p class="lnote">내가 인도자인 팀이 있으면 먼저 다른 사람을 인도자로 지정하거나 팀을 지워야 합니다. 팀원들의 콘티가 사라지지 않게 하기 위해서입니다.</p>
+  <h3>지워지는 것</h3>
+  <ul>
+   <li>계정(아이디·이름·비밀번호)과 로그인 정보</li>
+   <li>내가 쓴 메모·개인 설정·푸시 알림 토큰</li>
+   <li>내가 만든 팀과 그 팀의 콘티·악보·일정 (내가 유일한 인도자였다면)</li>
+  </ul>
+  <h3>남는 것</h3>
+  <ul>
+   <li>다른 사람이 인도자인 팀에 내가 올린 악보·콘티 — 팀의 자료라 팀에 남습니다. 내 이름은 지워진 사용자로 표시됩니다.</li>
+   <li>결제 영수증 등 법령상 보관해야 하는 기록 — 전자상거래법에 따라 5년</li>
+  </ul>
+  <h3>로그인할 수 없다면</h3>
+  <p>비밀번호를 잊었거나 앱을 지운 경우, <b>${esc(BIZ.email)}</b>로 가입한 아이디를 적어 보내 주세요. 본인 확인 뒤 <b>7일 안에</b> 지워 드립니다.</p>
+  ${bizRow}
+  <p class="lnote">시행일: ${esc(LEGAL_AT)}</p>`;
+
  const body=`<div class="legal">
    <div class="seg" style="margin-bottom:18px">
     <button class="${K==='privacy'?'on':''}" data-act="legal" data-k="privacy">개인정보처리방침</button>
-    <button class="${K==='terms'?'on':''}" data-act="legal" data-k="terms">이용약관</button></div>
-   ${K==='privacy'?privacy:terms}
+    <button class="${K==='terms'?'on':''}" data-act="legal" data-k="terms">이용약관</button>
+    <button class="${K==='delete'?'on':''}" data-act="legal" data-k="delete">계정 삭제</button></div>
+   ${K==='privacy'?privacy:K==='delete'?del:terms}
    <div class="row" style="margin-top:28px"><button class="btn" data-act="legal-back">${ic('back')}돌아가기</button></div>
   </div>`;
- const title=K==='privacy'?'개인정보처리방침':'이용약관';
+ const title=K==='privacy'?'개인정보처리방침':K==='delete'?'계정 삭제':'이용약관';
  if(!NET.user||!S.team.id)return `<div class="shell"><div class="main">
    <header class="hd"><div class="ttl"><h1>${title}</h1><span class="date">1414</span></div></header>
    <main class="w-read">${body}</main></div></div>`;
