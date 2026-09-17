@@ -5517,11 +5517,12 @@ async function adsShow(){
   // 배너가 실제 높이를 가질 때만 본문을 밀어 올린다. 광고가 안 오면(승인 전·무필)
   // 배너 뷰는 투명한 채로 떠 있어서, 그때 자리를 비우면 바만 공중에 뜬다
   if(!ADSTATE.bound){ADSTATE.bound=true;
-   A.addListener('bannerAdSizeChanged',sz=>{const h=(sz&&sz.height)||0;
+   A.addListener('bannerAdSizeChanged',sz=>{let h=(sz&&sz.height)||0;if(h>120)h=60;   // 말도 안 되는 값이면 배너 한 줄 높이로
     document.documentElement.style.setProperty('--adh',h+'px');
     document.body.classList.toggle('hasad',h>0)});
    A.addListener('bannerAdFailedToLoad',()=>document.body.classList.remove('hasad'))}
-  await A.showBanner({adId:ADS[plat].banner,position:'BOTTOM_CENTER',margin:0,isTesting:false});
+  // 크기는 고정 배너(320×50). 적응형은 안드로이드에서 화면 절반을 차지하는 시안이 와서 하단바가 한가운데로 밀렸다
+  await A.showBanner({adId:ADS[plat].banner,adSize:'BANNER',position:'BOTTOM_CENTER',margin:0,isTesting:false});
   ADSTATE.on=true;
  }catch(e){console.warn('ads',e)}
 }
@@ -5874,7 +5875,11 @@ function stgStripHTML(screens){
   ${isLeader()?`<button class="sbtn2" data-sc="rec" title="멤버가 처음 열 때 이 조판으로">인도자 추천</button>`:''}</div>`}
 
 function stgCanvasW(){const h=$('#stageWrap');return (h?h.clientWidth:1200)-32}
-function stgCanvasH(){const h=$('#stageWrap');const sat=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sat'))||0;return Math.max(120,(h?h.clientHeight:800)-(STG.pref.bar?46:0)-24-sat)}
+function stgCanvasH(){const h=$('#stageWrap');return Math.max(120,(h?h.clientHeight:800)-(STG.pref.bar?46:0)-24-satPx())}
+// 안전 영역 높이(px). CSS 변수는 env() 식 그대로라 숫자를 못 얻으니 실제로 그려서 잰다
+function satPx(){let e=document.getElementById('satProbe');
+ if(!e){e=document.createElement('div');e.id='satProbe';e.style.cssText='position:fixed;left:-9999px;top:0;width:1px;height:var(--sat);pointer-events:none;visibility:hidden';document.body.appendChild(e)}
+ return e.getBoundingClientRect().height||0}
 
 // 블록 하나를 옆 화면으로 보낸다
 function stgMoveScreen(bid,d){
@@ -5992,6 +5997,7 @@ async function stageOpen(svc,idx){
  el=document.createElement('div');el.id='stageWrap';el.className='stgw';
  document.body.appendChild(el);document.body.classList.add('stgon');
  stageRender();keepAwake(true);if(NATIVE)adsHide();
+ if(NATIVE&&window.Capacitor.getPlatform&&window.Capacitor.getPlatform()==='android'){try{CapPlug().StatusBar&&CapPlug().StatusBar.hide()}catch(e){}}
  el.onclick=stageClick;
  window.addEventListener('keydown',stageKey);
  window.addEventListener('resize',stageResize);
@@ -6015,7 +6021,7 @@ async function stageOpen(svc,idx){
 // 무대 모드를 닫는다. 곡이 바뀌었을 때만 아래 화면을 다시 그린다 —
 // 그냥 다시 그리면 재생 중이던 영상·녹음이 새로 만들어지며 끊긴다
 function stageExit(){const moved=STG.idx!==STG.from;stageClose();if(moved)render()}
-function stageClose(){keepAwake(false);if(NATIVE)setTimeout(adsSync,0);const el=$('#stageWrap');if(el)el.remove();
+function stageClose(){keepAwake(false);if(NATIVE)setTimeout(adsSync,0);if(NATIVE&&window.Capacitor.getPlatform&&window.Capacitor.getPlatform()==='android'){try{CapPlug().StatusBar&&CapPlug().StatusBar.show()}catch(e){}}const el=$('#stageWrap');if(el)el.remove();
  document.body.classList.remove('stgon');
  window.removeEventListener('keydown',stageKey);window.removeEventListener('resize',stageResize);
  STG.svc=null}
@@ -6036,7 +6042,7 @@ function stageRender(){
  const pub=pubOrDraft(STG.svc);const items=pub.items||[];
  if(!items.length){host.innerHTML=`<div class="stgbar"><b>곡이 없어요</b><span class="grow"></span><button class="sbtn" data-stg="exit">${ic('x')}</button></div>`;return}
  const barH=STG.pref.bar?46:0;
- const sat=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sat'))||0;   // 상태바·노치
+ const sat=satPx();   // 상태바·노치
  const W=host.clientWidth-32,H=Math.max(120,host.clientHeight-barH-24-sat);
  const auto=stgCompose(pub,W,H,STG.pref);STG.lay=auto;
  // 사람이 고친 조판이 있으면 그것을 쓴다 (없으면 자동 그대로)
