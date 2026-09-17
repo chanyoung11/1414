@@ -258,6 +258,8 @@ html.dark .a-ok{color:#5FBF8A}html.dark .a-maybe{color:#E9C35C}html.dark .a-no{c
 .reason{display:flex;align-items:flex-start;gap:6px;margin-top:6px;color:var(--muted-fg);font-size:12.5px}.reason svg{width:13px;height:13px;flex:0 0 auto;margin-top:2px}
 .hero{margin-bottom:14px;padding:14px 16px;border-radius:var(--r-xl);border:1px solid var(--border-2);background:var(--card)}
 .hero .hd2{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+/* 제목이 한 글자씩 세로로 찢기지 않게 — 자리가 모자라면 오른쪽 버튼들이 아랫줄로 내려간다 */
+.hero .hd2 .grow{flex:1 1 180px;min-width:160px}
 .hero .when{flex:0 0 auto;font-weight:800;font-size:15px;letter-spacing:-.02em;padding:5px 10px;border-radius:999px;background:var(--fg);color:var(--bg)}
 .hero b{display:block;font-size:15px;letter-spacing:-.01em}
 .todo{margin-bottom:16px}.todo-hd{display:flex;align-items:center;gap:8px;margin-bottom:8px}.todo-hd b{font-size:14px;letter-spacing:-.01em}
