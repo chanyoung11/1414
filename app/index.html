@@ -767,6 +767,43 @@ body.stgon{overflow:hidden}
 .ppage .mask{position:absolute;background:#fff}
 .ppage .pchord{position:absolute;color:#C0392B;font-weight:700;font-family:ui-monospace,Menlo,monospace;line-height:1;white-space:nowrap}
 .ppage .pmk{position:absolute;transform:translate(-50%,-50%);min-width:17px;height:17px;border-radius:999px;border:1.5px solid #111;background:#fff;color:#111;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;padding:0 3px}
+/* 무대 편집 — 블록을 끌어 옮긴다 */
+.stgpage.edit{cursor:default}
+.stgpage .sgrid{position:absolute;inset:0;pointer-events:none;opacity:.35;
+ background-image:repeating-linear-gradient(to right,rgba(255,255,255,.18) 0 1px,transparent 1px calc(100%/12)),
+  repeating-linear-gradient(to bottom,rgba(255,255,255,.18) 0 1px,transparent 1px calc(100%/8))}
+.sblk{position:absolute;touch-action:none;outline:1px dashed rgba(255,255,255,.45);border-radius:8px}
+.sblk.on{outline:2px solid var(--brand);z-index:5}
+.sblk .stag{position:absolute;left:0;top:-18px;font-size:10.5px;font-weight:700;color:#fff;
+ background:rgba(0,0,0,.6);border-radius:5px;padding:1px 6px;white-space:nowrap;pointer-events:none}
+.sblk .blk{position:static!important;left:auto!important;top:auto!important;width:100%!important}
+.sblk .sgrip{position:absolute;right:-7px;bottom:-7px;width:16px;height:16px;border-radius:50%;
+ background:var(--brand);border:2px solid #fff;cursor:nwse-resize}
+.sblkmenu{position:absolute;left:0;top:calc(100% + 8px);z-index:9;background:#1b1c1e;border:1px solid #33353a;
+ border-radius:10px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.45)}
+/* 화면 띠 — 편집 중에만. 화면을 더하고 순서를 바꾼다 */
+.stgstrip{position:absolute;left:0;right:0;bottom:0;z-index:8;display:flex;align-items:center;gap:6px;
+ padding:7px 12px;background:rgba(16,17,18,.86);backdrop-filter:blur(6px);border-top:1px solid #2a2c30;overflow-x:auto}
+.stgstrip .grow{flex:1;min-width:8px}
+.stgstrip .sbtn2{flex:none;white-space:nowrap;width:auto;min-width:30px;height:30px;padding:0 10px;font-size:12px}
+.stgstrip .sthumb{flex:none;min-width:46px;height:34px;border-radius:8px;border:1px solid #3a3d42;background:#1b1c1e;
+ color:#DADBD6;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1;cursor:pointer}
+.stgstrip .sthumb b{font-size:12px}
+.stgstrip .sthumb span{font-size:9.5px;opacity:.6}
+.stgstrip .sthumb.on{border-color:var(--brand);background:#24262a;color:#fff}
+/* 자유 메모 블록 — 노란 상자 (§3) */
+.ptext{background:#FFF4C2;color:#3a3200;border:1px solid #E8D477;border-radius:10px;padding:10px 12px;
+ font-weight:700;font-size:15px;line-height:1.4;white-space:pre-wrap}
+/* 무대 화면의 송폼 블록 — 시안대로 검은 상자. 여러 곡이 한 화면에 있을 때 곡을 가른다 */
+.ppage.pstage .songhead,.stgpage .songhead{background:#111213;color:#F2F3F4;border-radius:10px;padding:10px 12px;display:block}
+.ppage.pstage .songhead .num,.stgpage .songhead .num{width:24px;height:24px;border-radius:50%;
+ background:#F2F3F4;color:#111213;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.ppage.pstage .songhead .title,.stgpage .songhead .title{font-size:17px;font-weight:800;letter-spacing:-.02em;
+ color:#F2F3F4;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ppage.pstage .songhead .key,.stgpage .songhead .key{font-weight:800;font-size:14px;
+ border:2px solid #F2F3F4;border-radius:999px;padding:1px 10px;color:#F2F3F4;flex:0 0 auto}
+.ppage.pstage .songhead .frm,.stgpage .songhead .frm{display:block;margin-top:6px;font-family:var(--mono,ui-monospace,monospace);font-size:13px;color:#DADBD6;white-space:normal;line-height:1.45}
+.ppage.pstage .songhead .shtop,.stgpage .songhead .shtop{display:flex;align-items:center;gap:10px;background:none;padding:0;margin:0;border:0}
 .ppage .songhead{display:flex;align-items:center;gap:10px}
 .ppage .songhead .num{width:24px;height:24px;border-radius:50%;background:#111;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
 .ppage .songhead .title{font-size:19px;font-weight:800;letter-spacing:-.02em;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1899,7 +1936,12 @@ function afterCal(){let t=null,long=false;
   c.addEventListener('pointerleave',()=>clearTimeout(t));
   c.addEventListener('contextmenu',e=>e.preventDefault())})}
 function afterLineup(dateId){const d=SCH.dates.find(x=>x.id===dateId);if(!d)return;
- $('#app').onchange=async e=>{if(!e.target.dataset.lsel)return;if(await saveLineup(d))render()}}
+ // 사람을 고르면 저장하고 다시 그린다. 패널이 통째로 새로 그려지므로 보고 있던 자리를
+ // 그대로 되돌려 준다 — 안 그러면 폰에서 화면이 새로고침된 것처럼 튄다
+ $('#app').onchange=async e=>{if(!e.target.dataset.lsel)return;
+  const bd=$('.lnbody');const top=bd?bd.scrollTop:0;
+  if(await saveLineup(d)){SCH.pending=false;render();
+   const b2=$('.lnbody');if(b2)b2.scrollTop=top}}}
 // 홈 히어로 (§3.7): 다음 예배 한 장. 인도자는 편성 진행, 멤버는 내 자리
 function heroHTML(){if(!online()||!S.team.id)return '';
  const t=today();
@@ -2674,6 +2716,16 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),
    if(!cur){const twin=S.services.find(x=>!x.published&&(r.name||'').trim()&&x.name===r.name&&x.date===r.date); // §9 같은 이름·날짜의 내 초안 → 합칠지 묻기
     if(twin&&confirm(`"${r.name}" (${r.date}) 발행본이 서버에 있어요. 이 기기의 같은 이름 초안과 합칠까요?\n(취소하면 둘 다 남아요)`)){try{const pulled=await SYNC.pullService(r.id);mergeInto(pulled,twin);S.services=S.services.filter(x=>x.id!==twin.id);S.dropped=(S.dropped||[]).concat(twin.id);changed=true}catch(e){console.warn('merge',e.message)}continue}}
    try{await SYNC.pullService(r.id);changed=true}catch(e){console.warn('pull',r.id,e.message)}}
+  // 서버에서 사라진 콘티는 이 기기에서도 지운다. 안 그러면 다른 기기에서 지워도
+  // 여기에는 영원히 남아, 같은 이름이 두 번씩 보이거나 지운 예배가 살아 있는 것처럼 보인다.
+  // 아직 서버에 못 올린 내 초안(발행 전·발행 대기)은 건드리지 않는다
+  const onServer=new Set(list.map(r=>r.id).concat(drafts.map(d=>d.id)));
+  const gone=S.services.filter(x=>!onServer.has(x.id)&&x.published&&!x.pubPending);
+  if(gone.length){
+   const ids=new Set(gone.map(x=>x.id));
+   S.services=S.services.filter(x=>!ids.has(x.id));
+   gone.forEach(x=>{if(S.noteShadow)delete S.noteShadow[x.id];if(S.readRev)delete S.readRev[x.id]});
+   changed=true}
   if(changed)save();return changed},
  async pullService(id){const d=await api('/services/'+id+'?team='+S.team.id);const doc=scrubIds(d.doc);await SYNC.fetchBlobs(d.blobs);
   if(d.word!==undefined){const cur0=svcById(id);if(cur0)cur0.word=d.word||null}
@@ -4643,7 +4695,13 @@ async function render(){
   const need=!SCH.at||(r.name!=='lineup'&&SCH.month!==(r.a&&/^\d{4}-\d{2}$/.test(r.a)?r.a:SCH.month));
   const missing=r.name==='lineup'&&!SCH.dates.some(x=>x.id===r.a);   // 방금 생긴 날짜면 캐시에 없으니 다시 받는다
   if(!SCH.at||missing||!SCH.dates.length){app.innerHTML=`<div class="empty" style="margin:40px auto;max-width:420px"><b>일정을 받는 중…</b></div>`;await pullSchedule(SCH.month||monthKey(),true);if(stale())return}
-  else if(!same)pullSchedule(SCH.month||monthKey(),true).then(ch=>{if(ch&&/^(cal|sched|lineup)$/.test(route().name))render()});   // 화면에 들어올 때는 캐시를 무시하고 다시 받는다
+  else if(!same)pullSchedule(SCH.month||monthKey(),true).then(ch=>{
+   // 화면에 들어올 때는 캐시를 무시하고 다시 받는다. 다만 사용자가 이미 무언가를
+   // 고르고 있으면 다시 그리지 않는다 — 고르던 것이 날아가 새로고침된 것처럼 보인다
+   if(!ch||!/^(cal|sched|lineup)$/.test(route().name))return;
+   const a=document.activeElement;
+   if(a&&a!==document.body&&$('#app').contains(a)){SCH.pending=true;return}
+   render()});
   const canSched=isLeader()||me().role==='session_lead';
   if(r.name==='sched'&&!canSched)return go('cal');
   if(r.name==='lineup'&&!isLeader())return go('cal');   // 고치기는 인도자만
@@ -4926,12 +4984,12 @@ const draftOf=svc=>({name:svc.name,date:svc.date,folder:svc.folder||'',notice:sv
 function pubOrDraft(svc){if(VF.draft&&isLeader()&&route().name==='view')return draftOf(svc);return svc.published?{...svc.published,draft:false}:draftOf(svc)}
 let VF={session:null,draft:false};
 /* ---------- PRACTICE / STAGE ---------- */
-const P={audio:null,yt:null,ytReady:false,t:0,dur:0,start:0,end:0,playing:false,pausedByComposer:false,timer:null,
- stop(){if(P.audio){P.audio.pause();P.audio=null}P.yt=null;P.ytReady=false;P.playing=false;P.t=0;P.dur=0;P.start=0;P.end=0;clearInterval(P.timer);P.timer=null},
+const P={audio:null,yt:null,ytReady:false,t:0,dur:0,start:0,end:0,playing:false,started:false,pausedByComposer:false,timer:null,
+ stop(){if(P.audio){P.audio.pause();P.audio=null}P.yt=null;P.ytReady=false;P.playing=false;P.started=false;P.t=0;P.dur=0;P.start=0;P.end=0;clearInterval(P.timer);P.timer=null},
  range(){const s0=P.start||0;const s1=P.end||P.dur||0;return [s0,Math.max(s1,s0+1)]},
  resumeIfPaused(){if(P.pausedByComposer){P.pausedByComposer=false;P.play()}},
  pauseForComposer(){if(P.playing){P.pause();P.pausedByComposer=true}},
- play(){if(P.audio)P.audio.play();else{if(!P.ytReady){toast('영상이 아직 준비되지 않았어요. 이 환경에선 임베드가 막혀 있을 수 있어요');return}ytCmd('playVideo')}},
+ play(){P.started=true;if(P.audio)P.audio.play();else{if(!P.ytReady){toast('영상이 아직 준비되지 않았어요. 이 환경에선 임베드가 막혀 있을 수 있어요');return}ytCmd('playVideo')}},
  pause(){if(P.audio)P.audio.pause();else ytCmd('pauseVideo');},
  seek(t){P.t=t;if(P.audio)P.audio.currentTime=t;else ytCmd('seekTo',[t,true]);updateTL()},
  toggle(){P.playing?P.pause():P.play()}
@@ -5128,6 +5186,10 @@ function pgBlockHTML(b,box,page){
    <div class="sumhd"><b>${esc(pub.name||'예배')}</b><span>v${pub.version||0} · ${esc(page.session)}</span><span style="flex:1"></span><span>${esc(pub.notice||'')}</span></div>
    ${(pub.items||[]).map((it,k)=>`<div class="sl"><span class="n">${k+1}</span><span class="t">${esc(it.title||'(제목 없음)')}</span><span class="k">${esc(pgKey(it))}</span><span class="f">${esc(it.form||'')}</span></div>`).join('')}</div>`;
  if(b.type==='head'){const it=b.item;
+  // 무대에서는 제목·키·송폼을 검은 상자 하나로 묶는다. 한 화면에 여러 곡이 있을 때
+  // 어디부터 어느 곡인지 눈에 바로 들어와야 한다
+  if(box.stage)return `<div class="blk" style="left:${L}px;top:${T}px;width:${W}px" data-sblk="head:${b.idx}" data-si="${b.idx}">
+   <div class="songhead"><div class="shtop"><span class="num">${b.idx+1}</span><span class="title">${esc(it.title||'(제목 없음)')}</span><span class="key">${esc(pgKey(it))}</span></div>${it.form&&!b.compact?`<span class="frm">${esc(it.form)}</span>`:''}</div></div>`;
   return `<div class="blk" style="left:${L}px;top:${T}px;width:${W}px"><div class="songhead"><span class="num">${b.idx+1}</span><span class="title">${esc(it.title||'(제목 없음)')}</span><span class="key">${esc(pgKey(it))}</span></div>${it.form?`<div class="pform2 ${PRT.scale>=1?'big':''}">${esc(it.form)}</div>`:''}${it.songNote?`<div class="preason">${esc(it.songNote)}</div>`:''}</div>`}
  if(b.type==='slice'){const {pc,scale,ranges}=b;const im=pc.im;const w=im.w*scale;const left=L+(W-w)/2;
   let inner='';let off=0;
@@ -5139,9 +5201,10 @@ function pgBlockHTML(b,box,page){
    pc.markers.forEach(m=>{const hasStrip=m.vis.length&&m.cut!=null&&box.memos!==false;
     if(!hasStrip&&m.py>=start&&m.py<end)sub+=`<div class="pmk" style="left:${m.px*scale}px;top:${(m.py-start)*scale}px">${esc(m.label)}</div>`});
    inner+=`<div class="pslice" style="top:${off}px;width:${w}px;height:${hh}px">${sub}</div>`;off+=hh});
-  return `<div class="blk" style="left:${left}px;top:${T}px;width:${w}px;height:${b.height}px">${inner}</div>`}
+  return `<div class="blk" style="left:${left}px;top:${T}px;width:${w}px;height:${b.height}px"${box.stage&&b.idx!=null?` data-si="${b.idx}"`:''}>${inner}</div>`}
  if(b.type==='chart')return `<div class="blk pchart" style="left:${L}px;top:${T}px;width:${W}px">${chartHTML(b.item,{})}</div>`;
- if(b.type==='strip')return `<div class="pstrip" style="left:${L}px;top:${T}px;width:${W}px;height:${b.height}px">${b.markers.map(m=>`<span class="mk2">${esc(m.label)}</span>${b.mods[m.label]?`<span class="mod">${esc(b.mods[m.label])}</span>`:''}${m.vis.map(n=>{const all=n.layer==='all'||(n.layer==='leader'&&!n.session);return `<span class="m ${all?'all':''}"><span class="who">${all?'전체':esc(n.session||'전체')}</span>${esc(n.text)}</span>`}).join('')}`).join('<span style="width:10px;display:inline-block"></span>')}</div>`;
+ if(b.type==='text')return `<div class="blk ptext" style="left:${L}px;top:${T}px;width:${W}px">${esc(b.text||'')}</div>`;
+ if(b.type==='strip')return `<div class="pstrip" style="left:${L}px;top:${T}px;width:${W}px;height:${b.height}px"${box.stage&&b.idx!=null?` data-si="${b.idx}"`:''}>${b.markers.map(m=>`<span class="mk2">${esc(m.label)}</span>${b.mods[m.label]?`<span class="mod">${esc(b.mods[m.label])}</span>`:''}${m.vis.map(n=>{const all=n.layer==='all'||(n.layer==='leader'&&!n.session);return `<span class="m ${all?'all':''}"><span class="who">${all?'전체':esc(n.session||'전체')}</span>${esc(n.text)}</span>`}).join('')}`).join('<span style="width:10px;display:inline-block"></span>')}</div>`;
  if(b.type==='divider')return `<div class="blk pdiv" style="left:${L}px;top:${T}px;width:${W}px">${esc(b.label)}</div>`;
  return ''}
 function pgPagesHTML(pages){
@@ -5149,8 +5212,8 @@ function pgPagesHTML(pages){
   const pb=p.box||{cw:PG.pw-PG.margin*2,gutter:PG.gutter,cols:1};
   const box={left:PG.margin,cw:pb.cw,gutter:pb.gutter,fullW:PG.pw-PG.margin*2,hl:PRT.hl,memos:PRT.memos};
   const pub=p.pub||{};
-  return `<div class="ppage" style="width:${PG.pw}px;height:${PG.ph}px"><div class="pinner">
-   ${p.blocks.map(b=>pgBlockHTML(b,box,p)).join('')}
+  return `<div class="ppage ${p.stage?'pstage':''}" style="width:${PG.pw}px;height:${PG.ph}px"><div class="pinner">
+   ${p.blocks.map(b=>pgBlockHTML(b,p.stage?{...box,left:PG.margin+b.px,cw:b.pw,fullW:b.pw,gutter:0,stage:true}:box,p)).join('')}
    <div class="pfoot2" style="left:${PG.margin}px;right:${PG.margin}px;bottom:${PG.margin-6}px">
     <span>${esc(pub.name||'예배')} · v${pub.version||0} · ${esc(p.session||'')}</span>
     ${p.nextText?`<span class="nx">${esc(p.nextText)} ›</span>`:''}
@@ -5281,7 +5344,7 @@ async function nativeSetup(){
  new MutationObserver(paintBar).observe(document.documentElement,{attributes:true,attributeFilter:['class']});
  // 안드로이드 뒤로가기: 겹쳐 있는 것부터 닫고, 홈에서 누르면 앱을 내린다
  try{P.App&&P.App.addListener('backButton',()=>{
-  if($('#stageWrap')){stageClose();render();return}
+  if($('#stageWrap')){stageExit();return}
   const pa=$('#printArea');if(pa){pa.remove();document.body.classList.remove('printing');return}
   if($('#modal')&&$('#modal').firstChild){closeModal();return}
   if(NOTI.open){NOTI.open=false;render();return}
@@ -5348,11 +5411,19 @@ async function adsConsent(A){
   ADSTATE.consent=true;
  }catch(e){ADSTATE.consent=true}   // 동의 절차가 안 되면 맞춤 광고 없이 진행된다
 }
+// 아이폰은 '앱 추적 허용'을 먼저 물어야 한다 (ATT). 거절해도 광고는 나오고, 맞춤만 빠진다
+async function adsTracking(A){
+ try{
+  if(((window.Capacitor.getPlatform&&window.Capacitor.getPlatform())||'')!=='ios')return;
+  const st=await A.trackingAuthorizationStatus();
+  if(st&&st.status==='notDetermined')await A.requestTrackingAuthorization();
+ }catch(e){}
+}
 async function adsShow(){
  const A=CapPlug().AdMob;if(!A||!adsAllowed()){await adsHide();return}
  const plat=(window.Capacitor.getPlatform&&window.Capacitor.getPlatform())||'android';
  try{
-  if(!ADSTATE.ready){await A.initialize({initializeForTesting:false});await adsConsent(A);ADSTATE.ready=true}
+  if(!ADSTATE.ready){await adsTracking(A);await A.initialize({initializeForTesting:false});await adsConsent(A);ADSTATE.ready=true}
   if(ADSTATE.on)return;
   await A.showBanner({adId:ADS[plat].banner,position:'BOTTOM_CENTER',margin:0,isTesting:false});
   ADSTATE.on=true;document.body.classList.add('hasad');
@@ -5493,48 +5564,332 @@ function metOpen(){
 
 /* ---------- 무대 모드 = 자동 조판 (인쇄·내보내기 명세 §1-A) ----------
    한 곡이 한 화면에. 스크롤 없음. 조판은 사람·곡·기기 구간마다 따로 저장된다 */
-const STG={svc:null,idx:0,screen:0,open:false,pref:null,fit:null};
-const STG_DEF={zoom:1,cols:'auto',memos:true,hl:true,bar:true};
+const STG={svc:null,idx:0,screen:0,open:false,pref:null,edit:false,lay:null,nscreens:1,
+ layout:null,   // 사람이 고친 조판 {screens:[{blocks:[{id,type,x,y,w,...}]}]} · 없으면 자동
+ drag:null,menu:null};
+const STG_DEF={zoom:1,cols:'auto',memos:true,hl:true,bar:true,form:'auto'};
+// 송폼을 어디에 보여줄지 (기획 §4)
+const STG_FORM=[['auto','자동'],['bar','상단 바'],['block','조각 위'],['hide','숨김']];
 // 기기 구간: 11인치와 13인치 아이패드, 폰, 데스크톱이 같은 조판을 쓸 이유가 없다
 function deviceClass(){const w=Math.max(window.innerWidth,window.innerHeight);
  return w<760?'phone':w<1100?'tab-s':w<1500?'tab-l':'desktop'}
-function stgKey(songId){const u=(NET.user&&NET.user.id)||'local';return `stage:${u}:${songId||'-'}:${deviceClass()}`}
-const stgSlot=songId=>`${songId||'-'}~${deviceClass()}`;
-function stgLoad(songId){
+// v2 부터 한 화면에 여러 곡이 들어간다. 크기·열 같은 값은 곡이 아니라
+// 예배 하나에 하나다 (블록 조판과 같은 단위)
+function stgKey(){const u=(NET.user&&NET.user.id)||'local';return `stage:${u}:${STG.svc?STG.svc.id:'-'}:${deviceClass()}`}
+const stgSlot=()=>`${STG.svc?STG.svc.id:'-'}~${deviceClass()}`;
+function stgLoad(){
  // 서버에 있으면 그것을 쓴다 — 교회 컴퓨터에서 로그인해도 내 조판이 따라온다
- const srv=((PREFS.data||{}).stage||{})[stgSlot(songId)];
+ const srv=((PREFS.data||{}).stage||{})[stgSlot()];
  if(srv)return Object.assign({},STG_DEF,srv);
- try{const s=JSON.parse(localStorage.getItem(stgKey(songId))||'null');
+ try{const s=JSON.parse(localStorage.getItem(stgKey())||'null');
   return Object.assign({},STG_DEF,s||{})}catch(e){return {...STG_DEF}}}
-function stgSave(songId){
- try{localStorage.setItem(stgKey(songId),JSON.stringify(STG.pref))}catch(e){}
- const slot=stgSlot(songId);
+function stgSave(){
+ try{localStorage.setItem(stgKey(),JSON.stringify(STG.pref))}catch(e){}
+ const slot=stgSlot();
  PREFS.data=PREFS.data||{};PREFS.data.stage=PREFS.data.stage||{};PREFS.data.stage[slot]={...STG.pref};
  if(!online()||!NET.user)return;
  clearTimeout(stgSave.t);stgSave.t=setTimeout(()=>{
   api('/me/prefs/stage/'+encodeURIComponent(slot),{method:'PUT',body:{value:{...STG.pref}}}).catch(()=>{})},600)}
 function stgItem(){const pub=pubOrDraft(STG.svc);const it=pub.items[STG.idx];if(!it)return null;
  const live=(STG.svc.items||[]).find(x=>x.id===it.id)||it;return {...it,notes:live.notes||[]}}
-// 화면 크기와 곡 하나를 받아 한 화면에 들어가는 가장 큰 조판을 찾는다
-function stgFit(it,W,H,pref){
+// 무대 자동 조판 v2 — 여러 곡을 한 화면에 둘 수 있다 (기획 §2).
+// 예전에는 한 곡이 한 화면을 차지해서 짧은 곡이 두 열로 찢기고 화면이 낭비됐다.
+// 규칙: 곡을 차례로 놓되, 한 열에 안 들어가면 0.7배까지 줄여 한 열에 넣는다.
+// 그래도 안 들어가면 0.7배로 두고 다음 열·화면으로 이어간다. 조각은 통째로 두고,
+// 열보다 긴 조각만 줄 사이 여백에서 나눈다.
+const STG_MIN=0.7;        // 한 열에 넣으려고 줄일 수 있는 한계
+// 무대 송폼 블록(검은 상자) 높이. 안쪽 여백 + 제목 줄 + 송폼 줄수
+// 송폼 상자 높이는 눈대중으로 재면 늘 어긋난다 — 안 보이는 곳에 똑같이 그려 보고 잰다
+let stgHM=null;const stgHMc={};
+const stgHeadH=(it,cw)=>{
+ const f=String(it.form||''),w=Math.round(cw);
+ const key=w+'|'+f+'|'+(it.title||'')+'|'+pgKey(it);
+ if(stgHMc[key]!=null)return stgHMc[key];
+ if(typeof document==='undefined')return 20+26+(f?6+19:0);
+ if(!stgHM){stgHM=document.createElement('div');stgHM.className='stgpage';
+  stgHM.style.cssText='position:fixed;left:-99999px;top:0;visibility:hidden;pointer-events:none';
+  document.body.appendChild(stgHM)}
+ stgHM.style.width=w+'px';
+ stgHM.innerHTML=`<div class="blk" style="position:relative;left:0;top:0;width:${w}px"><div class="songhead"><div class="shtop"><span class="num">1</span><span class="title">${esc(it.title||'(제목 없음)')}</span><span class="key">${esc(pgKey(it))}</span></div>${f?`<span class="frm">${esc(f)}</span>`:''}</div></div>`;
+ const h=Math.ceil(stgHM.firstChild.getBoundingClientRect().height)||(20+26+(f?6+19:0));
+ stgHMc[key]=h;return h};
+const STG_GUT=18;
+function stgCompose(pub,W,H,pref){
  const my=me();const session=PL.session||my.session||'전체';
  const ctx={mode:'play',session,f:{leader:true,session:true,mine:true,chords:true}};
- const opt={memos:pref.memos,session,ctx,gutter:18};
- const colsList=pref.cols==='auto'?(W>H?[1,2,3]:[1,2]):[+pref.cols];
- const p0=(it.pieces||[])[0]||{w:1};
- const best=pgBestFit(it,W,H,colsList,1,0,opt);
- if(best){const z=best.z*pref.zoom;const cw=best.cw;
-  const box={cols:best.cols,cw,ch:H,gutter:18,top:0};
-  const pages=pgLayout([it],box,{...opt,scale:z,songPage:false,head:false,fillH:best.fillH});
-  return {pages,box,cols:best.cols,zoom:Math.min(z,1)*cw/(p0.w||1),auto:Math.min(best.z,1)*cw/(p0.w||1),split:pages.length>1}}
- // 최소 크기로도 안 들어가면 화면을 나눈다
- const cols=W>H?2:1;const cw=(W-18*(cols-1))/cols;const box={cols,cw,ch:H,gutter:18,top:0};
- return {pages:pgLayout([it],box,{...opt,scale:0.5*pref.zoom,songPage:false,head:false}),
-         box,cols,zoom:0.5*cw/(p0.w||1),auto:0.5*cw/(p0.w||1),split:true}}
+ const cols=pref.cols&&pref.cols!=='auto'?+pref.cols:(W>H?2:1);
+ const cw=(W-STG_GUT*(cols-1))/cols;
+ const box={cols,cw,ch:H,gutter:STG_GUT,top:0};
+ const opt={memos:pref.memos,session,ctx,gutter:STG_GUT,scale:1,clamp:true};
+ const fullW=cw*cols+STG_GUT*(cols-1);
+ const screens=[];
+ let sc=null,col=0,y=0;
+ const newScreen=()=>{sc={blocks:[]};screens.push(sc);col=0;y=0;return sc};
+ const nextCol=()=>{if(col<cols-1){col++;y=0}else newScreen()};
+ const rem=()=>H-y;
+ const put=b=>{b.col=col;b.top=y;sc.blocks.push(b);y+=b.height+(b.gap||0)};
+ newScreen();
+
+ (pub.items||[]).forEach((it,idx)=>{
+  const pcs=pgPieces(it,box,opt);                    // s = cw/im.w (폭 맞춤)
+  const headH=stgHeadH(it,cw);
+  const unitsH=f=>pcs.reduce((a,pc)=>a+pc.units.reduce((b,u)=>b+(u.b-u.a)*pc.s*f+(u.strip?STRIP_H+2:0),0),0);
+  // 한 열에 통째로 들어가는 가장 큰 배율을 찾는다 (1.0 → 0.7)
+  let f=1;
+  const need=()=>headH+10+unitsH(f);
+  if(need()>H){f=STG_MIN;for(let t=0.98;t>=STG_MIN;t-=0.02){const q=t;const h=headH+10+unitsH(q);if(h<=H){f=q;break}}}
+  const fits=need()<=H;
+  // 곡이 한 열에 들어가는데 지금 열에 자리가 모자라면 다음 열로
+  if(fits&&y>0&&need()>rem())nextCol();
+  put({type:'head',id:'h'+idx,height:headH,item:it,idx,gap:10});
+  pcs.forEach((pc,pi)=>{
+   const sc2=pc.s*f;let stn=0;
+   const total=pc.units.reduce((a,u)=>a+(u.b-u.a)*sc2+(u.strip?STRIP_H+2:0),0);
+   // 조각은 통째로. 이 열에 안 들어가면 다음 열로 (조각 자체가 한 열보다 길면 나눈다)
+   if(y>0&&total>rem()&&total<=H)nextCol();
+   let i=0;
+   while(i<pc.units.length){
+    const u=pc.units[i];
+    if(u.strip){if(rem()<STRIP_H+20)nextCol();
+     put({type:'strip',id:`t${idx}.${pi}.${stn++}`,idx,pi,height:STRIP_H,markers:u.strip,mods:pgMods(it.form),gap:2});i++;continue}
+    let j=i,hSum=0;
+    while(j<pc.units.length&&!pc.units[j].strip){const h=(pc.units[j].b-pc.units[j].a)*sc2;if(hSum+h>rem())break;hSum+=h;j++}
+    if(j===i){                                        // 한 조각도 안 들어간다
+     if(y>0){nextCol();continue}
+     const s3=Math.min(sc2,rem()/(u.b-u.a));
+     put({type:'slice',id:`s${idx}.${pi}.${Math.round(u.a)}`,idx,pi,height:(u.b-u.a)*s3,pc,scale:s3,ranges:[[u.a,u.b]],gap:2});i++;continue}
+    const ranges=[];
+    for(let k=i;k<j;k++){const q=pc.units[k];
+     if(ranges.length&&ranges[ranges.length-1][1]===q.a)ranges[ranges.length-1][1]=q.b;else ranges.push([q.a,q.b])}
+    put({type:'slice',id:`s${idx}.${pi}.${Math.round(ranges[0][0])}`,idx,pi,height:hSum,pc,scale:sc2,ranges,gap:2});i=j}
+  });
+  y+=14;                                              // 곡 사이 여백
+ });
+ // 송폼 모드에 따라 송폼 블록을 뺀다. 뺀 자리는 같은 열의 아래 블록이 끌어올린다 (§4)
+ const dropHead=(sc,h)=>{const d=h.height+(h.gap||0);
+  sc.blocks=sc.blocks.filter(b=>b!==h);
+  sc.blocks.forEach(b=>{if(b.col===h.col&&b.top>h.top)b.top-=d})};
+ const fm=pref.form||'auto';
+ if(fm!=='block')screens.forEach(sc=>{
+  const heads=sc.blocks.filter(b=>b.type==='head');
+  if(fm==='auto'&&new Set(heads.map(b=>b.idx)).size>1)return;
+  heads.forEach(h=>dropHead(sc,h))});
+ return {screens,box,cols,cw,fullW}}
+
+/* ---------- 무대 편집: 블록을 끌어 옮긴다 (기획 §3) ---------- */
+// 자동 조판 결과를 '고칠 수 있는 조판'으로 바꾼다. 좌표는 캔버스 비율(0~1)이라
+// 해상도가 달라도 같은 모양이 나온다
+function stgToLayout(lay,W,H){
+ return {screens:lay.screens.map(sc=>({blocks:sc.blocks.map((b,i)=>{
+  const L=b.col*(lay.cw+STG_GUT);
+  return {...b,id:b.id||(b.type+i+'_'+Math.round(b.top)),
+   x:L/W,y:b.top/H,w:lay.cw/W,h:b.height/H};
+ })}))}}
+// 저장해 둔 조판은 '어디에 얼마만큼'만 남아 있다. 지금 발행본으로 다시 짠 자동 조판에서
+// 그림·메모 같은 알맹이를 가져와 붙인다. 없어진 곡의 블록은 버리고, 새로 생긴 곡은 뒤에 붙인다
+function stgHydrate(autoL,saved){
+ const live=new Map();
+ autoL.screens.forEach(sc=>sc.blocks.forEach(b=>live.set(b.id,b)));
+ const used=new Set();
+ let screens=(saved.screens||[]).map(sc=>({blocks:(sc.blocks||[]).map(b=>{
+  if(b.type==='text')return {...b,height:b.height||56};
+  const cut=String(b.id).indexOf('#');
+  if(cut>0){const lv=live.get(String(b.id).slice(0,cut));if(!lv)return null;used.add(lv.id);
+   const rs=b.ranges&&b.ranges.length?b.ranges:lv.ranges;
+   return {...lv,id:b.id,ranges:rs,height:stgRH(rs,lv.scale),x:b.x,y:b.y,w:b.w,h:b.h,hidden:!!b.hidden}}
+  const lv=live.get(b.id);if(!lv)return null;used.add(b.id);
+  return {...lv,x:b.x,y:b.y,w:b.w,h:b.h,hidden:!!b.hidden,compact:!!b.compact};
+ }).filter(Boolean)}));
+ autoL.screens.forEach((sc,i)=>sc.blocks.forEach(b=>{
+  if(used.has(b.id))return;
+  while(screens.length<=i)screens.push({blocks:[]});
+  screens[i].blocks.push(b)}));
+ // 빈 화면은 남겨 둔다 — 사람이 일부러 더한 것일 수 있다. 화면 띠에서 지운다
+ return screens.some(sc=>sc.blocks.length)?{screens}:null}
+// 고친 조판에서는 블록마다 폭이 다르다. 폭이 바뀐 만큼 악보도 같이 커진다
+function stgBlockAt(b,lay,W,H){
+ const w=b.w!=null?b.w*W:lay.cw, r=lay.cw?w/lay.cw:1;
+ const nb={...b,col:0,top:b.y!=null?b.y*H:b.top};
+ if(b.type==='slice'){nb.scale=b.scale*r;nb.height=b.height*r}
+ return {nb,w,left:b.x!=null?b.x*W:0}}
+// 격자 12×8 에 맞춘다
+const stgSnapX=x=>Math.round(x*12)/12, stgSnapY=y=>Math.round(y*8)/8;
+
+// 고친 조판은 예배 × 사람 × 기기 종류로 저장한다. 같은 사람의 다른 아이패드에서도
+// 같은 조판이 나오고, 다른 멤버 화면은 건드리지 않는다
+function stgLaySlot(){return `lay:${STG.svc?STG.svc.id:'-'}~${deviceClass()}`}
+function stgLayoutSave(){
+ const slot=stgLaySlot();
+ PREFS.data=PREFS.data||{};PREFS.data.stage=PREFS.data.stage||{};
+ PREFS.data.stage[slot]=STG.layout?stgLayoutSlim(STG.layout):null;
+ try{localStorage.setItem('conti-'+slot,JSON.stringify(PREFS.data.stage[slot]))}catch(e){}
+ if(!online()||!NET.user)return;
+ clearTimeout(stgLayoutSave.t);stgLayoutSave.t=setTimeout(()=>{
+  api('/me/prefs/stage/'+encodeURIComponent(slot),{method:'PUT',body:{value:PREFS.data.stage[slot]}}).catch(()=>{})},600)}
+// 저장할 때는 그릴 때 쓰는 큰 값(이미지·메모)을 빼고 자리만 남긴다
+function stgLayoutSlim(L){
+ return {v:2,screens:(L.screens||[]).map(sc=>({blocks:(sc.blocks||[]).map(b=>({
+  id:b.id,type:b.type,hidden:b.hidden||undefined,compact:b.compact||undefined,text:b.type==='text'?b.text:undefined,
+  ranges:String(b.id).indexOf('#')>0?b.ranges:undefined,
+  x:+(b.x||0).toFixed(4),y:+(b.y||0).toFixed(4),w:+(b.w||0).toFixed(4),h:+(b.h||0).toFixed(4)}))}))}}
+function stgLayoutLoad(){
+ const slot=stgLaySlot();
+ const srv=((PREFS.data||{}).stage||{})[slot];
+ if(srv&&srv.screens)return srv;
+ try{const v=JSON.parse(localStorage.getItem('conti-'+slot)||'null');if(v&&v.screens)return v}catch(e){}
+ // 내 조판이 없으면 인도자가 추천한 조판으로 시작한다
+ const rec=((pubOrDraft(STG.svc||{}).stageLayouts)||{})[deviceClass()];
+ return rec&&rec.screens?rec:null}
+// 인도자 추천 조판으로 저장 — 멤버가 그 예배를 처음 열 때의 시작점
+async function stgRecommend(){
+ if(!STG.layout)return toast('먼저 조판을 고쳐 주세요');
+ if(!online())return toast('인터넷이 있어야 해요');
+ try{
+  await api('/services/'+encodeURIComponent(STG.svc.id)+'/stage-layout',
+   {method:'PUT',body:{teamId:S.team.id,device:deviceClass(),layout:stgLayoutSlim(STG.layout)}});
+  const pub=STG.svc.published;if(pub){pub.stageLayouts=pub.stageLayouts||{};pub.stageLayouts[deviceClass()]=stgLayoutSlim(STG.layout);save()}
+  toast('추천 조판으로 저장했어요')}
+ catch(e){toast(e.message||'저장하지 못했어요')}}
+
+function stgEditOn(){
+ const W=stgCanvasW(),H=stgCanvasH();
+ if(!STG.layout)STG.layout=stgToLayout(STG.lay,W,H);
+ STG.edit=true;STG.menu=null;stageRender()}
+function stgEditOff(){STG.edit=false;STG.menu=null;stgLayoutSave();stageRender()}
+function stgAutoAgain(){
+ if(!confirm('이 예배의 무대 조판을 자동으로 다시 짤까요?\n손으로 옮긴 것은 사라져요.'))return;
+ STG.layout=null;stgLayoutSave();stageRender()}
+// 화면 띠 — 화면을 더하고, 빈 화면을 지우고, 순서를 바꾼다 (§3)
+function stgStripHTML(screens){
+ const fm=STG.pref.form||'auto';
+ const hid=(STG.layout?STG.layout.screens:[]).reduce((a,sc)=>a+sc.blocks.filter(b=>b.hidden).length,0);
+ return `<div class="stgstrip" data-stop="1">
+  ${screens.map((sc,i)=>`<button class="sthumb ${i===STG.screen?'on':''}" data-sc="go" data-i="${i}"><b>${i+1}</b><span>${sc.blocks.filter(b=>!b.hidden).length}</span></button>`).join('')}
+  <button class="sbtn2" data-sc="add" title="화면 추가">＋</button>
+  <button class="sbtn2" data-sc="left" title="이 화면을 앞으로">‹</button>
+  <button class="sbtn2" data-sc="right" title="이 화면을 뒤로">›</button>
+  <button class="sbtn2" data-sc="del" title="빈 화면 지우기">${ic('trash')}</button>
+  <span class="grow"></span>
+  ${hid?`<button class="sbtn2" data-sc="show">숨김 ${hid}개 되돌리기</button>`:''}
+  <button class="sbtn2" data-sc="text">＋ 글</button>
+  <button class="sbtn2" data-sc="form">송폼: ${(STG_FORM.find(f=>f[0]===fm)||STG_FORM[0])[1]}</button>
+  ${isLeader()?`<button class="sbtn2" data-sc="rec" title="멤버가 처음 열 때 이 조판으로">인도자 추천</button>`:''}</div>`}
+
+function stgCanvasW(){const h=$('#stageWrap');return (h?h.clientWidth:1200)-32}
+function stgCanvasH(){const h=$('#stageWrap');return Math.max(120,(h?h.clientHeight:800)-(STG.pref.bar?46:0)-24)}
+
+// 블록 하나를 옆 화면으로 보낸다
+function stgMoveScreen(bid,d){
+ const L=STG.layout;if(!L)return;
+ const from=STG.screen,to=from+d;
+ if(to<0){L.screens.unshift({blocks:[]});STG.screen=1;return stgMoveScreen(bid,-1)}
+ if(to>=L.screens.length)L.screens.push({blocks:[]});
+ const i=L.screens[from].blocks.findIndex(b=>b.id===bid);if(i<0)return;
+ const [b]=L.screens[from].blocks.splice(i,1);
+ b.x=stgSnapX(0.02);b.y=stgSnapY(0.02);
+ L.screens[to].blocks.push(b);
+ STG.menu=null;stgLayoutSave();stageRender()}
+
+// 편집 중에는 사람이 고친 좌표대로 그린다. 손잡이로 크기를 바꾸고, 캔버스 밖으로
+// 끌면 옆 화면으로 간다
+function stgEditBind(host,W,H,k){
+ k=k||1;
+ const page=host.querySelector('.stgpage');if(!page)return;
+ let st=null;
+ const blk=e=>e.target.closest('[data-sid]');
+ page.addEventListener('pointerdown',e=>{
+  if(e.target.closest('[data-stop]'))return;   // 블록 메뉴는 끌기가 아니다
+  const el=blk(e);if(!el)return;
+  const L=STG.layout.screens[STG.screen];const b=L.blocks.find(x=>x.id===el.dataset.sid);if(!b)return;
+  const rs=!!e.target.closest('.sgrip');
+  st={b,el,rs,x0:e.clientX,y0:e.clientY,bx:b.x,by:b.y,bw:b.w,moved:false};
+  el.setPointerCapture(e.pointerId);e.preventDefault()});
+ page.addEventListener('pointermove',e=>{
+  if(!st)return;
+  const dx=(e.clientX-st.x0)/(W*k), dy=(e.clientY-st.y0)/(H*k);
+  if(!st.moved&&Math.abs(e.clientX-st.x0)+Math.abs(e.clientY-st.y0)<6)return;
+  st.moved=true;
+  if(st.rs){const w=Math.max(0.12,Math.min(0.98,st.bw+dx));
+   // 악보는 폭에 비례해 커진다 — 높이도 같은 비율로 따라가야 겹침·붙이기가 맞는다
+   if(st.b.type==='slice'&&st.b.h)st.b.h=st.b.h*(w/st.b.w);
+   st.b.w=w}
+  else{st.b.x=Math.max(-0.35,Math.min(1.35,st.bx+dx));st.b.y=Math.max(-0.2,Math.min(1.2,st.by+dy))}
+  stgPaintBlock(st.el,st.b,W,H)});
+ const up=e=>{
+  if(!st)return;const b=st.b,el=st.el;const moved=st.moved;st=null;
+  try{el.releasePointerCapture(e.pointerId)}catch(_){}
+  if(!moved){STG.menu=STG.menu===b.id?null:b.id;stageRender();return}
+  // 캔버스 밖으로 끌면 옆 화면으로
+  if(b.x>1.02){stgMoveScreen(b.id,1);return}
+  if(b.x+b.w<-0.02){stgMoveScreen(b.id,-1);return}
+  b.x=stgSnapX(Math.max(0,Math.min(1-b.w,b.x)));b.y=stgSnapY(Math.max(0,b.y));
+  if(b.type==='slice')stgTryMerge(STG.layout.screens[STG.screen],b);
+  stgLayoutSave();stageRender()};
+ page.addEventListener('pointerup',up);page.addEventListener('pointercancel',up)}
+
+function stgPaintBlock(el,b,W,H){
+ el.style.left=(b.x*W)+'px';el.style.top=(b.y*H)+'px';el.style.width=(b.w*W)+'px'}
+
+/* ---------- 조각 자르기 · 붙이기 (기획 §3) ---------- */
+const stgRoot=id=>String(id||'').split('#')[0];
+const stgRH=(ranges,scale)=>ranges.reduce((a,r)=>a+(r[1]-r[0])*scale,0);
+// 블록 가운데에 가장 가까운 '줄 사이 여백'에서 둘로 나눈다. 여백이 없으면 못 나눈다
+function stgCut(bid){
+ const L=STG.layout&&STG.layout.screens[STG.screen];if(!L)return;
+ const b=L.blocks.find(x=>x.id===bid);
+ if(!b||b.type!=='slice'||!b.pc)return toast('악보 블록만 자를 수 있어요');
+ const a0=b.ranges[0][0], z=b.ranges[b.ranges.length-1][1], mid=(a0+z)/2;
+ const cuts=b.pc.units.filter(u=>!u.strip&&u.a>a0+1&&u.a<z-1).map(u=>u.a);
+ if(!cuts.length)return toast('나눌 여백이 없어요');
+ const at=cuts.reduce((p,c)=>Math.abs(c-mid)<Math.abs(p-mid)?c:p,cuts[0]);
+ const r1=[],r2=[];
+ b.ranges.forEach(([x,y])=>{if(y<=at)r1.push([x,y]);else if(x>=at)r2.push([x,y]);else{r1.push([x,at]);r2.push([at,y])}});
+ if(!r1.length||!r2.length)return toast('나눌 여백이 없어요');
+ const H=stgCanvasH();
+ const mk=(rs,y)=>{const h=stgRH(rs,b.scale);
+  return {...b,id:stgRoot(b.id)+'#'+Math.round(rs[0][0]),ranges:rs,height:h,y,h:h/H}};
+ const b1=mk(r1,b.y), b2=mk(r2,Math.min(1-0.05,b.y+stgRH(r1,b.scale)/H+0.01));
+ L.blocks=L.blocks.filter(x=>x!==b).concat([b1,b2]);
+ STG.menu=null;stgLayoutSave();stageRender()}
+// 나뉜 두 블록을 겹쳐 놓으면 도로 하나가 된다
+function stgTryMerge(L,b){
+ const mates=L.blocks.filter(o=>o!==b&&o.type==='slice'&&stgRoot(o.id)===stgRoot(b.id));
+ for(const o of mates){
+  const over=!(b.x+b.w<o.x||o.x+o.w<b.x||b.y+(b.h||0)<o.y||o.y+(o.h||0)<b.y);
+  if(!over)continue;
+  const endB=b.ranges[b.ranges.length-1][1], startO=o.ranges[0][0];
+  const endO=o.ranges[o.ranges.length-1][1], startB=b.ranges[0][0];
+  let rs=null;
+  if(Math.abs(endB-startO)<0.6)rs=[...b.ranges,...o.ranges];
+  else if(Math.abs(endO-startB)<0.6)rs=[...o.ranges,...b.ranges];
+  if(!rs)continue;
+  const rr=[];rs.forEach(r=>{const l=rr[rr.length-1];if(l&&Math.abs(l[1]-r[0])<0.6)l[1]=r[1];else rr.push([r[0],r[1]])});
+  const h=stgRH(rr,b.scale), H=stgCanvasH();
+  const nb={...b,id:stgRoot(b.id)+'#'+Math.round(rr[0][0]),ranges:rr,height:h,
+   y:Math.min(b.y,o.y),h:h/H};
+  L.blocks=L.blocks.filter(x=>x!==b&&x!==o).concat([nb]);
+  return true}
+ return false}
+
+// 블록 메뉴 (탭하면 뜬다)
+function stgBlockMenu(b){
+ const isPiece=b.type==='slice';
+ return `<div class="sblkmenu" data-stop="1">
+  <div class="row" style="gap:4px">
+   <button class="sbtn2" data-sm="small" data-id="${b.id}" title="작게">−</button>
+   <button class="sbtn2" data-sm="big" data-id="${b.id}" title="크게">＋</button>
+   <button class="sbtn2" data-sm="prev" data-id="${b.id}" title="이전 화면으로">‹</button>
+   <button class="sbtn2" data-sm="next" data-id="${b.id}" title="다음 화면으로">›</button>
+   ${isPiece?`<button class="sbtn2" data-sm="cut" data-id="${b.id}" title="여백에서 자르기">✂</button>`:''}
+   ${b.type==='head'?`<button class="sbtn2" data-sm="compact" data-id="${b.id}" title="${b.compact?'제목+송폼':'제목만 한 줄'}">${b.compact?'⇕':'⇔'}</button>`:''}
+   <button class="sbtn2" data-sm="hide" data-id="${b.id}" title="숨기기">${ic('x')}</button></div></div>`}
+
 async function stageOpen(svc,idx){
  await pullPrefs();
- STG.svc=svc;STG.idx=idx||0;STG.screen=0;STG.open=false;
- const it=stgItem();STG.pref=stgLoad(it&&it.songId);
+ STG.svc=svc;STG.idx=idx||0;STG.screen=0;STG.open=false;STG.from=idx||0;
+ const it=stgItem();STG.pref=stgLoad();
+ STG.edit=false;STG.menu=null;
+ STG.layout=deviceClass()==='phone'?null:stgLayoutLoad();
  let el=$('#stageWrap');if(el)el.remove();
  el=document.createElement('div');el.id='stageWrap';el.className='stgw';
  document.body.appendChild(el);document.body.classList.add('stgon');
@@ -5542,10 +5897,26 @@ async function stageOpen(svc,idx){
  el.onclick=stageClick;
  window.addEventListener('keydown',stageKey);
  window.addEventListener('resize',stageResize);
- let x0=null;
- el.addEventListener('touchstart',e=>{x0=e.touches[0].clientX},{passive:true});
- el.addEventListener('touchend',e=>{if(x0==null)return;const dx=e.changedTouches[0].clientX-x0;x0=null;
+ // 한 손가락 = 화면 넘김. 두 손가락 = 잠깐 확대(놓으면 돌아온다). 조판은 안 바뀐다 (§5)
+ let x0=null,pz=null;
+ const pd=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
+ el.addEventListener('touchstart',e=>{
+  if(e.touches.length===2){x0=null;const pg2=el.querySelector('.stgpage');
+   if(pg2)pz={d0:pd(e.touches),el:pg2};return}
+  if(STG.edit)return;                       // 편집 중에는 블록을 끄는 중이다
+  x0=e.touches[0].clientX},{passive:true});
+ el.addEventListener('touchmove',e=>{
+  if(!pz||e.touches.length!==2)return;
+  const z=Math.max(1,Math.min(3,pd(e.touches)/pz.d0));
+  pz.el.style.transform=`scale(${z})`;pz.el.style.transformOrigin='center center'},{passive:true});
+ el.addEventListener('touchend',e=>{
+  if(pz&&e.touches.length<2){if(!STG.edit)pz.el.style.transform='';pz=null;x0=null;
+   if(STG.edit)stageRender();return}
+  if(x0==null)return;const dx=e.changedTouches[0].clientX-x0;x0=null;
   if(Math.abs(dx)>60)stageGo(dx<0?1:-1)},{passive:true})}
+// 무대 모드를 닫는다. 곡이 바뀌었을 때만 아래 화면을 다시 그린다 —
+// 그냥 다시 그리면 재생 중이던 영상·녹음이 새로 만들어지며 끊긴다
+function stageExit(){const moved=STG.idx!==STG.from;stageClose();if(moved)render()}
 function stageClose(){keepAwake(false);if(NATIVE)setTimeout(adsSync,0);const el=$('#stageWrap');if(el)el.remove();
  document.body.classList.remove('stgon');
  window.removeEventListener('keydown',stageKey);window.removeEventListener('resize',stageResize);
@@ -5555,46 +5926,73 @@ function stageResize(){clearTimeout(STG_RZ);STG_RZ=setTimeout(()=>{if($('#stageW
 function stageKey(e){if(!$('#stageWrap'))return;
  if(e.key==='ArrowRight'){e.preventDefault();stageGo(1)}
  else if(e.key==='ArrowLeft'){e.preventDefault();stageGo(-1)}
- else if(e.key==='Escape'){e.preventDefault();stageClose();render()}}
-function stageGo(d){const pub=pubOrDraft(STG.svc);const n=(pub.items||[]).length;
- const nx=Math.max(0,Math.min(n-1,STG.idx+d));if(nx===STG.idx)return;
- STG.idx=nx;STG.screen=0;STG.open=false;const it=stgItem();STG.pref=stgLoad(it&&it.songId);stageRender()}
+ else if(e.key==='Escape'){e.preventDefault();stageExit()}}
+// 넘김 단위는 '화면'이다 (기획 §5). 한 화면에 곡이 여러 개일 수 있으므로
+// 곡 단위로 넘기면 같은 화면을 두 번 보거나 건너뛰게 된다
+function stageGo(d){
+ const n=STG.nscreens||((STG.lay&&STG.lay.screens)||[]).length||1;
+ const nx=Math.max(0,Math.min(n-1,STG.screen+d));if(nx===STG.screen)return;
+ STG.screen=nx;STG.open=false;stageRender()}
 function stageRender(){
  const host=$('#stageWrap');if(!host)return;
- const it=stgItem();const pub=pubOrDraft(STG.svc);
- if(!it){host.innerHTML=`<div class="stgbar"><b>곡이 없어요</b><span class="grow"></span><button class="sbtn" data-stg="exit">${ic('x')}</button></div>`;return}
+ const pub=pubOrDraft(STG.svc);const items=pub.items||[];
+ if(!items.length){host.innerHTML=`<div class="stgbar"><b>곡이 없어요</b><span class="grow"></span><button class="sbtn" data-stg="exit">${ic('x')}</button></div>`;return}
  const barH=STG.pref.bar?46:0;
- const W=host.clientWidth-32,H=host.clientHeight-barH-24;
- const fit=stgFit(it,W,Math.max(120,H),STG.pref);STG.fit=fit;
- const pages=fit.pages;if(STG.screen>=pages.length)STG.screen=0;
- const p=pages[STG.screen];
- const used=p.blocks.length?Math.max(...p.blocks.map(x=>x.col))+1:1;
- const usedW=used*fit.box.cw+(used-1)*fit.box.gutter;
- // 남는 세로 공간은 위아래로 나눠 가운데에 둔다
- const contentH=p.blocks.length?Math.max(...p.blocks.map(x=>x.top+x.height)):0;
- const padT=Math.max(0,(Math.max(120,H)-contentH)/2);
- const box={left:Math.max(0,(W-usedW)/2),top0:padT,cw:fit.box.cw,gutter:fit.box.gutter,fullW:W,hl:STG.pref.hl,memos:STG.pref.memos};
+ const W=host.clientWidth-32,H=Math.max(120,host.clientHeight-barH-24);
+ const auto=stgCompose(pub,W,H,STG.pref);STG.lay=auto;
+ // 사람이 고친 조판이 있으면 그것을 쓴다 (없으면 자동 그대로)
+ const autoL=stgToLayout(auto,W,H);
+ if(STG.layout){const h2=stgHydrate(autoL,STG.layout);if(h2)STG.layout=h2;else STG.layout=null}
+ const custom=!!STG.layout;
+ const lay=custom?{...auto,screens:STG.layout.screens}:auto;
+ const screens=lay.screens;STG.nscreens=screens.length;
+ if(STG.screen>=screens.length)STG.screen=Math.max(0,screens.length-1);
+ const p=screens[STG.screen];
+ // 이 화면에 나오는 곡들 (바에 쓸 "지금 보는 곡")
+ const onScreen=[...new Set(p.blocks.filter(b=>!b.hidden&&b.idx!=null).map(b=>b.idx))].sort((x,y)=>x-y);
+ if(!onScreen.includes(STG.idx)&&onScreen.length)STG.idx=onScreen[0];
+ const it=items[STG.idx]||items[0];
+ const cols0=p.blocks.map(x=>x.col).filter(x=>typeof x==='number');
+ const used=cols0.length?Math.max(...cols0)+1:1;
+ const usedW=used*lay.cw+(used-1)*STG_GUT;
+ const box={left:Math.max(0,(W-usedW)/2),top0:0,cw:lay.cw,gutter:STG_GUT,fullW:W,hl:STG.pref.hl,memos:STG.pref.memos,stage:true};
  const page={pub,svc:STG.svc,session:PL.session||me().session||''};
- const n=(pub.items||[]).length;const k=keyStr(it);
+ const k=keyStr(it);const fm=STG.pref.form||'auto';
+ const ek=STG.edit?Math.max(.5,(H-58)/H):1;   // 편집 중 화면 띠 자리
  host.innerHTML=`
   ${STG.pref.bar?`<div class="stgbar">
-   <button class="sbtn" data-stg="prev" ${STG.idx?'':'disabled'}>${ic('left')}</button>
-   <b>${STG.idx+1}. ${esc(it.title||'(제목 없음)')}${k?' / '+esc(k):''}</b>
-   <span class="stgform">${esc(it.form||'')}</span>
+   <button class="sbtn" data-stg="prev" ${STG.screen?'':'disabled'}>${ic('left')}</button>
+   <b>${fm==='block'?`${STG.screen+1} 화면`:`${STG.idx+1}. ${esc(it.title||'(제목 없음)')}${k?' / '+esc(k):''}`}</b>
+   <span class="stgform">${fm==='block'||fm==='hide'?'':esc(it.form||'')}</span>
    <span class="grow"></span>
-   ${pages.length>1?`<span class="stgpg">${STG.screen+1}/${pages.length} 화면</span>`:''}
-   <button class="sbtn" data-stg="next" ${STG.idx<n-1?'':'disabled'}>${ic('right')}</button>
+   <span class="stgpg">${STG.screen+1}/${screens.length} 화면${onScreen.length>1?` · 곡 ${onScreen.length}`:''}</span>
+   <button class="sbtn" data-stg="next" ${STG.screen<screens.length-1?'':'disabled'}>${ic('right')}</button>
+   ${deviceClass()==='phone'?'':`<button class="sbtn ${STG.edit?'on':''}" data-stg="edit" title="${STG.edit?'편집 끝내기':'조판 고치기'}">${ic('pen')}</button>`}
+   ${STG.edit?`<button class="sbtn" data-stg="auto" title="자동으로 다시">${ic('refresh')}</button>`:''}
    <button class="sbtn ${STG.open?'on':''}" data-stg="cfg" title="내 조판">${ic('gear')}</button>
    <button class="sbtn" data-stg="export" title="이 조판 그대로 내보내기">${ic('print')}</button>
    <button class="sbtn" data-stg="exit" title="무대 모드 끝내기">${ic('x')}</button></div>`:
    `<button class="sbtn stgshow" data-stg="baron" title="바 켜기">${ic('up')}</button>`}
-  <div class="stgcanvas" style="top:${barH+12}px"><div class="stgpage" style="width:${W}px;height:${Math.max(120,H)}px">
-   ${p.blocks.map(b=>pgBlockHTML(b,box,page)).join('')}</div></div>
-  ${STG.open?stagePopHTML(fit):''}`}
+  <div class="stgcanvas" style="top:${barH+12}px"><div class="stgpage ${STG.edit?'edit':''}" style="width:${W}px;height:${H}px${STG.edit?`;transform:scale(${ek});transform-origin:top left`:''}">
+   ${STG.edit?'<div class="sgrid"></div>':''}
+   ${p.blocks.map(b=>{
+     if(b.hidden)return '';
+     if(!custom&&!STG.edit)return pgBlockHTML(b,box,page);
+     const {nb,w,left}=stgBlockAt(b,lay,W,H);
+     if(!STG.edit)return pgBlockHTML(nb,{...box,left,cw:w,fullW:w,gutter:0},page);
+     const inner=pgBlockHTML({...nb,top:0},{...box,left:0,cw:w,fullW:w,gutter:0},page);
+     return `<div class="sblk ${STG.menu===b.id?'on':''}" data-sid="${esc(b.id)}" style="left:${left}px;top:${nb.top}px;width:${w}px">
+      <span class="stag">${b.type==='head'?'송폼 '+(b.idx+1):b.type==='strip'?'메모':'악보'}</span>
+      ${inner}<span class="sgrip"></span>
+      ${STG.menu===b.id?stgBlockMenu(b):''}</div>`}).join('')}</div></div>
+  ${STG.edit?stgStripHTML(screens):''}
+  ${STG.open?stagePopHTML(lay):''}`;
+ if(STG.edit)stgEditBind(host,W,H,ek);}
+
 function stagePopHTML(fit){
  const P=STG.pref;
  return `<div class="stgpop" data-stop="1">
-  <div class="lbl" style="margin-top:0">이 곡 조판 <span class="hint">내 기기에만 저장돼요</span></div>
+  <div class="lbl" style="margin-top:0">이 예배 조판 <span class="hint">내 기기·내 계정에만</span></div>
   <div class="row" style="gap:8px"><span style="width:52px" class="hint">크기</span>
    <button class="sbtn2" data-stg="z" data-d="-1">−</button>
    <b style="width:56px;text-align:center">×${P.zoom.toFixed(1)}</b>
@@ -5605,38 +6003,89 @@ function stagePopHTML(fit){
   <label class="mrow" style="cursor:pointer"><span class="grow">메모 띠</span><input type="checkbox" data-stgt="memos" ${P.memos?'checked':''}></label>
   <label class="mrow" style="cursor:pointer"><span class="grow">하이라이트</span><input type="checkbox" data-stgt="hl" ${P.hl?'checked':''}></label>
   <label class="mrow" style="cursor:pointer"><span class="grow">상단 송폼 바</span><input type="checkbox" data-stgt="bar" ${P.bar?'checked':''}></label>
-  <div class="hint" style="margin-top:8px">${fit.cols}열 · 원본 대비 ${Math.round(fit.zoom*100)}%${P.zoom!==1?` (자동 ${Math.round(fit.auto*100)}% × ${P.zoom.toFixed(1)})`:''}${fit.split?' · 화면이 나뉘었어요. 탭하면 다음 화면':''}</div>
+  <div class="hint" style="margin-top:8px">${fit.cols}열 · ${STG.nscreens||1}화면${STG.layout?' · 손으로 고친 조판':''}${(STG.nscreens||1)>1?' · 탭하면 다음 화면':''}</div>
   <div class="row" style="justify-content:space-between;margin-top:10px">
    <button class="btn sm ghost" data-stg="reset">자동으로 되돌리기</button>
    <button class="btn sm pri" data-stg="export">${ic('print')}이대로 내보내기</button></div></div>`}
+// 화면 띠 · 도구 (기획 §3)
+function stgScreenAct(a2,el){
+ const L=STG.layout;
+ if(a2==='go'){STG.screen=+el.dataset.i;STG.menu=null;return stageRender()}
+ if(a2==='form'){const fm=STG.pref.form||'auto';
+  const i=STG_FORM.findIndex(f=>f[0]===fm);
+  STG.pref.form=STG_FORM[(i+1)%STG_FORM.length][0];
+  stgSave();
+  // 송폼 자리가 바뀌면 블록이 달라진다. 손으로 고친 조판은 그대로 두고 새 블록만 들어온다
+  return stageRender()}
+ if(!L)return;
+ if(a2==='add'){L.screens.splice(STG.screen+1,0,{blocks:[]});STG.screen++;}
+ else if(a2==='del'){
+  if(L.screens.length<2)return toast('화면이 하나뿐이에요');
+  if(L.screens[STG.screen].blocks.length)return toast('빈 화면만 지울 수 있어요');
+  L.screens.splice(STG.screen,1);STG.screen=Math.max(0,STG.screen-1)}
+ else if(a2==='left'||a2==='right'){
+  const to=STG.screen+(a2==='left'?-1:1);
+  if(to<0||to>=L.screens.length)return;
+  const [sc]=L.screens.splice(STG.screen,1);L.screens.splice(to,0,sc);STG.screen=to}
+ else if(a2==='show'){L.screens.forEach(sc=>sc.blocks.forEach(b=>{delete b.hidden}))}
+ else if(a2==='text'){
+  const t=prompt('화면에 띄울 한 줄','여기서 기도');if(t==null)return;
+  L.screens[STG.screen].blocks.push({id:'x'+Date.now().toString(36),type:'text',text:t,
+   x:stgSnapX(0.08),y:stgSnapY(0.08),w:0.4,h:0.08,height:56});}
+ else if(a2==='rec')return stgRecommend();
+ STG.menu=null;stgLayoutSave();stageRender()}
+
 function stageClick(e){
+ const sc0=e.target.closest('[data-sc]');
+ if(sc0){stgScreenAct(sc0.dataset.sc,sc0);return}
+ const sm=e.target.closest('[data-sm]');
+ if(sm){const L=STG.layout&&STG.layout.screens[STG.screen];const bb=L&&L.blocks.find(x=>x.id===sm.dataset.id);
+  if(bb){const a2=sm.dataset.sm;
+   if(a2==='small'||a2==='big'){const f=a2==='big'?1.1:0.9;
+    const w=Math.max(0.12,Math.min(0.98,bb.w*f));if(bb.h)bb.h*=w/bb.w;bb.w=w}
+   else if(a2==='prev'){stgMoveScreen(bb.id,-1);return}
+   else if(a2==='next'){stgMoveScreen(bb.id,1);return}
+   else if(a2==='cut'){stgCut(bb.id);return}
+   else if(a2==='compact'){bb.compact=!bb.compact}
+   else if(a2==='hide'){bb.hidden=true;STG.menu=null}
+   stgLayoutSave();stageRender()}
+  return}
  const b=e.target.closest('[data-stg]');
  const t=e.target.closest('[data-stgt]');
- if(t){STG.pref[t.dataset.stgt]=t.checked;stgSave((stgItem()||{}).songId);stageRender();return}
+ if(t){STG.pref[t.dataset.stgt]=t.checked;stgSave();stageRender();return}
  if(!b){ // 화면이 나뉘었으면 탭으로 다음 화면
   if(e.target.closest('.stgpop'))return;
-  const pages=(STG.fit&&STG.fit.pages)||[];
-  if(pages.length>1){STG.screen=(STG.screen+1)%pages.length;stageRender()}
+  if(STG.edit){if(STG.menu){STG.menu=null;stageRender()}return}
+  const si=e.target.closest('[data-si]');
+  if(si&&+si.dataset.si!==STG.idx){STG.idx=+si.dataset.si;stageRender();return}
+  const n=STG.nscreens||((STG.lay&&STG.lay.screens)||[]).length;
+  if(n>1){STG.screen=(STG.screen+1)%n;stageRender()}
   return}
- const a=b.dataset.stg;const song=(stgItem()||{}).songId;
- if(a==='exit'){stageClose();render();return}
+ const a=b.dataset.stg;
+ if(a==='exit'){stageExit();return}
  if(a==='prev'){stageGo(-1);return}
  if(a==='next'){stageGo(1);return}
  if(a==='cfg'){STG.open=!STG.open;stageRender();return}
- if(a==='baron'){STG.pref.bar=true;stgSave(song);stageRender();return}
+ if(a==='baron'){STG.pref.bar=true;stgSave();stageRender();return}
  if(a==='z'){const cur=STG.pref.zoom;const step=cur<0.5?0.05:0.1;   // 작을수록 잘게
-  STG.pref.zoom=Math.max(.1,Math.min(3,+(cur+ +b.dataset.d*step).toFixed(2)));stgSave(song);stageRender();return}
- if(a==='cols'){STG.pref.cols=b.dataset.v==='auto'?'auto':+b.dataset.v;stgSave(song);stageRender();return}
- if(a==='reset'){STG.pref={...STG_DEF};stgSave(song);stageRender();return}
- if(a==='export'){stageExport();return}}
+  STG.pref.zoom=Math.max(.1,Math.min(3,+(cur+ +b.dataset.d*step).toFixed(2)));stgSave();stageRender();return}
+ if(a==='cols'){STG.pref.cols=b.dataset.v==='auto'?'auto':+b.dataset.v;stgSave();stageRender();return}
+ if(a==='reset'){STG.pref={...STG_DEF};stgSave();stageRender();return}
+ if(a==='export'){stageExport();return}
+ if(a==='edit'){STG.edit?stgEditOff():stgEditOn();return}
+ if(a==='auto'){stgAutoAgain();return}}
 // ⇪ 내 조판 값으로 인쇄 시트를 채워서 연다 (§1-A)
 function stageExport(){
- const svc=STG.svc;const it=stgItem();const P={...STG.pref};const fit=STG.fit;
+ const svc=STG.svc;const it=stgItem();const P={...STG.pref};const fit=STG.lay;
  const land=window.innerWidth>window.innerHeight;
  Object.assign(PRT,{mode:'stage',summary:false,cover:false,sheets:true,next:true,songPage:true,
   memos:P.memos,hl:P.hl,orient:land?'landscape':'portrait',
   scale:Math.min(1.15,Math.max(0.9,P.zoom)),
-  session:PL.session||me().session||'전체',only:it?it.id:null});
+  session:PL.session||me().session||'전체',only:null});   // 화면 = 쪽 이라 범위는 지금 조판 전체다
+ // 화면 = 쪽. 보던 그대로가 종이에 나온다
+ const W=stgCanvasW(),H=stgCanvasH();
+ const src=STG.layout||stgToLayout(fit,W,H);
+ PRT.stageLayout=src?{W,H,cw:fit.cw,screens:src.screens}:null;
  stageClose();printSheet(svc)}
 
 // 앱(WebView)에서는 window.print() 가 아무 일도 하지 않는다. 네이티브 인쇄로 넘긴다.
@@ -5657,6 +6106,7 @@ async function printService(svc,opts){
  const my=me();
  if(!PRT.session)PRT.session=my.session||'전체';
  if(opts)Object.assign(PRT,opts);
+ PRT.stageLayout=null;                       // 보통 인쇄는 원래 조판으로
  printSheet(svc)}
 function printSheet(svc){
  const pub=pubOrDraft(svc);
@@ -5690,8 +6140,25 @@ function printSheet(svc){
    if(e.target.closest('[data-close]')){closeModal();return}
    if(e.target.closest('#pvGo')){closeModal();printPreview(svc);return}}};
  draw()}
+// 무대에서 보던 조판 그대로 종이에 옮긴다. 화면 하나가 한 쪽 (§6)
+function stgPrintPages(svc){
+ const SL=PRT.stageLayout;if(!SL)return null;
+ pgPageSize();
+ const pub=pubOrDraft(svc);
+ const {W,H,cw}=SL;
+ const pw=PG.pw-PG.margin*2, ph=PG.ph-PG.margin*2;
+ const r=Math.min(pw/W,ph/H);
+ return (SL.screens||[]).map(sc=>({pub,svc,session:PRT.session,stage:true,
+  box:{cw:pw,gutter:0,cols:1},
+  blocks:sc.blocks.filter(b=>!b.hidden).map(b=>{
+   const {nb,w,left}=stgBlockAt(b,{cw},W,H);
+   const out={...nb,top:nb.top*r,px:left*r,pw:w*r};
+   if(out.type==='slice'||out.type==='strip'){out.height=nb.height*r}
+   if(out.type==='slice')out.scale=nb.scale*r;
+   return out})}))}
+
 function printPreview(svc){
- const pages=pgCompose(svc);
+ const pages=stgPrintPages(svc)||pgCompose(svc);
  if(!pages.length){toast('인쇄할 것이 없어요 — 담을 것을 하나 이상 켜 주세요');return}
  const pub=pubOrDraft(svc);
  const old=$('#printArea');if(old)old.remove();
@@ -5741,7 +6208,7 @@ async function printScore(svc,it){
  const t0=document.title;document.title=printName(it.title||(it.score&&it.score.title)||'악보','',0);
  const done=()=>{document.title=t0;document.body.classList.remove('printing');area.remove();window.removeEventListener('afterprint',done)};
  window.addEventListener('afterprint',done);setTimeout(()=>doPrint(document.title),300)}
-function setZoom(z){z=Math.round(Math.max(0.6,Math.min(2.5,z))*100)/100;if(z===PL.zoom)return;PL.zoom=z;try{localStorage.setItem('conti-zoom',z)}catch(e){}if(route().name==='play')redrawPlay()}
+function setZoom(z){z=Math.round(Math.max(0.2,Math.min(4,z))*100)/100;if(z===PL.zoom)return;PL.zoom=z;try{localStorage.setItem('conti-zoom',z)}catch(e){}if(route().name==='play')redrawPlay()}
 // 두 손가락 벌리기(핀치) · 트랙패드 ctrl+휠 로 악보 크기 조절
 let pinch=null;
 document.addEventListener('touchstart',e=>{if(route().name!=='play'||e.touches.length!==2||!e.target.closest('#sheetwrap'))return;const [a,b]=e.touches;pinch={d0:Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY),z0:PL.zoom||1}},{passive:true});
@@ -5841,6 +6308,9 @@ document.addEventListener('keydown',e=>{
  if(e.key==='Enter'&&e.target.dataset&&e.target.dataset.tl==='text'){e.preventDefault();const b=e.target.closest('.tlEdit').querySelector('[data-act="add-tnote"]');b&&b.click();return}
  if(e.key==='Enter'&&e.target.id==='cText'){e.preventDefault();const b=$('#cSave');b&&b.click();return}
  if(route().name!=='play'||$('#modal').firstChild)return;const tag=(e.target.tagName||'').toLowerCase();if(tag==='input'||tag==='textarea'||tag==='select')return;
+ // 무대 모드가 열려 있으면 그쪽(stageKey)이 화살표를 맡는다. 여기서 또 처리하면
+ // 틀지도 않은 영상이 재생되거나 엉뚱한 데로 감긴다
+ if($('#stageWrap'))return;
  if(e.key===' '){e.preventDefault();P.toggle()}else if(e.key==='ArrowLeft'){if(PL.stage){e.preventDefault();navSong(-1)}else P.seek(Math.max(0,P.t-5))}else if(e.key==='ArrowRight'){if(PL.stage){e.preventDefault();navSong(1)}else P.seek(P.t+5)}
  else if(PL.stage&&(e.key==='PageDown'||e.key==='PageUp')){e.preventDefault();navSong(e.key==='PageDown'?1:-1)}
 });
@@ -6032,7 +6502,10 @@ document.addEventListener('click',async e=>{
    LN.dateId=route().a;LN.slots={...(LN.slots&&LN.dateId===route().a?LN.slots:{}),[sess]:next};
    await saveLineup(d);render();break}
   case 'lclose':{if(el.closest('.lnpanel')&&!el.closest('[data-act="lclose"].icon'))break;LN.slots=null;LN.dateId=null;go('sched');break}
-  case 'lclear':{const d=SCH.dates.find(x=>x.id===route().a);if(!d)break;$$(`[data-lsel="${el.dataset.s}"]`).forEach(s=>s.value='');await saveLineup(d);render();break}
+  case 'lclear':{const d=SCH.dates.find(x=>x.id===route().a);if(!d)break;
+   const bd=$('.lnbody');const top=bd?bd.scrollTop:0;
+   $$(`[data-lsel="${el.dataset.s}"]`).forEach(s=>s.value='');await saveLineup(d);render();
+   const b2=$('.lnbody');if(b2)b2.scrollTop=top;break}
   case 'ldefault':{const d=SCH.dates.find(x=>x.id===route().a);if(!d)break;if(!confirm('기본 편성으로 되돌릴까요? 지금 배정은 사라져요.'))return;
    const def=(S.team.settings&&S.team.settings.defaultLineup)||{};const out=[];
    S.team.sessions.forEach(s=>{(def[s]||[]).forEach(mid=>{out.push({session:s,memberId:myAv(mid,d.date)==='no'?'':mid})})});
@@ -6204,7 +6677,7 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
  if(!online()&&!me().name){location.hash='#/settings';render()}else render();
  if(online()&&S.team.id){SYNC.pullServices().then(ch=>{if(ch)render()});SYNC.pullLibrary();pullSongs(true).then(ch=>{if(ch&&/^(edit|view|play|library)$/.test(route().name))render()}).catch(()=>{})}
  probeOmr();startNotiPoll();nativeSetup();
- window.CONTI={ADS,WEBADS,AD_HOSTS,adsAllowed,webAdsAllowed,MET,PIANO,metOpen,metStart,metStop,metSet,pianoOpen,HOME,PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go};
+ window.CONTI={ADS,WEBADS,AD_HOSTS,setZoom,P,pl:()=>PL,STG,stageOpen,stageExit,adsAllowed,webAdsAllowed,MET,PIANO,metOpen,metStart,metStop,metSet,pianoOpen,HOME,PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go};
 })();
 })();
 </script>

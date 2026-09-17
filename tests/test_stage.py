@@ -44,7 +44,7 @@ def run():
 
         # 인수 9: 한 화면 · 스크롤 없음
         def screens():
-            return pg.evaluate("(()=>{const f=CONTI.STG&&CONTI.STG.fit;return f?f.pages.length:-1})()")
+            return pg.evaluate("(()=>CONTI.STG&&CONTI.STG.nscreens||-1)()")
         if screens() != 1: fail('iPad 가로에서 한 화면에 안 들어감: %s화면' % screens())
         scrolls = pg.evaluate("""(()=>{const w=document.querySelector('#stageWrap');
            return {sx:w.scrollWidth>w.clientWidth+1, sy:w.scrollHeight>w.clientHeight+1,
@@ -60,8 +60,8 @@ def run():
         print('화면 밖 넘침 없음 ok')
 
         # 인수 1: 오선 중간에서 잘린 시스템이 없다 — 모든 경계가 줄 사이 여백 안
-        bad = pg.evaluate("""(()=>{const f=CONTI.STG.fit;const out=[];
-           f.pages.forEach(pgx=>pgx.blocks.filter(b=>b.type==='slice').forEach(b=>{
+        bad = pg.evaluate("""(()=>{const f=CONTI.STG.lay;const out=[];
+           f.screens.forEach(pgx=>pgx.blocks.filter(b=>b.type==='slice').forEach(b=>{
              const gaps=b.pc.im.gaps||[],H=b.pc.im.h;
              const ok=v=>v<=2||v>=H-2||gaps.some(q=>v>=q.s-4&&v<=q.e+4);
              b.ranges.forEach(r=>{if(!ok(r[0]))out.push(['start',Math.round(r[0])]);
@@ -71,12 +71,16 @@ def run():
         print('오선 중간 절단 없음 ok')
         pg.screenshot(path=os.path.join(ROOT,'tests','t_stage_land.png'))
 
-        # 곡 이동 (→)
-        pg.keyboard.press('ArrowRight'); pg.wait_for_timeout(900)
-        if pg.evaluate("CONTI.STG.idx") != 1: fail('→ 로 다음 곡 이동 안 됨')
+        # 곡 이동 — v2 는 넘김 단위가 '화면'이다.
+        # 두 곡이 한 화면에 있으면 그 곡 조각을 탭해서 바를 바꾼다 (기획 §5)
+        if screens() > 1:
+            pg.keyboard.press('ArrowRight'); pg.wait_for_timeout(900)
+            if pg.evaluate("CONTI.STG.screen") != 1: fail('→ 로 다음 화면 이동 안 됨')
+        else:
+            pg.click('[data-si="1"]'); pg.wait_for_timeout(700)
+        if pg.evaluate("CONTI.STG.idx") != 1: fail('둘째 곡으로 안 바뀜')
         bar = pg.locator('.stgbar b').inner_text()
         if '시간을 뚫고' not in bar: fail('바 제목이 안 바뀜: ' + bar)
-        if screens() != 1: fail('둘째 곡이 한 화면에 안 들어감')
         print('곡 이동 ok:', bar)
 
         # ---- ⚙ 내 조판: 크기 키우면 화면이 나뉜다 · 그 곡에만 저장 ----
@@ -88,17 +92,17 @@ def run():
         if not (z1 > z0): fail('크기 키우기가 안 먹음: %s → %s' % (z0, z1))
         print('크기 조절 ok: ×%.1f → ×%.1f, %d화면' % (z0, z1, screens()))
 
-        # 인수 10: 이 조판은 그 곡·그 기기·그 사람에게만
+        # 인수 10: 이 조판은 그 예배·그 기기·그 사람에게만 (v2 — 한 화면에 여러 곡)
         keys = pg.evaluate("(()=>Object.keys(localStorage).filter(k=>k.indexOf('stage:')===0))()")
-        if len(keys) != 1: fail('저장 키가 곡마다 따로가 아님: %s' % keys)
+        if len(keys) != 1: fail('저장 키가 예배마다 따로가 아님: %s' % keys)
         if 'tab-l' not in keys[0]: fail('기기 구간이 키에 없음: %s' % keys[0])
+        if sid not in keys[0]: fail('예배 id 가 키에 없음: %s' % keys[0])
         print('조판 저장 키 ok:', keys[0])
 
-        pg.keyboard.press('ArrowLeft'); pg.wait_for_timeout(900)
-        if pg.evaluate("CONTI.STG.pref.zoom") != z0: fail('다른 곡에 조판이 새어 나감')
-        print('다른 곡에 안 샘 ok')
-        pg.keyboard.press('ArrowRight'); pg.wait_for_timeout(900)
-        if pg.evaluate("CONTI.STG.pref.zoom") != z1: fail('돌아왔을 때 내 조판이 안 남음')
+        # 나갔다 들어와도 내 조판이 남는다
+        pg.keyboard.press('Escape'); pg.wait_for_timeout(600)
+        pg.click('[data-act="play"][data-stage="1"]'); pg.wait_for_selector('#stageWrap .stgpage', timeout=15000); pg.wait_for_timeout(900)
+        if pg.evaluate("CONTI.STG.pref.zoom") != z1: fail('다시 열었을 때 내 조판이 안 남음')
         print('내 조판 유지 ok')
 
         # 되돌리기
@@ -115,23 +119,25 @@ def run():
         prt = pg.evaluate("(()=>{const P=CONTI.PRT;return {memos:P.memos,orient:P.orient,only:!!P.only,session:P.session}})()")
         if prt['memos'] is not False: fail('내 메모 토글이 인쇄 시트에 안 옮겨짐: %s' % prt)
         if prt['orient'] != 'landscape': fail('화면 방향이 안 옮겨짐: %s' % prt)
-        if not prt['only']: fail('이 곡만이 안 잡힘: %s' % prt)
         print('⇪ 내보내기 시트 ok:', prt)
+        want = pg.evaluate("CONTI.STG&&CONTI.STG.nscreens")
         pg.click('#pvGo'); pg.wait_for_selector('#printArea.pv .ppage', timeout=10000); pg.wait_for_timeout(700)
         if pg.locator('.ppage .pstrip').count(): fail('메모 띠를 껐는데 종이에 나옴')
-        if pg.locator('.ppage .songhead').count() != 1: fail('이 곡만인데 곡이 여러 개 나옴')
-        print('종이 결과가 화면 설정과 같음 ok')
+        got = pg.locator('#printArea .ppage').count()
+        if want and got != want: fail('화면 %s개인데 종이는 %d장 (화면 = 쪽)' % (want, got))
+        print('종이 결과가 화면 설정과 같음 ok — %d장' % got)
         pg.click('[data-pv="close"]'); pg.wait_for_timeout(400)
 
         # ---- 세로(iPad 세로)에서도 한 화면 ----
         pg.set_viewport_size({'width':820,'height':1180})
         pg.goto(URL + '#/view/' + sid); pg.wait_for_selector('[data-act="play"][data-stage="1"]', timeout=10000); pg.wait_for_timeout(1000)
         pg.click('[data-act="play"][data-stage="1"]'); pg.wait_for_selector('#stageWrap .stgpage', timeout=15000); pg.wait_for_timeout(900)
-        if screens() != 1: fail('iPad 세로에서 한 화면에 안 들어감: %s화면' % screens())
+        # v2 는 세로 1열이라 곡 수만큼 화면이 늘 수 있다. 곡 수를 넘지만 않으면 된다
+        if not (1 <= screens() <= 2): fail('iPad 세로 화면 수가 이상함: %s화면' % screens())
         s2 = pg.evaluate("""(()=>{const w=document.querySelector('#stageWrap');
            return w.scrollHeight>w.clientHeight+1||w.scrollWidth>w.clientWidth+1})()""")
         if s2: fail('세로에서 스크롤이 생김')
-        print('세로 한 화면 · 스크롤 없음 ok')
+        print('세로 %d화면 · 스크롤 없음 ok' % screens())
         pg.screenshot(path=os.path.join(ROOT,'tests','t_stage_port.png'))
 
         # Esc 로 나가기

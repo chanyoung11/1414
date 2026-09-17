@@ -1050,7 +1050,10 @@ on('PUT', '/services/:id', async ({ uid, params, body }) => {
   const cur = await one('select version, doc from services where team_id=$1 and id=$2', [teamId, params.id]);
   if (cur && cur.version >= (+doc.version || 0)) throw new HttpError(409, 'version_conflict', `다른 기기에서 v${cur.version}이 이미 발행됐어요. 새로고침으로 받은 뒤 다시 발행하세요`);
   await q(`insert into services(team_id, id, doc, version, name, date, updated_by, updated_at) values($1,$2,$3,$4,$5,$6,$7,now())
-           on conflict (team_id, id) do update set doc=excluded.doc, version=excluded.version, name=excluded.name, date=excluded.date, updated_by=excluded.updated_by, updated_at=now()`,
+           on conflict (team_id, id) do update set
+             doc = excluded.doc || jsonb_build_object('stageLayouts',
+                     coalesce(services.doc->'stageLayouts','{}'::jsonb) || coalesce(excluded.doc->'stageLayouts','{}'::jsonb)),
+             version=excluded.version, name=excluded.name, date=excluded.date, updated_by=excluded.updated_by, updated_at=now()`,
     [teamId, params.id, JSON.stringify(doc), +doc.version || 0, str(doc.name, 120), str(doc.date, 20), uid]);
   // §1 알림: publish(팀 전원, 발행자 제외) · note.updated(인도자의 글이 이전 발행과 다를 때)
   try {
@@ -1102,6 +1105,22 @@ async function syncUsages(teamId, serviceId, doc, uid) {
       [teamId, songId, str(it.arrId, 64) || null, serviceId, date, str(doc.name, 120), i, i === last, str(it.key, 12), !!it.medley, uid]);
   }
 }
+
+on('PUT', '/services/:id/stage-layout', async ({ uid, params, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(body.teamId, 64);
+  await requireMember(uid, teamId, 'leader');
+  const dev = str(body.device, 20);
+  if (!/^[a-z-]{3,20}$/.test(dev)) throw bad('기기 종류가 이상해요');
+  const val = body.layout && typeof body.layout === 'object' ? body.layout : null;
+  const sql = val
+    ? `update services set doc = doc || jsonb_build_object('stageLayouts',
+         coalesce(doc->'stageLayouts','{}'::jsonb) || jsonb_build_object($3::text, $4::jsonb)) where team_id=$1 and id=$2`
+    : `update services set doc = doc || jsonb_build_object('stageLayouts',
+         coalesce(doc->'stageLayouts','{}'::jsonb) - $3::text) where team_id=$1 and id=$2`;
+  await q(sql, val ? [teamId, params.id, dev, JSON.stringify(val)] : [teamId, params.id, dev]);
+  return { ok: true };
+});
 
 on('GET', '/services/:id/draft', async ({ uid, url, params }) => {
   if (!uid) throw noAuth();
