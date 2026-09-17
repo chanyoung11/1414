@@ -79,8 +79,13 @@ def run():
         else:
             pg.click('[data-si="1"]'); pg.wait_for_timeout(700)
         if pg.evaluate("CONTI.STG.idx") != 1: fail('둘째 곡으로 안 바뀜')
+        # 기본(송폼을 곡마다 블록으로)에서는 맨 위에 곡명을 쓰지 않는다
+        if pg.locator('.stgbar b').inner_text().strip(): fail('맨 위에 곡명이 남음: %r' % pg.locator('.stgbar b').inner_text())
+        # 「상단 바」 모드로 돌리면 지금 보는 곡이 바에 뜬다
+        pg.evaluate("()=>{CONTI.STG.pref.form='bar';window.dispatchEvent(new Event('resize'))}"); pg.wait_for_timeout(700)
         bar = pg.locator('.stgbar b').inner_text()
-        if '시간을 뚫고' not in bar: fail('바 제목이 안 바뀜: ' + bar)
+        if '시간을 뚫고' not in bar: fail('상단 바 모드인데 곡명이 안 뜸: %r' % bar)
+        pg.evaluate("()=>{CONTI.STG.pref.form='block';window.dispatchEvent(new Event('resize'))}"); pg.wait_for_timeout(500)
         print('곡 이동 ok:', bar)
 
         # ---- ⚙ 내 조판: 크기 키우면 화면이 나뉜다 · 그 곡에만 저장 ----

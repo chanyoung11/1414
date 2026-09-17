@@ -78,6 +78,7 @@ svg.ic{width:20px;height:20px;flex:0 0 auto;display:block}
 /* 더블탭·두 손가락으로 페이지 자체가 확대되는 걸 막는다 (앱 안에서 화면이 갑자기 커지던 것).
    악보 확대는 우리가 직접 그린다 — 연습·무대의 두 손가락 제스처는 터치 이벤트라 그대로 산다 */
 html,body{touch-action:pan-x pan-y}
+html.noscroll{overflow:hidden}   /* 시트가 떠 있는 동안 뒤 화면 고정 */
 body.authbg{background:#111213}   /* 로그인 화면은 테마와 상관없이 어둡다 — 상태바 뒤까지 */
 #app{height:100%;display:flex;flex-direction:column;color:var(--fg);padding-top:var(--sat);padding-bottom:var(--sab)} /* iOS 홈 화면 설치 시 상태바·홈 인디케이터 피함 */
 .display{font-family:"Satoshi","Pretendard Variable","Pretendard",sans-serif}
@@ -310,8 +311,8 @@ html.dark .a-ok{color:#5FBF8A}html.dark .a-maybe{color:#E9C35C}html.dark .a-no{c
 .sect-hd{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:6px 2px 12px}
 .sect-hd h2{margin:0;font-size:17px;font-weight:700;letter-spacing:-.03em}
 .sect-hd p{margin:3px 0 0;font-size:12.5px;color:var(--muted-fg)}
-.bnav{position:fixed;left:0;right:0;bottom:0;z-index:40;border-top:1px solid var(--surface-border);background:color-mix(in srgb,var(--card) 88%,transparent);padding:6px 6px calc(6px + var(--sab));backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);display:grid;grid-auto-flow:column;gap:4px}
-.bnav button{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 4px;border-radius:var(--r-lg);font-size:11px;font-weight:600;color:var(--muted-fg)}
+.bnav{position:fixed;left:0;right:0;bottom:0;z-index:40;border-top:1px solid var(--surface-border);background:color-mix(in srgb,var(--card) 88%,transparent);padding:6px 6px calc(6px + var(--sab));backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:2px}
+.bnav button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:8px 2px;border-radius:var(--r-lg);font-size:11px;font-weight:600;color:var(--muted-fg);min-width:0;white-space:nowrap;letter-spacing:-.02em}
 .bnav button svg.ic{width:22px;height:22px}
 .bnav button.on{color:var(--fg)}
 .empty{padding:36px 20px;text-align:center;color:var(--muted-fg);border:1px dashed var(--border);border-radius:var(--r-xl);background:var(--muted)}
@@ -792,13 +793,22 @@ body.stgon{overflow:hidden}
   repeating-linear-gradient(to bottom,rgba(255,255,255,.18) 0 1px,transparent 1px calc(100%/8))}
 .sblk{position:absolute;touch-action:none;outline:1px dashed rgba(255,255,255,.45);border-radius:8px}
 .sblk.on{outline:2px solid var(--brand);z-index:5}
+.sblk.sel{outline:2px solid #FFC400;z-index:4}
+.sblk.sel.on{outline:2px solid var(--brand)}
+.stgsel{position:absolute;left:50%;transform:translateX(-50%);bottom:58px;z-index:9;
+ background:rgba(242,243,244,.95);color:#111213;font-size:12px;font-weight:700;
+ padding:6px 12px;border-radius:999px;box-shadow:0 8px 20px rgba(0,0,0,.4);white-space:nowrap}
 .sblk .stag{position:absolute;left:0;top:-18px;font-size:10.5px;font-weight:700;color:#fff;
  background:rgba(0,0,0,.6);border-radius:5px;padding:1px 6px;white-space:nowrap;pointer-events:none}
 .sblk .blk{position:static!important;left:auto!important;top:auto!important;width:100%!important}
 .sblk .sgrip{position:absolute;right:-7px;bottom:-7px;width:16px;height:16px;border-radius:50%;
  background:var(--brand);border:2px solid #fff;cursor:nwse-resize}
-.sblkmenu{position:absolute;left:0;top:calc(100% + 8px);z-index:9;background:#1b1c1e;border:1px solid #33353a;
- border-radius:10px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.45)}
+.sblkmenu{position:absolute;left:0;top:calc(100% + 8px);z-index:20;background:#F2F3F4;border:1px solid #C9CBCE;
+ border-radius:10px;padding:6px;box-shadow:0 10px 28px rgba(0,0,0,.5)}
+.sblkmenu.up{top:auto;bottom:calc(100% + 8px)}          /* 블록이 화면 아래에 붙어 있으면 위로 */
+.sblkmenu.inside{top:8px;bottom:auto;left:8px}          /* 큰 블록은 자기 안쪽에 — 옆 블록을 덮지 않는다 */
+.stgw .sblkmenu .sbtn2{background:#fff;border:1px solid #C9CBCE;color:#111213;font-size:15px}
+.stgw .sblkmenu .sbtn2:active{background:#E3E5E8}
 /* 화면 띠 — 편집 중에만. 화면을 더하고 순서를 바꾼다 */
 .stgstrip{position:absolute;left:0;right:0;bottom:0;z-index:8;display:flex;align-items:center;gap:6px;
  padding:7px 12px;background:rgba(16,17,18,.86);backdrop-filter:blur(6px);border-top:1px solid #2a2c30;overflow-x:auto}
@@ -1305,7 +1315,7 @@ function itemEditorHTML(svc,it){const sel=SEL[svc.id]||(SEL[svc.id]={});
 function viewerHTML(svc){
  const pub=pubOrDraft(svc);const my=me();const sess=VF.session||my.session;
  const ctx={mode:'play',session:sess,f:{leader:true,session:true,mine:true,chords:true}};
- return `<div class="top"><button class="icon ghost" data-act="home">${ic('back')}</button><h1>${esc(pub.name||'예배')}<span class="pill ${pub.draft?'':'amber'}">${pub.draft?(svc.published?`초안 미리보기 · 발행본 v${svc.published.version}${svc.version>svc.published.version?'과 다름':'과 같음'}`:'미발행 초안'):'v'+pub.version}</span></h1>
+ return `<div class="top"><button class="icon ghost" ${pub.draft&&isLeader()?`data-act="edit-svc" data-id="${esc(svc.id)}"`:'data-act="home"'}>${ic('back')}</button><h1>${esc(pub.name||'예배')}<span class="pill ${pub.draft?'':'amber'}">${pub.draft?(svc.published?`초안 미리보기 · 발행본 v${svc.published.version}${svc.version>svc.published.version?'과 다름':'과 같음'}`:'미발행 초안'):'v'+pub.version}</span></h1>
   ${hasNote(svc)?`<button class="icon ghost ${msgUnread(svc)?'dot':''}" data-act="msg" data-id="${svc.id}" title="예배 노트">${ic('note')}</button>`:''}<button class="icon ghost" data-act="print" data-id="${svc.id}" title="인쇄 · PDF로 저장">${ic('print')}</button><button class="btn" data-act="play" data-id="${svc.id}" data-i="0">${ic('play')}연습</button><button class="btn pri" data-act="play" data-id="${svc.id}" data-i="0" data-stage="1">${ic('moon')}무대</button></div>
   <div class="ws" style="grid-template-columns:minmax(0,1fr)">
    <div class="panel">${ptab('콘티',pub.items.length+'곡',`<span class="hint sesslbl" style="margin-right:6px">세션</span><div class="seg">${S.team.sessions.filter(s=>s!=='인도자').map(s=>`<button class="${s===sess?'on':''}" data-act="vsess" data-s="${esc(s)}">${esc(s)}</button>`).join('')}</div>`)}
@@ -1335,7 +1345,7 @@ function playHTML(svc,idx){
  const pub=pubOrDraft(svc);const it=pub.items[idx]||pub.items[0];PL={...PL,svc,idx,mi:0};if(!it)return `<div class="top"><button class="icon ghost" data-act="home">${ic('back')}</button><h1>곡이 없습니다</h1></div>`;
  const my=me();const sess=PL.session||my.session;const k=keyStr(it);const prev=pub.items[idx-1],next=pub.items[idx+1];PL.ml=visMedia(it,sess);
  return `<div class="top"><button class="icon ghost" ${svc.practice?`data-act="lib-song" data-id="${esc(it.songId||'')}"`:`data-act="back-view" data-id="${svc.id}"`}>${ic('back')}</button>
-  <div class="songnav grow"><span class="nb prev" ${prev?'data-act="pn" data-d="-1"':''}>${prev?esc(prev.title||'(제목 없음)'):''}</span><button class="icon sm" data-act="pn" data-d="-1" ${prev?'':'disabled'} title="이전 곡">${ic('left')}</button><span class="nb cur"><span class="num">${idx+1}</span>${esc(it.title||'(제목 없음)')}<span class="pill key">${esc(k||'-')}</span></span><button class="icon sm" data-act="pn" data-d="1" ${next?'':'disabled'} title="다음 곡">${ic('right')}</button><span class="nb next" ${next?'data-act="pn" data-d="1"':''}>${next?esc(next.title||'(제목 없음)'):''}</span></div>
+  <div class="songnav grow"><span class="nb prev" ${prev?'data-act="pn" data-d="-1"':''}>${prev?esc(prev.title||'(제목 없음)'):''}</span>${prev?`<button class="icon sm" data-act="pn" data-d="-1" title="이전 곡">${ic('left')}</button>`:''}<span class="nb cur"><span class="num">${idx+1}</span>${esc(it.title||'(제목 없음)')}<span class="pill key">${esc(k||'-')}</span></span>${next?`<button class="icon sm" data-act="pn" data-d="1" title="다음 곡">${ic('right')}</button>`:''}<span class="nb next" ${next?'data-act="pn" data-d="1"':''}>${next?esc(next.title||'(제목 없음)'):''}</span></div>
   ${hasNote(svc)?`<button class="icon ghost ${msgUnread(svc)?'dot':''}" data-act="msg" data-id="${svc.id}" title="예배 노트">${ic('note')}</button>`:''}${it.score&&it.score.measures&&it.score.measures.length?`<button class="icon ghost" data-act="score-go" data-id="${svc.id}" data-item="${it.id}" title="재구성한 악보">${ic('music')}</button>`:''}<button class="icon ghost" data-act="piano" title="건반">${ic('piano')}</button><button class="icon ghost" data-act="metro" title="메트로놈">${ic('metro')}</button><button class="btn sm" data-act="stage">${ic('moon')}무대 모드</button></div>
  <div class="ws split" id="ws">
   <div class="stack" id="stack">
@@ -1373,6 +1383,7 @@ function stripHTML(m,notes,mods,ctx){
 
 /* ---------- modals ---------- */
 function modal(html,o){if(NATIVE&&typeof adsHide==='function')adsHide();   // 아래에서 올라오는 시트가 배너에 가리지 않게
+ document.documentElement.classList.add('noscroll');   // 뒤 화면이 따라 움직이면 시트를 내리려다 목록이 넘어간다
  $('#modal').innerHTML=`<div class="ov ${o&&o.center?'center':''}"><div class="sheetm">${o&&o.center?'':'<div class="handle"></div>'}${html}</div></div>`;$('#modal').firstChild.addEventListener('click',e=>{if(e.target.classList.contains('ov'))closeModal()})}
 function labelPicker(it,cb){
  const used=new Set(it.pieces.flatMap(p=>p.markers.map(m=>m.label)));
@@ -5700,10 +5711,10 @@ function metOpen(){
 
 /* ---------- 무대 모드 = 자동 조판 (인쇄·내보내기 명세 §1-A) ----------
    한 곡이 한 화면에. 스크롤 없음. 조판은 사람·곡·기기 구간마다 따로 저장된다 */
-const STG={svc:null,idx:0,screen:0,open:false,pref:null,edit:false,lay:null,nscreens:1,
+const STG={svc:null,idx:0,screen:0,open:false,pref:null,edit:false,lay:null,nscreens:1,sel:[],clip:null,seq:0,
  layout:null,   // 사람이 고친 조판 {screens:[{blocks:[{id,type,x,y,w,...}]}]} · 없으면 자동
  drag:null,menu:null};
-const STG_DEF={zoom:1,cols:'auto',memos:true,hl:true,bar:true,form:'auto'};
+const STG_DEF={zoom:1,cols:'auto',memos:true,hl:true,bar:true,form:'block',formV2:1};
 // 송폼을 어디에 보여줄지 (기획 §4)
 const STG_FORM=[['auto','자동'],['bar','상단 바'],['block','조각 위'],['hide','숨김']];
 // 기기 구간: 11인치와 13인치 아이패드, 폰, 데스크톱이 같은 조판을 쓸 이유가 없다
@@ -5716,9 +5727,11 @@ const stgSlot=()=>`${STG.svc?STG.svc.id:'-'}~${deviceClass()}`;
 function stgLoad(){
  // 서버에 있으면 그것을 쓴다 — 교회 컴퓨터에서 로그인해도 내 조판이 따라온다
  const srv=((PREFS.data||{}).stage||{})[stgSlot()];
- if(srv)return Object.assign({},STG_DEF,srv);
+ if(srv)return stgMigr(Object.assign({},STG_DEF,srv));
  try{const s=JSON.parse(localStorage.getItem(stgKey())||'null');
-  return Object.assign({},STG_DEF,s||{})}catch(e){return {...STG_DEF}}}
+  return stgMigr(Object.assign({},STG_DEF,s||{}))}catch(e){return {...STG_DEF}}}
+// 곡마다 송폼 블록을 놓는 쪽으로 바꿨다. 예전 값이 남아 있으면 한 번만 옮긴다
+function stgMigr(p){if(!p.formV2){p.form='block';p.formV2=1}return p}
 function stgSave(){
  try{localStorage.setItem(stgKey(),JSON.stringify(STG.pref))}catch(e){}
  const slot=stgSlot();
@@ -5818,9 +5831,16 @@ function stgCompose(pub,W,H,pref){
 function stgToLayout(lay,W,H){
  return {screens:lay.screens.map(sc=>({blocks:sc.blocks.map((b,i)=>{
   const L=b.col*(lay.cw+STG_GUT);
+  // 악보 조각은 열 폭보다 좁게 그려지고 가운데 놓인다. 열 폭으로 저장하면 좌우 여백이
+  // 블록에 묻어 들어가 손잡이가 그림에서 떨어진다 → 그림이 차지하는 폭·자리 그대로
+  const nw=stgNatW(b,lay.cw);
   return {...b,id:b.id||(b.type+i+'_'+Math.round(b.top)),
-   x:L/W,y:b.top/H,w:lay.cw/W,h:b.height/H};
+   x:(L+(lay.cw-nw)/2)/W,y:b.top/H,w:nw/W,h:b.height/H};
  })}))}}
+// 블록이 원래(자동 조판에서) 차지하던 폭. 크기 조절 배율의 기준이 된다
+function stgNatW(b,cw){
+ if(b.type==='slice'&&b.pc&&b.pc.im)return Math.min(cw,b.pc.im.w*b.scale);
+ return cw}
 // 저장해 둔 조판은 '어디에 얼마만큼'만 남아 있다. 지금 발행본으로 다시 짠 자동 조판에서
 // 그림·메모 같은 알맹이를 가져와 붙인다. 없어진 곡의 블록은 버리고, 새로 생긴 곡은 뒤에 붙인다
 function stgHydrate(autoL,saved){
@@ -5829,10 +5849,11 @@ function stgHydrate(autoL,saved){
  const used=new Set();
  let screens=(saved.screens||[]).map(sc=>({blocks:(sc.blocks||[]).map(b=>{
   if(b.type==='text')return {...b,height:b.height||56};
-  const cut=String(b.id).indexOf('#');
-  if(cut>0){const lv=live.get(String(b.id).slice(0,cut));if(!lv)return null;used.add(lv.id);
-   const rs=b.ranges&&b.ranges.length?b.ranges:lv.ranges;
-   return {...lv,id:b.id,ranges:rs,height:stgRH(rs,lv.scale),x:b.x,y:b.y,w:b.w,h:b.h,hidden:!!b.hidden}}
+  const at=String(b.id).search(/[#~]/);   // 자른 것(#) · 복사한 것(~) 은 원본에서 알맹이를 가져온다
+  if(at>0){const lv=live.get(String(b.id).slice(0,at));if(!lv)return null;used.add(lv.id);
+   if(lv.type==='slice'){const rs=b.ranges&&b.ranges.length?b.ranges:lv.ranges;
+    return {...lv,id:b.id,ranges:rs,height:stgRH(rs,lv.scale),x:b.x,y:b.y,w:b.w,h:b.h,hidden:!!b.hidden}}
+   return {...lv,id:b.id,x:b.x,y:b.y,w:b.w,h:b.h,hidden:!!b.hidden,compact:!!b.compact}}
   const lv=live.get(b.id);if(!lv)return null;used.add(b.id);
   return {...lv,x:b.x,y:b.y,w:b.w,h:b.h,hidden:!!b.hidden,compact:!!b.compact};
  }).filter(Boolean)}));
@@ -5844,12 +5865,14 @@ function stgHydrate(autoL,saved){
  return screens.some(sc=>sc.blocks.length)?{screens}:null}
 // 고친 조판에서는 블록마다 폭이 다르다. 폭이 바뀐 만큼 악보도 같이 커진다
 function stgBlockAt(b,lay,W,H){
- const w=b.w!=null?b.w*W:lay.cw, r=lay.cw?w/lay.cw:1;
+ const nat=stgNatW(b,lay.cw);
+ const w=b.w!=null?b.w*W:nat, r=nat?w/nat:1;
  const nb={...b,col:0,top:b.y!=null?b.y*H:b.top};
  if(b.type==='slice'){nb.scale=b.scale*r;nb.height=b.height*r}
- return {nb,w,left:b.x!=null?b.x*W:0}}
+ return {nb,w,left:b.x!=null?b.x*W:0,nat}}
 // 격자 12×8 에 맞춘다
-const stgSnapX=x=>Math.round(x*12)/12, stgSnapY=y=>Math.round(y*8)/8;
+// 자유 배치. 격자에 붙이지 않고 소수점만 정리한다 (PPT 처럼 아무 자리에나)
+const stgSnapX=x=>Math.round(x*1e4)/1e4, stgSnapY=y=>Math.round(y*1e4)/1e4;
 
 // 고친 조판은 예배 × 사람 × 기기 종류로 저장한다. 같은 사람의 다른 아이패드에서도
 // 같은 조판이 나오고, 다른 멤버 화면은 건드리지 않는다
@@ -5866,7 +5889,7 @@ function stgLayoutSave(){
 function stgLayoutSlim(L){
  return {v:2,screens:(L.screens||[]).map(sc=>({blocks:(sc.blocks||[]).map(b=>({
   id:b.id,type:b.type,hidden:b.hidden||undefined,compact:b.compact||undefined,text:b.type==='text'?b.text:undefined,
-  ranges:String(b.id).indexOf('#')>0?b.ranges:undefined,
+  ranges:(b.type==='slice'&&/[#~]/.test(String(b.id)))?b.ranges:undefined,
   x:+(b.x||0).toFixed(4),y:+(b.y||0).toFixed(4),w:+(b.w||0).toFixed(4),h:+(b.h||0).toFixed(4)}))}))}}
 function stgLayoutLoad(){
  const slot=stgLaySlot();
@@ -5890,11 +5913,14 @@ async function stgRecommend(){
 function stgEditOn(){
  const W=stgCanvasW(),H=stgCanvasH();
  if(!STG.layout)STG.layout=stgToLayout(STG.lay,W,H);
- STG.edit=true;STG.menu=null;stageRender()}
-function stgEditOff(){STG.edit=false;STG.menu=null;stgLayoutSave();stageRender()}
+ STG.edit=true;STG.menu=null;STG.sel=[];stageRender()}
+function stgEditOff(){STG.edit=false;STG.menu=null;STG.sel=[];stgLayoutSave();stageRender()}
 function stgAutoAgain(){
  if(!confirm('이 예배의 무대 조판을 자동으로 다시 짤까요?\n손으로 옮긴 것은 사라져요.'))return;
- STG.layout=null;stgLayoutSave();stageRender()}
+ STG.layout=null;STG.sel=[];STG.menu=null;stgLayoutSave();
+ // 편집 중이면 자동 조판을 다시 '고칠 수 있는' 조판으로 만들어 둔다 (없으면 편집이 깨진다)
+ if(STG.edit){stageRender();STG.layout=stgToLayout(STG.lay,stgCanvasW(),stgCanvasH())}
+ stageRender()}
 // 화면 띠 — 화면을 더하고, 빈 화면을 지우고, 순서를 바꾼다 (§3)
 function stgStripHTML(screens){
  const fm=STG.pref.form||'auto';
@@ -5934,44 +5960,110 @@ function stgMoveScreen(bid,d){
 // 끌면 옆 화면으로 간다
 function stgEditBind(host,W,H,k){
  k=k||1;
- const page=host.querySelector('.stgpage');if(!page)return;
+ const page=host.querySelector('.stgpage');if(!page||!STG.layout)return;
+ const cur=()=>STG.layout.screens[STG.screen];
  let st=null;
- const blk=e=>e.target.closest('[data-sid]');
  page.addEventListener('pointerdown',e=>{
-  if(e.target.closest('[data-stop]'))return;   // 블록 메뉴는 끌기가 아니다
-  const el=blk(e);if(!el)return;
-  const L=STG.layout.screens[STG.screen];const b=L.blocks.find(x=>x.id===el.dataset.sid);if(!b)return;
+  const multi=e.shiftKey||e.metaKey||e.ctrlKey;
+  let el=e.target.closest('[data-sid]');
+  if(e.target.closest('[data-stop]')){        // 블록 메뉴는 끌기가 아니다
+   if(!multi)return;
+   // 여러 개 고르는 중이면 메뉴를 통과해 그 아래 블록을 고른다
+   const hit=document.elementsFromPoint(e.clientX,e.clientY)
+    .find(n=>n.closest&&n.closest('[data-sid]')&&!n.closest('[data-stop]'));
+   el=hit?hit.closest('[data-sid]'):null}
+  if(!el){if(STG.sel.length||STG.menu){STG.sel=[];STG.menu=null;stageRender()}return}   // 빈 곳을 누르면 선택 해제
+  const id=el.dataset.sid;const L=cur();const b=L.blocks.find(x=>x.id===id);if(!b)return;
+  // 시프트(또는 ⌘·Ctrl)를 누르고 누르면 여러 개 고른다
+  if(multi){
+   STG.sel=STG.sel.includes(id)?STG.sel.filter(x=>x!==id):STG.sel.concat(id);
+   STG.menu=null;stageRender();return}
+  if(!STG.sel.includes(id))STG.sel=[id];
   const rs=!!e.target.closest('.sgrip');
-  st={b,el,rs,x0:e.clientX,y0:e.clientY,bx:b.x,by:b.y,bw:b.w,moved:false};
+  const group=rs?[b]:STG.sel.map(x=>L.blocks.find(y=>y.id===x)).filter(Boolean);
+  st={b,el,rs,x0:e.clientX,y0:e.clientY,moved:false,
+      w0:b.w*W,inner:el.querySelector('.blk,.pstrip'),
+      grab:group.map(g=>({g,x:g.x,y:g.y}))};
   el.setPointerCapture(e.pointerId);e.preventDefault()});
  page.addEventListener('pointermove',e=>{
   if(!st)return;
   const dx=(e.clientX-st.x0)/(W*k), dy=(e.clientY-st.y0)/(H*k);
   if(!st.moved&&Math.abs(e.clientX-st.x0)+Math.abs(e.clientY-st.y0)<6)return;
   st.moved=true;
-  if(st.rs){const w=Math.max(0.12,Math.min(0.98,st.bw+dx));
-   // 악보는 폭에 비례해 커진다 — 높이도 같은 비율로 따라가야 겹침·붙이기가 맞는다
+  if(st.rs){
+   const w=Math.max(0.08,Math.min(1.6,(st.w0/W)+dx));
+   // 악보는 폭에 비례해 커진다 — 높이도 같은 비율로 (겹침·붙이기 계산이 맞아야 한다)
    if(st.b.type==='slice'&&st.b.h)st.b.h=st.b.h*(w/st.b.w);
-   st.b.w=w}
-  else{st.b.x=Math.max(-0.35,Math.min(1.35,st.bx+dx));st.b.y=Math.max(-0.2,Math.min(1.2,st.by+dy))}
-  stgPaintBlock(st.el,st.b,W,H)});
+   st.b.w=w;
+   // 끄는 동안 악보도 같이 커지고 줄어든다 (놓은 뒤에야 바뀌던 것).
+   // 안쪽은 처음 폭으로 묶어 두고 배율만 바꾼다 (글자가 다시 흐르지 않게)
+   if(st.inner&&st.w0){st.inner.style.setProperty('width',st.w0+'px','important');
+    st.inner.style.transformOrigin='top left';st.inner.style.transform='scale('+((w*W)/st.w0)+')'}
+   stgPaintBlock(st.el,st.b,W,H)}
+  else{
+   st.grab.forEach(({g,x,y})=>{g.x=x+dx;g.y=y+dy;
+    const el2=page.querySelector('[data-sid="'+CSS.escape(g.id)+'"]');if(el2)stgPaintBlock(el2,g,W,H)})}});
  const up=e=>{
-  if(!st)return;const b=st.b,el=st.el;const moved=st.moved;st=null;
+  if(!st)return;const b=st.b,el=st.el,moved=st.moved,rs=st.rs,grab=st.grab;st=null;
   try{el.releasePointerCapture(e.pointerId)}catch(_){}
-  if(!moved){STG.menu=STG.menu===b.id?null:b.id;stageRender();return}
-  // 캔버스 밖으로 끌면 옆 화면으로
-  if(b.x>1.02){stgMoveScreen(b.id,1);return}
-  if(b.x+b.w<-0.02){stgMoveScreen(b.id,-1);return}
-  b.x=stgSnapX(Math.max(0,Math.min(1-b.w,b.x)));b.y=stgSnapY(Math.max(0,b.y));
-  if(b.type==='slice')stgTryMerge(STG.layout.screens[STG.screen],b);
+  if(!moved){STG.menu=STG.menu===b.id?null:b.id;STG.sel=[b.id];stageRender();return}
+  if(rs){b.w=stgSnapX(Math.max(0.08,b.w));stgLayoutSave();stageRender();return}
+  // 캔버스 밖으로 끌면 옆 화면으로 (하나만 끌 때)
+  if(grab.length===1){
+   if(b.x>1.02){stgMoveScreen(b.id,1);return}
+   if(b.x+b.w<-0.02){stgMoveScreen(b.id,-1);return}}
+  grab.forEach(({g})=>{g.x=stgSnapX(Math.max(-0.02,Math.min(1.02-g.w,g.x)));g.y=stgSnapY(Math.max(-0.02,g.y))});
+  if(grab.length===1&&b.type==='slice')stgTryMerge(cur(),b);
   stgLayoutSave();stageRender()};
  page.addEventListener('pointerup',up);page.addEventListener('pointercancel',up)}
 
 function stgPaintBlock(el,b,W,H){
  el.style.left=(b.x*W)+'px';el.style.top=(b.y*H)+'px';el.style.width=(b.w*W)+'px'}
 
+/* ---------- 편집 단축키 (기획 §3 — PPT 처럼) ---------- */
+const stgSelBlocks=()=>{const L=STG.layout&&STG.layout.screens[STG.screen];if(!L)return [];
+ return STG.sel.map(id=>L.blocks.find(b=>b.id===id)).filter(Boolean)};
+function stgCopy(){const bs=stgSelBlocks();if(!bs.length)return;
+ STG.clip=bs.map(b=>({id:b.id,x:b.x,y:b.y,w:b.w,h:b.h,ranges:b.ranges,compact:b.compact,type:b.type,text:b.text}));
+ toast(bs.length+'개 복사했어요')}
+function stgPaste(){const L=STG.layout&&STG.layout.screens[STG.screen];if(!L||!STG.clip||!STG.clip.length)return;
+ const live=new Map();(STG.lay?stgToLayout(STG.lay,stgCanvasW(),stgCanvasH()).screens:[]).forEach(sc=>sc.blocks.forEach(b=>live.set(b.id,b)));
+ const made=[];
+ STG.clip.forEach(c=>{
+  const src=L.blocks.find(b=>b.id===c.id)||live.get(stgRoot(c.id));
+  if(!src&&c.type!=='text')return;
+  const id=stgRoot(c.id)+'~c'+(++STG.seq);
+  const nb=Object.assign({},src||{},c,{id,x:(c.x||0)+0.02,y:(c.y||0)+0.02,hidden:false});
+  L.blocks.push(nb);made.push(id)});
+ if(!made.length)return;
+ STG.sel=made;STG.menu=null;stgLayoutSave();stageRender();toast(made.length+'개 붙였어요')}
+function stgDelSel(){const bs=stgSelBlocks();if(!bs.length)return;
+ bs.forEach(b=>{b.hidden=true});STG.sel=[];STG.menu=null;stgLayoutSave();stageRender()}
+function stgNudge(dx,dy){const bs=stgSelBlocks();if(!bs.length)return false;
+ bs.forEach(b=>{b.x=stgSnapX(b.x+dx);b.y=stgSnapY(b.y+dy)});
+ clearTimeout(stgNudge.t);stgNudge.t=setTimeout(stgLayoutSave,400);stageRender();return true}
+function stgEditKey(e){
+ if(!STG.layout)return false;
+ const meta=e.metaKey||e.ctrlKey;const K=(e.key||'').toLowerCase();
+ if(meta&&K==='a'){e.preventDefault();const L=STG.layout.screens[STG.screen];
+  STG.sel=L.blocks.filter(b=>!b.hidden).map(b=>b.id);STG.menu=null;stageRender();return true}
+ if(meta&&K==='c'){e.preventDefault();stgCopy();return true}
+ if(meta&&K==='v'){e.preventDefault();stgPaste();return true}
+ if(meta&&K==='d'){e.preventDefault();stgCopy();stgPaste();return true}
+ if(K==='delete'||K==='backspace'){e.preventDefault();stgDelSel();return true}
+ if(K==='escape'){e.preventDefault();
+  if(STG.sel.length||STG.menu){STG.sel=[];STG.menu=null;stageRender()}
+  else stgEditOff();                     // 선택이 없으면 편집만 끝낸다 (무대는 그대로)
+  return true}
+ const step=e.shiftKey?0.05:0.005;
+ if(K==='arrowleft'&&stgNudge(-step,0)){e.preventDefault();return true}
+ if(K==='arrowright'&&stgNudge(step,0)){e.preventDefault();return true}
+ if(K==='arrowup'&&stgNudge(0,-step)){e.preventDefault();return true}
+ if(K==='arrowdown'&&stgNudge(0,step)){e.preventDefault();return true}
+ return false}
+
 /* ---------- 조각 자르기 · 붙이기 (기획 §3) ---------- */
-const stgRoot=id=>String(id||'').split('#')[0];
+const stgRoot=id=>String(id||'').split(/[#~]/)[0];
 const stgRH=(ranges,scale)=>ranges.reduce((a,r)=>a+(r[1]-r[0])*scale,0);
 // 블록 가운데에 가장 가까운 '줄 사이 여백'에서 둘로 나눈다. 여백이 없으면 못 나눈다
 function stgCut(bid){
@@ -6012,9 +6104,9 @@ function stgTryMerge(L,b){
  return false}
 
 // 블록 메뉴 (탭하면 뜬다)
-function stgBlockMenu(b){
+function stgBlockMenu(b,pos){
  const isPiece=b.type==='slice';
- return `<div class="sblkmenu" data-stop="1">
+ return `<div class="sblkmenu ${pos||''}" data-stop="1">
   <div class="row" style="gap:4px">
    <button class="sbtn2" data-sm="small" data-id="${b.id}" title="작게">−</button>
    <button class="sbtn2" data-sm="big" data-id="${b.id}" title="크게">＋</button>
@@ -6028,7 +6120,7 @@ async function stageOpen(svc,idx){
  await pullPrefs();
  STG.svc=svc;STG.idx=idx||0;STG.screen=0;STG.open=false;STG.from=idx||0;
  const it=stgItem();STG.pref=stgLoad();
- STG.edit=false;STG.menu=null;
+ STG.edit=false;STG.menu=null;STG.sel=[];
  STG.layout=deviceClass()==='phone'?null:stgLayoutLoad();
  let el=$('#stageWrap');if(el)el.remove();
  el=document.createElement('div');el.id='stageWrap';el.className='stgw';
@@ -6065,6 +6157,7 @@ function stageClose(){if(NATIVE)setTimeout(adsSync,0);if(NATIVE&&window.Capacito
 let STG_RZ=null;
 function stageResize(){clearTimeout(STG_RZ);STG_RZ=setTimeout(()=>{if($('#stageWrap'))stageRender()},150)}
 function stageKey(e){if(!$('#stageWrap'))return;
+ if(STG.edit&&stgEditKey(e))return;
  if(e.key==='ArrowRight'){e.preventDefault();stageGo(1)}
  else if(e.key==='ArrowLeft'){e.preventDefault();stageGo(-1)}
  else if(e.key==='Escape'){e.preventDefault();stageExit()}}
@@ -6104,7 +6197,7 @@ function stageRender(){
  host.innerHTML=`
   ${STG.pref.bar?`<div class="stgbar">
    <button class="sbtn" data-stg="prev" ${STG.screen?'':'disabled'}>${ic('left')}</button>
-   <b>${fm==='block'?`${STG.screen+1} 화면`:`${STG.idx+1}. ${esc(it.title||'(제목 없음)')}${k?' / '+esc(k):''}`}</b>
+   <b>${fm==='block'?'':`${STG.idx+1}. ${esc(it.title||'(제목 없음)')}${k?' / '+esc(k):''}`}</b>
    <span class="stgform">${fm==='block'||fm==='hide'?'':esc(it.form||'')}</span>
    <span class="grow"></span>
    <span class="stgpg">${STG.screen+1}/${screens.length} 화면${onScreen.length>1?` · 곡 ${onScreen.length}`:''}</span>
@@ -6116,17 +6209,21 @@ function stageRender(){
    <button class="sbtn" data-stg="exit" title="무대 모드 끝내기">${ic('x')}</button></div>`:
    `<button class="sbtn stgshow" data-stg="baron" title="바 켜기">${ic('up')}</button>`}
   <div class="stgcanvas" style="top:${barH+12+sat}px"><div class="stgpage ${STG.edit?'edit':''}" style="width:${W}px;height:${H}px${STG.edit?`;transform:scale(${ek});transform-origin:top left`:''}">
-   ${STG.edit?'<div class="sgrid"></div>':''}
    ${p.blocks.map(b=>{
      if(b.hidden)return '';
      if(!custom&&!STG.edit)return pgBlockHTML(b,box,page);
      const {nb,w,left}=stgBlockAt(b,lay,W,H);
      if(!STG.edit)return pgBlockHTML(nb,{...box,left,cw:w,fullW:w,gutter:0},page);
      const inner=pgBlockHTML({...nb,top:0},{...box,left:0,cw:w,fullW:w,gutter:0},page);
-     return `<div class="sblk ${STG.menu===b.id?'on':''}" data-sid="${esc(b.id)}" style="left:${left}px;top:${nb.top}px;width:${w}px">
-      <span class="stag">${b.type==='head'?'송폼 '+(b.idx+1):b.type==='strip'?'메모':'악보'}</span>
+     // 메뉴는 블록 아래에 붙이지만, 블록이 화면 아래에 닿거나 화면을 꽉 채우면 위·안쪽으로
+     const bh=b.h!=null?b.h*H:(nb.height||0);
+     const pos=bh>=110?'inside':((nb.top+bh+120<=H)?'':'up');
+     const on=STG.menu===b.id,sel=STG.sel.includes(b.id);
+     return `<div class="sblk ${on?'on':''} ${sel?'sel':''}" data-sid="${esc(b.id)}" style="left:${left}px;top:${nb.top}px;width:${w}px">
+      <span class="stag">${b.type==='head'?'송폼 '+(b.idx+1):b.type==='strip'?'메모':b.type==='text'?'글':'악보'}</span>
       ${inner}<span class="sgrip"></span>
-      ${STG.menu===b.id?stgBlockMenu(b):''}</div>`}).join('')}</div></div>
+      ${on?stgBlockMenu(b,pos):''}</div>`}).join('')}</div></div>
+  ${STG.edit&&STG.sel.length>1?`<div class="stgsel">${STG.sel.length}개 선택 · ⌘C 복사 · ⌘V 붙이기 · Delete 숨기기 · 화살표 이동</div>`:''}
   ${STG.edit?stgStripHTML(screens):''}
   ${STG.open?stagePopHTML(lay):''}`;
  if(STG.edit)stgEditBind(host,W,H,ek);}
@@ -6358,6 +6455,20 @@ document.addEventListener('touchmove',e=>{if(!pinch||e.touches.length!==2)return
 document.addEventListener('touchend',()=>{pinch=null},{passive:true});
 document.addEventListener('wheel',e=>{if(!e.ctrlKey||route().name!=='play'||!e.target.closest('#sheetwrap'))return;e.preventDefault();setZoom((PL.zoom||1)-e.deltaY*0.004)},{passive:false});
 function navSong(d){const svc=PL.svc;if(!svc)return;const pub=pubOrDraft(svc);const i=PL.idx+d;if(i<0||i>=pub.items.length){toast(d<0?'첫 곡이에요':'마지막 곡이에요');return}go('play/'+svc.id+'/'+i)}
+// 왼쪽 가장자리에서 오른쪽으로 밀면 뒤로. 가장자리(24px)에서 시작한 것만 받아서
+// 악보 좌우 스크롤·편성 표 가로 스크롤과 겹치지 않는다
+let edX=null,edY=null;
+document.addEventListener('touchstart',e=>{edX=null;
+ if(e.touches.length!==1||$('#stageWrap')||($('#modal')&&$('#modal').firstChild)||$('#printArea'))return;
+ if(route().name==='home'||!route().name)return;
+ const t=e.touches[0];if(t.clientX>24)return;
+ if(e.target.closest('#sheetwrap,.schwrap,.cropwrap,.stgw,input,textarea'))return;
+ edX=t.clientX;edY=t.clientY},{passive:true});
+document.addEventListener('touchend',e=>{if(edX==null)return;
+ const t=e.changedTouches[0];const dx=t.clientX-edX,dy=t.clientY-edY;edX=null;
+ if(dx>70&&Math.abs(dy)<60&&dx>Math.abs(dy)*1.5)goBack()},{passive:true});
+// 뒤로: 히스토리가 있으면 그것을, 없으면 홈으로 (앱이 통째로 닫히지 않게)
+function goBack(){if(history.length>1)history.back();else go('home')}
 let swX=null,swY=null;
 document.addEventListener('touchstart',e=>{if(route().name!=='play'||!PL.stage||$('#modal').firstChild||e.touches.length!==1){swX=null;return}swX=e.touches[0].clientX;swY=e.touches[0].clientY},{passive:true});
 document.addEventListener('touchend',e=>{if(swX==null)return;const t=e.changedTouches[0];const dx=t.clientX-swX,dy=t.clientY-swY;swX=null;if(Math.abs(dx)>70&&Math.abs(dy)<60&&Math.abs(dx)>Math.abs(dy)*1.5)navSong(dx<0?1:-1)},{passive:true});
@@ -6437,7 +6548,7 @@ async function importJSON(file){
 }
 
 /* ---------- modal helpers ---------- */
-function closeModal(){$('#modal').innerHTML='';$('#modal').onclick=null;$('#modal').onchange=null;if(NATIVE)setTimeout(adsSync,0)}
+function closeModal(){document.documentElement.classList.remove('noscroll');$('#modal').innerHTML='';$('#modal').onclick=null;$('#modal').onchange=null;if(NATIVE)setTimeout(adsSync,0)}
 
 /* ---------- global click handling ---------- */
 document.addEventListener('keydown',e=>{
