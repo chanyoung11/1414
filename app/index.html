@@ -2600,7 +2600,10 @@ const IDB={db:null,
  del(store,k){return IDB.tx(store,'readwrite',s=>s.delete(k))}
 };
 const urlCache=new Map();
-async function blobURL(id){if(!id)return '';if(urlCache.has(id))return urlCache.get(id);const b=await IDB.get('blobs',id);if(!b)return '';const u=URL.createObjectURL(b);urlCache.set(id,u);return u}
+async function blobURL(id){if(!id)return '';if(urlCache.has(id))return urlCache.get(id);const b=await IDB.get('blobs',id);if(!b)return '';
+ // 예전 버전이 404 응답 본문을 파일인 줄 알고 저장한 흔적 — 그림도 소리도 아닌 건 버린다 (빈 흰 악보의 원인)
+ if(b.size<200||/^(text\/|application\/json)/.test(b.type||'')){try{await IDB.del('blobs',id)}catch(e){}SYNC.missing.add(id);return ''}
+ const u=URL.createObjectURL(b);urlCache.set(id,u);return u}
 const url=id=>urlCache.get(id)||'';
 
 /* ---------- state ---------- */
