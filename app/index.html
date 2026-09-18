@@ -729,6 +729,22 @@ body.hasad #app{padding-bottom:calc(var(--sab) + var(--adh,50px))}   /* 연습 �
 .cb-credit .gauge i{display:block;height:100%;background:var(--fg)}
 .cb-credit.low .gauge i{background:var(--destructive)}
 .cb-credit.low{color:var(--destructive);border-color:var(--destructive)}
+/* 요금제마다 다른 색. 무제한은 금색 — 한눈에 "이 팀은 넉넉하다"가 보이게 */
+.cb-credit.p-pro{color:#3E7BFA;border-color:#3E7BFA}
+.cb-credit.p-pro .gauge i{background:#3E7BFA}
+.cb-credit.p-plus{color:#8B5CF6;border-color:#8B5CF6}
+.cb-credit.p-plus .gauge i{background:#8B5CF6}
+.cb-credit.p-unl{color:#4A3705;border:1px solid #C9971B;
+ background:linear-gradient(100deg,#FBEFA8,#EFC94C 38%,#FFF7D6 52%,#E0AE22 70%,#F4DC8A);
+ background-size:200% 100%;animation:cbgold 5s linear infinite;
+ box-shadow:0 1px 6px rgba(201,151,27,.35)}
+@keyframes cbgold{to{background-position:200% 0}}
+.pill.p-pro{color:#3E7BFA;border-color:#3E7BFA}
+.pill.p-plus{color:#8B5CF6;border-color:#8B5CF6}
+.pill.p-unl{color:#4A3705;border-color:#C9971B;
+ background:linear-gradient(100deg,#FBEFA8,#EFC94C 38%,#FFF7D6 52%,#E0AE22 70%,#F4DC8A);
+ background-size:200% 100%;animation:cbgold 5s linear infinite}
+@media (prefers-reduced-motion:reduce){.cb-credit.p-unl,.pill.p-unl{animation:none}}
 .cb-note{width:100%;font-size:11.5px;color:var(--muted);margin-top:2px}
 .cb-note.bad{color:var(--destructive)}
 .btn .cost{font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;background:rgba(127,127,127,.22);margin-left:2px}
@@ -1420,6 +1436,11 @@ function openComposer(svc,it,o){ // o: {marker, leader, t, mediaId}
  const onlyAlways=!!(svc&&svc.practice);
  let when=onlyAlways?'always':(o.leader?'always':'once');
  const media=o.mediaId?it.media.find(x=>x.id===o.mediaId):null;
+ // 영상이 특정 세션에게만 달렸으면(전체가 아니면) 타임라인 메모 대상도 그 안에서만 고른다.
+ // 마커 메모는 곡 자체에 붙으므로 제한하지 않는다.
+ const mdT=(media&&!o.marker)?mdSess(media):[];
+ const pickable=sessions.filter(x=>x!=='인도자'&&(!mdT.length||mdT.includes(x)));
+ if(o.leader&&mdT.length&&target&&!mdT.includes(target))target='';
  modal(`<div class="row sb"><div class="row">${m?`<span class="mk">${esc(m.label)}</span><b style="font-size:17px">${esc(m.label)}에 메모</b><span class="pill">${esc(mods[m.label]||'섹션')}</span>`:`<b style="font-size:17px">${fmtT(o.t)}에 타임라인 메모</b>`}</div><button class="icon sm ghost" data-close="1">${ic('x')}</button></div>
   <div style="margin-top:12px">${S.team.phrases.map(p=>`<button class="q" data-p="${esc(p)}">${esc(p)}</button>`).join('')}</div>
   <div class="row" style="margin-top:4px"><input class="field grow" id="cText" placeholder="한 줄로. 24자 안에" maxlength="60" style="font-size:16px;padding:12px 14px"><span class="hint" id="cCnt">0/24</span></div>
@@ -1427,8 +1448,9 @@ function openComposer(svc,it,o){ // o: {marker, leader, t, mediaId}
    <div id="cWhen"><button class="q ${when==='always'?'on':''}" data-w2="always">이 곡에 항상</button>${onlyAlways?'':`<button class="q ${when==='once'?'on':''}" data-w2="once">이번 예배만</button>`}</div>
    <div class="hint" id="cWhenHint">${onlyAlways?'예배 없이 연습 중이라 이 곡에 항상 남아요.':(when==='always'?'이 곡을 넣는 다음 예배에도 이 자리에 따라와요.':'이 예배에서만 보여요.')}</div>`:''}
   <div class="lbl">${o.leader?'대상':'범위'}</div>
-  <div>${o.leader?`<button class="q ${target===''?'on':''}" data-s="">전체</button>`+sessions.filter(s=>s!=='인도자').map(s=>`<button class="q ${target===s?'on':''}" data-s="${esc(s)}">${esc(s)}</button>`).join('')
+  <div>${o.leader?`<button class="q ${target===''?'on':''}" data-s="">${mdT.length?'태그된 전체':'전체'}</button>`+pickable.map(s=>`<button class="q ${target===s?'on':''}" data-s="${esc(s)}">${esc(s)}</button>`).join('')
    :`<button class="q on" data-sc="mine">나만</button><button class="q" data-sc="session">${esc(my.session)}에 공유</button>`}</div>
+  ${mdT.length?`<div class="hint">이 영상은 <b>${esc(mdT.join('·'))}</b>에게만 보여요 — 메모도 그 안에서만 고를 수 있어요. '태그된 전체'는 ${esc(mdT.join('·'))} 모두에게 보입니다.</div>`:''}
   ${media?`<div class="row" style="margin-top:12px;gap:8px">${m?`<label class="row small" style="gap:6px"><input type="checkbox" id="cAlsoT" checked> 재생 시각에도 붙이기</label>`:'<span class="hint">시각</span>'}<input class="pillin mono" id="cTime" value="${fmtT(o.t||0)}" style="width:84px"><span class="hint">분:초 — 직접 고쳐도 돼요</span></div>`:''}
   <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn pri" id="cSave">${ic('check')}저장</button></div>`);
  const inp=$('#cText');setTimeout(()=>inp.focus(),50);
@@ -1441,7 +1463,9 @@ function openComposer(svc,it,o){ // o: {marker, leader, t, mediaId}
   const wb=e.target.closest('[data-w2]');if(wb){when=wb.dataset.w2;$$('[data-w2]').forEach(b=>b.classList.toggle('on',b.dataset.w2===when));
    const h=$('#cWhenHint');if(h)h.textContent=when==='always'?'이 곡을 넣는 다음 예배에도 이 자리에 따라와요.':'이 예배에서만 보여요.';return}
   if(e.target.closest('#cSave')){const text=inp.value.trim();if(!text){inp.focus();return}
-   const layer=o.leader?'leader':(scope==='session'?'session':'mine');const session=o.leader?(target||null):(scope==='session'?my.session:null);
+   const layer=o.leader?'leader':(scope==='session'?'session':'mine');
+   let session=o.leader?(target||null):(scope==='session'?my.session:null);
+   if(o.leader&&mdT.length&&session&&!mdT.includes(session))session=null;
    const note={id:uid(),layer,session,text,author:o.leader?'인도자':(my.name||'나'),at:Date.now()};
    const tSec=$('#cTime')?parseT($('#cTime').value):Math.round(o.t||0);
    const arr=arrOfItem(it);
@@ -2418,6 +2442,8 @@ const ST_TABS=[['profile','프로필'],['noti','알림'],['plan','플랜'],['acc
 const SET={tab:'profile'};
 // 설정 → 플랜. 이번 달 사용량과 프로모션 코드 입력 (인도자만)
 const PLAN_LABEL={free:'무료',pro:'Pro',plus:'Pro Plus'};
+// 요금제 색: 무료는 기본, Pro 파랑, Pro Plus 보라, 한도 없는 팀은 금색
+const planCls=unl=>unl?'p-unl':({pro:'p-pro',plus:'p-plus'}[PLANQ.plan]||'');
 // 플랜 올리기. 결제는 앱에서만 된다 (애플·구글 인앱결제)
 const PLANS=[
  {id:'pro',name:'Pro',won:'4,900',year:'49,000',lines:['멤버 25명','라이브러리 무제한','코드 인식 월 100곡','채보 월 15곡','저장 5GB']},
@@ -2441,7 +2467,7 @@ function planCardHTML(){
   :`<div class="row"><span class="hint grow">${name}</span><b>${x.used}/${x.cap}곡</b></div>`;
  const until=S.team.planUntil?new Date(S.team.planUntil):null;
  return `<div class="card"><b>플랜</b>
-  <div class="row" style="margin-top:8px"><span class="pill">${PLAN_LABEL[pl]||pl}</span>
+  <div class="row" style="margin-top:8px"><span class="pill ${planCls(q.ocr.cap==null&&q.omr.cap==null)}">${PLAN_LABEL[pl]||pl}</span>
    ${until?`<span class="hint">${until.getFullYear()}.${until.getMonth()+1}.${until.getDate()}까지</span>`:''}<span class="grow"></span></div>
   <div class="hr"></div>
   <div class="hint" style="margin-bottom:6px">이번 달 사용량${q.resetAt?` · ${esc(q.resetAt)}에 다시 채워져요`:''}</div>
@@ -2621,9 +2647,9 @@ function selectMedia(i){
  const svc=PL.svc;const pub=pubOrDraft(svc);const it=pub.items[PL.idx];if(!it)return;PL.mi=i;P.stop();
  $$('[data-act="msel"]').forEach(b=>b.classList.toggle('on',+b.dataset.i===i));
  const box=$('#mediaBox');const md=(PL.ml||[])[i];if(!md){box.innerHTML='';return}
- if(md.type==='youtube'){const id=ytId(md.url);const st=ytStart(md.url);const st0=md.start!=null?md.start:st;const en=md.end||0;P.start=st0;P.end=en;const org=/^https?:/.test(location.origin)?'&origin='+encodeURIComponent(location.origin):'';box.innerHTML=`<div class="vid"><iframe id="yt" src="https://www.youtube.com/embed/${id}?enablejsapi=1&playsinline=1&start=${st0}${en?'&end='+en:''}&rel=0${org}" referrerpolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div><div class="row" style="margin-top:8px;justify-content:space-between"><span class="hint" id="ytHint">재생하며 "여기에 메모" — 메모를 탭하면 그 시각으로 이동</span><a class="btn sm" id="ytfb" href="https://youtu.be/${id}?t=${st0}" target="_blank" rel="noopener">${ic('open')}유튜브에서 열기</a></div>`;P.t=st0;
+ if(md.type==='youtube'){const id=ytId(md.url);const st=ytStart(md.url);const st0=md.start!=null?md.start:st;const en=md.end||0;P.start=st0;P.end=en;const org=ytOriginParam();box.innerHTML=`<div class="vid"><iframe id="yt" src="https://www.youtube.com/embed/${id}?enablejsapi=1&playsinline=1&start=${st0}${en?'&end='+en:''}&rel=0${org}" referrerpolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div><div class="row" style="margin-top:8px;justify-content:space-between"><span class="hint" id="ytHint">재생하며 "여기에 메모" — 메모를 탭하면 그 시각으로 이동</span><a class="btn sm" id="ytfb" href="https://youtu.be/${id}?t=${st0}" target="_blank" rel="noopener">${ic('open')}유튜브에서 열기</a></div>`;P.t=st0;
   P.yt=$('#yt');P.yt.onload=()=>{try{P.yt.contentWindow.postMessage(JSON.stringify({event:'listening',id:1,channel:'widget'}),'*')}catch(e){}};P.timer=setInterval(()=>{if(P.yt)ytCmd('getCurrentTime')},700);
-  setTimeout(()=>{if(!P.ytReady){const h=$('#ytHint');if(h)h.textContent='이 환경에선 임베드가 안 돼요(오류 153). 메모를 탭하면 유튜브 앱이 그 시각에서 열리고, "여기에 메모"는 시각을 직접 적어요.'}},2500);
+  setTimeout(()=>{if(!P.ytReady){const h=$('#ytHint');if(h)h.textContent='이 영상은 여기서 바로 재생할 수 없어요(영상 주인이 임베드를 막았을 때). 메모를 탭하면 유튜브 앱이 그 시각에서 열리고, "여기에 메모"는 시각을 직접 적어요.'}},2500);
  }else{blobURL(md.blob).then(u=>{const bars=Array.from({length:34},(_,k)=>`<i style="height:${6+((k*7)%15)}px"></i>`).join('');box.innerHTML=`<div class="now"><span class="art">${ic('mic')}</span><div class="grow"><div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(md.name||'녹음')}</div><div class="wave">${bars}</div></div></div>`;const a=new Audio(u);a.preload='metadata';P.audio=a;a.ontimeupdate=()=>{P.t=a.currentTime;updateTL()};a.onloadedmetadata=()=>{P.dur=a.duration;updateTL()};a.onplay=()=>{P.playing=true;updateTL()};a.onpause=()=>{P.playing=false;updateTL()};a.onended=()=>{P.playing=false;updateTL()}})}
  updateTL();
 }
@@ -4674,8 +4700,9 @@ function sheetHTML(item,W,ctx){
     bad:['bad',`인식이 <b>잘 안 됐어요</b>${p.ocrErr?' ('+esc(p.ocrErr)+')':''}`],
     keyonly:['','코드 인식 없이 <b>키만 설정</b> · 연주 키는 콘티에 표시돼요'],
    }[st];
-   const pill=unl?`<span class="cb-credit" title="이 플랜은 코드 인식이 넉넉해요">∞ 코드 인식</span>`
-    :`<span class="cb-credit ${left<=2?'low':''}" title="매월 1일에 다시 채워져요"><span>코드 인식 ${left}/${q.cap}</span><span class="gauge"><i style="width:${Math.round(left/q.cap*100)}%"></i></span></span>`;
+   const pcls=planCls(unl);
+   const pill=unl?`<span class="cb-credit ${pcls}" title="${esc(PLAN_LABEL[PLANQ.plan]||'')} — 코드 인식이 넉넉해요">∞ 코드 인식</span>`
+    :`<span class="cb-credit ${pcls} ${left<=2?'low':''}" title="${esc(PLAN_LABEL[PLANQ.plan]||'')} · 매월 1일에 다시 채워져요"><span>코드 인식 ${left}/${q.cap}</span><span class="gauge"><i style="width:${Math.round(left/q.cap*100)}%"></i></span></span>`;
    const cost=`<span class="cost">${unl?'무제한':'1'}</span>`;
    const oq=PLANQ.omr, oleft=oq.cap==null?null:Math.max(0,oq.cap-oq.used);
    const omrBtn=(NET.omr&&p.ocr!=='pending')?`<button class="btn sm ghost" data-act="omr" data-id="${p.id}" title="코드·가사·구성을 읽어 곡 정보에 채움">${ic('music')}채보${oq.cap!=null?` <span class="cost">${oleft}/${oq.cap}</span>`:''}</button>`:'';
@@ -5125,6 +5152,12 @@ const P={audio:null,yt:null,ytReady:false,t:0,dur:0,start:0,end:0,playing:false,
  seek(t){P.t=t;if(P.audio)P.audio.currentTime=t;else ytCmd('seekTo',[t,true]);updateTL()},
  toggle(){P.playing?P.pause():P.play()}
 };
+// 앱 웹뷰의 주소는 https://localhost 다. 이 값을 origin 으로 넘기면 유튜브가
+// 플레이어를 아예 안 띄운다("동영상 플레이어 구성 오류"). 진짜 도메인일 때만 넘긴다.
+function ytOriginParam(){const o=location.origin||'';
+ if(!/^https?:\/\//.test(o))return '';
+ if(/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(o))return '';
+ return '&origin='+encodeURIComponent(o)}
 function ytCmd(func,args){if(!P.yt)return;try{P.yt.contentWindow.postMessage(JSON.stringify({event:'command',func,args:args||[],id:1,channel:'widget'}),'*')}catch(e){}}
 window.addEventListener('message',e=>{if(!P.yt||e.source!==P.yt.contentWindow)return;let d;try{d=typeof e.data==='string'?JSON.parse(e.data):e.data}catch{return}
  if(d.event==='onReady'||d.event==='initialDelivery'){P.ytReady=true}
@@ -6930,7 +6963,7 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
  if(!online()&&!me().name){location.hash='#/settings';render()}else render();
  if(online()&&S.team.id){SYNC.pullServices().then(ch=>{if(ch)render()});SYNC.pullLibrary();pullSongs(true).then(ch=>{if(ch&&/^(edit|view|play|library)$/.test(route().name))render()}).catch(()=>{})}
  probeOmr();startNotiPoll();nativeSetup();
- window.CONTI={ADS,WEBADS,AD_HOSTS,setZoom,P,pl:()=>PL,STG,stageOpen,stageExit,adsAllowed,webAdsAllowed,MET,PIANO,metOpen,metStart,metStop,metSet,pianoOpen,HOME,PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go};
+ window.CONTI={ADS,WEBADS,AD_HOSTS,setZoom,P,pl:()=>PL,STG,stageOpen,stageExit,adsAllowed,webAdsAllowed,MET,PIANO,metOpen,metStart,metStop,metSet,pianoOpen,HOME,PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go,PLANQ,planCls,ytOriginParam};
 })();
 })();
 </script>
