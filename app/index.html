@@ -729,18 +729,20 @@ body.hasad #app{padding-bottom:calc(var(--sab) + var(--adh,50px))}   /* 연습 �
 .cb-credit .gauge i{display:block;height:100%;background:var(--fg)}
 .cb-credit.low .gauge i{background:var(--destructive)}
 .cb-credit.low{color:var(--destructive);border-color:var(--destructive)}
-/* 요금제마다 다른 색. 무제한은 금색 — 한눈에 "이 팀은 넉넉하다"가 보이게 */
-.cb-credit.p-pro{color:#3E7BFA;border-color:#3E7BFA}
-.cb-credit.p-pro .gauge i{background:#3E7BFA}
-.cb-credit.p-plus{color:#8B5CF6;border-color:#8B5CF6}
-.cb-credit.p-plus .gauge i{background:#8B5CF6}
+/* 요금제마다 다른 색. 무제한은 금색 — 한눈에 "이 팀은 넉넉하다"가 보이게.
+   작고 굵은 글씨라 라이트·다크 각각 대비 4.5:1 이 넘는 톤을 따로 쓴다 */
+.cb-credit.p-pro,.pill.p-pro{--pc:#2C63D8}
+.cb-credit.p-plus,.pill.p-plus{--pc:#6B37CC}
+html.dark .cb-credit.p-pro,html.dark .pill.p-pro{--pc:#6AA9FF}
+html.dark .cb-credit.p-plus,html.dark .pill.p-plus{--pc:#A78BFA}
+.cb-credit.p-pro,.cb-credit.p-plus{color:var(--pc);border-color:var(--pc)}
+.cb-credit.p-pro .gauge i,.cb-credit.p-plus .gauge i{background:var(--pc)}
 .cb-credit.p-unl{color:#4A3705;border:1px solid #C9971B;
  background:linear-gradient(100deg,#FBEFA8,#EFC94C 38%,#FFF7D6 52%,#E0AE22 70%,#F4DC8A);
  background-size:200% 100%;animation:cbgold 5s linear infinite;
  box-shadow:0 1px 6px rgba(201,151,27,.35)}
 @keyframes cbgold{to{background-position:200% 0}}
-.pill.p-pro{color:#3E7BFA;border-color:#3E7BFA}
-.pill.p-plus{color:#8B5CF6;border-color:#8B5CF6}
+.pill.p-pro,.pill.p-plus{color:var(--pc);border-color:var(--pc)}
 .pill.p-unl{color:#4A3705;border-color:#C9971B;
  background:linear-gradient(100deg,#FBEFA8,#EFC94C 38%,#FFF7D6 52%,#E0AE22 70%,#F4DC8A);
  background-size:200% 100%;animation:cbgold 5s linear infinite}
@@ -804,9 +806,6 @@ body.stgon{overflow:hidden}
 .ppage .pmk{position:absolute;transform:translate(-50%,-50%);min-width:17px;height:17px;border-radius:999px;border:1.5px solid #111;background:#fff;color:#111;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;padding:0 3px}
 /* 무대 편집 — 블록을 끌어 옮긴다 */
 .stgpage.edit{cursor:default}
-.stgpage .sgrid{position:absolute;inset:0;pointer-events:none;opacity:.35;
- background-image:repeating-linear-gradient(to right,rgba(255,255,255,.18) 0 1px,transparent 1px calc(100%/12)),
-  repeating-linear-gradient(to bottom,rgba(255,255,255,.18) 0 1px,transparent 1px calc(100%/8))}
 .sblk{position:absolute;touch-action:none;outline:1px dashed rgba(255,255,255,.45);border-radius:8px}
 .sblk.on{outline:2px solid var(--brand);z-index:5}
 .sblk.sel{outline:2px solid #FFC400;z-index:4}
@@ -1284,7 +1283,7 @@ function editorHTML(svc){
   <div class="gutter" title="드래그해서 폭 조절"></div>
   <div class="panel" id="edsheet">${ptab('악보',it?'':'',`<div class="seg"><button class="${sel.tool==='marker'?'on':''}" data-act="tool" data-t="marker">${ic('marker')}마커</button><button class="${sel.tool==='hl'?'on':''}" data-act="tool" data-t="hl">${ic('hl')}하이라이트</button><button class="${sel.tool==='mask'?'on':''}" data-act="tool" data-t="mask">${ic('x')}마스크</button><button class="${sel.tool==='chord'?'on':''}" data-act="tool" data-t="chord">${ic('music')}코드</button><button class="${sel.tool==='memo'?'on':''}" data-act="tool" data-t="memo">${ic('note')}메모</button></div><span class="row" style="gap:2px;margin-left:8px"><button class="icon sm ghost" data-act="edzoom" data-d="-1" title="악보 작게">${ic('down')}</button><span class="hint edzoomlbl" style="min-width:36px;text-align:center">${Math.round(edZoom()*100)}%</span><button class="icon sm ghost" data-act="edzoom" data-d="1" title="악보 크게">${ic('up')}</button></span>${it?`<label class="btn sm" for="pieceFile">${ic('camera')}조각 추가</label><input id="pieceFile" type="file" accept="image/*" multiple style="display:none">`:''}`)}
    <div class="sheetwrap" id="sheetwrap"><div class="sheet" id="sheet">${it?'':'<div class="empty">왼쪽에서 곡을 추가하세요</div>'}</div></div>
-   ${it&&it.pieces.length?`<div class="pfoot">${it.pieces.map((p,i)=>`<span class="chip t">조각 ${i+1}<button class="icon sm ghost" data-act="mv-piece" data-id="${p.id}" data-d="-1">${ic('left')}</button><button class="icon sm ghost" data-act="mv-piece" data-id="${p.id}" data-d="1">${ic('right')}</button><button class="icon sm ghost" data-act="span-piece" data-id="${p.id}" title="가로로 나란히 놓기 (전체 → ½ → ⅓)">${(+p.span>1?('½⅓'[Math.min(3,+p.span)-2]):'1')}</button><button class="icon sm ghost" data-act="crop-piece" data-id="${p.id}" title="사진 자르기">${ic('crop')}</button><button class="icon sm ghost" data-act="split-piece" data-id="${p.id}" title="이 조각에 곡이 여러 개면 나누기">${ic('scissors')}</button><button class="icon sm ghost" data-act="del-piece" data-id="${p.id}">${ic('x')}</button></span>`).join('')}<span class="hint">${sel.tool==='marker'?'악보를 탭하면 마커 · 마커를 탭하면 절단선·삭제 · 사진은 끌어다 놓거나 붙여넣기(⌘V)':sel.tool==='hl'?'드래그해서 노란 사각형 · 탭하면 삭제':sel.tool==='mask'?'드래그해서 가릴 영역(반투명) · 탭하면 삭제 · 가사·다른 파트 숨기기에':sel.tool==='chord'?'코드를 탭하면 고치기·삭제 · 빈 곳을 탭하면 코드 추가 · 빨간 글씨가 연주 키로 옮긴 코드':'마커를 탭하면 인도자 메모'}</span></div>`:''}
+   ${it&&it.pieces.length?`<div class="pfoot">${it.pieces.map((p,i)=>`<span class="chip t">조각 ${i+1}<button class="icon sm ghost" title="앞으로" aria-label="앞으로" data-act="mv-piece" data-id="${p.id}" data-d="-1">${ic('left')}</button><button class="icon sm ghost" title="뒤로" aria-label="뒤로" data-act="mv-piece" data-id="${p.id}" data-d="1">${ic('right')}</button><button class="icon sm ghost" data-act="span-piece" data-id="${p.id}" title="가로로 나란히 놓기 (전체 → ½ → ⅓)">${(+p.span>1?('½⅓'[Math.min(3,+p.span)-2]):'1')}</button><button class="icon sm ghost" data-act="crop-piece" data-id="${p.id}" title="사진 자르기">${ic('crop')}</button><button class="icon sm ghost" data-act="split-piece" data-id="${p.id}" title="이 조각에 곡이 여러 개면 나누기">${ic('scissors')}</button><button class="icon sm ghost" title="악보 지우기" aria-label="악보 지우기" data-act="del-piece" data-id="${p.id}">${ic('x')}</button></span>`).join('')}<span class="hint">${sel.tool==='marker'?'악보를 탭하면 마커 · 마커를 탭하면 절단선·삭제 · 사진은 끌어다 놓거나 붙여넣기(⌘V)':sel.tool==='hl'?'드래그해서 노란 사각형 · 탭하면 삭제':sel.tool==='mask'?'드래그해서 가릴 영역(반투명) · 탭하면 삭제 · 가사·다른 파트 숨기기에':sel.tool==='chord'?'코드를 탭하면 고치기·삭제 · 빈 곳을 탭하면 코드 추가 · 빨간 글씨가 연주 키로 옮긴 코드':'마커를 탭하면 인도자 메모'}</span></div>`:''}
   </div>
  </div>`;
 }
@@ -1307,10 +1306,10 @@ function itemEditorHTML(svc,it){const sel=SEL[svc.id]||(SEL[svc.id]={});
   <div class="fbox"><textarea class="songbar" data-f="item.form" rows="1" placeholder="멘트 – A1 – (Full)Int(4) – A1B – Int(2) – (Down)A3B – Outro(4)">${esc(it.form)}</textarea>
   <div id="formchips" style="margin-top:8px;min-height:22px">${chipsHTML(it.form,'t')}</div></div>
   <div class="lbl">미디어 <span class="hint">유튜브 링크 또는 녹음 파일</span></div>
-  ${it.media.map(md=>`<div style="padding:8px 0 4px;border-bottom:1px solid var(--line2)"><div class="row"><span class="icon sm ${md.type==='youtube'?'ytc':'micc'}">${ic(md.type==='youtube'?'yt':'mic')}</span><span class="grow small" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(md.name||md.url)}</span><button class="tag ${mdSess(md).length?'':'me'}" data-act="md-target" data-id="${md.id}" title="대상 세션 바꾸기">${esc(mdTag(md))}</button>${md.type==='youtube'?`<a class="btn sm ghost" href="https://youtu.be/${ytId(md.url)}" target="_blank" rel="noopener">${ic('open')}열기</a>`:''}<button class="icon sm ghost" data-act="del-media" data-id="${md.id}">${ic('x')}</button></div>
+  ${it.media.map(md=>`<div style="padding:8px 0 4px;border-bottom:1px solid var(--line2)"><div class="row"><span class="icon sm ${md.type==='youtube'?'ytc':'micc'}">${ic(md.type==='youtube'?'yt':'mic')}</span><span class="grow small" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(md.name||md.url)}</span><button class="tag ${mdSess(md).length?'':'me'}" data-act="md-target" data-id="${md.id}" title="대상 세션 바꾸기">${esc(mdTag(md))}</button>${md.type==='youtube'?`<a class="btn sm ghost" href="https://youtu.be/${ytId(md.url)}" target="_blank" rel="noopener">${ic('open')}열기</a>`:''}<button class="icon sm ghost" title="미디어 지우기" aria-label="미디어 지우기" data-act="del-media" data-id="${md.id}">${ic('x')}</button></div>
    ${md.type==='youtube'?`<div class="row small" style="margin:6px 0 0 8px;gap:6px"><span class="hint">구간</span><input class="field mono" data-md="start" data-id="${md.id}" value="${md.start?fmtT(md.start):''}" placeholder="시작 0:00" style="width:88px;text-align:center"><span class="hint">–</span><input class="field mono" data-md="end" data-id="${md.id}" value="${md.end?fmtT(md.end):''}" placeholder="끝" style="width:88px;text-align:center"><span class="hint">풀 예배 영상에서 이 곡만 잘라 쓸 때</span></div>`:''}
    <div class="tlEdit" data-media="${md.id}" style="margin:4px 0 0 8px">
-    ${md.notes.slice().sort((a,b)=>a.t-b.t).map(n=>`<div class="row small" style="padding:3px 0"><span class="mono" style="color:var(--amber);min-width:42px;font-weight:600">${fmtT(n.t)}</span><span class="tag">${esc(n.session||'전체')}</span><span class="grow" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(n.text)}</span><button class="icon sm ghost" data-act="del-tnote" data-mid="${md.id}" data-id="${n.id}">${ic('x')}</button></div>`).join('')}
+    ${md.notes.slice().sort((a,b)=>a.t-b.t).map(n=>`<div class="row small" style="padding:3px 0"><span class="mono" style="color:var(--amber);min-width:42px;font-weight:600">${fmtT(n.t)}</span><span class="tag">${esc(n.session||'전체')}</span><span class="grow" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(n.text)}</span><button class="icon sm ghost" title="메모 지우기" aria-label="메모 지우기" data-act="del-tnote" data-mid="${md.id}" data-id="${n.id}">${ic('x')}</button></div>`).join('')}
     <div class="row" style="gap:6px;margin-top:4px"><input class="field mono" data-tl="t" placeholder="1:23" style="width:72px;text-align:center"><select class="field" data-tl="s" style="width:auto;padding-right:8px"><option value="">전체</option>${S.team.sessions.filter(s=>s!=='인도자').map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join('')}</select><input class="field grow" data-tl="text" placeholder="드럼 여기 필 그대로"><button class="btn sm" data-act="add-tnote" data-mid="${md.id}">${ic('plus')}</button></div>
    </div></div>`).join('')}
   <div class="row" style="margin-top:6px"><input class="field grow" id="ytUrl" placeholder="https://youtu.be/… 붙여넣기"><button class="btn sm" data-act="add-yt"><span class="ytc" style="display:inline-flex">${ic('yt')}</span>추가</button><label class="btn sm" for="audFile">${ic('mic')}녹음</label><input id="audFile" type="file" accept="audio/*" style="display:none"></div>
@@ -1323,7 +1322,7 @@ function itemEditorHTML(svc,it){const sel=SEL[svc.id]||(SEL[svc.id]={});
   <input class="field" data-f="item.reason" placeholder="“은혜를 세어보라”는 구절과 이어지는 곡이라 여기 뒀어요" value="${esc(it.reason||'')}">
   ${it.chart?`<div class="lbl">코드 차트 <span class="hint">채보 결과 · 코드를 탭하면 고쳐요</span></div>${chartHTML(it,{edit:true})}`:''}
   <div class="lbl">섹션 메모 <span class="hint">${it.notes.length}개 · 악보 패널의 "메모" 도구로 마커를 탭</span></div>
-  <div class="small">${it.notes.map(n=>`<div class="row" style="padding:3px 0"><span class="mk" style="width:24px;height:24px;font-size:11px">${esc((markerOf(it,n.marker)||{}).label||'?')}</span>${noteChip(n)}<span class="hint">${esc(n.session||'전체')}</span><button class="icon sm ghost" data-act="del-note" data-id="${n.id}">${ic('x')}</button></div>`).join('')||'<span class="hint">없음</span>'}</div>
+  <div class="small">${it.notes.map(n=>`<div class="row" style="padding:3px 0"><span class="mk" style="width:24px;height:24px;font-size:11px">${esc((markerOf(it,n.marker)||{}).label||'?')}</span>${noteChip(n)}<span class="hint">${esc(n.session||'전체')}</span><button class="icon sm ghost" title="메모 지우기" aria-label="메모 지우기" data-act="del-note" data-id="${n.id}">${ic('x')}</button></div>`).join('')||'<span class="hint">없음</span>'}</div>
  </div>`;
 }
 
@@ -1331,7 +1330,7 @@ function itemEditorHTML(svc,it){const sel=SEL[svc.id]||(SEL[svc.id]={});
 function viewerHTML(svc){
  const pub=pubOrDraft(svc);const my=me();const sess=VF.session||my.session;
  const ctx={mode:'play',session:sess,f:{leader:true,session:true,mine:true,chords:true}};
- return `<div class="top"><button class="icon ghost" ${pub.draft&&isLeader()?`data-act="edit-svc" data-id="${esc(svc.id)}"`:'data-act="home"'}>${ic('back')}</button><h1>${esc(pub.name||'예배')}<span class="pill ${pub.draft?'':'amber'}">${pub.draft?(svc.published?`초안 미리보기 · 발행본 v${svc.published.version}${svc.version>svc.published.version?'과 다름':'과 같음'}`:'미발행 초안'):'v'+pub.version}</span></h1>
+ return `<div class="top"><button class="icon ghost" title="뒤로" aria-label="뒤로" ${pub.draft&&isLeader()?`data-act="edit-svc" data-id="${esc(svc.id)}"`:'data-act="home"'}>${ic('back')}</button><h1>${esc(pub.name||'예배')}<span class="pill ${pub.draft?'':'amber'}">${pub.draft?(svc.published?`초안 미리보기 · 발행본 v${svc.published.version}${svc.version>svc.published.version?'과 다름':'과 같음'}`:'미발행 초안'):'v'+pub.version}</span></h1>
   ${hasNote(svc)?`<button class="icon ghost ${msgUnread(svc)?'dot':''}" data-act="msg" data-id="${svc.id}" title="예배 노트">${ic('note')}</button>`:''}<button class="icon ghost" data-act="print" data-id="${svc.id}" title="인쇄 · PDF로 저장">${ic('print')}</button><button class="btn" data-act="play" data-id="${svc.id}" data-i="0">${ic('play')}연습</button><button class="btn pri" data-act="play" data-id="${svc.id}" data-i="0" data-stage="1">${ic('moon')}무대</button></div>
   <div class="ws" style="grid-template-columns:minmax(0,1fr)">
    <div class="panel">${ptab('콘티',pub.items.length+'곡',`<span class="hint sesslbl" style="margin-right:6px">세션</span><div class="seg">${S.team.sessions.filter(s=>s!=='인도자').map(s=>`<button class="${s===sess?'on':''}" data-act="vsess" data-s="${esc(s)}">${esc(s)}</button>`).join('')}</div>`)}
@@ -1358,9 +1357,9 @@ function viewerHTML(svc){
 
 /* ---------- PRACTICE / STAGE ---------- */
 function playHTML(svc,idx){
- const pub=pubOrDraft(svc);const it=pub.items[idx]||pub.items[0];PL={...PL,svc,idx,mi:0};if(!it)return `<div class="top"><button class="icon ghost" data-act="home">${ic('back')}</button><h1>곡이 없습니다</h1></div>`;
+ const pub=pubOrDraft(svc);const it=pub.items[idx]||pub.items[0];PL={...PL,svc,idx,mi:0};if(!it)return `<div class="top"><button class="icon ghost" title="뒤로" aria-label="뒤로" data-act="home">${ic('back')}</button><h1>곡이 없습니다</h1></div>`;
  const my=me();const sess=PL.session||my.session;const k=keyStr(it);const prev=pub.items[idx-1],next=pub.items[idx+1];PL.ml=visMedia(it,sess);
- return `<div class="top"><button class="icon ghost" ${svc.practice?`data-act="lib-song" data-id="${esc(it.songId||'')}"`:`data-act="back-view" data-id="${svc.id}"`}>${ic('back')}</button>
+ return `<div class="top"><button class="icon ghost" title="뒤로" aria-label="뒤로" ${svc.practice?`data-act="lib-song" data-id="${esc(it.songId||'')}"`:`data-act="back-view" data-id="${svc.id}"`}>${ic('back')}</button>
   <div class="songnav grow"><span class="nb prev" ${prev?'data-act="pn" data-d="-1"':''}>${prev?esc(prev.title||'(제목 없음)'):''}</span>${prev?`<button class="icon sm" data-act="pn" data-d="-1" title="이전 곡">${ic('left')}</button>`:''}<span class="nb cur"><span class="num">${idx+1}</span>${esc(it.title||'(제목 없음)')}<span class="pill key">${esc(k||'-')}</span></span>${next?`<button class="icon sm" data-act="pn" data-d="1" title="다음 곡">${ic('right')}</button>`:''}<span class="nb next" ${next?'data-act="pn" data-d="1"':''}>${next?esc(next.title||'(제목 없음)'):''}</span></div>
   ${hasNote(svc)?`<button class="icon ghost ${msgUnread(svc)?'dot':''}" data-act="msg" data-id="${svc.id}" title="예배 노트">${ic('note')}</button>`:''}${it.score&&it.score.measures&&it.score.measures.length?`<button class="icon ghost" data-act="score-go" data-id="${svc.id}" data-item="${it.id}" title="재구성한 악보">${ic('music')}</button>`:''}<button class="icon ghost" data-act="piano" title="건반">${ic('piano')}</button><button class="icon ghost" data-act="metro" title="메트로놈">${ic('metro')}</button><button class="btn sm" data-act="stage">${ic('moon')}무대 모드</button></div>
  <div class="ws split" id="ws">
@@ -1441,7 +1440,7 @@ function openComposer(svc,it,o){ // o: {marker, leader, t, mediaId}
  const mdT=(media&&!o.marker)?mdSess(media):[];
  const pickable=sessions.filter(x=>x!=='인도자'&&(!mdT.length||mdT.includes(x)));
  if(o.leader&&mdT.length&&target&&!mdT.includes(target))target='';
- modal(`<div class="row sb"><div class="row">${m?`<span class="mk">${esc(m.label)}</span><b style="font-size:17px">${esc(m.label)}에 메모</b><span class="pill">${esc(mods[m.label]||'섹션')}</span>`:`<b style="font-size:17px">${fmtT(o.t)}에 타임라인 메모</b>`}</div><button class="icon sm ghost" data-close="1">${ic('x')}</button></div>
+ modal(`<div class="row sb"><div class="row">${m?`<span class="mk">${esc(m.label)}</span><b style="font-size:17px">${esc(m.label)}에 메모</b><span class="pill">${esc(mods[m.label]||'섹션')}</span>`:`<b style="font-size:17px">${fmtT(o.t)}에 타임라인 메모</b>`}</div><button class="icon sm ghost" title="닫기" aria-label="닫기" data-close="1">${ic('x')}</button></div>
   <div style="margin-top:12px">${S.team.phrases.map(p=>`<button class="q" data-p="${esc(p)}">${esc(p)}</button>`).join('')}</div>
   <div class="row" style="margin-top:4px"><input class="field grow" id="cText" placeholder="한 줄로. 24자 안에" maxlength="60" style="font-size:16px;padding:12px 14px"><span class="hint" id="cCnt">0/24</span></div>
   ${arrOfItem(it)&&m?`<div class="lbl">어디에 남길까</div>
@@ -1513,7 +1512,7 @@ function messageSheet(svc,first){const pub=pubOrDraft(svc);if(!hasNote(svc))retu
  const done=()=>{S.readRev=S.readRev||{};S.readRev[svc.id]=noteRev(svc);save();$$('[data-act="msg"]').forEach(b=>b.classList.remove('dot'));
   if(online()&&svc.published)api('/services/'+svc.id+'/read',{method:'POST',body:{teamId:S.team.id,rev:noteRev(svc)}}).catch(()=>{})};
  const msg=pub.message||'';const long=msg.split('\n').length>5||msg.length>260;
- modal(`<div class="row" style="gap:10px"><span class="icon sm">${ic('note')}</span><div class="grow"><b style="font-size:17px;letter-spacing:-.03em">인도자의 글</b><div class="hint">${esc(pub.author||'인도자')} · ${esc(pub.name||'예배')} · v${pub.version}</div></div><button class="icon sm ghost" data-close="1">${ic('x')}</button></div>
+ modal(`<div class="row" style="gap:10px"><span class="icon sm">${ic('note')}</span><div class="grow"><b style="font-size:17px;letter-spacing:-.03em">인도자의 글</b><div class="hint">${esc(pub.author||'인도자')} · ${esc(pub.name||'예배')} · v${pub.version}</div></div><button class="icon sm ghost" title="닫기" aria-label="닫기" data-close="1">${ic('x')}</button></div>
   ${wordBlockHTML(svc.word)}
   ${msg?`<div class="msgbody ${long?'clamp':''}" id="msgBody">${esc(msg)}</div>${long?`<button class="btn sm ghost" id="msgMore" style="margin-top:6px">더 보기</button>`:''}`:''}
   <div class="row sb" style="margin-top:18px">${first?`<span class="hint">다시 보려면 상단 ${ic('note')} 아이콘</span>`:'<span></span>'}<button class="btn pri" id="msgOk">${ic('check')}읽었어요</button></div>`);
@@ -1790,7 +1789,7 @@ function rehPlayer(svc,r){const src=REH.urls[r.blobId];
   const t=$('#rhT');if(t)t.textContent=fmtDur(a.currentTime)+' / '+fmtDur(d);
   const tk=$('#rhTicks');if(tk&&d)tk.innerHTML=notes().map(n=>`<i style="left:${Math.min(100,n.t/d*100)}%"></i>`).join('');
   const li=$('#rhNotes');if(li)li.innerHTML=notes().map(n=>`<div class="tl" data-rt="${n.t}"><span class="t">${fmtDur(n.t)}</span>${n.itemId?`<span class="tag">${esc(((pubOrDraft(svc).items.find(x=>x.id===n.itemId)||{}).title||'').slice(0,10))}</span>`:(n.layer==='leader'?'<span class="tag">전체</span>':n.session?`<span class="tag">${esc(n.session)}</span>`:'<span class="tag me">나</span>')}<span>${esc(n.text)}</span></div>`).join('')||'<div class="hint" style="padding:4px 8px">메모 없음 — 재생하며 "여기에 메모"</div>'};
- modal(`<div class="row" style="gap:10px"><span class="icon sm">${ic('mic')}</span><div class="grow"><b style="font-size:17px">${esc(r.label)}</b><div class="hint">${esc(fmtDate(r.date).md)} · ${fmtDur(r.duration)} · ${esc(r.uploaderName||'')}</div></div><button class="icon sm ghost" data-close="1">${ic('x')}</button></div>
+ modal(`<div class="row" style="gap:10px"><span class="icon sm">${ic('mic')}</span><div class="grow"><b style="font-size:17px">${esc(r.label)}</b><div class="hint">${esc(fmtDate(r.date).md)} · ${fmtDur(r.duration)} · ${esc(r.uploaderName||'')}</div></div><button class="icon sm ghost" title="닫기" aria-label="닫기" data-close="1">${ic('x')}</button></div>
   <audio id="rhAudio" src="${esc(src)}" preload="metadata"></audio>
   <div class="rhprog" id="rhProgBar"><i id="rhBar"></i><div id="rhTicks" class="ticks"></div></div>
   <div class="row sb" style="margin-top:8px"><span class="hint mono" id="rhT">0:00 / ${fmtDur(r.duration)}</span>
@@ -1946,7 +1945,7 @@ function schListHTML(ds,ms){
 // 그날 편성 (§3.4)
 const LN={dateId:null,slots:null};   // 그날만 바꾼 세션 인원 (저장 전 임시)
 function lineupHTML(dateId){const d=SCH.dates.find(x=>x.id===dateId);
- if(!d)return `<div class="shell"><div class="main"><header class="hd"><div class="ttl"><h1>편성</h1></div><div class="acts"><button class="icon ghost" data-act="sched">${ic('back')}</button></div></header><main><div class="empty">날짜를 찾지 못했어요</div></main></div></div>`;
+ if(!d)return `<div class="shell"><div class="main"><header class="hd"><div class="ttl"><h1>편성</h1></div><div class="acts"><button class="icon ghost" title="뒤로" aria-label="뒤로" data-act="sched">${ic('back')}</button></div></header><main><div class="empty">날짜를 찾지 못했어요</div></main></div></div>`;
  const st=S.team.settings||{};const base=st.slots||{};
  // 그날만 인원을 바꿨으면 그 값이 이긴다
  const slots={...base,...(LN.slots&&LN.dateId===dateId?LN.slots:(d.slots||{}))};
@@ -2128,7 +2127,7 @@ function noteMenu(svc,it,nid){
  const m=markerOf(it,n.marker);const my=me();
  const mine=n.layer!=='leader'&&n.author===(my.name||'나');const canDel=isLeader()||mine;
  const who=n.layer==='leader'?(n.session?n.session+' 메모 (인도자)':'전체 메모 (인도자)'):n.layer==='session'?(n.session||'세션')+' 공유 메모':'내 메모';
- modal(`<div class="row sb"><div class="row">${m?`<span class="mk">${esc(m.label)}</span>`:''}<b style="font-size:17px">${esc(who)}</b>${n.layer==='leader'&&n.session?`<span class="pill">${esc(n.session)}</span>`:''}</div><button class="icon sm ghost" data-close="1">${ic('x')}</button></div>
+ modal(`<div class="row sb"><div class="row">${m?`<span class="mk">${esc(m.label)}</span>`:''}<b style="font-size:17px">${esc(who)}</b>${n.layer==='leader'&&n.session?`<span class="pill">${esc(n.session)}</span>`:''}</div><button class="icon sm ghost" title="닫기" aria-label="닫기" data-close="1">${ic('x')}</button></div>
   <p style="font-size:16px;margin:14px 0 4px;word-break:break-word">${esc(n.text)}</p><div class="hint">${esc(n.author||'')}${n.at?' · '+new Date(n.at).toLocaleDateString('ko-KR'):''}</div>
   <div class="row" style="margin-top:18px;justify-content:space-between">${canDel?`<button class="btn danger" id="nmDel">${ic('trash')}메모 삭제</button>`:'<span class="hint">본인이 쓴 메모만 지울 수 있어요</span>'}<button class="btn" data-close="1">닫기</button></div>`,{center:true});
  $('#modal').onclick=e=>{
@@ -3426,19 +3425,19 @@ function songHTML(s){const lead=isLeader();const d=LIB.detail||{};const arrs=s.a
   const shared=(d.notes||[]).filter(n=>n.layer!=='mine');
   const row=n=>`<div class="mrow"><span class="mk" style="width:24px;height:24px;font-size:11px">${esc(n.markerLabel)}</span>
    <span class="grow">${esc(n.text)}</span><span class="tag">${esc(layerName(n))}</span>
-   ${(lead||n.authorId===(NET.user||{}).id)?`<button class="icon sm ghost" data-notedel="${esc(n.id)}" data-arr="${esc(n.arrangementId)}">${ic('x')}</button>`:''}</div>`;
+   ${(lead||n.authorId===(NET.user||{}).id)?`<button class="icon sm ghost" title="메모 지우기" aria-label="메모 지우기" data-notedel="${esc(n.id)}" data-arr="${esc(n.arrangementId)}">${ic('x')}</button>`:''}</div>`;
   return `<div class="lbl">인도자·세션 고정 메모</div>${shared.length?shared.map(row).join(''):'<div class="hint">없어요</div>'}
    <div class="lbl">내 고정 메모 <span class="hint">나만 보여요</span></div>${mine.length?mine.map(row).join(''):'<div class="hint">없어요</div>'}
    <div class="hint" style="margin-top:8px">연습 화면에서 메모를 쓸 때 "이 곡에 항상"을 켜면 여기 남아요.</div>`};
  const withs=()=>{const c=d.companions||[];
   return c.length?c.map(x=>`<div class="mrow"><span class="grow">${x.dir==='next'?`이 곡 <b>→</b> ${esc(x.title)}`:`${esc(x.title)} <b>→</b> 이 곡`}</span><span class="hint">${x.n}번</span><button class="btn sm ghost" data-songopen="${esc(x.songId)}">열기</button></div>`).join('')
    :'<div class="empty">아직 패턴이 없어요. 두 번 이상 같은 순서로 부르면 생겨요.</div>'};
- return `<div class="top"><button class="icon ghost" data-act="lib-back">${ic('back')}</button>
+ return `<div class="top"><button class="icon ghost" title="뒤로" aria-label="뒤로" data-act="lib-back">${ic('back')}</button>
   <h1>${esc(s.title||'(제목 없음)')}${s.archived?'<span class="pill">보관됨</span>':''}</h1>
   ${lead?`<button class="btn sm" data-act="song-clone">${ic('plus')}다른 키로</button>`:''}
   <button class="btn sm" data-arrplay="${esc(defArr(s).id||'')}">${ic('play')}연습</button>
   ${lead?`<button class="btn pri" data-arradd="${esc(defArr(s).id||'')}">${ic('plus')}예배에 넣기</button>
-  <button class="icon ghost" data-act="song-more">${ic('list')}</button>`:''}</div>
+  <button class="icon ghost" title="더 보기" aria-label="더 보기" data-act="song-more">${ic('list')}</button>`:''}</div>
  <div class="ws" style="grid-template-columns:minmax(0,1fr)"><div class="panel"><div class="pbody"><div class="libpage">
   <div class="row" style="gap:14px;align-items:flex-start">
    <span class="sthumb xl" style="${th?`background-image:url('${th}')`:''}"></span>
@@ -4360,7 +4359,7 @@ function scoreItem(r){const svc=svcById(r.a);if(!svc)return{};
 function scoreHTML(svc,it){const sc=it.score;const my=me();const capo=+my.capo||0;
  const shown=SC.semi?keyShiftName(sc.key,SC.semi):sc.key;
  const bad=badMeasuresOf(sc);
- return `<div class="top"><button class="icon ghost" data-act="score-back" data-id="${svc.id}">${ic('back')}</button>
+ return `<div class="top"><button class="icon ghost" title="뒤로" aria-label="뒤로" data-act="score-back" data-id="${svc.id}">${ic('back')}</button>
   <h1>${esc(it.title||sc.title||'악보')}<span class="pill key">${esc(shown||'')}</span>${SC.semi?`<span class="pill amber">${SC.semi>0?'+':''}${SC.semi}</span>`:''}${capo?`<span class="pill">카포 ${capo}</span>`:''}</h1>
   <div class="seg"><button data-act="score-tr" data-d="-1" title="반음 내림">${ic('down')}</button><button data-act="score-tr" data-d="0" title="원래 키로">원본</button><button data-act="score-tr" data-d="1" title="반음 올림">${ic('up')}</button></div>
   ${isLeader()&&scoreItem(route()).editable?`<button class="switch ${SC.edit?'on':''}" data-act="score-edit"><i></i>고치기</button>`:''}
@@ -5722,9 +5721,9 @@ function metOpen(){
  MET.bpm=+PREFS.bpm||MET.bpm;
  sideTool('메트로놈',`
   <div class="row" style="align-items:center;gap:10px;margin:8px 0">
-   <button class="icon" data-act="met-d" data-d="-5">${ic('down')}</button>
+   <button class="icon" title="5 느리게" aria-label="5 느리게" data-act="met-d" data-d="-5">${ic('down')}</button>
    <div style="text-align:center;min-width:100px"><b id="metBpm" style="font-size:36px;line-height:1">${MET.bpm}</b><div class="hint">BPM</div></div>
-   <button class="icon" data-act="met-d" data-d="5">${ic('up')}</button>
+   <button class="icon" title="5 빠르게" aria-label="5 빠르게" data-act="met-d" data-d="5">${ic('up')}</button>
    <span class="grow"></span>
    <button class="btn" id="metTap">탭</button>
    <button class="btn pri" id="metGo">${MET.on?'멈춤':'시작'}</button></div>
@@ -6710,7 +6709,7 @@ document.addEventListener('click',async e=>{
   case 'tm-sess-add':{const inp=$('#tmNewSess');const v=(inp.value||'').trim();if(!v)break;
    if((S.team.sessions||[]).includes(v)){toast('이미 있는 세션이에요');break}
    const wrap=$('#tmSess');const i=$$('.mrow',wrap).length;
-   wrap.insertAdjacentHTML('beforeend',`<div class="mrow" data-si="${i}"><span class="grip" data-sgrip="${i}">≡</span><input class="field grow" data-sname="${i}" value="${esc(v)}" maxlength="8"><span class="hint">0명</span><span class="row" style="gap:2px"><span class="hint">정원</span><input class="field mono" data-slot="${esc(v)}" type="number" min="0" max="9" value="1" style="width:56px;text-align:center"></span><button class="icon sm ghost" data-sdel="${i}">${ic('x')}</button></div>`);
+   wrap.insertAdjacentHTML('beforeend',`<div class="mrow" data-si="${i}"><span class="grip" data-sgrip="${i}">≡</span><input class="field grow" data-sname="${i}" value="${esc(v)}" maxlength="8"><span class="hint">0명</span><span class="row" style="gap:2px"><span class="hint">정원</span><input class="field mono" data-slot="${esc(v)}" type="number" min="0" max="9" value="1" style="width:56px;text-align:center"></span><button class="icon sm ghost" title="지우기" aria-label="지우기" data-sdel="${i}">${ic('x')}</button></div>`);
    inp.value='';break}
   case 'tm-sess-save':{const rows=$$('#tmSess .mrow');const next=[],rename={};const old=S.team.sessions||[];
    rows.forEach(r=>{const inp=r.querySelector('[data-sname]');const was=inp.dataset.sold||'';const now=(inp.value||'').trim();
