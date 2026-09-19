@@ -4,7 +4,7 @@
 import { q, one } from '../lib/db.js';
 import { sessionClaims, sessionCookie, clearSessionCookie, randomToken, isApp, appSessionToken } from '../lib/session.js';
 import { hashPassword, verifyPassword, USERNAME_RE, PASSWORD_MIN } from '../lib/password.js';
-import { putBlob, delBlobs, readUrls, presignPut, headBlob, blobExists } from '../lib/blob.js';
+import { putBlob, delBlobs, readUrls, presignPut, headBlob, blobExists, BlobDownError } from '../lib/blob.js';
 import { ocrBands, visionConfigured } from '../lib/vision.js';
 import { sendPush, pushConfigured, vapidPublicKey } from '../lib/push.js';
 import { fcmConfigured } from '../lib/fcm.js';
@@ -2711,6 +2711,8 @@ export default async function handler(req, res) {
     return send(res, 200, out);
   } catch (e) {
     if (e instanceof HttpError) return send(res, e.status, { error: e.code, message: e.message });
+    // 악보 저장소가 멎었을 때는 '서버 오류'가 아니라 무엇이 멈췄는지 알려 준다
+    if (e instanceof BlobDownError) { console.error('blob down', e.message); return send(res, 503, { error: 'blob_down', message: e.message }); }
     console.error(e);
     return send(res, 500, { error: 'server', message: '서버 오류가 났어요' });
   }
