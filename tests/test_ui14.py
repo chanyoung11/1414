@@ -5,7 +5,7 @@
 import os, sys, time, json
 from playwright.sync_api import sync_playwright
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-URL = 'http://localhost:8766/'
+URL = os.environ.get('CONTI_URL', 'http://localhost:8766/')
 SHEET = os.path.join(ROOT, 'docs', 'sample_sheet.jpg')
 def fail(m): print('FAIL:', m); sys.exit(1)
 
@@ -16,6 +16,9 @@ def run():
     c = b.new_context(viewport={'width': 1180, 'height': 820}, has_touch=True)
     pg = c.new_page()
     errs = []; pg.on('pageerror', lambda e: errs.append(repr(e)[:200])); pg.on('dialog', lambda d: d.accept())
+    # 유튜브 플레이어는 실제로 띄우지 않는다 — 우리는 iframe 주소만 보면 되고,
+    # 띄우면 유튜브 내부 스크립트 오류가 이 검사에 섞여 들어온다
+    pg.route('**://www.youtube.com/**', lambda r: r.abort())
     pg.goto(URL); pg.wait_for_selector('#lgUser')
     pg.click('[data-act="lg-mode"][data-m="signup"]'); pg.wait_for_selector('#lgName'); pg.check('#lgAgree')
     pg.fill('#lgName','하은'); pg.fill('#lgUser','u14'+tag); pg.fill('#lgPass','secret1'); pg.click('[data-act="lg-submit"]')

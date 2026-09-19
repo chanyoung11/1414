@@ -3,7 +3,7 @@
 import os, sys, time
 from playwright.sync_api import sync_playwright
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-URL = 'http://localhost:8766/'
+URL = os.environ.get('CONTI_URL', 'http://localhost:8766/')
 H = {'x-conti': '1'}
 def fail(m): print('FAIL:', m); sys.exit(1)
 

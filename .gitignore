@@ -33,3 +33,5 @@ android/keystore.properties
 *.jks
 *.keystore
 .DS_Store
+.localblob/
+.dev.vars

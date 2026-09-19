@@ -30,5 +30,11 @@ else
   unset GOOGLE_VISION_KEY GOOGLE_APPLICATION_CREDENTIALS
 fi
 
+# 파일 저장소도 로컬로 (운영 저장소에 테스트 파일이 쌓이지 않게)
+export BLOB_LOCAL_DIR="${BLOB_LOCAL_DIR:-$PWD/.localblob}"
+export BLOB_LOCAL_BASE="http://localhost:$PORT"
+unset BLOB_READ_WRITE_TOKEN R2_ENDPOINT R2_BUCKET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY
+mkdir -p "$BLOB_LOCAL_DIR"
+
 node scripts/migrate.mjs
 exec node scripts/dev.mjs

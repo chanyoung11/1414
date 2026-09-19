@@ -16,6 +16,14 @@ import { fileURLToPath } from 'node:url';
   }
 }
 
+// 저장소도 마찬가지다. 로컬 테스트가 운영 저장소에 올리면 지워지지 않는 쓰레기가 쌓인다
+// (2026-09-19: 그렇게 1,700개 756MB 가 쌓여 무료 한도를 넘겼다)
+if (!process.env.BLOB_LOCAL_DIR && (process.env.BLOB_READ_WRITE_TOKEN || process.env.R2_ACCESS_KEY_ID) && process.env.ALLOW_PROD_BLOB !== '1') {
+  console.error('\n[막음] 개발 서버가 운영 파일 저장소를 보고 있습니다. BLOB_LOCAL_DIR 을 지정하세요.');
+  console.error('       (정말 필요하면 ALLOW_PROD_BLOB=1)\n');
+  process.exit(1);
+}
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const appDir = path.join(root, 'app');
 const { default: api } = await import(path.join(root, 'api', 'index.js'));
@@ -25,6 +33,31 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; cha
 http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://local');
   if (url.pathname.startsWith('/api/') || url.pathname === '/api') return api(req, res);
+  // 로컬 파일 저장소 (BLOB_LOCAL_DIR). 운영에는 없는 경로다
+  if (url.pathname.startsWith('/localblob/') && process.env.BLOB_LOCAL_DIR) {
+    const dir = path.resolve(process.env.BLOB_LOCAL_DIR);
+    const f = path.normalize(path.join(dir, decodeURIComponent(url.pathname.slice('/localblob/'.length))));
+    if (!f.startsWith(dir)) { res.statusCode = 400; return res.end('bad path'); }
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,PUT,HEAD,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', '*');
+    if (req.method === 'OPTIONS') { res.statusCode = 204; return res.end(); }
+    if (req.method === 'PUT') {
+      fs.mkdirSync(path.dirname(f), { recursive: true });
+      const chunks = []; req.on('data', (c) => chunks.push(c));
+      return req.on('end', () => {
+        fs.writeFileSync(f, Buffer.concat(chunks));
+        fs.writeFileSync(f + '.type', String(req.headers['content-type'] || 'application/octet-stream'));
+        res.statusCode = 200; res.end('ok');
+      });
+    }
+    if (!fs.existsSync(f) || fs.statSync(f).isDirectory()) { res.statusCode = 404; return res.end('not found'); }
+    let type = 'application/octet-stream';
+    try { type = fs.readFileSync(f + '.type', 'utf8'); } catch (e) {}
+    res.setHeader('Content-Type', type);
+    if (req.method === 'HEAD') { res.setHeader('Content-Length', fs.statSync(f).size); return res.end(); }
+    return fs.createReadStream(f).pipe(res);
+  }
   let p = decodeURIComponent(url.pathname); if (p.endsWith('/')) p += 'index.html';
   const file = path.normalize(path.join(appDir, p));
   if (!file.startsWith(appDir) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.statusCode = 404; return res.end('not found'); }

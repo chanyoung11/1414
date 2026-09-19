@@ -1861,17 +1861,26 @@ async function pullSchedule(month,force){const k=month||SCH.month||monthKey();
  catch(e){toast(e.message);return false}}
 // 내 일정 달력 (§3.2). 이번 달 ~ +2개월, 사역 날짜만 활성
 // 내 일정 (§6.6): 세 달을 세로로 이어 본다. 사역 없는 날은 타일이 아니라 숫자만
+// 석 달씩 보는 화면(일정·편성)에서 앞뒤 달로 옮기는 단추. 지난 달도 볼 수 있다
+function monthNavHTML(base){const [y,m]=base.split('-').map(Number);const e=monthAdd(base,2).split('-').map(Number);
+ return `<div class="row" style="gap:6px;align-items:center;margin:0 0 10px">
+  <button class="icon sm ghost" title="이전 달" aria-label="이전 달" data-act="sch-mv" data-d="-1">${ic('left')}</button>
+  <b style="font-size:14px">${y}.${String(m).padStart(2,'0')} – ${e[0]===y?'':e[0]+'.'}${String(e[1]).padStart(2,'0')}</b>
+  <button class="icon sm ghost" title="다음 달" aria-label="다음 달" data-act="sch-mv" data-d="1">${ic('right')}</button>
+  ${base!==monthKey()?`<button class="btn sm" data-act="sch-now">이번 달</button>`:'<span class="hint">앞뒤로 옮겨 지난 달도 볼 수 있어요</span>'}
+  <span class="grow"></span></div>`}
 function calMonthHTML(k){const me0=me();const lead=isLeader();
  const [y,mo]=k.split('-').map(Number);const first=new Date(Date.UTC(y,mo-1,1));const days=new Date(Date.UTC(y,mo,0)).getUTCDate();const pad=first.getUTCDay();
- const inMonth=SCH.dates.filter(d=>d.date.slice(0,7)===k&&d.open&&d.date>=today());
+ const past=k<monthKey();   // 지난 달이면 '앞으로 답할 것'이 아니라 그 달 전체를 센다
+ const inMonth=SCH.dates.filter(d=>d.date.slice(0,7)===k&&d.open&&(past||d.date>=today()));
  const answered=inMonth.filter(d=>myAv(me0.userId,d.date)!=='unset').length;
  let cells='';
  for(let i=0;i<pad;i++)cells+='<div class="cal-cell blank"></div>';
  for(let n=1;n<=days;n++){const iso=`${k}-${String(n).padStart(2,'0')}`;const ds=SCH.dates.filter(d=>d.date===iso&&(d.open||lead));
-  const open=ds.some(d=>d.open);const past=iso<today();const st=myAv(me0.userId,iso);const memo=avMemo(me0.userId,iso);
+  const open=ds.some(d=>d.open);const gone=iso<today();const st=myAv(me0.userId,iso);const memo=avMemo(me0.userId,iso);
   const mySess=ds.flatMap(d=>dateSessionsOf(d,me0.userId)).filter(Boolean);
   const dim=SCH.onlyUnset&&open&&st!=='unset';
-  cells+=`<div class="cal-cell ${open?'on':'off'} ${past?'past':''} ${AVN[st].cls} ${mySess.length?'assigned':''} ${dim?'dim':''}" ${open&&!past?`data-cal="${iso}"`:''}>
+  cells+=`<div class="cal-cell ${open?'on':'off'} ${gone?'past':''} ${AVN[st].cls} ${mySess.length?'assigned':''} ${dim?'dim':''}" ${open&&!gone?`data-cal="${iso}"`:''}>
    <span class="d">${n}</span>${open?`<span class="sym">${AVN[st].sym}</span>`:''}
    ${ds.length?`<span class="lb">${esc(shortLabel(ds[0].label))}</span>`:''}${mySess.length?`<span class="mys">${esc(abbr(mySess[0]))}</span>`:''}${memo?'<i class="memodot"></i>':''}</div>`}
  return `<section class="calmo">
@@ -1879,13 +1888,19 @@ function calMonthHTML(k){const me0=me();const lead=isLeader();
   <div class="cal-wd">${WDK.map(w=>`<span>${w}</span>`).join('')}</div>
   <div class="cal">${cells}</div></section>`}
 function calHTML(){const me0=me();
- const months=[monthKey(),monthAdd(monthKey(),1),monthAdd(monthKey(),2)];
+ const base=SCH.month||monthKey();
+ const months=[base,monthAdd(base,1),monthAdd(base,2)];
+ const [rf]=monthRange(base),[,rt]=monthRange(monthAdd(base,2));
+ const inRange=SCH.dates.filter(d=>(d.open||isLeader())&&d.date>=rf&&d.date<=rt);
  const open=SCH.dates.filter(d=>d.open&&d.date>=today());
  const answered=open.filter(d=>myAv(me0.userId,d.date)!=='unset').length;
  const unsetN=open.length-answered;
- const acts=`${unsetN?`<button class="btn sm ${SCH.onlyUnset?'pri':''}" data-act="cal-only">미선택만 보기</button>`:''}<span class="pill">${open.length?`${answered}/${open.length} 답함`:'사역 날짜 없음'}</span>`;
- const body=`<div class="cal-leg" style="margin:0 0 12px">${Object.entries(AVN).map(([k2,v])=>`<span class="${v.cls}"><i>${v.sym}</i>${v.label}</span>`).join('')}<span class="hint">탭할 때마다 바뀌어요 · 보류·불가능은 꾹 눌러 메모</span></div>
-   ${open.length?months.map(calMonthHTML).join(''):`<div class="empty"><span class="icon">${ic('cal2')}</span><b>아직 사역 날짜가 없어요</b>인도자가 날짜를 열면 여기에 나타나요</div>`}`;
+ // 알림 '답함' 수는 지금 보고 있는 석 달 기준이다 (받아 온 범위 밖은 셀 수 없다)
+ const openR=inRange.filter(d=>d.open).length;
+ const ansR=inRange.filter(d=>d.open&&myAv(me0.userId,d.date)!=='unset').length;
+ const acts=`${unsetN?`<button class="btn sm ${SCH.onlyUnset?'pri':''}" data-act="cal-only">미선택만 보기</button>`:''}<span class="pill">${openR?`${ansR}/${openR} 답함`:'사역 날짜 없음'}</span>`;
+ const body=`${monthNavHTML(base)}<div class="cal-leg" style="margin:0 0 12px">${Object.entries(AVN).map(([k2,v])=>`<span class="${v.cls}"><i>${v.sym}</i>${v.label}</span>`).join('')}<span class="hint">탭할 때마다 바뀌어요 · 보류·불가능은 꾹 눌러 메모</span></div>
+   ${inRange.length?months.map(calMonthHTML).join(''):`<div class="empty"><span class="icon">${ic('cal2')}</span><b>${base<monthKey()?'이 석 달에는 사역 날짜가 없어요':'아직 사역 날짜가 없어요'}</b>${base<monthKey()?'화살표로 다른 달을 볼 수 있어요':'인도자가 날짜를 열면 여기에 나타나요'}</div>`}`;
  return shellHTML('cal',{title:'내 일정',sub:'가능한 날을 눌러서 알려주세요',acts,body,bodyClass:'calpage'})}
 async function setAv(date,state,memo){SCH.seq++;const me0=me();const prev=SCH.availability.find(a=>a.userId===me0.userId&&a.date===date);const before=prev?{...prev}:null;
  SCH.availability=SCH.availability.filter(a=>!(a.userId===me0.userId&&a.date===date));
@@ -1923,7 +1938,7 @@ function schedHTML(){const k=SCH.month||monthKey();
    ${ds.length?`<div class="schwrap"><table class="schtab"><thead><tr><th class="corner"></th>${ds.map(d=>`<th class="dcol ${route().name==='lineup'&&route().a===d.id?'on':''}" ${lead?`data-act="lineup" data-id="${esc(d.id)}" title="${esc(d.label)} — 눌러서 이 날 편성"`:''}><span>${esc(fmtDate(d.date).md)}<small>${esc(fmtDate(d.date).w)} · ${esc(shortLabel(d.label))}</small></span></th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>
    ${schListHTML(ds,ms)}`
    :`<div class="empty"><span class="icon">${ic('users')}</span><b>열린 사역 날짜가 없어요</b>팀 설정에서 정기 예배를 등록하거나 날짜를 열어 주세요<div><button class="btn" data-act="team">팀 설정으로</button></div></div>`}`;
- return shellHTML('sched',{title:'편성',sub:`${fmtDate(from).md} ~ ${fmtDate(to).md} · 석 달`,body,wide:true})}
+ return shellHTML('sched',{title:'편성',sub:`${fmtDate(from).md} ~ ${fmtDate(to).md} · 석 달`,body:monthNavHTML(k)+body,wide:true})}
 // 폰에서는 가로로 긴 표 대신 날짜별 목록으로 본다 (표는 날짜 세 개밖에 안 보인다)
 function schListHTML(ds,ms){
  if(!ds.length)return '';
@@ -4846,10 +4861,11 @@ async function render(){
  // §3 편성 화면들 (온라인 전용)
  if(/^(cal|sched|lineup)$/.test(r.name)){
   if(!online()||!S.team.id)return go('home');
-  if(r.name!=='lineup'&&r.a&&/^\d{4}-\d{2}$/.test(r.a))SCH.month=r.a;
-  const need=!SCH.at||(r.name!=='lineup'&&SCH.month!==(r.a&&/^\d{4}-\d{2}$/.test(r.a)?r.a:SCH.month));
+  const want=(r.name!=='lineup'&&r.a&&/^\d{4}-\d{2}$/.test(r.a))?r.a:(SCH.month||monthKey());
+  const need=!SCH.at||want!==SCH.month;   // 보려는 석 달이 받아 둔 것과 다르면 다시 받는다
+  SCH.month=want;
   const missing=r.name==='lineup'&&!SCH.dates.some(x=>x.id===r.a);   // 방금 생긴 날짜면 캐시에 없으니 다시 받는다
-  if(!SCH.at||missing||!SCH.dates.length){app.innerHTML=`<div class="empty" style="margin:40px auto;max-width:420px"><b>일정을 받는 중…</b></div>`;await pullSchedule(SCH.month||monthKey(),true);if(stale())return}
+  if(need||missing||!SCH.dates.length){app.innerHTML=`<div class="empty" style="margin:40px auto;max-width:420px"><b>일정을 받는 중…</b></div>`;await pullSchedule(SCH.month||monthKey(),true);if(stale())return}
   else if(!same)pullSchedule(SCH.month||monthKey(),true).then(ch=>{
    // 화면에 들어올 때는 캐시를 무시하고 다시 받는다. 다만 사용자가 이미 무언가를
    // 고르고 있으면 다시 그리지 않는다 — 고르던 것이 날아가 새로고침된 것처럼 보인다
@@ -6775,6 +6791,9 @@ document.addEventListener('click',async e=>{
   case 'cal':go('cal');break;
   case 'sched':go('sched');break;
   case 'lineup':go('lineup/'+el.dataset.id);break;
+  case 'sch-mv':{const base=SCH.month||monthKey();const k2=monthAdd(base,+el.dataset.d);
+   go((route().name==='sched'?'sched':'cal')+'/'+k2);break}
+  case 'sch-now':go((route().name==='sched'?'sched':'cal')+'/'+monthKey());break;
   case 'cal-only':{SCH.onlyUnset=!SCH.onlyUnset;render();break}
   case 're-ask':{const m2=SCH.members.find(x=>x.userId===el.dataset.id);
    try{await api('/notifications/ask',{method:'POST',body:{teamId:S.team.id,userId:el.dataset.id,month:SCH.month||monthKey()}});toast((m2?m2.name:'그 멤버')+'에게 다시 요청했어요')}catch(e){toast(e.message)}break}

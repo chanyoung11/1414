@@ -90,6 +90,8 @@ def run():
         # ---- 인도자: 멤버 역할을 세션리더로 → 멤버 쪽 재로그인 시 반영 ----
         pg.click('.navi[data-act="team"]'); pg.wait_for_selector('.tpage', timeout=8000)
         open_sect(pg, 'members')
+        # 멤버가 방금 바꾼 이름이 인도자 화면까지 내려오기를 기다린다 (서버가 느릴 때 대비)
+        pg.wait_for_function("(()=>{const d=CONTI.TM&&CONTI.TM.data;return !!(d&&d.members&&d.members.some(m=>m.name==='민수2'))})()", timeout=20000)
         uid = pg.evaluate("CONTI.TM.data.members.find(m=>m.name==='민수2').userId")
         pg.click(f'[data-medit="{uid}"]'); pg.wait_for_selector('#meOk', timeout=5000)
         pg.click('[data-mr="session_lead"]'); pg.click('#meOk'); pg.wait_for_timeout(1500)

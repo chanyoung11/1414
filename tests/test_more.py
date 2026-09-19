@@ -1,7 +1,7 @@
 # 폰 하단 「더보기」 시트의 항목이 실제로 눌리는지 (시트 안 버튼은 전역 클릭이 무시해서 죽어 있었다)
-import sys, time
+import os, sys, time
 from playwright.sync_api import sync_playwright
-URL='http://localhost:8766/'
+URL = os.environ.get('CONTI_URL', 'http://localhost:8766/')
 def fail(m): print('FAIL:', m); sys.exit(1)
 def run():
   tag=str(int(time.time()))[-6:]
