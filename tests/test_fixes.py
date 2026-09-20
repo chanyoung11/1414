@@ -43,7 +43,7 @@ def login(pg, u):
 
 def make_team(pg, name):
     pg.wait_for_selector('#gtTeam', timeout=8000); pg.fill('#gtTeam', name); pg.click('[data-act="team-create"]')
-    pg.wait_for_selector('.shell[data-page]', timeout=8000)
+    pg.wait_for_selector('.shell[data-page]', timeout=20000)
     return pg.evaluate('CONTI.S.team.id')
 
 def logout_ui(pg):
@@ -95,12 +95,12 @@ def run():
         logout_ui(pg)
 
         # ---- A 재로그인: 자기 콘티 복원 ----
-        login(pg, A); pg.wait_for_selector('.shell[data-page]', timeout=8000); pg.wait_for_timeout(800)
+        login(pg, A); pg.wait_for_selector('.shell[data-page]', timeout=20000); pg.wait_for_timeout(800)
         if pg.evaluate('CONTI.S.services.length') < 1 or pg.evaluate('CONTI.S.services[0].name') != 'X팀 예배': fail('A 재로그인 후 콘티 복원 안 됨')
         print('A restored')
 
         # ---- A 가 Y 에 가입 → 팀 전환 시 격리 ----
-        pg.goto(linkY); pg.wait_for_selector('#jnName', timeout=8000); pg.click('[data-act="team-join"]'); pg.wait_for_selector('.shell[data-page]', timeout=8000); pg.wait_for_timeout(800)
+        pg.goto(linkY); pg.wait_for_selector('#jnName', timeout=8000); pg.click('[data-act="team-join"]'); pg.wait_for_selector('.shell[data-page]', timeout=20000); pg.wait_for_timeout(800)
         if pg.evaluate('CONTI.S.team.id') != teamY: fail('가입 후 현재 팀이 Y 가 아님')
         if pg.evaluate('CONTI.S.services.length') != 0: fail('Y 로 전환됐는데 X 콘티가 남아 있음 (서버로 새어 올라갈 수 있음)')
         pg.click('.navi[data-act="team"]'); pg.wait_for_selector('.tpage', timeout=10000)

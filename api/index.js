@@ -45,7 +45,9 @@ function send(res, status, data, headers) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
   for (const k in headers || {}) res.setHeader(k, headers[k]);
-  res.end(JSON.stringify(data));
+  // 애플 로그인 콜백처럼 HTML 을 그대로 내보내는 자리가 있다
+  const ct = String(res.getHeader ? (res.getHeader('Content-Type') || '') : '');
+  res.end(/json/i.test(ct) ? JSON.stringify(data) : String(data));
 }
 const str = (v, max = 200) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 const nowSec = () => Math.floor(Date.now() / 1000);
@@ -193,6 +195,23 @@ async function freeUsername(seed) {
   }
   throw bad('아이디를 만들지 못했어요');
 }
+// 로그인 화면이 어떤 소셜 버튼을 띄울지 알아야 한다 (공개)
+// 애플 웹 로그인이 돌아오는 자리. 팝업 방식이면 애플이 이 주소로 form_post 를 보내고,
+// 우리는 그 값을 연 창(앱 화면)으로 넘겨 준다. 등록된 Return URL 이라 형식만 맞으면 된다
+on('POST', '/auth/apple/callback', async ({ body }) => {
+  const tok = str(body && body.id_token, 4000);
+  const user = str(body && body.user, 2000);
+  const html = `<!doctype html><meta charset="utf-8"><body><script>
+   (function(){var d=${JSON.stringify({ id_token: tok, user })};
+    try{ if(window.opener){ window.opener.postMessage({source:'apple-signin', data:d}, '*'); window.close(); return } }catch(e){}
+    location.replace('/#/'); })();
+  </script></body>`;
+  return { data: html, headers: { 'Content-Type': 'text/html; charset=utf-8' } };
+});
+on('GET', '/auth/providers', async () => ({
+  google: process.env.GOOGLE_CLIENT_ID_WEB || null,
+  apple: process.env.APPLE_SERVICE_ID || null,
+}));
 on('POST', '/auth/social', async ({ req, uid, body }) => {
   const provider = str(body.provider, 10);
   if (!SOCIAL[provider]) throw bad('지원하지 않는 방식이에요');
