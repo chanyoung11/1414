@@ -21050,31 +21050,31 @@ var init_S3ExpressIdentityProviderImpl = __esm({
       createSessionFn;
       cache;
       static REFRESH_WINDOW_MS = 6e4;
-      constructor(createSessionFn, cache2 = new S3ExpressIdentityCache()) {
+      constructor(createSessionFn, cache3 = new S3ExpressIdentityCache()) {
         this.createSessionFn = createSessionFn;
-        this.cache = cache2;
+        this.cache = cache3;
       }
       async getS3ExpressIdentity(awsIdentity, identityProperties) {
         const key = identityProperties.Bucket;
-        const { cache: cache2 } = this;
-        const entry = cache2.get(key);
+        const { cache: cache3 } = this;
+        const entry = cache3.get(key);
         if (entry) {
           return entry.identity.then((identity) => {
             const isExpired = (identity.expiration?.getTime() ?? 0) < Date.now();
             if (isExpired) {
-              return cache2.set(key, new S3ExpressIdentityCacheEntry(this.getIdentity(key))).identity;
+              return cache3.set(key, new S3ExpressIdentityCacheEntry(this.getIdentity(key))).identity;
             }
             const isExpiringSoon = (identity.expiration?.getTime() ?? 0) < Date.now() + _S3ExpressIdentityProviderImpl.REFRESH_WINDOW_MS;
             if (isExpiringSoon && !entry.isRefreshing) {
               entry.isRefreshing = true;
               this.getIdentity(key).then((id) => {
-                cache2.set(key, new S3ExpressIdentityCacheEntry(Promise.resolve(id)));
+                cache3.set(key, new S3ExpressIdentityCacheEntry(Promise.resolve(id)));
               });
             }
             return identity;
           });
         }
-        return cache2.set(key, new S3ExpressIdentityCacheEntry(this.getIdentity(key))).identity;
+        return cache3.set(key, new S3ExpressIdentityCacheEntry(this.getIdentity(key))).identity;
       }
       async getIdentity(key) {
         await this.cache.purgeExpired().catch((error) => {
@@ -25878,14 +25878,14 @@ var init_bdd = __esm({
 });
 
 // node_modules/@aws-sdk/client-s3/dist-es/endpoint/endpointResolver.js
-var cache, defaultEndpointResolver;
+var cache2, defaultEndpointResolver;
 var init_endpointResolver = __esm({
   "node_modules/@aws-sdk/client-s3/dist-es/endpoint/endpointResolver.js"() {
     init_modules_watch_stub();
     init_index_browser7();
     init_index_browser();
     init_bdd();
-    cache = new EndpointCache({
+    cache2 = new EndpointCache({
       size: 50,
       params: [
         "Accelerate",
@@ -25905,7 +25905,7 @@ var init_endpointResolver = __esm({
       ]
     });
     defaultEndpointResolver = /* @__PURE__ */ __name((endpointParams, context = {}) => {
-      return cache.get(endpointParams, () => decideEndpoint(bdd, {
+      return cache2.get(endpointParams, () => decideEndpoint(bdd, {
         endpointParams,
         logger: context.logger
       }));
@@ -37488,8 +37488,8 @@ var init_normalize_key = __esm({
     isKeyObject = /* @__PURE__ */ __name((key) => {
       return key?.[Symbol.toStringTag] === "KeyObject";
     }, "isKeyObject");
-    importAndCache = /* @__PURE__ */ __name(async (cache2, key, jwk, alg, freeze = false) => {
-      let cached = cache2.get(key);
+    importAndCache = /* @__PURE__ */ __name(async (cache3, key, jwk, alg, freeze = false) => {
+      let cached = cache3.get(key);
       if (cached?.[alg]) {
         return cached[alg];
       }
@@ -37497,7 +37497,7 @@ var init_normalize_key = __esm({
       if (freeze)
         Object.freeze(key);
       if (!cached) {
-        cache2.set(key, { [alg]: cryptoKey });
+        cache3.set(key, { [alg]: cryptoKey });
       } else {
         cached[alg] = cryptoKey;
       }
@@ -40013,8 +40013,8 @@ function getKtyFromAlg(alg) {
       throw new JOSENotSupported('Unsupported "alg" value for a JSON Web Key Set');
   }
 }
-function isJWKSLike(jwks) {
-  return jwks && typeof jwks === "object" && Array.isArray(jwks.keys) && jwks.keys.every(isJWKLike);
+function isJWKSLike(jwks2) {
+  return jwks2 && typeof jwks2 === "object" && Array.isArray(jwks2.keys) && jwks2.keys.every(isJWKLike);
 }
 function isJWKLike(key) {
   return isObject(key);
@@ -40025,8 +40025,8 @@ function clone(obj) {
   }
   return JSON.parse(JSON.stringify(obj));
 }
-async function importWithAlgCache(cache2, jwk, alg) {
-  const cached = cache2.get(jwk) || cache2.set(jwk, {}).get(jwk);
+async function importWithAlgCache(cache3, jwk, alg) {
+  const cached = cache3.get(jwk) || cache3.set(jwk, {}).get(jwk);
   if (cached[alg] === void 0) {
     const key = await importJWK({ ...jwk, ext: true }, alg);
     if (key instanceof Uint8Array || key.type !== "public") {
@@ -40036,8 +40036,8 @@ async function importWithAlgCache(cache2, jwk, alg) {
   }
   return cached[alg];
 }
-function createLocalJWKSet(jwks) {
-  const set = new LocalJWKSet(jwks);
+function createLocalJWKSet(jwks2) {
+  const set = new LocalJWKSet(jwks2);
   const localJWKSet = /* @__PURE__ */ __name(async (protectedHeader, token) => set.getKey(protectedHeader, token), "localJWKSet");
   Object.defineProperties(localJWKSet, {
     jwks: {
@@ -40064,12 +40064,12 @@ var init_local = __esm({
       static {
         __name(this, "LocalJWKSet");
       }
-      constructor(jwks) {
+      constructor(jwks2) {
         this._cached = /* @__PURE__ */ new WeakMap();
-        if (!isJWKSLike(jwks)) {
+        if (!isJWKSLike(jwks2)) {
           throw new JWKSInvalid("JSON Web Key Set malformed");
         }
-        this._jwks = clone(jwks);
+        this._jwks = clone(jwks2);
       }
       async getKey(protectedHeader, token) {
         const { alg, kid } = { ...protectedHeader, ...token?.header };
@@ -52209,6 +52209,81 @@ __name(verifyPassword, "verifyPassword");
 var USERNAME_RE = /^[a-z0-9][a-z0-9._-]{2,19}$/;
 var PASSWORD_MIN = 6;
 
+// lib/social.js
+init_modules_watch_stub();
+var JWKS_URL = {
+  google: "https://www.googleapis.com/oauth2/v3/certs",
+  apple: "https://appleid.apple.com/auth/keys"
+};
+var ISSUER = {
+  google: ["https://accounts.google.com", "accounts.google.com"],
+  apple: ["https://appleid.apple.com"]
+};
+var b64url = /* @__PURE__ */ __name((s2) => {
+  const pad = s2.replace(/-/g, "+").replace(/_/g, "/");
+  const bin = atob(pad + "=".repeat((4 - pad.length % 4) % 4));
+  const out = new Uint8Array(bin.length);
+  for (let i2 = 0; i2 < bin.length; i2++) out[i2] = bin.charCodeAt(i2);
+  return out;
+}, "b64url");
+var jsonPart = /* @__PURE__ */ __name((s2) => JSON.parse(new TextDecoder().decode(b64url(s2))), "jsonPart");
+var cache = /* @__PURE__ */ new Map();
+async function jwks(provider) {
+  const hit = cache.get(provider);
+  if (hit && Date.now() - hit.at < 36e5) return hit.keys;
+  const r3 = await fetch(JWKS_URL[provider]);
+  if (!r3.ok) throw new Error("\uD0A4\uB97C \uBC1B\uC9C0 \uBABB\uD588\uC5B4\uC694");
+  const { keys } = await r3.json();
+  cache.set(provider, { keys, at: Date.now() });
+  return keys;
+}
+__name(jwks, "jwks");
+async function verifyIdToken(provider, token, audiences) {
+  const parts = String(token || "").split(".");
+  if (parts.length !== 3) throw new Error("\uD1A0\uD070 \uBAA8\uC591\uC774 \uC774\uC0C1\uD574\uC694");
+  const head2 = jsonPart(parts[0]);
+  const body = jsonPart(parts[1]);
+  let keys = await jwks(provider);
+  let jwk = keys.find((k2) => k2.kid === head2.kid);
+  if (!jwk) {
+    cache.delete(provider);
+    keys = await jwks(provider);
+    jwk = keys.find((k2) => k2.kid === head2.kid);
+  }
+  if (!jwk) throw new Error("\uC11C\uBA85 \uD0A4\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC5B4\uC694");
+  const key = await crypto.subtle.importKey(
+    "jwk",
+    { kty: jwk.kty, n: jwk.n, e: jwk.e, alg: jwk.alg || "RS256", ext: true },
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["verify"]
+  );
+  const ok = await crypto.subtle.verify(
+    "RSASSA-PKCS1-v1_5",
+    key,
+    b64url(parts[2]),
+    new TextEncoder().encode(parts[0] + "." + parts[1])
+  );
+  if (!ok) throw new Error("\uC11C\uBA85\uC774 \uB9DE\uC9C0 \uC54A\uC544\uC694");
+  const now = Math.floor(Date.now() / 1e3);
+  if (body.exp && body.exp < now - 60) throw new Error("\uD1A0\uD070\uC774 \uB9CC\uB8CC\uB410\uC5B4\uC694");
+  if (!ISSUER[provider].includes(body.iss)) throw new Error("\uBC1C\uAE09\uCC98\uAC00 \uB9DE\uC9C0 \uC54A\uC544\uC694");
+  const auds = (audiences || []).filter(Boolean);
+  if (auds.length && !auds.includes(body.aud)) throw new Error("\uC774 \uC571\uC5D0 \uBC1C\uAE09\uB41C \uD1A0\uD070\uC774 \uC544\uB2C8\uC5D0\uC694");
+  return {
+    sub: String(body.sub),
+    email: body.email ? String(body.email).toLowerCase() : null,
+    emailVerified: body.email_verified === true || body.email_verified === "true",
+    name: body.name ? String(body.name).slice(0, 40) : ""
+  };
+}
+__name(verifyIdToken, "verifyIdToken");
+var audiencesOf = /* @__PURE__ */ __name((provider) => {
+  const raw = provider === "google" ? [process.env.GOOGLE_CLIENT_ID_WEB, process.env.GOOGLE_CLIENT_ID_IOS, process.env.GOOGLE_CLIENT_ID_ANDROID] : [process.env.APPLE_SERVICE_ID, process.env.APNS_BUNDLE_ID || "com.lets1414.app"];
+  return raw.filter(Boolean);
+}, "audiencesOf");
+var socialConfigured = /* @__PURE__ */ __name((provider) => audiencesOf(provider).length > 0, "socialConfigured");
+
 // lib/blob.js
 init_modules_watch_stub();
 var ACCESS = process.env.BLOB_ACCESS === "public" ? "public" : "private";
@@ -53627,6 +53702,65 @@ on("POST", "/auth/login", async ({ req, body }) => {
   }
   await q("update users set last_login_at=now() where id=$1", [u2.id]);
   return { data: withAppToken(req, await meView(u2.id), u2.id), headers: { "Set-Cookie": sessionCookie(req, u2.id) } };
+});
+var SOCIAL = { google: "\uAD6C\uAE00", apple: "\uC560\uD50C" };
+async function freeUsername(seed) {
+  const base = String(seed || "user").toLowerCase().replace(/[^a-z0-9._-]/g, "").slice(0, 12) || "user";
+  for (let i2 = 0; i2 < 20; i2++) {
+    const name = (base + "-" + randomToken(6).replace(/[^a-z0-9]/gi, "").toLowerCase()).slice(0, 20);
+    if (!USERNAME_RE.test(name)) continue;
+    if (!await one("select 1 from users where username=$1", [name])) return name;
+  }
+  throw bad("\uC544\uC774\uB514\uB97C \uB9CC\uB4E4\uC9C0 \uBABB\uD588\uC5B4\uC694");
+}
+__name(freeUsername, "freeUsername");
+on("POST", "/auth/social", async ({ req, uid, body }) => {
+  const provider = str2(body.provider, 10);
+  if (!SOCIAL[provider]) throw bad("\uC9C0\uC6D0\uD558\uC9C0 \uC54A\uB294 \uBC29\uC2DD\uC774\uC5D0\uC694");
+  if (!socialConfigured(provider)) throw new HttpError(503, "no_social", `${SOCIAL[provider]} \uB85C\uADF8\uC778\uC774 \uC544\uC9C1 \uC5F0\uACB0\uB418\uC9C0 \uC54A\uC558\uC5B4\uC694`);
+  let claim;
+  try {
+    claim = await verifyIdToken(provider, String(body.idToken || ""), audiencesOf(provider));
+  } catch (e2) {
+    throw new HttpError(401, "bad_token", `${SOCIAL[provider]} \uD655\uC778\uC5D0 \uC2E4\uD328\uD588\uC5B4\uC694: ${e2.message}`);
+  }
+  const found = await one("select user_id from identities where provider=$1 and subject=$2", [provider, claim.sub]);
+  if (uid) {
+    if (found && found.user_id !== uid) throw new HttpError(409, "taken", `\uC774 ${SOCIAL[provider]} \uACC4\uC815\uC740 \uB2E4\uB978 \uACC4\uC815\uC5D0 \uC774\uBBF8 \uC5F0\uACB0\uB3FC \uC788\uC5B4\uC694`);
+    if (!found) {
+      try {
+        await q("insert into identities(provider, subject, user_id, email) values($1,$2,$3,$4)", [provider, claim.sub, uid, claim.email]);
+      } catch (e2) {
+        throw new HttpError(409, "taken", `\uC774 \uACC4\uC815\uC5D0\uB294 \uC774\uBBF8 ${SOCIAL[provider]} \uACC4\uC815\uC774 \uC5F0\uACB0\uB3FC \uC788\uC5B4\uC694`);
+      }
+    }
+    return { data: withAppToken(req, await meView(uid), uid), headers: { "Set-Cookie": sessionCookie(req, uid) } };
+  }
+  if (found) {
+    await q("update users set last_login_at=now() where id=$1", [found.user_id]);
+    return { data: withAppToken(req, await meView(found.user_id), found.user_id), headers: { "Set-Cookie": sessionCookie(req, found.user_id) } };
+  }
+  const name = str2(body.name, 40) || claim.name || (claim.email ? claim.email.split("@")[0] : SOCIAL[provider] + " \uC0AC\uC6A9\uC790");
+  const agreedAt = /^\d{4}-\d{2}-\d{2}T/.test(String(body.agreedAt || "")) ? new Date(body.agreedAt) : /* @__PURE__ */ new Date();
+  const username = await freeUsername(claim.email ? claim.email.split("@")[0] : provider);
+  const u2 = await one(`insert into users(username, password_hash, display_name, last_login_at, agreed_at, agreed_ver)
+                       values($1,'',$2,now(),$3,$4) returning id`, [username, name, agreedAt, LEGAL_VERSION]);
+  await q("insert into identities(provider, subject, user_id, email) values($1,$2,$3,$4)", [provider, claim.sub, u2.id, claim.email]);
+  return { data: withAppToken(req, await meView(u2.id), u2.id), headers: { "Set-Cookie": sessionCookie(req, u2.id) } };
+});
+on("GET", "/auth/social", async ({ uid }) => {
+  if (!uid) throw noAuth();
+  const rows = await q('select provider, email, created_at as "at" from identities where user_id=$1 order by provider', [uid]);
+  const u2 = await one("select password_hash from users where id=$1", [uid]);
+  return { linked: rows, hasPassword: !!(u2 && u2.password_hash), available: { google: socialConfigured("google"), apple: socialConfigured("apple") } };
+});
+on("DELETE", "/auth/social/:provider", async ({ uid, params }) => {
+  if (!uid) throw noAuth();
+  const u2 = await one("select password_hash from users where id=$1", [uid]);
+  const rows = await q("select provider from identities where user_id=$1", [uid]);
+  if (!(u2 && u2.password_hash) && rows.length <= 1) throw bad("\uC774 \uBC29\uBC95 \uB9D0\uACE0\uB294 \uB85C\uADF8\uC778\uD560 \uAE38\uC774 \uC5C6\uC5B4\uC694. \uBA3C\uC800 \uBE44\uBC00\uBC88\uD638\uB97C \uC815\uD574 \uC8FC\uC138\uC694");
+  await q("delete from identities where user_id=$1 and provider=$2", [uid, params.provider]);
+  return { ok: true };
 });
 on("POST", "/auth/logout", async ({ req }) => ({ data: { ok: true }, headers: { "Set-Cookie": clearSessionCookie(req) } }));
 on("POST", "/auth/delete", async ({ req, uid, body }) => {

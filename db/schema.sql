@@ -519,3 +519,18 @@ create table if not exists push_tokens (
   last_ok_at timestamptz
 );
 create index if not exists push_tokens_user_idx on push_tokens(user_id);
+
+-- 소셜 로그인(구글·애플). 한 계정에 여러 제공자를 붙일 수 있다.
+-- users.password_hash 는 not null 이라, 소셜로만 가입한 계정은 빈 문자열('')을 넣고
+-- verifyPassword 가 항상 실패하게 둔다 (비밀번호로는 못 들어온다)
+create table if not exists identities (
+  provider   text not null,                  -- google | apple
+  subject    text not null,                  -- 제공자가 주는 고유 id (sub)
+  user_id    uuid not null references users(id) on delete cascade,
+  email      text,                           -- 제공자가 알려 준 이메일 (애플은 가릴 수 있다)
+  created_at timestamptz not null default now(),
+  primary key (provider, subject)
+);
+create index if not exists identities_user_idx on identities(user_id);
+-- 같은 제공자를 한 계정에 두 번 붙이지 않는다
+create unique index if not exists identities_one_per_provider on identities(user_id, provider);

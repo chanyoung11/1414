@@ -4,6 +4,7 @@
 import { q, one } from '../lib/db.js';
 import { sessionClaims, sessionCookie, clearSessionCookie, randomToken, isApp, appSessionToken } from '../lib/session.js';
 import { hashPassword, verifyPassword, USERNAME_RE, PASSWORD_MIN } from '../lib/password.js';
+import { verifyIdToken, audiencesOf, socialConfigured } from '../lib/social.js';
 import { putBlob, delBlobs, readUrls, presignPut, headBlob, blobExists, BlobDownError } from '../lib/blob.js';
 import { ocrBands, visionConfigured } from '../lib/vision.js';
 import { sendPush, pushConfigured, vapidPublicKey } from '../lib/push.js';
@@ -176,6 +177,72 @@ on('POST', '/auth/login', async ({ req, body }) => {
   try { await q('delete from login_attempts where username=$1', [lockKey]); } catch (e) {}
   await q('update users set last_login_at=now() where id=$1', [u.id]);
   return { data: withAppToken(req, await meView(u.id), u.id), headers: { 'Set-Cookie': sessionCookie(req, u.id) } };
+});
+
+// ---- 구글·애플 로그인 -------------------------------------------------------
+// 앱·웹이 받아 온 ID 토큰을 서버가 제공자 공개키로 검증한다. 토큰만 믿고 세션을 준다.
+// 이미 로그인한 채로 부르면 그 계정에 붙이고(계정 연결), 아니면 찾거나 새로 만든다
+const SOCIAL = { google: '구글', apple: '애플' };
+// 소셜로만 가입한 계정의 아이디. 사람이 입력할 일은 없고 화면에도 안 보인다
+async function freeUsername(seed) {
+  const base = String(seed || 'user').toLowerCase().replace(/[^a-z0-9._-]/g, '').slice(0, 12) || 'user';
+  for (let i = 0; i < 20; i++) {
+    const name = (base + '-' + randomToken(6).replace(/[^a-z0-9]/gi, '').toLowerCase()).slice(0, 20);
+    if (!USERNAME_RE.test(name)) continue;
+    if (!await one('select 1 from users where username=$1', [name])) return name;
+  }
+  throw bad('아이디를 만들지 못했어요');
+}
+on('POST', '/auth/social', async ({ req, uid, body }) => {
+  const provider = str(body.provider, 10);
+  if (!SOCIAL[provider]) throw bad('지원하지 않는 방식이에요');
+  if (!socialConfigured(provider)) throw new HttpError(503, 'no_social', `${SOCIAL[provider]} 로그인이 아직 연결되지 않았어요`);
+  let claim;
+  try { claim = await verifyIdToken(provider, String(body.idToken || ''), audiencesOf(provider)); }
+  catch (e) { throw new HttpError(401, 'bad_token', `${SOCIAL[provider]} 확인에 실패했어요: ${e.message}`); }
+
+  const found = await one('select user_id from identities where provider=$1 and subject=$2', [provider, claim.sub]);
+
+  // 이미 로그인한 상태면 '계정 연결'이다
+  if (uid) {
+    if (found && found.user_id !== uid) throw new HttpError(409, 'taken', `이 ${SOCIAL[provider]} 계정은 다른 계정에 이미 연결돼 있어요`);
+    if (!found) {
+      try {
+        await q('insert into identities(provider, subject, user_id, email) values($1,$2,$3,$4)', [provider, claim.sub, uid, claim.email]);
+      } catch (e) { throw new HttpError(409, 'taken', `이 계정에는 이미 ${SOCIAL[provider]} 계정이 연결돼 있어요`); }
+    }
+    return { data: withAppToken(req, await meView(uid), uid), headers: { 'Set-Cookie': sessionCookie(req, uid) } };
+  }
+
+  // 로그인 상태가 아니면 찾거나 새로 만든다
+  if (found) {
+    await q('update users set last_login_at=now() where id=$1', [found.user_id]);
+    return { data: withAppToken(req, await meView(found.user_id), found.user_id), headers: { 'Set-Cookie': sessionCookie(req, found.user_id) } };
+  }
+  // 가입: 약관 동의 시각을 남긴다 (아이디/비밀번호 가입과 같은 기준)
+  const name = str(body.name, 40) || claim.name || (claim.email ? claim.email.split('@')[0] : SOCIAL[provider] + ' 사용자');
+  const agreedAt = /^\d{4}-\d{2}-\d{2}T/.test(String(body.agreedAt || '')) ? new Date(body.agreedAt) : new Date();
+  const username = await freeUsername(claim.email ? claim.email.split('@')[0] : provider);
+  const u = await one(`insert into users(username, password_hash, display_name, last_login_at, agreed_at, agreed_ver)
+                       values($1,'',$2,now(),$3,$4) returning id`, [username, name, agreedAt, LEGAL_VERSION]);
+  await q('insert into identities(provider, subject, user_id, email) values($1,$2,$3,$4)', [provider, claim.sub, u.id, claim.email]);
+  return { data: withAppToken(req, await meView(u.id), u.id), headers: { 'Set-Cookie': sessionCookie(req, u.id) } };
+});
+// 내 계정에 붙은 소셜 계정 목록 / 떼기
+on('GET', '/auth/social', async ({ uid }) => {
+  if (!uid) throw noAuth();
+  const rows = await q('select provider, email, created_at as "at" from identities where user_id=$1 order by provider', [uid]);
+  const u = await one('select password_hash from users where id=$1', [uid]);
+  return { linked: rows, hasPassword: !!(u && u.password_hash), available: { google: socialConfigured('google'), apple: socialConfigured('apple') } };
+});
+on('DELETE', '/auth/social/:provider', async ({ uid, params }) => {
+  if (!uid) throw noAuth();
+  const u = await one('select password_hash from users where id=$1', [uid]);
+  const rows = await q('select provider from identities where user_id=$1', [uid]);
+  // 들어올 길을 모두 없애면 안 된다
+  if (!(u && u.password_hash) && rows.length <= 1) throw bad('이 방법 말고는 로그인할 길이 없어요. 먼저 비밀번호를 정해 주세요');
+  await q('delete from identities where user_id=$1 and provider=$2', [uid, params.provider]);
+  return { ok: true };
 });
 
 on('POST', '/auth/logout', async ({ req }) => ({ data: { ok: true }, headers: { 'Set-Cookie': clearSessionCookie(req) } }));
