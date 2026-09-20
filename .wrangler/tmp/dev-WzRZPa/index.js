@@ -53727,7 +53727,11 @@ on("POST", "/auth/apple/callback", async ({ body }) => {
 });
 on("GET", "/auth/providers", async () => ({
   google: process.env.GOOGLE_CLIENT_ID_WEB || null,
-  apple: process.env.APPLE_SERVICE_ID || null
+  apple: process.env.APPLE_SERVICE_ID || null,
+  // 앱(네이티브)은 플랫폼마다 다른 클라이언트 ID 를 쓴다
+  googleIos: process.env.GOOGLE_CLIENT_ID_IOS || null,
+  googleAndroid: process.env.GOOGLE_CLIENT_ID_ANDROID || null,
+  appleBundle: process.env.APNS_BUNDLE_ID || "com.lets1414.app"
 }));
 on("POST", "/auth/social", async ({ req, uid, body }) => {
   const provider = str2(body.provider, 10);

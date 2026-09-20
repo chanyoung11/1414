@@ -3067,7 +3067,8 @@ const G_SVG = '<svg viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.
 
 async function mountSocial(){
   const box=$('#socialBox');
-  if(!box||NATIVE)return;              // 앱은 플러그인으로 따로 붙인다
+  if(!box)return;
+  if(NATIVE)return mountSocialNative(box);   // 앱은 네이티브 플러그인으로
   const cfg=await socialConfig();
   if(!cfg.google&&!cfg.apple)return;
   if(!document.body.contains(box))return;   // 기다리는 사이 화면이 바뀌었으면 그만둔다
@@ -3119,6 +3120,56 @@ async function mountSocial(){
     };
   }
 }
+// 앱(iOS·안드로이드)은 웹 방식이 막혀 있어 네이티브 화면을 띄운다.
+// 받아 오는 것은 웹과 같은 ID 토큰이라 서버는 그대로 쓴다
+let socInit=false;
+async function mountSocialNative(box){
+  const SL=CapPlug().SocialLogin;
+  if(!SL)return;                               // 플러그인이 없는 옛 빌드
+  const cfg=await socialConfig();
+  const ios=/iphone|ipad|ipod/i.test(navigator.userAgent||'');
+  const gid=ios?cfg.googleIos:cfg.googleAndroid;
+  if(!gid&&!cfg.appleBundle)return;
+  if(!document.body.contains(box))return;
+  box.innerHTML = `<div class="orline">또는</div>` +
+    (gid?`<button class="socialbtn" id="gBtn">${G_SVG}구글로 계속하기</button>`:'') +
+    (ios&&cfg.appleBundle?`<button class="socialbtn apple" id="aBtn">${A_SVG}Apple로 계속하기</button>`:'') +
+    `<div class="err" id="socErr" role="alert"></div>`;
+  const init=async()=>{
+    if(socInit)return;
+    // 쓰지 않는 제공자는 넘기지 않는다 — 안드로이드에서 apple 을 주면 redirectUrl 을 요구한다
+    const opt={ google:{ webClientId:cfg.google||undefined, iOSClientId:cfg.googleIos||undefined } };
+    if(ios&&cfg.appleBundle)opt.apple={ clientId:cfg.appleBundle };
+    await SL.initialize(opt);
+    socInit=true;
+  };
+  const gb=$('#gBtn');
+  if(gb)gb.onclick=async()=>{
+    const err=$('#socErr'); if(err)err.textContent='';
+    try{
+      await init();
+      // scopes 를 주면 MainActivity 를 고쳐야 한다. 기본(이메일·프로필)이면 충분하다
+      const r=await SL.login({provider:'google', options:{}});
+      const res=r&&r.result;
+      await socialLogin('google', res&&res.idToken, (res&&res.profile&&res.profile.name)||'');
+    }catch(e){ if(cancelled(e))return; if(err)err.textContent=msgOf(e); }
+  };
+  const ab=$('#aBtn');
+  if(ab)ab.onclick=async()=>{
+    const err=$('#socErr'); if(err)err.textContent='';
+    try{
+      await init();
+      const r=await SL.login({provider:'apple', options:{scopes:['email','name']}});
+      const res=r&&r.result;
+      const pf=res&&res.profile;
+      const nm=pf?[pf.familyName,pf.givenName].filter(Boolean).join(''):'';
+      await socialLogin('apple', res&&res.idToken, nm);
+    }catch(e){ if(cancelled(e))return; if(err)err.textContent=msgOf(e); }
+  };
+}
+const cancelled=e=>/cancel|closed|사용자가|dismiss/i.test(String((e&&(e.message||e.error))||''));
+const msgOf=e=>String((e&&(e.message||e.error))||'로그인을 시작하지 못했어요').slice(0,120);
+
 async function socialLogin(provider, idToken, name){
   const err=$('#socErr');
   try{
