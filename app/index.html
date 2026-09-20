@@ -754,8 +754,12 @@ html.dark .cb-credit.p-plus,html.dark .pill.p-plus{--pc:#A78BFA}
  border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--fg);
  font-size:15px;font-weight:600;cursor:pointer;margin-bottom:8px}
 .socialbtn:active{opacity:.7}
-.socialbtn.apple{background:#000;color:#fff;border-color:#000}
-html.dark .socialbtn.apple{background:#fff;color:#000;border-color:#fff}
+/* 로그인 화면은 라이트·다크 상관없이 늘 어두운 디자인이라 버튼 색도 고정한다
+   (테마 변수를 따라가면 라이트에서 흰 배경에 흰 글자가 된다) */
+.auth .socialbtn{background:#1B1C1E;color:#F0F0F0;border-color:#33353A}
+.auth .socialbtn.apple{background:#fff;color:#000;border-color:#fff}
+.auth .socialbox .orline{color:#9A9A94}
+.auth .socialbox .orline::before,.auth .socialbox .orline::after{background:#33353A}
 .socialbtn svg{width:18px;height:18px;flex:0 0 auto}
 .cb-note{width:100%;font-size:11.5px;color:var(--muted);margin-top:2px}
 .cb-note.bad{color:var(--destructive)}
