@@ -747,6 +747,17 @@ html.dark .cb-credit.p-plus,html.dark .pill.p-plus{--pc:#A78BFA}
  background:linear-gradient(100deg,#FBEFA8,#EFC94C 38%,#FFF7D6 52%,#E0AE22 70%,#F4DC8A);
  background-size:200% 100%;animation:cbgold 5s linear infinite}
 @media (prefers-reduced-motion:reduce){.cb-credit.p-unl,.pill.p-unl{animation:none}}
+.linklist{margin-top:12px}
+.linkrow{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line2)}
+.linkrow:first-child{border-top:0}
+.linkrow .grow{display:flex;flex-direction:column;gap:2px;min-width:0}
+.linkrow b{font-size:14.5px}
+.linkrow small{font-size:12px;color:var(--muted-fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lk-ic{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;
+ background:var(--panel);border:1px solid var(--line)}
+.lk-ic svg{width:18px;height:18px}
+.lk-ic.apple{background:#000;border-color:#000;color:#fff}
+html.dark .lk-ic.apple{background:#fff;border-color:#fff;color:#000}
 .socialbox{margin-top:20px}
 .socialbox .orline{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:12px;margin:0 0 16px}
 .socialbox .orline::before,.socialbox .orline::after{content:'';flex:1;height:1px;background:var(--line)}
@@ -2543,9 +2554,12 @@ function settingsHTML(){
   <div class="card"><b>알림 종류</b>
    <div class="hint" style="margin-top:2px">알림함은 끌 수 없어요. 여기서 끄면 폰 알림만 꺼져요</div>
    <div id="sNoti" style="margin-top:10px">${Object.entries(NOTI_LABEL).map(([k,v])=>`<label class="mrow" style="cursor:pointer"><span class="grow">${esc(v)}</span><input type="checkbox" data-noti="${k}" ${notiOn(k)?'checked':''}></label>`).join('')}</div></div>`}
- else if(t==='account')pane=`<div class="card"><b>비밀번호</b>
-   <div class="hint" style="margin-top:2px">비워 두면 그대로예요</div>
-   <div class="row" style="margin-top:10px"><input class="field" id="sPw0" type="password" autocomplete="current-password" placeholder="현재 비밀번호"><input class="field" id="sPw1" type="password" autocomplete="new-password" placeholder="새 비밀번호 6자 이상"></div>
+ else if(t==='account')pane=`${on?`<div class="card" id="linkCard"><b>연결된 계정</b>
+   <div class="hint" style="margin-top:2px">구글·애플로도 같은 계정에 들어올 수 있어요</div>
+   <div id="linkList" class="linklist"><div class="hint" style="padding:10px 0">불러오는 중…</div></div></div>`:''}
+  <div class="card"><b>${LINK.hasPassword===false?'비밀번호 만들기':'비밀번호'}</b>
+   <div class="hint" style="margin-top:2px">${LINK.hasPassword===false?'비밀번호를 정하면 아이디로도 들어올 수 있어요':'비워 두면 그대로예요'}</div>
+   <div class="row" style="margin-top:10px">${LINK.hasPassword===false?'':`<input class="field" id="sPw0" type="password" autocomplete="current-password" placeholder="현재 비밀번호">`}<input class="field" id="sPw1" type="password" autocomplete="new-password" placeholder="새 비밀번호 6자 이상"></div>
    <div class="err" id="sErr2"></div>
    <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn pri" id="sPwOk">${ic('check')}비밀번호 바꾸기</button></div></div>
   <div class="card"><b>복구 코드</b>
@@ -2568,6 +2582,7 @@ function settingsHTML(){
  return shellHTML('settings',{title:'설정',sub,body:tabs+`<div class="setpane">${pane}</div>`})}
 function afterSettings(){
  const m=me();const on=online();const lead=isLeader();
+ if($('#linkList')){ if(LINK.linked)drawLinks(); loadLinks(); }   // 연결된 계정
  // 프로모션 코드
  const pg=$('#sPromoGo');
  if(pg)pg.onclick=async()=>{
@@ -2619,8 +2634,17 @@ function afterSettings(){
     if(!S.team.sessions.includes(m.session))m.session=S.team.sessions[0]||''}
    save();toast('저장했어요');if(firstRun)go('home');else render();return}
   if(e.target.closest('#sPwOk')){const a=$('#sPw0'),b=$('#sPw1');if(!b.value){$('#sErr2').textContent='새 비밀번호를 적어 주세요';return}
-   try{await api('/auth/password',{method:'POST',body:{current:a.value,next:b.value}});a.value='';b.value='';$('#sErr2').textContent='';toast('비밀번호를 바꿨어요')}
+   try{await api('/auth/password',{method:'POST',body:{current:a?a.value:'',next:b.value}});
+    if(a)a.value='';b.value='';$('#sErr2').textContent='';
+    if(LINK.hasPassword===false){LINK.hasPassword=true;toast('비밀번호를 정했어요');render()}else toast('비밀번호를 바꿨어요')}
    catch(err){$('#sErr2').textContent=err.message}return}
+  const lnk=e.target.closest('[data-link]');
+  if(lnk){await linkProvider(lnk.dataset.link);return}
+  const unl=e.target.closest('[data-unlink]');
+  if(unl){const pv=unl.dataset.unlink;
+   if(!confirm(`${SOCNAME[pv]||pv} 계정 연결을 해제할까요?`))return;
+   try{await api('/auth/social/'+pv,{method:'DELETE'});toast('연결을 해제했어요');await loadLinks()}
+   catch(err){toast(err.message)}return}
   if(e.target.closest('#sRc')){try{const r=await api('/auth/recovery',{method:'POST'});if(NET.user)NET.user.hasRecovery=true;
     modal(`<b style="font-size:17px">복구 코드</b><div class="hint" style="margin-top:4px">이 화면을 닫으면 다시 볼 수 없어요. 메모장이나 비밀번호 앱에 저장해 두세요. 비밀번호를 잊으면 로그인 화면의 "비밀번호를 잊었어요"에서 씁니다.</div><div class="linkbox" style="margin-top:12px;font-size:20px;letter-spacing:.08em;text-align:center">${esc(r.code)}</div><div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" id="rcCopy">복사</button><button class="btn pri" id="rcClose">저장했어요</button></div>`,{center:true});
     $('#modal').onclick=async ev=>{if(ev.target.closest('#rcCopy')){await copyText(r.code);toast('복사했어요')}if(ev.target.closest('#rcClose')){closeModal();render()}}}
@@ -2995,7 +3019,7 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),
  flush(){const r=route();const svc=svcById(r.a);if(online()&&svc&&/^(edit|view|play)$/.test(r.name)){clearTimeout(SYNC.t);SYNC.pushNotes(svc,true);if(r.name==='edit'&&isLeader()){clearTimeout(SYNC.td);SYNC.pushDraft(svc)}}},
  schedulePush(){if(!online())return;clearTimeout(SYNC.tl);SYNC.tl=setTimeout(()=>{SYNC.pushLibrary();pushDirtySongs();pushSongs()},3000);clearTimeout(SYNC.t);SYNC.t=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&/^(edit|view|play)$/.test(r.name))SYNC.pushNotes(svc)},700);clearTimeout(SYNC.td);SYNC.td=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&r.name==='edit'&&isLeader())SYNC.pushDraft(svc)},2500)}
 };
-const GATE={mode:'login',err:'',user:'',sess:'',preview:null,agree:false};
+const GATE={mode:'login',err:'',user:'',pw:'',name:'',sess:'',preview:null,agree:false};
 function authShell(inner){return `<div class="auth"><aside class="auth-side"><div class="logostack">${logoSymbol(56)}${logoWordmark(47,'')}</div><div><p class="kick">찬양팀 콘티 · 연습 · 무대 — 1414</p><blockquote>“콘티 한 장으로<br>팀 전체가 같은 곳을 봅니다.”</blockquote><p class="desc">곡 순서와 키, 송폼, 악보, 참고 영상을 한 화면에. 인도자가 발행하면 팀원은 자기 세션 메모와 함께 연습하고 무대에 섭니다.</p>
  <ul><li>${ic('send')}발행 한 번으로 카톡 공유 문구까지 자동 생성</li><li>${ic('marker')}악보 위 마커에 붙는 세션별 메모</li><li>${ic('moon')}네트워크 없이도 열리는 무대 모드</li></ul></div><p class="copy">© 2026 1414 · lets1414.com</p></aside><div class="auth-main"><div class="auth-box">${inner}</div></div></div>`}
 function recoverHTML(){return authShell(`<div class="auth-card"><div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div><h1>비밀번호 재설정</h1><p class="sub">설정에서 발급받아 둔 복구 코드로 새 비밀번호를 정합니다. 코드가 없으면 인도자에게 초기화를 부탁하세요.</p>
@@ -3008,8 +3032,8 @@ function recoverHTML(){return authShell(`<div class="auth-card"><div class="mlog
 function loginHTML(){const m=GATE.mode;if(m==='recover')return recoverHTML();return authShell(`<div class="auth-card"><div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div><h1>${m==='login'?'로그인':'회원가입'}</h1><p class="sub">${m==='login'?'팀 계정으로 로그인해 콘티를 함께 봅니다.':'아이디와 비밀번호만 있으면 바로 시작할 수 있어요.'}</p>
  <div class="tabs"><button class="${m==='login'?'on':''}" data-act="lg-mode" data-m="login">로그인</button><button class="${m==='signup'?'on':''}" data-act="lg-mode" data-m="signup">회원가입</button></div>
  <div class="lbl">아이디</div><input class="field" id="lgUser" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="영문 소문자·숫자 3~20자" value="${esc(GATE.user)}">
- <div class="lbl">비밀번호</div><input class="field" id="lgPass" type="password" autocomplete="${m==='login'?'current-password':'new-password'}" placeholder="6자 이상">
- ${m==='signup'?`<div class="lbl">이름 <span class="hint">팀원에게 보이는 이름</span></div><input class="field" id="lgName" placeholder="하은">`:''}
+ <div class="lbl">비밀번호</div><input class="field" id="lgPass" type="password" autocomplete="${m==='login'?'current-password':'new-password'}" placeholder="6자 이상" value="${esc(GATE.pw||'')}">
+ ${m==='signup'?`<div class="lbl">이름 <span class="hint">팀원에게 보이는 이름</span></div><input class="field" id="lgName" placeholder="하은" value="${esc(GATE.name||'')}">`:''}
  ${m==='signup'?`<label class="agree"><input type="checkbox" id="lgAgree" ${GATE.agree?'checked':''}><span><a data-act="legal" data-k="terms">이용약관</a>과 <a data-act="legal" data-k="privacy">개인정보처리방침</a>에 동의합니다. <b>(필수)</b><br>만 14세 이상만 가입할 수 있어요.</span></label>`:''}
  <div class="err" id="lgErr" role="alert">${esc(GATE.err)}</div>
  <button class="btn pri wide" data-act="lg-submit">${m==='login'?'로그인':'가입하고 시작'}</button>
@@ -3042,8 +3066,13 @@ async function afterGate(){const gs=$('#gtSess');if(gs)gs.onclick=e=>{const b=e.
   const v=b.dataset.s;const cur=GATE.sessTouched?(GATE.sessList||[]):[];GATE.sessTouched=true;
   GATE.sessList=cur.includes(v)?cur.filter(x=>x!==v):cur.concat(v);
   $$('.q',gs).forEach(x=>x.classList.toggle('on',(GATE.sessList||[]).includes(x.dataset.s)))};
+ // 로그인 화면은 다른 일(동기화·알림)로 다시 그려질 수 있다. 그때 치던 값이 날아가지 않게 담아 둔다
+ const lu=$('#lgUser'),lp=$('#lgPass'),ln=$('#lgName');
+ if(lu)lu.oninput=()=>{GATE.user=lu.value};
+ if(lp)lp.oninput=()=>{GATE.pw=lp.value};
+ if(ln)ln.oninput=()=>{GATE.name=ln.value};
  const f=$('#lgUser')||$('#gtTeam')||$('#jnName');if(f&&!f.value)f.focus();
- mountSocial();   // 구글·애플 버튼 (웹에서만)
+ mountSocial();   // 구글·애플 버튼
  const r=route();if(r.name==='join'&&NET.user&&!GATE.preview){try{const p=await api('/invite/'+r.a);if(p.alreadyMember){await refreshMe();toast('이미 '+p.teamName+' 팀에 있어요');go('home');return}GATE.preview=p;GATE.sessTouched=false;GATE.sessList=p.role==='pastor'?[]:[(p.sessions||[])[0]].filter(Boolean)}catch(e){GATE.preview={error:e.message}}render()}}
 /* ---------- 구글·애플 로그인 ---------- */
 // 로그인 화면이 그려진 뒤 버튼을 붙인다. 어떤 제공자를 띄울지는 서버가 알려 준다.
@@ -3120,6 +3149,92 @@ async function mountSocial(){
     };
   }
 }
+/* ---------- 설정 → 연결된 계정 ---------- */
+const SOCNAME={google:'구글', apple:'Apple'};
+const LINK={linked:null, hasPassword:null, available:null};
+async function loadLinks(){
+  const box=$('#linkList'); if(!box)return;
+  try{
+    const r=await api('/auth/social');
+    LINK.linked=r.linked||[]; LINK.hasPassword=!!r.hasPassword; LINK.available=r.available||{};
+    drawLinks();
+  }catch(e){ if($('#linkList'))$('#linkList').innerHTML=`<div class="hint" style="padding:10px 0">${esc(e.message)}</div>`; }
+}
+function drawLinks(){
+  const box=$('#linkList'); if(!box||!LINK.linked)return;
+  const ios=/iphone|ipad|ipod/i.test(navigator.userAgent||'');
+  const rows=['google','apple'].filter(pv=>{
+    if(!LINK.available||!LINK.available[pv])return false;
+    if(pv==='apple'&&NATIVE&&!ios)return false;      // 안드로이드 앱에서는 애플을 숨긴다
+    return true;
+  }).map(pv=>{
+    const it=LINK.linked.find(x=>x.provider===pv);
+    const only=!LINK.hasPassword&&LINK.linked.length<=1;   // 이걸 떼면 들어올 길이 없다
+    const icon=pv==='google'?G_SVG:A_SVG;
+    return `<div class="linkrow">
+      <span class="lk-ic ${pv}">${icon}</span>
+      <span class="grow">
+        <b>${SOCNAME[pv]}</b>
+        <small>${it?(it.email?esc(it.email):'연결됨')+(it.at?' · '+fmtDate(String(it.at).slice(0,10)).md+' 연결':''):'연결 안 됨'}</small>
+      </span>
+      ${it
+        ? (only
+            ? `<button class="btn sm ghost" disabled title="해제하려면 먼저 비밀번호를 정해 주세요">해제</button>`
+            : `<button class="btn sm ghost" data-unlink="${pv}">해제</button>`)
+        : `<button class="btn sm" data-link="${pv}">연결</button>`}
+    </div>`;
+  });
+  box.innerHTML = rows.join('') + (!LINK.hasPassword&&LINK.linked.length<=1
+    ? `<div class="hint" style="margin-top:8px">지금은 이 방법으로만 들어올 수 있어요. 해제하려면 먼저 아래에서 비밀번호를 정해 주세요.</div>` : '');
+}
+// 로그인할 때와 같은 흐름으로 토큰을 받아 계정에 붙인다
+async function linkProvider(pv){
+  try{
+    const cfg=await socialConfig();
+    if(NATIVE){
+      const SL=CapPlug().SocialLogin;
+      if(!SL)throw new Error('이 버전에서는 연결할 수 없어요');
+      const ios=/iphone|ipad|ipod/i.test(navigator.userAgent||'');
+      const opt={ google:{ webClientId:cfg.google||undefined, iOSClientId:cfg.googleIos||undefined } };
+      if(ios&&cfg.appleBundle)opt.apple={ clientId:cfg.appleBundle };
+      await SL.initialize(opt);
+      const r=await SL.login({provider:pv, options:{}});
+      const res=r&&r.result;
+      await api('/auth/social',{method:'POST',body:{provider:pv, idToken:res&&res.idToken}});
+    }else if(pv==='google'){
+      const tok=await googleToken(cfg.google);
+      await api('/auth/social',{method:'POST',body:{provider:'google', idToken:tok}});
+    }else{
+      await loadScript('https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/ko_KR/appleid.auth.js');
+      AppleID.auth.init({clientId:cfg.apple, scope:'name email', redirectURI:location.origin+'/api/auth/apple/callback', usePopup:true});
+      const r=await AppleID.auth.signIn();
+      await api('/auth/social',{method:'POST',body:{provider:'apple', idToken:r&&r.authorization&&r.authorization.id_token}});
+    }
+    toast(`${SOCNAME[pv]} 계정을 연결했어요`);
+    await loadLinks();
+  }catch(e){
+    if(cancelled(e)||(e&&(e.error==='popup_closed_by_user'||e.error==='user_cancelled_authorize')))return;
+    toast(msgOf(e));
+  }
+}
+// 웹 구글: 버튼을 숨겨 두고 눌러 토큰만 받아 온다
+function googleToken(clientId){
+  return new Promise(async (ok,no)=>{
+    try{
+      await loadScript('https://accounts.google.com/gsi/client');
+      if(!window.google||!google.accounts||!google.accounts.id)throw new Error('구글 로그인을 불러오지 못했어요');
+      google.accounts.id.initialize({client_id:clientId, callback:(res)=>ok(res.credential), auto_select:false});
+      let holder=$('#gsiHolder');
+      if(!holder){ holder=document.createElement('div'); holder.id='gsiHolder';
+        holder.style.cssText='position:fixed;left:-9999px;top:0'; document.body.appendChild(holder); }
+      holder.innerHTML='';
+      google.accounts.id.renderButton(holder,{type:'standard'});
+      setTimeout(()=>{ const real=holder.querySelector('div[role=button],button');
+        if(real)real.click(); else google.accounts.id.prompt(); },300);
+    }catch(e){ no(e) }
+  });
+}
+
 // 앱(iOS·안드로이드)은 웹 방식이 막혀 있어 네이티브 화면을 띄운다.
 // 받아 오는 것은 웹과 같은 ID 토큰이라 서버는 그대로 쓴다
 let socInit=false;
@@ -3178,19 +3293,19 @@ async function socialLogin(provider, idToken, name){
     if(name)body.name=name;
     if(GATE.mode==='signup'||!NET.user)body.agreedAt=new Date().toISOString();
     const m=await api('/auth/social',{method:'POST',body});
-    GATE.err='';GATE.preview=null;await takeMe(m);render();probeOmr();
+    GATE.err='';GATE.preview=null;GATE.pw='';GATE.name='';await takeMe(m);render();probeOmr();
     if(S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()});
   }catch(e){ if(err)err.textContent=e.message; else toast(e.message); }
 }
 async function doGate(act,el){
  try{
-  if(act==='lg-mode'){GATE.mode=el.dataset.m;GATE.err='';GATE.user=($('#lgUser')||{value:''}).value;GATE.agree=!!($('#lgAgree')||{}).checked;render();return}
+  if(act==='lg-mode'){GATE.mode=el.dataset.m;GATE.err='';GATE.user=($('#lgUser')||{value:''}).value;GATE.pw=($('#lgPass')||{value:''}).value;GATE.agree=!!($('#lgAgree')||{}).checked;render();return}
   if(act==='rc-submit'){const username=$('#lgUser').value.trim(),code=$('#rcCode').value.trim(),next=$('#lgPass').value;GATE.user=username;const m=await api('/auth/recover',{method:'POST',body:{username,code,next}});GATE.err='';GATE.mode='login';await takeMe(m);toast('비밀번호를 바꿨어요. 설정에서 복구 코드를 새로 발급해 두세요');render();return}
   if(act==='lg-submit'){const username=$('#lgUser').value.trim(),password=$('#lgPass').value;GATE.user=username;
    if(GATE.mode==='signup'){const ag=$('#lgAgree');GATE.agree=!!(ag&&ag.checked);
     if(!GATE.agree){GATE.err='이용약관과 개인정보처리방침에 동의해 주세요';render();return}}
    const m=GATE.mode==='login'?await api('/auth/login',{method:'POST',body:{username,password}}):await api('/auth/signup',{method:'POST',body:{username,password,name:$('#lgName').value.trim(),agreedAt:new Date().toISOString()}});
-   GATE.err='';GATE.preview=null;await takeMe(m);render();probeOmr();if(S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()});return}
+   GATE.err='';GATE.preview=null;GATE.pw='';GATE.name='';await takeMe(m);render();probeOmr();if(S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()});return}
   if(act==='logout'){try{await api('/auth/logout',{method:'POST'})}catch(e){}setAppToken('');NET.user=null;NET.teams=[];await switchScope(scopeKey('',''));S.team=Object.assign(DEF_TEAM(),{id:'',invite:''});save();GATE.preview=null;if(route().name!=='home')go('home');render();return}
   if(act==='join-go'){const v=$('#gtLink').value.trim();const tok=(v.match(/join\/([A-Za-z0-9_-]+)/)||[])[1]||v;if(!tok){$('#gtErr').textContent='링크나 코드를 붙여넣어 주세요';return}GATE.preview=null;go('join/'+tok);return}
   if(act==='team-create'){const t=await api('/teams',{method:'POST',body:{name:$('#gtTeam').value.trim(),myName:$('#gtName').value.trim(),session:GATE.sess||'인도자'}});await applyMembership(t);NET.teams.push(t);toast('팀을 만들었어요');go('home');render();return}

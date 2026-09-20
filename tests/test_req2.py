@@ -127,7 +127,7 @@ def run():
         pm.goto(URL + '#/view/' + svc_id); pm.wait_for_selector('#msgOk', timeout=15000)
         if '고쳤습니다' not in pm.locator('#msgBody').inner_text(): fail('새 글이 아님')
         print('message rev ok; errors:', errs)
-        if errs: fail('page errors')
+        if errs: fail('page errors: %s' % errs[:4])
         b.close()
     print('REQ2 TEST OK')
 

@@ -309,7 +309,8 @@ on('POST', '/auth/password', async ({ req, uid, body }) => {
   const cur = String(body.current || ''), next = String(body.next || '');
   if (next.length < PASSWORD_MIN) throw bad(`비밀번호는 ${PASSWORD_MIN}자 이상이에요`);
   const u = await one('select password_hash from users where id=$1', [uid]);
-  if (!verifyPassword(cur, u.password_hash)) throw new HttpError(401, 'bad_login', '현재 비밀번호가 맞지 않아요');
+  // 소셜로만 가입한 계정은 현재 비밀번호가 없다. 그때는 확인을 건너뛰고 새로 정하게 한다
+  if (u.password_hash && !verifyPassword(cur, u.password_hash)) throw new HttpError(401, 'bad_login', '현재 비밀번호가 맞지 않아요');
   // 다른 기기의 로그인은 끊고, 이 기기는 새 쿠키로 이어간다
   await q('update users set password_hash=$2, auth_epoch=to_timestamp($3) where id=$1', [uid, hashPassword(next), nowSec()]);
   return { data: withAppToken(req, { ok: true }, uid), headers: { 'Set-Cookie': sessionCookie(req, uid) } };
