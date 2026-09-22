@@ -1,10 +1,11 @@
 # 개인 설정 서버 동기화 + 푸시 알림 (§1-A 동기화 · UI통일 §6.8 조용한 시간)
 # 앱 안 알림은 전부 푸시로도 나간다. 조용한 시간에는 알림함에만 쌓인다.
-import os, sys, time
+import os, sys, time, re
 from playwright.sync_api import sync_playwright
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 URL = os.environ.get('CONTI_URL', 'http://localhost:8766/')
 H = {'x-conti': '1'}
+NOCOLOR = lambda t: re.sub(r'\x1b\[[0-9;]*m', '', t)
 def fail(m): print('FAIL:', m); sys.exit(1)
 
 def signup(pg, user, name='하은'):
@@ -15,7 +16,7 @@ def signup(pg, user, name='하은'):
     pg.click('[data-act="lg-submit"]')
 
 def quiet_unit():
-    out = os.popen("cd %s && node scripts/quiet-check.mjs 2>&1 | tail -1" % ROOT).read().strip()
+    out = NOCOLOR(os.popen("cd %s && node scripts/quiet-check.mjs 2>/dev/null | tail -1" % ROOT).read().strip())
     if out != 'OK': fail('조용한 시간 계산: ' + out)
     print('조용한 시간 계산 ok (22~08 기본, 자정 넘김 포함)')
 
@@ -68,10 +69,10 @@ def run():
         if r.status != 200: fail('구독 등록 실패: %s %s' % (r.status, r.text()))
         # 같은 기기가 다시 보내도 한 줄로 (endpoint 가 기본키)
         c.request.post(URL + 'api/push/subscribe', headers=H, data={'sub': sub})
-        n = int(os.popen("""cd %s && DATABASE_URL="postgres://postgres:pg@localhost:54329/postgres" node -e '
+        n = int(NOCOLOR(os.popen("""cd %s && DATABASE_URL="postgres://postgres:pg@localhost:54329/postgres" node -e '
           import("pg").then(async ({default:pg})=>{const c=new pg.Client({connectionString:process.env.DATABASE_URL});
           await c.connect();const r=await c.query("select count(*)::int n from push_subs where endpoint=$1",["%s"]);
-          console.log(r.rows[0].n);await c.end()})' 2>/dev/null""" % (ROOT, sub['endpoint'])).read().strip() or '0')
+          console.log(String(r.rows[0].n));await c.end()})' 2>/dev/null""" % (ROOT, sub['endpoint'])).read().strip() or '0'))
         if n != 1: fail('구독이 한 줄로 저장되지 않음: %s' % n)
         print('구독 저장 ok (중복 등록해도 한 줄)')
         # 죽은 endpoint 로 보내도 발행이 깨지지 않는다
