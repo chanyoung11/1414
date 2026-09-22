@@ -35,3 +35,6 @@ android/keystore.properties
 .DS_Store
 .localblob/
 .dev.vars
+
+# wrangler 빌드 찌꺼기
+.wrangler/

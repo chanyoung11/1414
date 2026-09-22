@@ -18,10 +18,18 @@
 
   // 실제 도메인. custom_domain 이면 Cloudflare 가 DNS 레코드도 알아서 맞춰 준다
   // 되돌리려면 이 routes 를 지우고 배포한 뒤 DNS 를 Vercel 로 (docs/롤백_vercel.md)
-  "routes": [
-    { "pattern": "lets1414.com/*", "zone_name": "lets1414.com" },
-    { "pattern": "www.lets1414.com/*", "zone_name": "lets1414.com" }
-  ],
+  // 2026-09-22: 도메인을 Vercel 로 되돌렸다. 아래 routes 는 켜 두면 안 된다.
+  //   Cloudflare 의 한국(ICN) 엣지는 Enterprise 전용이라, 무료·Pro·Business 존의
+  //   한국 트래픽은 시애틀로 빠진다. DB 를 안 건드리는 요청부터 476ms 가 깔렸다.
+  //   (Vercel 은 같은 자리에서 116ms. 측정: docs/속도_2026-09-22.md)
+  // "routes": [
+  //   { "pattern": "lets1414.com/*", "zone_name": "lets1414.com" },
+  //   { "pattern": "www.lets1414.com/*", "zone_name": "lets1414.com" }
+  // ],
+
+  // DB(Neon)가 미국에 있어서, Worker 를 사용자 근처에서 돌리면 쿼리마다 태평양을 건넌다.
+  // smart 로 두면 Cloudflare 가 백엔드에 가까운 곳에서 실행해 준다 (2026-09-22 렉 때문에 켬)
+  // "placement": { "mode": "smart" },  // Vercel 로 돌아가면서 의미 없어졌다
 
   "observability": { "enabled": true },
 

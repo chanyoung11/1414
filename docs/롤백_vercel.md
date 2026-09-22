@@ -1,7 +1,10 @@
-# 되돌리기 — Workers → Vercel (2026-09-20)
+# 되돌리기 — Workers → Vercel (2026-09-20 작성 · 2026-09-22 실행함)
 
-도메인을 Cloudflare Workers 로 넘겼다. 문제가 생기면 아래대로 되돌린다.
-Vercel 배포는 지우지 않았으므로 DNS 만 되돌리면 몇 초 안에 원래대로 온다.
+> **2026-09-22: 이 문서대로 실제로 되돌렸다. 다시 Workers 로 가면 안 된다.**
+> Cloudflare 의 한국(ICN) 엣지는 Enterprise 전용이라 우리 트래픽이 시애틀로 빠졌다.
+> DB 를 안 쓰는 요청부터 476ms 가 깔렸다 (Vercel 은 116ms). 자세한 것은 `docs/속도_2026-09-22.md`.
+
+아래는 그때 따른 절차다. 기록으로 남긴다.
 
 ## 1) 가장 빠른 길 — Cloudflare 대시보드에서 DNS 만 바꾸기
 dash.cloudflare.com → lets1414.com → DNS → Records
