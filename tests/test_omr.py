@@ -27,7 +27,13 @@ def run():
         pg.click('[data-act="new-svc"]'); pg.wait_for_selector('[data-f="svc.name"]'); pg.fill('[data-f="svc.name"]', '채보 예배')
         pg.click('[data-act="add-item"]'); pg.wait_for_selector('[data-f="item.title"]')
         pg.set_input_files('#pieceFile', [SHEET])
-        pg.wait_for_function("(()=>{const p=CONTI.S.services[0].items[0].pieces[0];return p&&p.ocr&&p.ocr!=='pending'})()", timeout=60000)
+        # 악보를 올려도 인식은 자동으로 돌지 않는다 — '코드 인식'을 눌러야 한다 (명세 §3).
+        # 무료 요금제는 누를 때 확인 창이 한 번 뜬다
+        pg.wait_for_selector('[data-act="ocr"]', timeout=20000)
+        pg.click('[data-act="ocr"]')
+        pg.wait_for_timeout(500)
+        if pg.locator('#ocrGo').count(): pg.click('#ocrGo')
+        pg.wait_for_function("(()=>{const p=CONTI.S.services[0].items[0].pieces[0];return p&&p.ocr&&p.ocr!=='pending'})()", timeout=90000)
         pg.wait_for_selector('[data-act="omr"]', timeout=10000)
         t0 = time.time(); pg.click('[data-act="omr"]')
         pg.wait_for_selector('#modal [data-apply]', timeout=90000)

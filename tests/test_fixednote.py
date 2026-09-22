@@ -49,7 +49,12 @@ def run():
     s1 = add_song_to_new_service(pg, sid, '예배 하나')
     pg.set_input_files('#pieceFile', [SHEET])
     run_ocr(pg, 90000)
-    pg.wait_for_timeout(4500)   # pushSongs 디바운스(3초)로 악보가 편곡에 올라가게
+    # 악보가 편곡(라이브러리)에 올라갈 때까지 기다린다.
+    # pushSongs 는 저장 3초 뒤에 돌고 파일 업로드까지 끝나야 해서, 기기가 느리면 10초 가까이 걸린다
+    pg.wait_for_function("""() => {const s=CONTI.S.services[0], it=s&&s.items[0];
+      const sg=it&&(CONTI.S.songs||[]).find(x=>x.id===it.songId);
+      const a=sg&&(sg.arrangements||[]).find(x=>x.id===it.arrId);
+      return !!(a && (a.pieces||[]).length);}""", timeout=30000)
     # 마커 A 를 찍는다 (좌표 대신 데이터로)
     pg.evaluate("""(()=>{const s=CONTI.S.services.find(x=>x.id===CONTI.route().a);const it=s.items[0];
       const p=it.pieces[0];p.markers=[{id:'mk1',label:'A',x:40,y:60,cut:120}];CONTI.save();CONTI.render()})()""")
