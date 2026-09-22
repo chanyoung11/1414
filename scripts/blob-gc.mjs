@@ -47,5 +47,24 @@ if (!orphans.length) { console.log('지울 파일이 없어요'); process.exit(0
 if (!doDelete) { console.log('(dry-run: 실제로 지우려면 --delete)'); process.exit(0); }
 if (kept === 0) { console.error('중단: 참조된 파일이 하나도 없어요. DB를 잘못 보고 있을 가능성이 큽니다'); process.exit(3); }
 if (orphans.length / total > 0.5 && !force) { console.error(`중단: 고아 비율이 ${Math.round(orphans.length / total * 100)}%예요. 정말 맞으면 --force 를 붙이세요`); process.exit(4); }
-await del(orphans.map((b) => b.url));
-console.log(`고아 파일 ${orphans.length}개 삭제 완료`);
+// 한 번에 1,000개까지만 받는다. 나눠서 보내고 진행 상황을 알려 준다
+const BATCH = 500;
+const urls = orphans.map((b) => b.url);
+let done = 0;
+for (let i = 0; i < urls.length; i += BATCH) {
+  const chunk = urls.slice(i, i + BATCH);
+  // 너무 빨리 보내면 막힌다. 막히면 기다렸다가 다시 보낸다
+  for (let tries = 0; ; tries++) {
+    try { await del(chunk); break; }
+    catch (e) {
+      if (tries >= 5 || !/Too many requests|rate/i.test(e.message)) throw e;
+      const wait = 65_000;
+      console.log(`  속도 제한 — ${wait / 1000}초 기다립니다 (${tries + 1}번째)`);
+      await new Promise((r) => setTimeout(r, wait));
+    }
+  }
+  done += chunk.length;
+  console.log(`  ${done}/${urls.length} 삭제`);
+  if (i + BATCH < urls.length) await new Promise((r) => setTimeout(r, 3000));
+}
+console.log(`고아 파일 ${done}개 삭제 완료`);
