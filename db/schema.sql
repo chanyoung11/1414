@@ -569,3 +569,12 @@ create table if not exists user_stage (
   updated_at timestamptz not null default now(),
   primary key (user_id, key)
 );
+
+-- 유료 AI 호출의 서비스 전체 하루 총량 (팀·사람 한도 위의 마지막 안전장치).
+-- 가입이 공짜라 계정을 여러 개 만들면 사람당 한도가 그만큼 늘어났다
+create table if not exists ai_usage_all (
+  day   date not null,
+  kind  text not null,                     -- omr | score | ocr
+  calls int  not null default 0,
+  primary key (day, kind)
+);

@@ -98,25 +98,59 @@ async function audit(teamId, actorId, action, target, meta) {
 const AI_DAILY = { omr: 60, score: 400, ocr: 300 };
 // 한 사람이 하루에 쓸 수 있는 총량. 팀을 여러 개 만들어도 이건 못 넘는다
 const AI_DAILY_USER = { omr: 80, score: 500, ocr: 400 };
+// 서비스 전체의 하루 총량. 가입은 누구나 공짜라 계정을 찍어 내면 사람당 한도도 그만큼 늘어난다 —
+// 그래도 이건 못 넘는다. 차면 모두 멈춘다 (선불 크레딧이 바닥나 전원이 못 쓰게 되는 것보다 낫다)
+const AI_DAILY_ALL = { omr: 1000, score: 1500, ocr: 3000 };
 const MAX_TEAMS_PER_USER = 20;   // 요금제가 아니라 스팸·비용 사고 방지선
-async function aiGuard(teamId, kind, uid) {
+const KST_DAY = `(now() at time zone 'Asia/Seoul')::date`;
+const aiCap = (prefix, table, kind, dflt) => +process.env[prefix + kind.toUpperCase()] || table[kind] || dflt;
+// 부르기 전에 한도 안에서 n 번 쓸 자리를 먼저 잡는다 (전체 → 팀 → 사람, 한 문장씩 원자적으로).
+// 전에는 세어 보고(select) 부른 뒤에 더해서, 동시에 보내면 모두 '아직 여유'를 보고 통과했다 (한도 60 에 128번)
+async function aiGuard(teamId, kind, uid, n = 1) {
   const label = kind === 'ocr' ? '코드 인식' : '채보';
-  const cap = +process.env['AI_DAILY_' + kind.toUpperCase()] || AI_DAILY[kind] || 100;
-  const row = await one(`select calls from ai_usage where team_id=$1 and day=(now() at time zone 'Asia/Seoul')::date and kind=$2`, [teamId, kind]);
-  if (row && row.calls >= cap) throw new HttpError(429, 'ai_quota', `오늘 ${label} 한도(${cap}회)를 다 썼어요. 내일 다시 해 주세요`);
+  const take = (sql, params) => one(sql, params).then((r) => !!r);
+  const all = aiCap('AI_DAILY_ALL_', AI_DAILY_ALL, kind, 1000);
+  if (!await take(`insert into ai_usage_all(day, kind, calls) select ${KST_DAY}, $1::text, $2::int where $2::int <= $3::int
+                   on conflict (day, kind) do update set calls = ai_usage_all.calls + excluded.calls
+                   where ai_usage_all.calls + excluded.calls <= $3::int returning calls`, [kind, n, all]))
+    throw new HttpError(429, 'ai_quota', `오늘은 ${label} 요청이 너무 많아 멈췄어요. 내일 다시 해 주세요`);
+  const cap = aiCap('AI_DAILY_', AI_DAILY, kind, 100);
+  if (!await take(`insert into ai_usage(team_id, day, kind, calls, tokens) select $1::uuid, ${KST_DAY}, $2::text, $3::int, 0 where $3::int <= $4::int
+                   on conflict (team_id, day, kind) do update set calls = ai_usage.calls + excluded.calls
+                   where ai_usage.calls + excluded.calls <= $4::int returning calls`, [teamId, kind, n, cap])) {
+    await aiRelease(null, kind, null, n);
+    throw new HttpError(429, 'ai_quota', `오늘 ${label} 한도(${cap}회)를 다 썼어요. 내일 다시 해 주세요`);
+  }
   if (!uid) return;
-  const ucap = +process.env['AI_DAILY_USER_' + kind.toUpperCase()] || AI_DAILY_USER[kind] || 150;
-  const ur = await one(`select calls from ai_usage_user where user_id=$1 and day=(now() at time zone 'Asia/Seoul')::date and kind=$2`, [uid, kind]);
-  if (ur && ur.calls >= ucap) throw new HttpError(429, 'ai_quota', `오늘 ${label}를 너무 많이 했어요. 내일 다시 해 주세요`);
+  const ucap = aiCap('AI_DAILY_USER_', AI_DAILY_USER, kind, 150);
+  if (!await take(`insert into ai_usage_user(user_id, day, kind, calls) select $1::uuid, ${KST_DAY}, $2::text, $3::int where $3::int <= $4::int
+                   on conflict (user_id, day, kind) do update set calls = ai_usage_user.calls + excluded.calls
+                   where ai_usage_user.calls + excluded.calls <= $4::int returning calls`, [uid, kind, n, ucap])) {
+    await aiRelease(teamId, kind, null, n);
+    throw new HttpError(429, 'ai_quota', `오늘 ${label}를 너무 많이 했어요. 내일 다시 해 주세요`);
+  }
 }
-async function aiCount(teamId, kind, tokens, uid) {
-  if (uid) await q(`insert into ai_usage_user(user_id, day, kind, calls)
-                    values($1,(now() at time zone 'Asia/Seoul')::date,$2,1)
-                    on conflict (user_id, day, kind) do update set calls = ai_usage_user.calls + 1`, [uid, kind]).catch(() => {});
-  await q(`insert into ai_usage(team_id, day, kind, calls, tokens)
-           values($1,(now() at time zone 'Asia/Seoul')::date,$2,1,$3)
-           on conflict (team_id, day, kind) do update set calls = ai_usage.calls + 1, tokens = ai_usage.tokens + excluded.tokens`,
-    [teamId, kind, Math.max(0, +tokens || 0)]).catch((e) => console.error('aiCount', e.message));
+// 잡아 둔 자리를 돌려준다: 과금되지 않은 실패(Gemini 가 오류로 답함)나 월 한도(402)에 막혔을 때
+async function aiRelease(teamId, kind, uid, n = 1) {
+  const dec = (t, where, params) => q(`update ${t} set calls = greatest(0, calls - $${params.length + 1}::int) where day=${KST_DAY} and ${where}`,
+    [...params, n]).catch((e) => console.error('aiRelease', e.message));
+  await dec('ai_usage_all', 'kind=$1', [kind]);
+  if (teamId) await dec('ai_usage', 'team_id=$1 and kind=$2', [teamId, kind]);
+  if (uid) await dec('ai_usage_user', 'user_id=$1 and kind=$2', [uid, kind]);
+}
+// 부른 뒤: 토큰을 적고, 잡아 둔 것보다 더 부른 만큼(악보 다시 묻기 · Vision 으로 다시 읽기) 더 센다.
+// 이미 쓴 것이라 한도를 넘어도 센다 (다음 요청이 막힌다)
+async function aiCount(teamId, kind, tokens, uid, extra = 0) {
+  const more = Math.max(0, Math.round(+extra || 0));
+  if (more) {
+    await q(`insert into ai_usage_all(day, kind, calls) values(${KST_DAY}, $1, $2)
+             on conflict (day, kind) do update set calls = ai_usage_all.calls + excluded.calls`, [kind, more]).catch(() => {});
+    if (uid) await q(`insert into ai_usage_user(user_id, day, kind, calls) values($1, ${KST_DAY}, $2, $3)
+                      on conflict (user_id, day, kind) do update set calls = ai_usage_user.calls + excluded.calls`, [uid, kind, more]).catch(() => {});
+  }
+  await q(`insert into ai_usage(team_id, day, kind, calls, tokens) values($1, ${KST_DAY}, $2, $3, $4)
+           on conflict (team_id, day, kind) do update set calls = ai_usage.calls + excluded.calls, tokens = ai_usage.tokens + excluded.tokens`,
+    [teamId, kind, more, Math.max(0, +tokens || 0)]).catch((e) => console.error('aiCount', e.message));
 }
 const teamSettings = async (teamId) => {
   const t = await one('select settings from teams where id=$1', [teamId]);
@@ -158,10 +192,16 @@ on('POST', '/auth/signup', async ({ req, body }) => {
   if (password.length < PASSWORD_MIN) throw bad(`비밀번호는 ${PASSWORD_MIN}자 이상이에요`);
   if (!name) throw bad('이름을 적어 주세요');
   if (await one('select 1 from users where username=$1', [username])) throw new HttpError(409, 'taken', '이미 쓰는 아이디예요');
+  // 가입은 주소당 15분에 30개까지. 계정마다 AI 하루 한도가 따로라 스크립트로 계정을 찍어 내면 한도도 늘어났다.
+  // 교회 와이파이에서 팀원이 한꺼번에 가입해도 걸리지 않게 넉넉히. 앞단 주소가 없는 로컬(개발·테스트)은 세지 않는다
+  const ip = clientIp(req);
+  const keys = /^(-|127\.|::1$|::ffff:127\.)/.test(ip) ? [] : [[`signup:|${ip}`, 30]];
+  await assertNotLocked(keys).catch((e) => { throw e.code === 'locked' ? new HttpError(429, 'locked', '여기서 가입이 너무 많았어요. 15분 뒤에 다시 해 주세요') : e; });
   // 가입 시 약관·개인정보처리방침 동의 시각을 남긴다 (나중에 증명이 필요할 수 있다)
   const agreedAt = /^\d{4}-\d{2}-\d{2}T/.test(String(body.agreedAt || '')) ? new Date(body.agreedAt) : new Date();
   const u = await one('insert into users(username, password_hash, display_name, last_login_at, agreed_at, agreed_ver) values($1,$2,$3,now(),$4,$5) returning id',
     [username, hashPassword(password), name, agreedAt, LEGAL_VERSION]);
+  await noteFailure(keys);   // 이름은 '실패'지만 여기서는 가입 수를 센다 (같은 15분 창)
   return { data: withAppToken(req, await meView(u.id), u.id), headers: { 'Set-Cookie': sessionCookie(req, u.id) } };
 });
 
@@ -2180,11 +2220,14 @@ on('POST', '/omr', async ({ uid, body }) => {
   if (b64.length < 100) throw bad('이미지가 비어 있어요');
   if (b64.length > 9e6) throw new HttpError(413, 'too_large', '이미지가 너무 커요 (6MB 이하)');
   await aiGuard(teamId, 'omr', uid);
-  const quota = await aiSongGuard(teamId, 'omr', body.songKey);
+  let quota;
+  try { quota = await aiSongGuard(teamId, 'omr', body.songKey); } catch (e) { await aiRelease(teamId, 'omr', uid); throw e; }
   let r;
   try { r = await transcribeSheet({ b64, mime }); }
   catch (e) {
     await aiRefund(teamId, 'omr', body.songKey);   // 실패했으니 돌려준다
+    // Gemini 가 오류로 답한 것(e.status)은 과금되지 않으니 하루 한도도 돌려준다. 응답이 깨진 것은 과금돼서 그대로 센다
+    if (e.status) await aiRelease(teamId, 'omr', uid);
     if (e.status === 429) throw new HttpError(429, 'omr_quota', '채보 한도에 걸렸어요. 잠시 뒤 다시 해 주세요');
     throw new HttpError(502, 'omr_failed', '채보 실패: ' + (e.message || ''));
   }
@@ -2208,10 +2251,12 @@ on('POST', '/score', async ({ uid, body }) => {
   let r;
   try { r = await transcribeScore({ b64, mime }, { thinking: 'LOW', repair: body.repair !== false }); }
   catch (e) {
+    if (e.status) await aiRelease(teamId, 'score', uid);   // Gemini 오류 응답은 과금되지 않는다
     if (e.status === 429) throw new HttpError(429, 'omr_quota', '채보 한도에 걸렸어요. 잠시 뒤 다시 해 주세요');
     throw new HttpError(502, 'omr_failed', '채보 실패: ' + (e.message || ''));
   }
-  await aiCount(teamId, 'score', r.usage && r.usage.total, uid);
+  // 박자가 어긋난 마디를 다시 물은 것도 한 번씩 센다 (사진 한 장에 최대 13번까지 부른다)
+  await aiCount(teamId, 'score', r.usage && r.usage.total, uid, (r.calls || 1) - 1);
   const usd = estimateUSD(r.model, r.usage);
   // 원화는 대략만 보여 준다 (환율은 USD_KRW 로 바꿀 수 있음)
   return { songs: r.songs, model: r.model, usage: r.usage, badMeasures: r.badMeasures, cost: usd, costKRW: Math.round(usd * (+process.env.USD_KRW || 1450) * 10) / 10 };
@@ -2244,15 +2289,19 @@ on('POST', '/ocr', async ({ uid, body }) => {
   const images = (Array.isArray(body.images) ? body.images : []).slice(0, maxImages).map((im) => ({ b64: String(im.b64 || ''), mime: str(im.mime, 40), w: +im.w || 0, h: +im.h || 0, kind: str(im.kind, 10) })).filter((im) => im.b64.length > 100);
   if (!images.length) throw bad('이미지가 없어요');
   if (images.reduce((n, im) => n + im.b64.length, 0) > 12 * 1024 * 1024) throw new HttpError(413, 'too_large', '이미지가 너무 커요');
-  await aiGuard(teamId, 'ocr', uid);
+  // Gemini 는 장마다 한 번씩(제목 띠는 안 부른다), Vision 은 한 번에 보내도 장마다 과금된다 → 그만큼 자리를 잡는다
+  const calls = useGemini ? Math.max(1, images.filter((im) => im.kind !== 'title').length) : images.length;
+  await aiGuard(teamId, 'ocr', uid, calls);
   // 무료 플랜의 월 곡 한도. 악보가 여러 장이어도 곡 하나로 센다
-  const quota = await aiSongGuard(teamId, 'ocr', body.songKey);
+  let quota;
+  try { quota = await aiSongGuard(teamId, 'ocr', body.songKey); } catch (e) { await aiRelease(teamId, 'ocr', uid, calls); throw e; }
   if (useGemini) {
     let g;
     try { g = await ocrChordsGemini(images, { thinking: 'LOW' }); }
     catch (e) {
       if (!visionConfigured()) {
         await aiRefund(teamId, 'ocr', body.songKey);   // 실패했으니 돌려준다
+        if (e.status) await aiRelease(teamId, 'ocr', uid, calls);
         throw new HttpError(502, 'ocr_failed', '코드 인식 실패: ' + (e.message || ''));
       }
       g = null;   // Gemini 가 실패하면 예전 방식으로라도 읽는다
@@ -2261,9 +2310,8 @@ on('POST', '/ocr', async ({ uid, body }) => {
       // 코드를 거의 못 찾았으면 인식이 안 된 것으로 보고 돌려준다 (달마다 횟수 제한)
       const found = (g.bands || []).reduce((n, b) => n + ((b.tokens || []).length), 0);
       const refunded = found < 5 ? await aiRefund(teamId, 'ocr', body.songKey) : false;
-      // 장마다 한 번씩 불렀으니 그만큼 센다
-      const calls = g.bands.length || 1;
-      for (let i = 0; i < calls; i++) await aiCount(teamId, 'ocr', i === 0 ? ((g.usage && (g.usage.input + g.usage.output)) || 0) : 0, uid);
+      // 장마다 한 번씩 부른 것은 자리를 잡을 때 이미 셌다
+      await aiCount(teamId, 'ocr', (g.usage && (g.usage.input + g.usage.output)) || 0, uid);
       const usd = estimateUSD(g.model, g.usage);
       return { results: g.bands, engine: 'gemini', title: g.title || '', key: g.key || '',
                quota: { used: refunded ? Math.max(0, quota.used - 1) : quota.used, cap: quota.cap, refunded },
@@ -2271,7 +2319,8 @@ on('POST', '/ocr', async ({ uid, body }) => {
     }
   }
   const results = await ocrBands(images);
-  await aiCount(teamId, 'ocr', 0, uid);
+  // Gemini 로 읽다 실패해 Vision 으로 다시 읽었으면 그 장수만큼 더 센다
+  await aiCount(teamId, 'ocr', 0, uid, useGemini ? images.length : 0);
   return { results, engine: 'vision', quota: { used: quota.used, cap: quota.cap } };
 });
 
