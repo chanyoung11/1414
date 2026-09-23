@@ -91,7 +91,118 @@ def t_push_off(b, errs):
     print('F25 다시 켜기 ok')
     c.close()
 
-TESTS = [('F25', t_push_off)]
+# ---------------------------------------------------------------- 악보 화면 (G08 · G33 · F89)
+CH = ['G', 'Bm7', 'C', 'D']
+def long_score(n=80):
+    return {'at': 1, 'model': 'test', 'lines': 10, 'title': '긴 악보', 'key': 'G', 'time': '4/4', 'verses': 1, 'pickup': False,
+            'measures': [{'c': [{'b': 0, 't': CH[i % 4]}], 'n': [{'p': 'G4', 'd': 4}, {'p': 'B4', 'd': 4}, {'p': 'D5', 'd': 4}, {'p': 'B4', 'd': 4}]} for i in range(n)]}
+
+def svg_text(pg):
+    return pg.evaluate("(()=>{const s=document.querySelector('#osmd svg');return s?s.outerHTML:''})()")
+
+def wait_draw(pg, before_seq=None):
+    if before_seq is not None:
+        pg.wait_for_function('CONTI.SC.seq>%d' % before_seq, timeout=15000)
+    pg.wait_for_selector('#osmd svg', timeout=25000); pg.wait_for_timeout(900)
+
+# 악보를 스크롤하는 칸 — 넓은 화면은 #scorewrap, 폰은 .ws
+SCROLLER = """()=>{for(let e=document.querySelector('#osmd').parentElement;e;e=e.parentElement){const o=getComputedStyle(e).overflowY;
+  if((o==='auto'||o==='scroll')&&e.scrollHeight>e.clientHeight+10)return e}return document.scrollingElement}"""
+def scroll_top(pg):
+    return pg.evaluate('(' + SCROLLER + ')().scrollTop')
+
+def measure_click(pg, mi):
+    # 마디 mi 가 화면에 오게 스크롤한 뒤 그 마디를 누른다
+    box = pg.evaluate("""(mi)=>{const o=CONTI.SC.osmd,k=CONTI.SC.k;const m=o.GraphicSheet.MeasureList[mi][0].PositionAndShape;
+      const sv=document.querySelector('#osmd svg');let r=sv.getBoundingClientRect();
+      const y=r.top+m.AbsolutePosition.y*k;
+      if(y<80||y>innerHeight-120){(""" + SCROLLER + """)().scrollTop+=y-innerHeight/2}
+      r=sv.getBoundingClientRect();
+      return {x:r.left+(m.AbsolutePosition.x+m.Size.width/2)*k,y:r.top+(m.AbsolutePosition.y+m.Size.height/2)*k}}""", mi)
+    pg.mouse.click(box['x'], box['y'])
+
+def t_score(b, errs):
+    c, pg = new_page(b, errs, 'score')
+    signup(pg, 'sk' + tag); make_team(pg, '악보키팀')
+    pg.click('[data-act="new-svc"]'); pg.wait_for_selector('[data-f="svc.name"]'); pg.fill('[data-f="svc.name"]', '키 예배')
+    pg.click('[data-act="add-item"]'); pg.wait_for_selector('[data-f="item.title"]')
+    pg.fill('[data-f="item.title"]', '긴 악보'); pg.fill('[data-f="item.key"]', 'A'); pg.wait_for_timeout(400)
+    svc = pg.evaluate('CONTI.S.services[0].id'); item = pg.evaluate('CONTI.S.services[0].items[0].id')
+    pg.evaluate("(sc)=>{const it=CONTI.S.services[0].items[0];it.score=sc;it.key='A';CONTI.save()}", long_score())
+    pg.goto(URL + '#/score/%s/%s' % (svc, item)); wait_draw(pg)
+
+    # ---- G08: 콘티 키 A 로 그린다 (악보는 G) ----
+    pill = pg.locator('.top .pill.key').first.inner_text()
+    if pill != 'A': fail('G08 머리말 키가 연주 키 A 가 아님: %r' % pill)
+    s = svg_text(pg)
+    if 'C#m7' not in s or 'Bm7' in s: fail('G08 악보가 연주 키로 안 옮겨짐 (C#m7 있어야, Bm7 없어야)')
+    if '악보 G → 연주 A' not in pg.locator('.top h1').inner_text(): fail('G08 악보 키 → 연주 키 안내가 없음')
+    # 반음 올리면 A 에서 +1 = Bb
+    seq = pg.evaluate('CONTI.SC.seq'); pg.click('[data-act="score-tr"][data-d="1"]'); wait_draw(pg, seq)
+    if pg.locator('.top .pill.key').first.inner_text() != 'Bb': fail('G08 A 에서 반음 올린 키가 Bb 가 아님')
+    seq = pg.evaluate('CONTI.SC.seq'); pg.click('[data-act="score-tr"][data-d="0"]'); wait_draw(pg, seq)
+    if 'C#m7' not in svg_text(pg): fail('G08 원본(연주 키)으로 안 돌아옴')
+    # 내보내기·인쇄도 같은 키
+    xml = pg.evaluate("""(()=>{let got='';const A=HTMLAnchorElement.prototype.click;
+      HTMLAnchorElement.prototype.click=function(){if(this.download)got=this.href;else A.call(this)};
+      return new Promise(res=>{document.querySelector('[data-act="score-menu"]').click();
+        setTimeout(()=>{document.querySelector('#smXml').click();HTMLAnchorElement.prototype.click=A;
+          fetch(got).then(r=>r.text()).then(res)},300)})})()""")
+    if '<fifths>3</fifths>' not in xml: fail('G08 MusicXML 이 A 조표(#3)가 아님')
+    pg.evaluate("window.__pc=0;window.print=()=>{window.__pc++}")
+    pg.click('[data-act="score-print"]'); pg.wait_for_function('window.__pc>0', timeout=20000)
+    ps = pg.evaluate("(()=>{const a=document.querySelector('#printArea');return a?a.innerHTML:''})()")
+    pg.evaluate("const a=document.querySelector('#printArea');if(a)a.remove();document.body.classList.remove('printing')")
+    if 'C#m7' not in ps: fail('G08 인쇄본이 연주 키가 아님')
+    # 카포 2: 연주 키 A 에서 2프렛 내린 G 모양 → 적힌 그대로 (예전에는 G−2 = F 모양)
+    pg.evaluate("CONTI.S.team.me.capo=2"); seq = pg.evaluate('CONTI.SC.seq'); pg.evaluate('CONTI.render()'); wait_draw(pg, seq)
+    s = svg_text(pg)
+    if 'Bm7' not in s or 'Am7' in s: fail('G08 카포 모양이 연주 키 기준이 아님 (Bm7 이어야)')
+    if pg.locator('.top .pill.key').first.inner_text() != 'A': fail('G08 카포일 때 머리말 키')
+    print('G08 악보 화면·인쇄·내보내기가 연주 키 ok')
+
+    # ---- G33: 고치기 중에는 적힌 그대로 보이고, 마디 창도 같은 값 ----
+    seq = pg.evaluate('CONTI.SC.seq'); pg.click('[data-act="score-edit"]'); wait_draw(pg, seq)
+    s = svg_text(pg)
+    if 'Bm7' not in s or 'C#m7' in s: fail('G33 고치기 중인데 옮긴 악보를 그림')
+    if pg.locator('.top .pill.key').first.inner_text() != 'G': fail('G33 고치기 중 머리말 키가 적힌 키가 아님')
+    if not pg.locator('[data-act="score-tr"][data-d="1"]').is_disabled(): fail('G33 고치기 중에 조옮김 버튼이 살아 있음')
+    print('G33 고치기 중 적힌 키로 ok')
+
+    # ---- F89: 68마디를 고쳐도 스크롤이 그대로 ----
+    measure_click(pg, 67); pg.wait_for_selector('[data-ct="0"]', timeout=6000)
+    if pg.locator('[data-ct="0"]').input_value() != 'D': fail('G33 68마디 창의 코드가 화면과 다름: %r' % pg.locator('[data-ct="0"]').input_value())
+    top0 = scroll_top(pg)
+    if top0 < 300: fail('F89 준비: 68마디로 스크롤이 안 됨 (%s)' % top0)
+    seq = pg.evaluate('CONTI.SC.seq')
+    pg.fill('[data-ct="0"]', 'Cmaj7'); wait_draw(pg, seq)   # 600ms 뒤 다시 그림
+    top1 = scroll_top(pg)
+    if abs(top1 - top0) > 5: fail('F89 코드를 고치자 스크롤이 %s → %s 로 튐' % (top0, top1))
+    seq = pg.evaluate('CONTI.SC.seq'); pg.click('#mRs'); wait_draw(pg, seq)   # 바로 다시 그리는 쪽(commit)
+    top2 = scroll_top(pg)
+    if abs(top2 - top0) > 5: fail('F89 도돌이표를 켜자 스크롤이 %s → %s 로 튐' % (top0, top2))
+    if pg.evaluate("document.querySelectorAll('#osmd svg').length") != 1: fail('F89 악보가 두 벌 그려짐')
+    pg.click('[data-close="1"]'); pg.wait_for_timeout(1500)
+    got = pg.evaluate("CONTI.S.services[0].items[0].score.measures[67].c[0].t")
+    if got != 'Cmaj7': fail('G33 고친 코드가 적힌 값으로 저장 안 됨: %r' % got)
+    print('F89 마디 고쳐도 스크롤 유지 ok (%d)' % top0)
+
+    # 폰 폭에서는 문서 전체가 스크롤된다 (.pbody 가 overflow:visible)
+    pg.set_viewport_size({'width': 400, 'height': 800})
+    pg.goto(URL + '#/'); pg.wait_for_timeout(800)
+    pg.goto(URL + '#/score/%s/%s' % (svc, item)); wait_draw(pg)
+    if not pg.evaluate('CONTI.SC.edit'):   # 같은 악보로 돌아오면 고치기가 켜진 채다
+        seq = pg.evaluate('CONTI.SC.seq'); pg.click('[data-act="score-edit"]'); wait_draw(pg, seq)
+    measure_click(pg, 40); pg.wait_for_selector('[data-ct="0"]', timeout=6000)
+    d0 = scroll_top(pg)
+    if d0 < 300: fail('F89 준비(폰): 문서 스크롤이 안 됨 (%s)' % d0)
+    seq = pg.evaluate('CONTI.SC.seq'); pg.click('#mRe'); wait_draw(pg, seq)
+    d1 = scroll_top(pg)
+    if abs(d1 - d0) > 5: fail('F89 폰에서 마디를 고치자 스크롤이 %s → %s 로 튐' % (d0, d1))
+    print('F89 폰 폭 문서 스크롤 유지 ok (%d)' % d0)
+    c.close()
+
+TESTS = [('F25', t_push_off), ('SCORE', t_score)]
 
 def run():
     only = set(sys.argv[1:])

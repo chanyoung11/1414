@@ -5251,19 +5251,28 @@ async function rebuildRun(svc,it,piece,blob,append){
 }
 
 /* ---------- 악보 화면 ---------- */
-const SC={semi:0,edit:false,editable:false,osmd:null,k:10,zoom:1,at:''};
+const SC={semi:0,edit:false,editable:false,osmd:null,k:10,zoom:1,at:'',seq:0};
+// 악보 화면은 콘티의 연주 키(it.key)에서 시작한다 — 코드 띠·차트와 같은 기준. 예전에는 악보에 적힌 키로 그려
+// A 콘티에서 G 악보가 떴고 카포 모양도 G 에서 셌다. 장·단조만 다르면(C ↔ Am) 조표가 같으니 옮기지 않는다
+function scorePlayOff(it){const sc=it&&it.score;if(!sc)return 0;let a=keySemi(it.key),b=keySemi(sc.key);if(a==null||b==null)return 0;
+ const mi=k=>/m$/.test(normAcc(k).replace(/\s/g,''));if(mi(it.key)!==mi(sc.key)){if(mi(it.key))a+=3;if(mi(sc.key))b+=3}
+ let d=a-b;while(d>6)d-=12;while(d<-6)d+=12;return d}
+// 화면·인쇄·내보내기가 같은 만큼 옮긴다. 다만 고치는 동안의 화면은 적힌 그대로 — 마디 창이 적힌 값을 고치므로
+// (옮긴 악보를 보고 Dm 을 적으면 원래 키의 Dm 으로 저장돼 엉뚱한 코드가 됐다)
+const scoreSemis=(it,screen)=>screen&&SC.edit?0:scorePlayOff(it)+SC.semi-(+me().capo||0);
 function scoreItem(r){const svc=svcById(r.a);if(!svc)return{};
  // 인도자는 초안, 멤버는 발행본에서 찾는다. 발행본 항목은 스냅샷이라 고치면 안 된다
  const pub=pubOrDraft(svc);
  const draft=(svc.items||[]).find(x=>x.id===r.b);
  const it=(isLeader()?draft:null)||(pub.items||[]).find(x=>x.id===r.b)||draft;
  return {svc,it,editable:!!(isLeader()&&draft&&it===draft)}}
-function scoreHTML(svc,it){const sc=it.score;const my=me();const capo=+my.capo||0;
- const shown=SC.semi?keyShiftName(sc.key,SC.semi):sc.key;
+function scoreHTML(svc,it){const sc=it.score;const my=me();const capo=SC.edit?0:(+my.capo||0);
+ const base=SC.edit?0:scorePlayOff(it),semi=SC.edit?0:SC.semi;
+ const shown=base+semi?keyShiftName(sc.key,base+semi):sc.key;
  const bad=badMeasuresOf(sc);
  return `<div class="top"><button class="icon ghost" title="뒤로" aria-label="뒤로" data-act="score-back" data-id="${svc.id}">${ic('back')}</button>
-  <h1>${esc(it.title||sc.title||'악보')}<span class="pill key">${esc(shown||'')}</span>${SC.semi?`<span class="pill amber">${SC.semi>0?'+':''}${SC.semi}</span>`:''}${capo?`<span class="pill">카포 ${capo}</span>`:''}</h1>
-  <div class="seg"><button data-act="score-tr" data-d="-1" title="반음 내림">${ic('down')}</button><button data-act="score-tr" data-d="0" title="원래 키로">원본</button><button data-act="score-tr" data-d="1" title="반음 올림">${ic('up')}</button></div>
+  <h1>${esc(it.title||sc.title||'악보')}<span class="pill key">${esc(shown||'')}</span>${semi?`<span class="pill amber">${semi>0?'+':''}${semi}</span>`:''}${capo?`<span class="pill">카포 ${capo}</span>`:''}${base?`<span class="hint" style="font-size:12px;font-weight:400">악보 ${esc(sc.key)} → 연주 ${esc(it.key)}</span>`:''}${SC.edit&&scoreSemis(it)?`<span class="hint" style="font-size:12px;font-weight:400">고치는 동안은 적힌 키(${esc(sc.key)})로 보여요</span>`:''}</h1>
+  <div class="seg"><button data-act="score-tr" data-d="-1" title="반음 내림" ${SC.edit?'disabled':''}>${ic('down')}</button><button data-act="score-tr" data-d="0" title="${scorePlayOff(it)?'연주 키로':'원래 키로'}" ${SC.edit?'disabled':''}>원본</button><button data-act="score-tr" data-d="1" title="반음 올림" ${SC.edit?'disabled':''}>${ic('up')}</button></div>
   ${isLeader()&&scoreItem(route()).editable?`<button class="switch ${SC.edit?'on':''}" data-act="score-edit"><i></i>고치기</button>`:''}
   <button class="icon ghost" data-act="score-print" title="인쇄 (A4)">${ic('export')}</button>
   <button class="icon ghost" data-act="score-menu" title="더보기">${ic('list')}</button></div>
@@ -5272,19 +5281,27 @@ function scoreHTML(svc,it){const sc=it.score;const my=me();const capo=+my.capo||
    `${bad.length?`<span class="pill amber" title="음표 길이의 합이 박자와 맞지 않는 마디">박자 확인 ${bad.length}</span>`:''}${SC.edit?'<span class="hint">마디를 탭하면 고칠 수 있어요</span>':''}${isLeader()&&scoreItem(route()).editable?`<button class="btn sm" data-act="score-info">${ic('note')}곡 정보</button>`:''}`)}
   <div class="pbody" id="scorewrap"><div id="osmd" class="osmd ${SC.edit?'editing':''}"><div class="muted" style="padding:40px;text-align:center">악보 그리는 중…</div></div></div>
  </div></div>`}
-async function drawScore(){const r=route();const {svc,it}=scoreItem(r);const host=$('#osmd');if(!host||!it||!it.score)return;
+async function drawScore(keepTop){const r=route();const {svc,it}=scoreItem(r);const host=$('#osmd');if(!host||!it||!it.score)return;
  try{await loadOSMD()}catch(e){host.innerHTML=`<div class="muted" style="padding:40px;text-align:center">${esc(e.message)}<br><span class="hint">인터넷에 한 번 연결되면 그 뒤로는 오프라인에서도 열려요</span></div>`;return}
  SC.editable=scoreItem(r).editable;
- const capo=+me().capo||0;
- const sc=transposeScore(it.score,SC.semi-capo);
+ const sc=transposeScore(it.score,scoreSemis(it,true));
  let xml;try{xml=scoreToMusicXML(sc)}catch(e){host.innerHTML='<div class="muted" style="padding:40px;text-align:center">악보 데이터를 그릴 수 없어요</div>';return}
+ // 다시 그리는 동안 칸이 비면 스크롤이 맨 위로 잘린다 (80마디 악보의 68마디를 고칠 때마다 1마디로 튀었다).
+ // 높이를 붙잡아 두고 그린 뒤 스크롤을 되돌린다. 늦게 끝난 옛 그리기는 버린다 (같은 칸에 악보가 두 벌 붙지 않게)
+ // 스크롤하는 칸은 화면 폭마다 다르다 (넓으면 #scorewrap, 폰은 .ws) — 조상을 모두 기억해 둔다
+ const my=++SC.seq;const wrap=$('#scorewrap');const keep=[];
+ for(let e=host.parentElement;e;e=e.parentElement)if(e.scrollTop)keep.push([e,e.scrollTop]);
+ if(keepTop&&wrap)keep.push([wrap,keepTop]);
+ if(host.querySelector('svg'))host.style.minHeight=host.offsetHeight+'px';
+ const settle=()=>{host.style.minHeight='';if(!host.isConnected)return;keep.forEach(([e,t])=>{if(e.scrollTop!==t)e.scrollTop=t})};
  host.innerHTML='';
  const o=new opensheetmusicdisplay.OpenSheetMusicDisplay(host,{
   autoResize:false,backend:'svg',drawTitle:true,drawComposer:true,drawSubtitle:false,
   drawMeasureNumbers:true,measureNumberInterval:1,drawPartNames:false,
   drawingParameters:'default',pageBackgroundColor:'#ffffff'});
- try{osmdChordNames(o,sc);await o.load(xml);o.zoom=SC.zoom;o.render()}
- catch(e){console.warn('osmd',e);host.innerHTML='<div class="muted" style="padding:40px;text-align:center">악보를 그리다 막혔어요. "곡 정보"에서 박자·조를 확인해 보세요</div>';return}
+ try{osmdChordNames(o,sc);await o.load(xml);if(my!==SC.seq)return;o.zoom=SC.zoom;o.render()}
+ catch(e){if(my!==SC.seq)return;console.warn('osmd',e);host.innerHTML='<div class="muted" style="padding:40px;text-align:center">악보를 그리다 막혔어요. "곡 정보"에서 박자·조를 확인해 보세요</div>';settle();return}
+ settle();
  SC.osmd=o;
  // 마디를 탭했을 때 어느 마디인지 알아내려고 화면 배율을 재 둔다
  const svg=host.querySelector('svg');
@@ -5422,7 +5439,7 @@ function scoreMenuModal(svc,it){const sc=it.score;
   <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" data-close="1">닫기</button></div>`,{center:true});
  $('#modal').onclick=e=>{
   if(e.target.closest('[data-close]')){closeModal();return}
-  if(e.target.closest('#smXml')){const xml=scoreToMusicXML(transposeScore(sc,SC.semi-(+me().capo||0)));
+  if(e.target.closest('#smXml')){const xml=scoreToMusicXML(transposeScore(sc,scoreSemis(it)));
    saveFile((it.title||sc.title||'악보')+'.musicxml',xml,'application/vnd.recordare.musicxml+xml').catch(e2=>toast(e2.message||'파일을 저장하지 못했어요'));closeModal();return}
   if(e.target.closest('#smZoomIn')){SC.zoom=Math.min(2,SC.zoom+0.15);closeModal();drawScore();return}
   if(e.target.closest('#smZoomOut')){SC.zoom=Math.max(0.5,SC.zoom-0.15);closeModal();drawScore();return}
@@ -5742,7 +5759,7 @@ async function render(){
   if(!svc||!it||!it.score)return go(svc?((isLeader()?'edit/':'view/')+svc.id):'home');
   await preload(svc);if(stale())return;
   if(SC.at!==r.a+'/'+r.b){SC.at=r.a+'/'+r.b;SC.semi=0;SC.edit=false}
-  app.innerHTML=scoreHTML(svc,it);drawScore();restoreScroll();return}
+  app.innerHTML=scoreHTML(svc,it);drawScore(same?(SCROLL.bodies||[])[0]:0);restoreScroll();return}
  // §4.2 말씀 탭 (목회자·인도자)
  if(r.name==='word'){
   if(!online()||!S.team.id)return go('home');
@@ -7630,10 +7647,9 @@ async function printScore(svc,it){
  // 화면 밖에 '보이게' 두고 그려야 오선이 제 크기로 들어간다
  area.style.cssText='display:block;position:fixed;left:-10000px;top:0;width:780px;background:#fff;color:#111';
  const host=document.createElement('div');area.appendChild(host);document.body.appendChild(area);
- const capo=+me().capo||0;
  const o=new opensheetmusicdisplay.OpenSheetMusicDisplay(host,{autoResize:false,backend:'svg',drawTitle:true,drawComposer:true,
   drawMeasureNumbers:true,measureNumberInterval:1,drawPartNames:false,pageBackgroundColor:'#ffffff',pageFormat:'A4_P'});
- const sc=transposeScore(it.score,SC.semi-capo);
+ const sc=transposeScore(it.score,scoreSemis(it));
  try{osmdChordNames(o,sc);await o.load(scoreToMusicXML(sc));o.zoom=1;o.render()}
  catch(e){console.warn('print score',e);area.remove();toast('악보를 인쇄용으로 그리지 못했어요');return}
  host.querySelectorAll('svg').forEach(sv=>{const w=document.createElement('div');w.className='osmdpage';sv.parentNode.insertBefore(w,sv);w.appendChild(sv)});
