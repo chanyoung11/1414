@@ -1742,10 +1742,10 @@ function wordTabHTML(sel){const list=WORDS.list;const cur=list.find(x=>x.service
    <div class="card"><b>다가오는 예배</b><div class="hint">콘티가 있는 것 + 4주 안 사역 날짜</div>
     <div style="margin-top:10px">${list.length?list.map(row).join(''):`<div class="empty"><span class="icon">${ic('note')}</span><b>열린 예배가 없어요</b>정기 예배를 켜면 여기에 예배가 생겨요<div><button class="btn" data-act="team">팀 설정으로</button></div></div>`}</div></div>
    ${cur?`<div class="card"><div class="row sb"><b>${esc(cur.name)}</b>${ro?'<span class="pill">읽기만</span>':`<label class="row" style="gap:6px;font-size:12.5px"><input type="checkbox" id="wpPub" ${w&&w.memoPublic?'checked':''}>팀 전체에 메모 공개</label>`}</div>
-    <div class="lbl">본문 <span class="hint">항상 전체 공개</span></div><input class="field" id="wpPassage" placeholder="시편 103:1-5" value="${esc((w&&w.passage)||'')}" ${ro?'disabled':''}>
-    <div class="lbl">제목</div><input class="field" id="wpTitle" placeholder="잊지 말아야 할 은혜" value="${esc((w&&w.title)||'')}" ${ro?'disabled':''}>
-    <div class="lbl">한 줄</div><input class="field" id="wpLine" placeholder="받은 은혜를 세어보는 예배" value="${esc((w&&w.line)||'')}" ${ro?'disabled':''}>
-    <div class="lbl">메모 <span class="hint">${w&&w.memoPublic?'전체에게 보여요':'인도자에게만 보여요'}</span></div><textarea class="field" id="wpMemo" rows="4" ${ro?'disabled':''}>${esc((w&&w.memo)||'')}</textarea>
+    <div class="lbl">본문 <span class="hint">항상 전체 공개</span></div><input class="field" id="wpPassage" maxlength="60" placeholder="시편 103:1-5" value="${esc((w&&w.passage)||'')}" ${ro?'disabled':''}>
+    <div class="lbl">제목</div><input class="field" id="wpTitle" maxlength="40" placeholder="잊지 말아야 할 은혜" value="${esc((w&&w.title)||'')}" ${ro?'disabled':''}>
+    <div class="lbl">한 줄</div><input class="field" id="wpLine" maxlength="80" placeholder="받은 은혜를 세어보는 예배" value="${esc((w&&w.line)||'')}" ${ro?'disabled':''}>
+    <div class="lbl">메모 <span class="hint">${w&&w.memoPublic?'전체에게 보여요':'인도자에게만 보여요'} · 1000자까지</span></div><textarea class="field" id="wpMemo" rows="4" maxlength="1000" ${ro?'disabled':''}>${esc((w&&w.memo)||'')}</textarea>
     ${ro?'':`<div class="row" style="margin-top:12px;justify-content:flex-end;gap:8px"><span class="hint" id="wpState"></span><button class="btn pri" data-act="word-save" data-id="${esc(cur.serviceId)}">${ic('check')}저장</button></div>`}
     ${w&&w.from&&w.from.name?`<div class="hint" style="margin-top:8px">${esc(w.from.name)}${w.updatedAt?' · '+fmtRel(w.updatedAt):''}</div>`:''}</div>`
    :`<div class="card"><div class="empty"><span class="icon">${ic('note')}</span><b>예배를 골라 주세요</b>왼쪽 목록에서 적을 예배를 누르세요</div></div>`}
@@ -1760,10 +1760,10 @@ async function wordLinkHTML(token){let d;
   <div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div>
   <h1>${esc(d.serviceName)}</h1><p class="sub">${d.leaderName?esc(d.teamName)+' · '+josa(esc(d.leaderName),'','')+' 인도자가':josa(esc(d.teamName),'이','가')} 요청했어요. 이번 주 말씀을 알려주세요.</p>
   <div class="lbl">이름</div><input class="field" id="wlName" placeholder="김OO 목사님" value="${esc(lsGet('conti-wl-name')||'')}">
-  <div class="lbl">본문 <span class="hint">필수</span></div><input class="field" id="wlPassage" placeholder="시편 103:1-5">
-  <div class="lbl">제목</div><input class="field" id="wlTitle" placeholder="잊지 말아야 할 은혜">
-  <div class="lbl">한 줄</div><input class="field" id="wlLine" placeholder="받은 은혜를 세어보는 예배">
-  <div class="lbl">메모 <span class="hint">인도자에게만 보여요</span></div><textarea class="field" id="wlMemo" rows="3" placeholder="선택"></textarea>
+  <div class="lbl">본문 <span class="hint">필수</span></div><input class="field" id="wlPassage" maxlength="60" placeholder="시편 103:1-5">
+  <div class="lbl">제목</div><input class="field" id="wlTitle" maxlength="40" placeholder="잊지 말아야 할 은혜">
+  <div class="lbl">한 줄</div><input class="field" id="wlLine" maxlength="80" placeholder="받은 은혜를 세어보는 예배">
+  <div class="lbl">메모 <span class="hint">인도자에게만 보여요 · 1000자까지</span></div><textarea class="field" id="wlMemo" rows="3" maxlength="1000" placeholder="선택"></textarea>
   <div class="err" id="wlErr"></div>
   <button class="btn pri" id="wlSend" style="width:100%;margin-top:14px">보내기</button>
   <p class="sub" style="text-align:center;margin-top:10px">보내면 이 링크는 닫혀요. 고치려면 인도자에게 새 링크를 받으세요.</p>

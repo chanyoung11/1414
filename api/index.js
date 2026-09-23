@@ -1231,6 +1231,18 @@ function wordView(w, m) {
   return { passage: w.passage || '', title: w.title || '', line: w.line || '', memo: canSeeMemo ? (w.memo || '') : '', memoPublic: !!w.memoPublic, from: w.from || null, receivedAt: w.receivedAt || null, updatedAt: w.updatedAt || null };
 }
 const wordKey = (w) => w ? [w.passage, w.title, w.line, w.memo, w.memoPublic ? 1 : 0].map((x) => String(x == null ? '' : x)).join('') : '';
+// 말씀 칸마다 길이 한도. 넘치면 잘라 저장하지 않고 돌려보낸다 — 전에는 목사님 메모 뒷부분이 소리 없이
+// 사라지고 링크는 '전달됐습니다'와 함께 닫혔다 (G23). 화면의 maxlength 와 같은 숫자다
+const WORD_MAX = { passage: [60, '본문'], title: [40, '제목'], line: [80, '한 줄'], memo: [1000, '메모'] };
+function wordFields(b) {
+  const out = {};
+  for (const [k, [max, label]] of Object.entries(WORD_MAX)) {
+    const v = typeof b[k] === 'string' ? b[k].trim() : '';
+    if (v.length > max) throw bad(`${josa(label, '은', '는')} ${max}자까지예요 (지금 ${v.length}자)`);
+    out[k] = v;
+  }
+  return out;
+}
 
 // 말씀만 가볍게 (편집기·콘티 보기 진입 때). 발행본이 없어도 된다
 on('GET', '/services/:id/word', async ({ uid, url, params }) => {
@@ -1249,10 +1261,10 @@ on('PUT', '/services/:id/word', async ({ uid, params, body }) => {
   const m = await requireMember(uid, teamId);
   if (m.role !== 'leader' && m.role !== 'pastor') throw forbidden('인도자와 목회자만 말씀을 적을 수 있어요');
   const b = body.word || {};
+  const f = wordFields(b);
   const prev = await one('select word from service_words where team_id=$1 and service_id=$2', [teamId, params.id]);
   const word = {
-    passage: str(b.passage, 60), title: str(b.title, 40), line: str(b.line, 80),
-    memo: str(b.memo, 1000), memoPublic: !!b.memoPublic,
+    ...f, memoPublic: !!b.memoPublic,
     from: { type: m.role === 'pastor' ? 'pastor' : 'leader', memberId: uid, name: m.mname || '' },
     receivedAt: (prev && prev.word && prev.word.receivedAt) || new Date().toISOString(), updatedAt: new Date().toISOString(),
   };
@@ -1349,10 +1361,10 @@ on('POST', '/word-link/:token', async ({ params, body }) => {
   if (l.used_at) throw new HttpError(410, 'used', '이미 보낸 링크예요');
   if (new Date(l.expires_at) < new Date()) throw new HttpError(410, 'expired', '만료된 링크예요');
   const name = str(body.name, 40); if (!name) throw bad('이름을 적어 주세요');
-  const passage = str(body.passage, 60); if (!passage) throw bad('본문을 적어 주세요');
+  const f = wordFields(body);
+  const passage = f.passage; if (!passage) throw bad('본문을 적어 주세요');
   const word = {
-    passage, title: str(body.title, 40), line: str(body.line, 80),
-    memo: str(body.memo, 1000), memoPublic: false,
+    ...f, memoPublic: false,
     from: { type: 'link', name }, receivedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
   };
   await q(`insert into service_words(team_id, service_id, word, updated_at) values($1,$2,$3,now())
