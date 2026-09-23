@@ -4959,9 +4959,17 @@ function inviteModal(){let role='member',days=30,once=false;
   const d=e.target.closest('[data-id2]');if(d){days=+d.dataset.id2;$$('[data-id2]').forEach(x=>x.classList.toggle('on',+x.dataset.id2===days));return}
   const u=e.target.closest('[data-iu]');if(u){once=u.dataset.iu==='1';$$('[data-iu]').forEach(x=>x.classList.toggle('on',(x.dataset.iu==='1')===once));return}
   if(e.target.closest('#ivOk')){const b=e.target.closest('#ivOk');b.disabled=true;
-   try{const r2=await api('/teams/'+S.team.id+'/invites',{method:'POST',body:{role,days,maxUses:once?1:null}});
-   closeModal();await pullTeam(true);TM.open.invites=true;render();
-   await copyText(joinLink(r2.invite.code));toast('링크를 만들고 복사했어요')}catch(err){toast(err.message);const b2=$('#ivOk');if(b2)b2.disabled=false}}}};
+   let r2;try{r2=await api('/teams/'+S.team.id+'/invites',{method:'POST',body:{role,days,maxUses:once?1:null}})}
+   catch(err){toast(err.message);const b2=$('#ivOk');if(b2)b2.disabled=false;return}
+   closeModal();try{await pullTeam(true)}catch(err){}TM.open.invites=true;render();
+   // 서버를 세 번 다녀온 뒤라 '누른 순간'이 지나 앱(iOS 웹뷰)은 복사를 막는다. 링크는 이미 만들어졌으니
+   // 영어 오류 대신 링크를 보여 주고 버튼(새로 누르는 것)으로 복사한다 — 실패로 알고 또 만들면 링크 수만 는다 (F134)
+   const url=joinLink(r2.invite.code);
+   try{await copyText(url);toast('링크를 만들고 복사했어요')}
+   catch(e2){modal(`<b style="font-size:17px">초대 링크를 만들었어요</b><div class="hint" style="margin-top:4px">자동 복사가 안 됐어요. 아래 버튼으로 복사해 카톡방에 올려 주세요</div>
+     <div class="linkbox" style="margin-top:12px;word-break:break-all">${esc(url)}</div>
+     <div class="row" style="margin-top:14px;justify-content:flex-end;gap:8px"><button class="btn" id="ivCopy">${ic('export')}링크 복사</button><button class="btn pri" data-close="1">닫기</button></div>`,{center:true});
+    $('#modal').onclick=async ev=>{if(ev.target.closest('#ivCopy')){try{await copyText(url);toast('복사했어요')}catch(e3){toast('복사하지 못했어요. 링크를 길게 눌러 복사해 주세요')}}if(ev.target.closest('[data-close]'))closeModal()}}}}};
  wire()}
 const joinLink=code=>SITE+'#/join/'+code;
 
