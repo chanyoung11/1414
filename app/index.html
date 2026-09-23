@@ -2835,9 +2835,9 @@ function settingsHTML(){
    <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn pri" id="sOk">${ic('check')}저장</button></div></div>`;
  else if(t==='noti'){const st=pushState();const q=quietOf();
   pane=`<div class="card"><b>폰으로 알림 받기</b>
-   <div class="hint" style="margin-top:2px">${st==='unsupported'?'이 브라우저는 푸시 알림을 지원하지 않아요':st==='granted'?'켜져 있어요. 앱을 꺼 둬도 알림이 옵니다':st==='denied'?'브라우저에서 막혀 있어요. 주소창 옆 자물쇠에서 알림을 허용해 주세요':'아직 안 켰어요'}</div>
+   <div class="hint" style="margin-top:2px">${st==='unsupported'?'이 브라우저는 푸시 알림을 지원하지 않아요':st==='granted'?'켜져 있어요. 앱을 꺼 둬도 알림이 옵니다':st==='denied'?'브라우저에서 막혀 있어요. 주소창 옆 자물쇠에서 알림을 허용해 주세요':st==='off'?'이 기기에서 꺼 두었어요. 다시 켜기 전까지 이 기기로는 알림이 오지 않아요':'아직 안 켰어요'}</div>
    <div class="row" style="margin-top:10px;gap:8px">
-    ${st==='default'?`<button class="btn sm pri" id="sPushOn">${ic('bell')}알림 켜기</button>`:''}
+    ${st==='default'||st==='off'?`<button class="btn sm pri" id="sPushOn">${ic('bell')}알림 켜기</button>`:''}
     ${st==='granted'?`<button class="btn sm" id="sPushTest">${ic('send')}시험 알림 보내기</button><button class="btn sm ghost" id="sPushOff">이 기기에서 끄기</button>`:''}</div>
    ${iosNeedsInstall()?`<div class="hint" style="margin-top:8px">${iosTip}</div>`:''}</div>
   <div class="card"><b>조용한 시간</b>
@@ -2915,12 +2915,12 @@ function afterSettings(){
    extra=extra.includes(v)?extra.filter(x=>x!==v):[...extra,v];
    $$('#sSess2 .q').forEach(b=>b.classList.toggle('on2',extra.includes(b.dataset.s2)));return}
   const rb=e.target.closest('[data-r]');if(rb){role=rb.dataset.r;$$('#sRole .q').forEach(b=>b.classList.toggle('on',b.dataset.r===role));return}
-  if(e.target.closest('#sPushOn')){markAskedPush();appPushRegister.asked=true;
+  if(e.target.closest('#sPushOn')){markAskedPush();setPushOff(false);appPushRegister.asked=true;
    if(NATIVE){const ok=await appPushRegister();toast(ok?'알림을 켰어요':'알림을 켜지 못했어요 · 휴대폰 설정에서 켤 수 있어요');render();return}
    let perm='denied';try{perm=await Notification.requestPermission()}catch(err){}
    if(perm==='granted'){const ok=await pushRegister();toast(ok?'알림을 켰어요':'알림을 켜지 못했어요')}
    else toast('브라우저에서 알림을 막았어요');render();return}
-  if(e.target.closest('#sPushOff')){if(NATIVE)await appPushUnregister();else await pushUnregister();toast('이 기기에서 알림을 껐어요');render();return}
+  if(e.target.closest('#sPushOff')){setPushOff(true);markAskedPush();if(NATIVE)await appPushUnregister();else await pushUnregister();toast('이 기기에서 알림을 껐어요');render();return}
   if(e.target.closest('#sPushTest')){try{const r=await api('/push/test',{method:'POST'});
     toast(r.sent?'보냈어요 — 잠시 뒤 알림이 떠요':'보낼 기기가 없어요. 알림 켜기를 먼저 눌러 주세요')}catch(err){toast(err.message)}return}
   if(e.target.closest('#sOk')){const name=$('#sName').value.trim();
@@ -5791,7 +5791,7 @@ async function render(){
  // 약관 동의가 먼저, 그다음 알림
  if(online()&&NET.user&&needsAgree())setTimeout(()=>{if(!$('#modal').firstChild)agreeModal()},600);
  if(online()&&S.team.id&&NET.user)setTimeout(()=>{if(route().name==='home'&&!$('#modal').firstChild&&!needsAgree())pushOnboard()},1600);
- if(online()&&NET.user)pullPrefs().then(()=>{if(NATIVE)appPushRegister();else if(pushState()==='granted')pushRegister()});
+ if(online()&&NET.user)pullPrefs().then(pushAuto);
  if(online()&&S.team.id&&NET.user)pullUsage();
  if(online()&&S.team.id&&NET.user)pullSchedule(monthKey()).then(ch=>{if(ch&&route().name==='home')render()});
  if(online()&&!same)SYNC.pullServices().then(ch=>{if(ch&&route().name==='home')render()});
@@ -6405,6 +6405,8 @@ let APP_PUSH_TOKEN='';
 async function appPushUnregister(){
  const P=CapPlug().PushNotifications;if(!NATIVE||!P)return;
  try{if(APP_PUSH_TOKEN)await api('/push/token/remove',{method:'POST',body:{token:APP_PUSH_TOKEN}}).catch(()=>{});
+  // 이번 실행에서 토큰을 아직 못 받았으면 서버에서 지울 수가 없다. 기기 토큰 자체를 버려 두면 서버가 보낼 때 죽은 토큰으로 지운다
+  try{if(P.unregister)await P.unregister()}catch(e){}
   await P.removeAllListeners();appPushRegister.bound=false;APP_PUSH_TOKEN=''}catch(e){}}
 // 푸시를 눌렀을 때. 링크(#/view/…, #/cal/…)는 팀 안 주소라 여러 팀에 있는 사람이 다른 팀 알림을 누르면
 // 지금 팀에서 열려 엉뚱한 팀에 답하거나 '발행된 콘티가 없어요'가 떴다 → 알림에 실린 팀으로 먼저 바꾼다
@@ -6418,7 +6420,7 @@ async function openPushLink(link,teamId){
 // 웹: 이미 열린 창이면 sw.js 가 메시지로 알려 준다. 답(ack)을 하면 sw 는 주소를 바꾸지 않는다
 if('serviceWorker' in navigator)navigator.serviceWorker.addEventListener('message',e=>{const d=e.data||{};if(d.type!=='push-open')return;
  if(e.ports&&e.ports[0])e.ports[0].postMessage(1);openPushLink(d.link,d.teamId)});
-const PUSH={key:'',configured:false,sub:null};
+const PUSH={key:'',configured:false,sub:null,auto:''};
 const pushSupported=()=>'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;
 function b64ToU8(b64){const pad='='.repeat((4-b64.length%4)%4);const s=(b64+pad).replace(/-/g,'+').replace(/_/g,'/');
  const raw=atob(s);const out=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)out[i]=raw.charCodeAt(i);return out}
@@ -6440,14 +6442,24 @@ async function pushUnregister(){
  try{const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();
   if(sub){await api('/push/unsubscribe',{method:'POST',body:{endpoint:sub.endpoint}}).catch(()=>{});await sub.unsubscribe()}
   PUSH.sub=null}catch(e){}}
-const pushState=()=>NATIVE?(APP_PUSH_TOKEN?'granted':(appPushRegister.asked?'denied':'default')):(!pushSupported()?'unsupported':Notification.permission);
+const pushState=()=>NATIVE?(pushOff()?'off':APP_PUSH_TOKEN?'granted':(appPushRegister.asked?'denied':'default')):(!pushSupported()?'unsupported':Notification.permission==='granted'&&pushOff()?'off':Notification.permission);
+// '이 기기에서 끄기'를 기억한다 (계정별). 웹은 구독을 끊어도 브라우저 권한이 'granted' 로 남아서,
+// 기억하지 않으면 홈에 올 때마다 다시 구독해 알림이 계속 왔다. 앱도 홈마다 register 를 다시 불렀다
+const pushOffKey=()=>'conti-push-off:'+((NET.user&&NET.user.id)||'');
+function pushOff(){try{return localStorage.getItem(pushOffKey())==='1'}catch(e){return false}}
+function setPushOff(v){try{if(v)localStorage.setItem(pushOffKey(),'1');else localStorage.removeItem(pushOffKey())}catch(e){}}
+// 홈을 그릴 때마다 불리지만(일정·콘티를 받고 다시 그리면 또) 등록은 한 세션·계정에 한 번이면 된다
+function pushAuto(){const id=NET.user&&NET.user.id;if(!id||pushOff()||PUSH.auto===id)return;
+ if(NATIVE){PUSH.auto=id;appPushRegister();return}
+ if(pushState()!=='granted')return;
+ PUSH.auto=id;pushRegister().then(ok=>{if(!ok&&PUSH.auto===id)PUSH.auto=''})}   // 못 했으면 다음 홈에서 다시
 // 앱에 처음 들어올 때 한 번: 알림을 켤지 + 야간에도 울릴지
 function askedPush(){try{return localStorage.getItem('conti-push-asked')==='1'}catch(e){return true}}
 function markAskedPush(){try{localStorage.setItem('conti-push-asked','1')}catch(e){}}
 async function pushOnboard(){
- if(!pushSupported()||!online()||!NET.user)return;
+ if(!pushSupported()||!online()||!NET.user||pushOff())return;
  if(askedPush()||Notification.permission==='denied')return;
- if(Notification.permission==='granted'){markAskedPush();pushRegister();return}
+ if(Notification.permission==='granted'){markAskedPush();pushAuto();return}   // 홈이 이미 등록했으면 또 보내지 않는다
  await pullPrefs();
  const q=quietOf();
  modal(`<b style="font-size:17px">알림을 받을까요?</b>
@@ -6459,7 +6471,7 @@ async function pushOnboard(){
   if(e.target.closest('#pbNo')){markAskedPush();closeModal();return}
   if(e.target.closest('#pbYes')){
    const night=$('#pbNight').checked;   // 체크 = 밤에도 울림 = 조용한 시간 끔
-   markAskedPush();closeModal();
+   markAskedPush();setPushOff(false);closeModal();
    await savePrefs({quiet:{on:!night}});
    appPushRegister.asked=true;
    if(NATIVE){const ok=await appPushRegister();toast(ok?'알림을 켰어요':'알림을 켜지 못했어요 · 휴대폰 설정에서 켤 수 있어요');render();return}
