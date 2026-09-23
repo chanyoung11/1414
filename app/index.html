@@ -839,7 +839,8 @@ body.stgon{overflow:hidden}
 .stgpage .pstrip .m{display:inline-flex;align-items:center;gap:4px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .stgpage .pstrip .m .who{font-size:9px;font-weight:700;color:#fff;background:#777;border-radius:3px;padding:0 4px}
 .stgpage .pstrip .m.all .who{background:#111}
-.stgpop{position:absolute;right:12px;top:54px;width:min(340px,calc(100vw - 24px));background:var(--card);color:var(--fg);border:1px solid var(--border-2);border-radius:var(--r-xl);padding:12px;z-index:4;box-shadow:0 24px 56px -20px rgba(0,0,0,.7)}
+/* 바(--sat 아래 46px) 바로 밑에 뜬다. 54px 고정이면 노치 있는 아이폰에서 바의 톱니·닫기를 덮었다 */
+.stgpop{position:absolute;right:12px;top:calc(var(--sat) + 54px);width:min(340px,calc(100% - 24px));max-height:calc(100% - var(--sat) - 66px);overflow:auto;background:var(--card);color:var(--fg);border:1px solid var(--border-2);border-radius:var(--r-xl);padding:12px;z-index:4;box-shadow:0 24px 56px -20px rgba(0,0,0,.7)}
 @media(max-width:640px){.stgbar .stgform{display:none}.stgcanvas{left:8px;right:8px}}
 /* ---------- 인쇄 조판 결과 (미리보기 + 종이) ---------- */
 #printArea{display:none}
@@ -7430,6 +7431,8 @@ function stageClick(e){
  if(t){STG.pref[t.dataset.stgt]=t.checked;stgSave();stageRender();return}
  if(!b){ // 화면이 나뉘었으면 탭으로 다음 화면
   if(e.target.closest('.stgpop'))return;
+  // '내 조판' 창이 떠 있으면 바깥 탭은 창만 닫는다 (화면은 안 넘긴다). 화면이 하나면 닫을 길이 톱니뿐이었다
+  if(STG.open){STG.open=false;stageRender();return}
   if(STG.edit){if(STG.menu){STG.menu=null;stageRender()}return}
   const si=e.target.closest('[data-si]');
   // 다른 곡 조각을 탭하면 바가 그 곡으로 바뀐다 (기획 §5). 그런데 '조각 위 블록'(기본)이나 바를 끈
