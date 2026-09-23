@@ -585,16 +585,28 @@ async function renameSessions(teamId, map) {
     }
   }
   await q('update teams set settings=$2 where id=$1', [teamId, JSON.stringify(st)]);
-  // 앞으로의 편성. lineup 은 [{session, memberId, …}] 배열이라 원소의 session 만 바꾼다
-  for (const r of await q(`select id, lineup from service_dates where team_id=$1 and date >= (now() at time zone 'Asia/Seoul')::date`, [teamId])) {
-    if (!Array.isArray(r.lineup) || !r.lineup.length) continue;
-    const next = r.lineup.map((x) => (x && at(x.session) !== x.session ? { ...x, session: at(x.session) } : x));
-    if (next.some((x, i) => x !== r.lineup[i])) await q('update service_dates set lineup=$2 where id=$1', [r.id, JSON.stringify(next)]);
+  // 앞으로의 편성. lineup 은 [{session, memberId, …}] 배열이라 원소의 session 만 바꾼다.
+  // 그날만 늘리거나 줄인 정원(slots)도 세션 이름이 키라 같이 옮긴다 (안 옮기면 그날 정원이 사라졌다)
+  for (const r of await q(`select id, lineup, slots from service_dates where team_id=$1 and date >= (now() at time zone 'Asia/Seoul')::date`, [teamId])) {
+    const lineup = Array.isArray(r.lineup) ? r.lineup : [];
+    const next = lineup.map((x) => (x && at(x.session) !== x.session ? { ...x, session: at(x.session) } : x));
+    const sl = r.slots && typeof r.slots === 'object' ? r.slots : null;
+    const moved = sl && Object.keys(sl).some((k) => at(k) !== k);
+    if (!next.some((x, i) => x !== lineup[i]) && !moved) continue;
+    const slots = moved ? Object.fromEntries(Object.entries(sl).map(([k, v]) => [at(k), v])) : sl;
+    await q('update service_dates set lineup=$2, slots=$3 where id=$1', [r.id, JSON.stringify(next), slots ? JSON.stringify(slots) : null]);
   }
-  // 메모의 세션 태그 (예배 메모 · 고정 메모)
-  for (const [a, b] of pairs) {
-    await q(`update notes set session=$3 where team_id=$1 and session=$2`, [teamId, a, b]);
-    await q(`update arrangement_notes set session=$3 where team_id=$1 and session=$2`, [teamId, a, b]);
+  // 메모의 세션 태그 (예배 메모 · 고정 메모). 한 문장으로 바꾼다 — 쌍마다 차례로 바꾸면
+  // 드럼↔베이스처럼 맞바꿀 때 두 번째가 첫 번째 결과를 다시 바꿔 전부 한쪽으로 몰렸다
+  const from = pairs.map(([a]) => a), to = pairs.map(([, b]) => b);
+  for (const t of ['notes', 'arrangement_notes'])
+    await q(`update ${t} n set session=m.b from unnest($2::text[], $3::text[]) as m(a, b) where n.team_id=$1 and n.session=m.a`, [teamId, from, to]);
+  // 녹음 타임라인 메모의 세션 태그 (세션 메모는 이름이 같아야 그 세션 사람에게 보인다)
+  for (const r of await q(`select id, notes from rehearsals where team_id=$1 and notes <> '[]'::jsonb`, [teamId])) {
+    const ns = Array.isArray(r.notes) ? r.notes : [];
+    if (!ns.some((n) => n && n.session && at(n.session) !== n.session)) continue;
+    await q('update rehearsals set notes=$2 where id=$1',
+      [r.id, JSON.stringify(ns.map((n) => (n && n.session && at(n.session) !== n.session ? { ...n, session: at(n.session) } : n)))]);
   }
   // 편곡 미디어의 대상 세션
   for (const r of await q(`select id, media from arrangements where team_id=$1 and deleted_at is null`, [teamId])) {
