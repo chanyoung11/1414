@@ -1,0 +1,11 @@
+# Cloud Run 이미지에는 서버가 쓰는 것만 넣는다: server.mjs · api/ · lib/ · app/ · package*.json
+*
+!server.mjs
+!package.json
+!package-lock.json
+!api/
+!lib/
+!app/
+# git 에 없는 로컬 찌꺼기 (app/.gstack 같은 도구 폴더, .DS_Store). 딥링크 파일만 남긴다
+**/.*
+!app/.well-known/
