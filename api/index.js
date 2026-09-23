@@ -1418,13 +1418,19 @@ on('PUT', '/services/:id', async ({ uid, params, body }) => {
   // 같은 판을 다시 보낸 것(서버엔 들어갔는데 응답을 못 받아 앱이 다시 올림)은 이미 된 것으로 받는다. 알림도 다시 안 보낸다.
   // 전에는 409 로 막혀 '서버에 못 올림'이 영영 남았다
   if (cur && cur.version === (+doc.version || 0) && cur.same) return { ok: true, version: cur.version, same: true };
-  if (cur && cur.version >= (+doc.version || 0)) throw new HttpError(409, 'version_conflict', `다른 기기에서 v${cur.version}이 이미 발행됐어요. 새로고침으로 받은 뒤 다시 발행하세요`);
-  await q(`insert into services(team_id, id, doc, version, name, date, updated_by, updated_at) values($1,$2,$3,$4,$5,$6,$7,now())
+  const conflict = (v) => new HttpError(409, 'version_conflict', `다른 기기에서 v${v}이 이미 발행됐어요. 새로고침으로 받은 뒤 다시 발행하세요`);
+  if (cur && cur.version >= (+doc.version || 0)) throw conflict(cur.version);
+  // 판 검사를 upsert 안에도 둔다. 위에서 읽고 따로 쓰면 같은 판을 동시에 발행한 두 기기가 모두 200 을 받고
+  // 하나가 소리 없이 덮였다 (F43). 충돌 행은 잠긴 채 최신 판으로 다시 비교된다
+  const wrote = await q(`insert into services(team_id, id, doc, version, name, date, updated_by, updated_at) values($1,$2,$3,$4,$5,$6,$7,now())
            on conflict (team_id, id) do update set
              doc = excluded.doc || jsonb_build_object('stageLayouts',
                      coalesce(services.doc->'stageLayouts','{}'::jsonb) || coalesce(excluded.doc->'stageLayouts','{}'::jsonb)),
-             version=excluded.version, name=excluded.name, date=excluded.date, updated_by=excluded.updated_by, updated_at=now()`,
+             version=excluded.version, name=excluded.name, date=excluded.date, updated_by=excluded.updated_by, updated_at=now()
+           where services.version < excluded.version
+           returning version`,
     [teamId, params.id, docJson, +doc.version || 0, str(doc.name, 120), str(doc.date, 20), uid]);
+  if (!wrote.length) throw conflict(((await one('select version from services where team_id=$1 and id=$2', [teamId, params.id])) || { version: +doc.version || 0 }).version);
   // §1 알림: publish(팀 전원, 발행자 제외) · note.updated(인도자의 글이 이전 발행과 다를 때)
   try {
     const version = +doc.version || 0, md = mdOf(doc.date), name = str(doc.name, 60) || '예배';
@@ -1443,6 +1449,11 @@ on('PUT', '/services/:id', async ({ uid, params, body }) => {
     await linkDate(teamId, params.id, doc.date, name);
   } catch (e) { console.error('notify publish', e); }
   try { await syncUsages(teamId, params.id, doc, uid); } catch (e) { console.error('usages', e); }
+  // 다시 발행하며 빠진 파일(자른 악보의 옛 판, 지운 곡)은 팀 어디에서도 안 쓰면 지운다 (F117)
+  if (cur) {
+    const now = new Set(blobIdsOf(doc));
+    try { await freeBlobs(teamId, blobIdsOf(cur.doc).filter((id) => !now.has(id))); } catch (e) { console.error('free blobs', e); }
+  }
   return { ok: true, version: +doc.version || 0 };
 });
 
@@ -1534,9 +1545,11 @@ on('DELETE', '/services/:id', async ({ uid, url, params }) => {
   if (!uid) throw noAuth();
   const teamId = str(url.searchParams.get('team'), 64);
   await requireMember(uid, teamId, 'leader');
-  const row = await one('select doc from services where team_id=$1 and id=$2', [teamId, params.id]);
-  await q('delete from services where team_id=$1 and id=$2', [teamId, params.id]);
-  await q('delete from drafts where team_id=$1 and id=$2', [teamId, params.id]);
+  // 발행본뿐 아니라 초안에만 있던 파일, 이 콘티의 녹음(잠근 것 포함)도 같이 지운다.
+  // 콘티가 없어지면 볼 길이 없는데 저장소에 영영 남았다 (F117)
+  const pub = await q('delete from services where team_id=$1 and id=$2 returning doc', [teamId, params.id]);
+  const dr = await q('delete from drafts where team_id=$1 and id=$2 returning doc', [teamId, params.id]);
+  const rh = await q('delete from rehearsals where team_id=$1 and service_id=$2 returning blob_id', [teamId, params.id]);
   await q('delete from notes where team_id=$1 and service_id=$2', [teamId, params.id]);
   await dropUsages(teamId, params.id);   // 이력은 발행본에서만 나온다
   // 이 콘티 때문에 생긴 날짜는 같이 지운다. 안 그러면 콘티를 지워도 홈의 D-day 카드에 남아
@@ -1545,20 +1558,20 @@ on('DELETE', '/services/:id', async ({ uid, url, params }) => {
   // 인도자가 직접 연 날짜나 반복 일정은 그대로 두되, 자동 생성이 같은 날짜에 새 콘티를 만들어
   // 되살리지 않게 막는다. 손으로 새 콘티를 만들어 붙이면 auto_skip 은 풀린다 (linkDate)
   await q('update service_dates set service_id=null, auto_skip=true where team_id=$1 and service_id=$2', [teamId, params.id]);
-  let freed = 0;
-  if (row) {
-    const mine = blobIdsOf(row.doc);
-    if (mine.length) {
-      const used = await teamBlobRefs(teamId);
-      const orphan = mine.filter((id) => !used.has(id));
-      if (orphan.length) {
-        const rows = await q('delete from blobs where team_id=$1 and id = any($2::text[]) returning url', [teamId, orphan]);
-        await delBlobs(rows.map((r) => r.url)); freed = rows.length;
-      }
-    }
-  }
+  const mine = [...pub, ...dr].flatMap((r) => blobIdsOf(r.doc)).concat(rh.map((r) => r.blob_id).filter(Boolean));
+  const freed = await freeBlobs(teamId, [...new Set(mine)]);
   return { ok: true, freedFiles: freed };
 });
+// 이 id 들 가운데 팀 어디에서도 안 쓰는 것만 지운다 (blobs 행과 저장소 파일 둘 다). 지운 개수를 돌려준다
+async function freeBlobs(teamId, ids) {
+  if (!ids.length) return 0;
+  const used = await teamBlobRefs(teamId);
+  const orphan = ids.filter((id) => !used.has(id));
+  if (!orphan.length) return 0;
+  const rows = await q('delete from blobs where team_id=$1 and id = any($2::text[]) returning url', [teamId, orphan]);
+  await delBlobs(rows.map((r) => r.url));
+  return rows.length;
+}
 // 팀 안에서 아직 쓰이는 파일 id 전부 — 콘티·초안뿐 아니라 라이브러리·녹음까지 봐야 남의 파일을 지우지 않는다
 async function teamBlobRefs(teamId) {
   const used = new Set();
