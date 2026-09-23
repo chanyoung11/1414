@@ -2024,7 +2024,7 @@ function schListHTML(ds,ms){
    <span class="av"><i class="a-ok">${cnt.ok||0}</i><i class="a-maybe">${cnt.maybe||0}</i><i class="a-no">${cnt.no||0}</i>${cnt.unset?`<i class="a-unset">${cnt.unset}</i>`:''}</span>
    ${ic('right')}</button>`}).join('')}</div>`}
 // 그날 편성 (§3.4)
-const LN={dateId:null,slots:null};   // 그날만 바꾼 세션 인원 (저장 전 임시)
+const LN={dateId:null,slots:null,busy:null,again:false};   // 그날만 바꾼 세션 인원 (저장 전 임시) · busy: 저장 중인 날짜
 function lineupHTML(dateId){const d=SCH.dates.find(x=>x.id===dateId);
  if(!d)return `<div class="shell"><div class="main"><header class="hd"><div class="ttl"><h1>편성</h1></div><div class="acts"><button class="icon ghost" title="뒤로" aria-label="뒤로" data-act="sched">${ic('back')}</button></div></header><main><div class="empty">날짜를 찾지 못했어요</div></main></div></div>`;
  const st=S.team.settings||{};const base=st.slots||{};
@@ -2104,9 +2104,14 @@ function afterCal(){let t=null,long=false,p0=null;
 function afterLineup(dateId){const d=SCH.dates.find(x=>x.id===dateId);if(!d)return;
  // 사람을 고르면 저장하고 다시 그린다. 패널이 통째로 새로 그려지므로 보고 있던 자리를
  // 그대로 되돌려 준다 — 안 그러면 폰에서 화면이 새로고침된 것처럼 튄다
+ // 빨리 연달아 고르면 저장이 겹쳐, 늦게 닿은 앞 요청이 뒤에 고른 사람을 서버에서 지웠다(화면에는 남아 보임).
+ // 저장 중에 또 고르면 표시만 해 두고, 앞 저장이 끝나면 그때의 화면 전체를 한 번 더 보낸다. 다시 그리기는 다 끝난 뒤 한 번
  $('#app').onchange=async e=>{if(!e.target.dataset.lsel)return;
-  const bd=$('.lnbody');const top=bd?bd.scrollTop:0;
-  if(await saveLineup(d)){SCH.pending=false;render();
+  if(LN.busy===d.id){LN.again=true;return}
+  LN.busy=d.id;const bd=$('.lnbody');const top=bd?bd.scrollTop:0;let ok=false;
+  // 그사이 다른 화면으로 갔으면 다시 보내지 않는다 (고르는 칸이 없는 화면을 읽으면 편성이 통째로 비워진다)
+  try{do{LN.again=false;ok=await saveLineup(d)}while(LN.again&&route().name==='lineup'&&route().a===d.id)}finally{LN.busy=null;LN.again=false}
+  if(ok){SCH.pending=false;render();
    const b2=$('.lnbody');if(b2)b2.scrollTop=top}}}
 // 홈 히어로 (§3.7): 다음 예배 한 장. 인도자는 편성 진행, 멤버는 내 자리
 function heroHTML(){if(!online()||!S.team.id)return '';
@@ -2117,7 +2122,9 @@ function heroHTML(){if(!online()||!S.team.id)return '';
  // 날짜와 이름은 반드시 같은 것에서 와야 한다 — 예전에는 이름은 콘티, 날짜는 사역 날짜라 D-N 이 어긋났다
  const useSvc=svc&&(!d0||svc.date<=d0.date)?svc:(d0&&d0.serviceId?svcById(d0.serviceId):null);
  const date=useSvc?(useSvc.date||''):(d0?d0.date:'');if(!date)return '';
- const d=SCH.dates.find(x=>x.open&&x.date===date)||(d0&&d0.date===date?d0:null);
+ // 같은 날 예배가 둘일 수 있다(1부·2부). 날짜만으로 찾으면 이름은 2부인데 시간·편성은 1부가 나왔다 →
+ // 이 콘티에 이어진 날짜를 먼저, 없으면 그날 아직 어느 콘티에도 안 이어진 날짜만 쓴다
+ const d=useSvc?(SCH.dates.find(x=>x.open&&x.serviceId===useSvc.id)||SCH.dates.find(x=>x.open&&x.date===date&&!x.serviceId)||null):(d0&&d0.date===date?d0:null);
  // 날짜 이름에 이미 '9/20' 이 들어 있으면 또 붙이지 않는다 ('9/20 9/20 예배' 방지)
  const md0=d?fmtDate(d.date).md:'';
  const name=useSvc?svcName(useSvc):(d?((d.label||'').startsWith(md0)?d.label:`${md0} ${d.label}`):'');
