@@ -1923,9 +1923,13 @@ function rehAddModal(svc){
   file=f;dur=await measure(f);setPick(f.name,dur)};
  $('#modal').onclick=async e=>{
   if(e.target.closest('[data-close]')){closeModal();return}   // 녹음 중이면 위의 감시가 멈추고 남겨 둔다
-  if(e.target.closest('#rhSave')){if(!file)return;const a=document.createElement('a');a.href=URL.createObjectURL(file);
+  if(e.target.closest('#rhSave')){if(!file)return;
    const ext=/mp4|m4a|aac/.test(file.type)?'m4a':/webm/.test(file.type)?'webm':/ogg/.test(file.type)?'ogg':((file.name.match(/\.(\w+)$/)||[])[1]||'m4a');
-   a.download=(($('#rhLabel').value.trim()||fmtDate($('#rhDate').value||today()).md+' 연습').replace(/[\\/:*?"<>|]/g,'_'))+'.'+ext;
+   const name=(($('#rhLabel').value.trim()||fmtDate($('#rhDate').value||today()).md+' 연습').replace(/[\\/:*?"<>|]/g,'_'))+'.'+ext;
+   // 앱(웹뷰)은 내려받기 링크가 안 먹으니 공유 시트로 넘긴다 ('파일에 저장'·카톡 나에게)
+   const f2=new File([file],name,{type:file.type||'audio/mp4'});
+   if(NATIVE&&navigator.canShare&&navigator.canShare({files:[f2]})){try{await navigator.share({files:[f2],title:name})}catch(err){}return}
+   const a=document.createElement('a');a.href=URL.createObjectURL(f2);a.download=name;
    document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},4000);toast('기기에 저장했어요');return}
   if(e.target.closest('#rhRec')){const btn=$('#rhRec');
    if(rec&&rec.state==='recording'){rec.stop();return}
