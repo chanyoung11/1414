@@ -118,6 +118,17 @@ def run():
     if oc[2] != 'A4': fail('정상 악보를 건드림: %s' % oc[2])
     print('octave fix ok')
 
+    # ---- 인쇄·PDF: 백지로 나오면 안 된다 (숨은 #printArea 에 그려 폭 0 이 되던 것) ----
+    pg.evaluate("window.__pc=0;window.print=()=>{window.__pc++}")
+    pg.click('[data-act="score-print"]'); pg.wait_for_function('window.__pc>0', timeout=20000)
+    pg.emulate_media(media='print')
+    pr = pg.evaluate("""()=>[...document.querySelectorAll('#printArea svg')].map(s=>{const r=s.getBoundingClientRect();return [Math.round(r.width),Math.round(r.height),s.querySelectorAll('path').length]})""")
+    if not pr or pr[0][0] < 300 or pr[0][1] < 300 or pr[0][2] < 30: fail('인쇄용 악보가 백지: %s' % pr[:3])
+    pdf = pg.pdf(format='A4', print_background=True)
+    pg.emulate_media(media='screen')
+    pg.evaluate("const a=document.querySelector('#printArea');if(a)a.remove();document.body.classList.remove('printing')")   # PDF 를 뽑으면 afterprint 가 먼저 치우기도 한다
+    print('print ok:', pr[0], len(pdf), 'bytes pdf')
+
     pg.screenshot(path=os.path.join(os.path.dirname(os.path.abspath(__file__)),'t_score.png'), full_page=True)
     if errs: fail('페이지 오류:\n' + '\n'.join(errs[:5]))
     print('PASS test_score')

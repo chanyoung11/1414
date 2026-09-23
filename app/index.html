@@ -6751,7 +6751,9 @@ async function printScore(svc,it){
  try{await loadOSMD()}catch(e){toast(e.message);return}
  const old=$('#printArea');if(old)old.remove();
  const area=document.createElement('div');area.id='printArea';area.className='osmdout';
- area.style.cssText='position:fixed;left:-10000px;top:0;width:780px;background:#fff;color:#111';
+ // #printArea 는 기본이 display:none 이라, 그대로 그리면 OSMD 가 폭 0 으로 재서 빈 쪽만 나온다.
+ // 화면 밖에 '보이게' 두고 그려야 오선이 제 크기로 들어간다
+ area.style.cssText='display:block;position:fixed;left:-10000px;top:0;width:780px;background:#fff;color:#111';
  const host=document.createElement('div');area.appendChild(host);document.body.appendChild(area);
  const capo=+me().capo||0;
  const o=new opensheetmusicdisplay.OpenSheetMusicDisplay(host,{autoResize:false,backend:'svg',drawTitle:true,drawComposer:true,
