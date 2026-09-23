@@ -372,34 +372,70 @@ on('POST', '/me/agree', async ({ uid }) => {
 });
 
 // ---------- 개인 설정 (무대 조판 · 조용한 시간 · 알림 끄기) ----------
-// 기기를 옮겨도 따라온다. 교회 컴퓨터에서 로그인해 PDF 뽑을 때 내 조판이 그대로 온다
+// 기기를 옮겨도 따라온다. 교회 컴퓨터에서 로그인해 PDF 뽑을 때 내 조판이 그대로 온다.
+// 무대 조판은 user_stage 에 따로 둔다 — prefs(jsonb) 안에 두면 한 칸만 바꿔도 prefs 전체를 다시 쓰는데
+// 크기·개수 제한도 없어서, 한 계정이 큰 요청 몇십 개로 DB 를 수백 MB 부풀릴 수 있었다 (Neon 무료 0.5GB)
+const PREFS_MAX = 64 * 1024;            // 조판을 뺀 나머지 설정 전체 (조용한 시간·알림 끄기·메트로놈 …)
+const STAGE_VALUE_MAX = 64 * 1024;      // 조판 하나 (블록 자리만 남긴 것이라 보통 수 KB)
+const STAGE_MAX = 300, STAGE_TOTAL_MAX = 1024 * 1024;   // 한 사람의 조판 개수·전체. 넘으면 오래 안 고친 것(지난 예배)부터 뺀다
+// 화면은 예전처럼 prefs.stage[키] 로 읽는다 (앱 옛 버전도)
+async function prefsOf(uid) {
+  const u = await one(`select coalesce(prefs,'{}'::jsonb) as prefs from users where id=$1`, [uid]);
+  const prefs = { ...((u && u.prefs) || {}) };
+  if (prefs.stage !== undefined) {
+    // 예전 자리(prefs.stage)에 있던 조판은 처음 읽을 때 옮긴다. 옮기기와 지우기를 한 문장으로 (반만 되지 않게).
+    // 언제 고쳤는지 모르니 가장 오래된 것으로 친다
+    await q(`with moved as (
+               insert into user_stage(user_id, key, value, updated_at)
+               select $1, e.key, e.value, to_timestamp(0)
+                 from users u, jsonb_each(case when jsonb_typeof(u.prefs->'stage')='object' then u.prefs->'stage' else '{}'::jsonb end) e
+                where u.id=$1 and jsonb_typeof(e.value)='object' and length(e.key) <= 120 and octet_length(e.value::text) <= $2
+               on conflict (user_id, key) do nothing returning 1)
+             update users set prefs = prefs - 'stage' where id=$1`, [uid, STAGE_VALUE_MAX]);
+    delete prefs.stage;
+  }
+  const rows = await q('select key, value from user_stage where user_id=$1', [uid]);
+  if (rows.length) prefs.stage = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+  return prefs;
+}
 on('GET', '/me/prefs', async ({ uid }) => {
   if (!uid) throw noAuth();
-  const u = await one('select coalesce(prefs,\'{}\'::jsonb) as prefs from users where id=$1', [uid]);
-  return { prefs: (u && u.prefs) || {}, push: { configured: pushConfigured(), key: vapidPublicKey() } };
+  return { prefs: await prefsOf(uid), push: { configured: pushConfigured(), key: vapidPublicKey() } };
 });
 // 부분 병합. 통째로 덮으면 다른 기기가 방금 저장한 것이 날아간다
 on('PATCH', '/me/prefs', async ({ uid, body }) => {
   if (!uid) throw noAuth();
-  const patch = body && typeof body.prefs === 'object' && body.prefs ? body.prefs : {};
-  if (JSON.stringify(patch).length > 200000) throw new HttpError(413, 'too_big', '설정이 너무 큽니다');
-  const u = await one(`update users set prefs = coalesce(prefs,'{}'::jsonb) || $2::jsonb where id=$1 returning prefs`,
-    [uid, JSON.stringify(patch)]);
-  return { prefs: (u && u.prefs) || {} };
+  const patch = body && typeof body.prefs === 'object' && body.prefs && !Array.isArray(body.prefs) ? { ...body.prefs } : {};
+  delete patch.stage;   // 조판은 아래 PUT 으로만 (따로 둔 표)
+  const txt = JSON.stringify(patch);
+  // 한 번에 보내는 양만 보던 것을 합친 결과까지 본다. 전에는 키를 바꿔 가며 보내면 한없이 커졌다
+  const u = Buffer.byteLength(txt) > PREFS_MAX ? null
+    : await one(`update users set prefs = coalesce(prefs,'{}'::jsonb) || $2::jsonb
+                 where id=$1 and octet_length(((coalesce(prefs,'{}'::jsonb) - 'stage') || $2::jsonb)::text) <= $3 returning id`,
+      [uid, txt, PREFS_MAX]);
+  if (!u) throw new HttpError(413, 'too_big', '설정이 너무 큽니다');
+  return { prefs: await prefsOf(uid) };
 });
 // 무대 조판은 곡·기기구간마다 따로. 한 덩어리로 합치면 기기끼리 서로 덮는다
 on('PUT', '/me/prefs/stage/:key', async ({ uid, params, body }) => {
   if (!uid) throw noAuth();
   const key = String(params.key || '').slice(0, 120);
   if (!/^[A-Za-z0-9_.:~-]+$/.test(key)) throw new HttpError(400, 'bad_key', '잘못된 키');
-  const val = body && typeof body.value === 'object' && body.value ? body.value : null;
-  // jsonb_set 은 중간 객체를 만들지 못한다. stage 가 없으면 조용히 아무것도 안 저장된다
-  const sql = val
-    ? `update users set prefs = jsonb_set(coalesce(prefs,'{}'::jsonb), '{stage}',
-         coalesce(prefs->'stage','{}'::jsonb) || jsonb_build_object($2::text, $3::jsonb), true) where id=$1`
-    : `update users set prefs = jsonb_set(coalesce(prefs,'{}'::jsonb), '{stage}',
-         coalesce(prefs->'stage','{}'::jsonb) - $2::text, true) where id=$1`;
-  await q(sql, val ? [uid, key, JSON.stringify(val)] : [uid, key]);
+  const val = body && typeof body.value === 'object' && body.value && !Array.isArray(body.value) ? body.value : null;
+  if (!val) {
+    await q('delete from user_stage where user_id=$1 and key=$2', [uid, key]);
+    // 아직 옮기지 않은 예전 자리에 있으면 거기서도 (안 지우면 다음에 읽을 때 되살아난다)
+    await q(`update users set prefs = prefs #- array['stage', $2::text] where id=$1 and prefs->'stage' ? $2::text`, [uid, key]);
+    return { ok: true };
+  }
+  const txt = JSON.stringify(val);
+  if (Buffer.byteLength(txt) > STAGE_VALUE_MAX) throw new HttpError(413, 'too_big', '조판이 너무 커요');
+  await q(`insert into user_stage(user_id, key, value) values($1,$2,$3)
+           on conflict (user_id, key) do update set value=excluded.value, updated_at=now()`, [uid, key, txt]);
+  await q(`delete from user_stage where user_id=$1 and key in (
+             select key from (select key, row_number() over w as n, sum(octet_length(value::text)) over w as total
+                                from user_stage where user_id=$1 window w as (order by (key=$2) desc, updated_at desc, key)) s
+              where n > $3 or total > $4)`, [uid, key, STAGE_MAX, STAGE_TOTAL_MAX]);
   return { ok: true };
 });
 

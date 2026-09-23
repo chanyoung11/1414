@@ -558,3 +558,14 @@ begin
     end if;
   end loop;
 end $$;
+
+-- 무대 조판(예배 × 기기 구간)은 users.prefs 에서 따로 뺀다. prefs 안에 두면 한 칸만 바꿔도 prefs 전체를
+-- 다시 쓰는데 크기·개수 제한도 없어, 한 계정이 큰 요청 몇십 개로 DB 를 수백 MB 부풀릴 수 있었다.
+-- 예전 prefs.stage 는 서버가 처음 읽을 때 옮긴다 (배포 전 코드는 여전히 prefs.stage 를 쓰므로 여기서 옮기지 않는다)
+create table if not exists user_stage (
+  user_id    uuid not null references users(id) on delete cascade,
+  key        text not null,
+  value      jsonb not null,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, key)
+);
