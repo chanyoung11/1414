@@ -425,8 +425,10 @@ html.dark .pill.role-pastor{color:#B4A7F5}
 .svcrow.picked{background:var(--surface)}
 .btn.danger[disabled]{opacity:.4;pointer-events:none}
 /* 악보 자르기 */
-.cropwrap{position:relative;margin-top:12px;max-height:56vh;overflow:auto;background:var(--muted);border-radius:var(--r-lg);display:flex;justify-content:center;touch-action:none;-webkit-user-select:none;user-select:none}
-.cropwrap img{display:block;max-width:100%;height:auto;pointer-events:none}
+/* 사진은 비율을 지킨 채 통째로 들어온다. 플렉스로 두면 긴 사진이 높이 56vh 로 늘려져(stretch)
+   찌그러졌고, 창 안 스크롤은 touch-action:none(끌어서 고르기) 때문에 손가락으로 못 한다 */
+.cropwrap{position:relative;margin-top:12px;max-height:56vh;overflow:auto;background:var(--muted);border-radius:var(--r-lg);touch-action:none;-webkit-user-select:none;user-select:none}
+.cropwrap img{display:block;margin:0 auto;max-width:100%;max-height:56vh;width:auto;height:auto;pointer-events:none}
 .cropbox{position:absolute;border:2px solid var(--primary);box-shadow:0 0 0 9999px rgba(0,0,0,.42);pointer-events:none}
 .cropbox i{pointer-events:auto}
 .cropbox i{position:absolute;width:14px;height:14px;background:var(--primary);border-radius:3px}
@@ -5854,9 +5856,11 @@ async function cropPieceModal(svc,it,p){
    <span class="row" style="gap:8px"><button class="btn" data-close="1">취소</button><button class="btn pri" id="cpOk">${ic('check')}자르기</button></span></div>`,{center:true});
  const wrap=$('#cropWrap'),img=$('#cropImg'),box=$('#cropBox');
  let R={x:0.05,y:0.05,w:0.9,h:0.9};
- const draw=()=>{const r=img.getBoundingClientRect(),w0=wrap.getBoundingClientRect();
-  box.style.left=(r.left-w0.left+R.x*r.width)+'px';box.style.top=(r.top-w0.top+R.y*r.height)+'px';
-  box.style.width=(R.w*r.width)+'px';box.style.height=(R.h*r.height)+'px'};
+ // 상자는 레이아웃 값(offset*)으로 놓는다. 화면 좌표(getBoundingClientRect)는 창이 떠오르는 애니메이션(scale .97)
+ // 중에 재면 줄어든 값이라, 처음 그린 상자가 사진과 어긋나 있었다
+ const draw=()=>{const x0=img.offsetLeft,y0=img.offsetTop,w=img.offsetWidth,h=img.offsetHeight;
+  box.style.left=(x0+R.x*w)+'px';box.style.top=(y0+R.y*h)+'px';
+  box.style.width=(R.w*w)+'px';box.style.height=(R.h*h)+'px'};
  img.onload=draw;if(img.complete)setTimeout(draw,30);
  let drag=null;
  wrap.onpointerdown=e=>{const r=img.getBoundingClientRect();if(!r.width)return;
