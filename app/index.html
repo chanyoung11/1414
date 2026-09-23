@@ -2148,10 +2148,21 @@ function todoCards(){const cards=[];
   'avail.conflict':{btn:'편성 보기',act:'noti-go'},'word.request':{btn:'입력하기',act:'noti-go'}};
  const uid0=me().userId;
  const answered=d=>SCH.availability.some(a=>a.userId===uid0&&a.date===d&&a.state!=='unset');
+ const kstDay=t=>new Date(new Date(t).getTime()+9*3600e3).toISOString().slice(0,10);   // 서버 기한은 한국 시각 23:59:59
  const doneAlready=n=>{
   if(n.type==='date.opened'){const d=SCH.dates.find(x=>x.id===n.targetId);return !!(d&&answered(d.date))}
-  if(n.type==='avail.request'){const mo=String(n.targetId||'').slice(0,7);const list=SCH.dates.filter(x=>x.open&&x.date.slice(0,7)===mo);return list.length>0&&list.every(x=>answered(x.date))}
+  // 월간 요청은 여러 달(기본 석 달)을 묻는다. 기간은 targetId 의 달 ~ expiresAt. 첫 달만 보고 카드를 내리던 것 —
+  // 받아 둔 일정(SCH, 석 달 창)이 기간을 다 덮을 때만 여기서 판단하고, 아니면 서버가 내려 줄 때까지 둔다
+  if(n.type==='avail.request'){const from=String(n.targetId||'').slice(0,7);const to=n.expiresAt?kstDay(n.expiresAt).slice(0,7):from;
+   if(!SCH.month||from<monthAdd(SCH.month,-1)||to>monthAdd(SCH.month,2))return false;
+   const list=SCH.dates.filter(x=>x.open&&x.date.slice(0,7)>=from&&x.date.slice(0,7)<=to);return list.length>0&&list.every(x=>answered(x.date))}
   if(n.type==='avail.maybe'){const st=SCH.availability.find(a=>a.userId===uid0&&a.date===n.targetId);return !st||st.state!=='maybe'}
+  // 편성된 사람이 불가능으로 바꿈 → 그 사람을 편성에서 뺐거나 본인이 불가능을 거뒀으면 끝
+  if(n.type==='avail.conflict'){const [did,who]=String(n.targetId||'').split(':');const d=SCH.dates.find(x=>x.id===did);if(!d||!who)return false;
+   const st=SCH.availability.find(a=>a.userId===who&&a.date===d.date);return !(d.lineup||[]).some(r=>r.memberId===who)||!st||st.state!=='no'}
+  // 말씀 수정 요청 → 요청 뒤에 그 예배 말씀을 다시 적었으면 끝
+  if(n.type==='word.request'){const w=((WORDS.list||[]).find(x=>x.serviceId===n.targetId)||{}).word||(svcById(n.targetId)||{}).word;
+   return !!(w&&w.updatedAt&&new Date(w.updatedAt)>new Date(n.at))}
   return false};
  notiActionable().filter(n=>notiOn(n.type)&&!doneAlready(n)).forEach(n=>{
   if(n.type==='avail.maybe'){cards.push({icon:NOTI_ICON[n.type],title:n.title,body:n.body,btn:'가능',act:'av-yes',arg:n.targetId,btn2:'불가능',act2:'av-no'});return}

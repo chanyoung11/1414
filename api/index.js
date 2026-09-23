@@ -1170,6 +1170,7 @@ on('PUT', '/services/:id/word', async ({ uid, params, body }) => {
   await q(`insert into service_words(team_id, service_id, word, updated_by, updated_at) values($1,$2,$3,$4,now())
            on conflict (team_id, service_id) do update set word=excluded.word, updated_by=excluded.updated_by, updated_at=now()`,
     [teamId, params.id, JSON.stringify(word), uid]);
+  if (m.role === 'pastor') await ackWord(teamId, params.id);
   // §1 word.received: 목회자가 저장하면 인도자에게
   if (m.role === 'pastor' && wordKey(word) !== wordKey(prev && prev.word)) {
     try {
@@ -1268,6 +1269,7 @@ on('POST', '/word-link/:token', async ({ params, body }) => {
   await q(`insert into service_words(team_id, service_id, word, updated_at) values($1,$2,$3,now())
            on conflict (team_id, service_id) do update set word=excluded.word, updated_at=now()`, [l.team_id, l.service_id, JSON.stringify(word)]);
   await q('update word_links set used_at=now() where token=$1', [token]);
+  await ackWord(l.team_id, l.service_id);   // 링크로 보내 준 것도 목회자가 답한 것이다
   try {
     const leaders = (await q(`select user_id from members where team_id=$1 and role='leader'`, [l.team_id])).map((r) => r.user_id);
     await notify(l.team_id, leaders, 'word.received', l.service_id, { title: `${josa(name, '이', '가')} 말씀을 보냈어요`, body: [passage, word.title].filter(Boolean).join(' · '), link: '#/edit/' + l.service_id });
@@ -1283,7 +1285,10 @@ on('POST', '/services/:id/word-request', async ({ uid, params, body }) => {
   const pastors = (await q(`select user_id from members where team_id=$1 and role='pastor'`, [teamId])).map((r) => r.user_id);
   if (!pastors.length) throw bad('팀에 목회자가 없어요. 링크로 보내 주세요');
   const svc = await one('select name from services where team_id=$1 and id=$2', [teamId, params.id]);
-  await notify(teamId, pastors, 'word.request', params.id, { title: '말씀을 다시 봐 주세요', body: (svc && svc.name) || '', link: '#/word', actionable: true });
+  // 그 예배가 지나면 할 일 카드도 내린다 (전에는 기한이 없어 영영 남았다)
+  const sd = await one('select date::text as date from service_dates where team_id=$1 and service_id=$2 order by date desc limit 1', [teamId, params.id]);
+  await notify(teamId, pastors, 'word.request', params.id, { title: '말씀을 다시 봐 주세요', body: (svc && svc.name) || '', link: '#/word', actionable: true,
+    expiresAt: sd ? new Date(sd.date + 'T23:59:59+09:00') : null });
   return { ok: true, sent: pastors.length };
 });
 
@@ -2497,6 +2502,7 @@ const WD = ['일', '월', '화', '수', '목', '금', '토'];
 // 이 팀 사람에게만 남긴다. 계정을 지운 사람이 편성·통보 기록에 남아 있으면 외래키로 insert 가 실패해 통보 전체가 500 이었고
 // (다시 누를 때마다 다른 사람에게 또 푸시), 편성에 팀 밖 사람 id 를 넣으면 그 사람에게 푸시가 갔다.
 // 한 문장으로 모두 넣고, 실제로 남긴 사람에게만 푸시를 보낸다. 돌려주는 값 = 받은 사람 수
+// 편성 빠짐·불가능으로 바꿈·말씀 요청은 다시 오면 새 할 일이다 — 할 일이 끝나 서버가 내린 카드(ackWhere)도 다시 띄운다
 async function notify(teamId, userIds, type, targetId, { title, body = '', link = '', actionable = false, expiresAt = null }) {
   const ids = [...new Set(userIds || [])].map((u) => str(u, 64)).filter(Boolean);
   if (!ids.length) return 0;
@@ -2506,7 +2512,7 @@ async function notify(teamId, userIds, type, targetId, { title, body = '', link 
            on conflict (team_id, user_id, type, target_id) do update set
              title=excluded.title, body=excluded.body, link=excluded.link, actionable=excluded.actionable, expires_at=excluded.expires_at,
              read_at = case when notifications.updated_at > now() - interval '24 hours' then notifications.read_at else null end,
-             acknowledged_at = case when excluded.type = 'lineup.changed' or notifications.updated_at <= now() - interval '24 hours' then null else notifications.acknowledged_at end,
+             acknowledged_at = case when excluded.type in ('lineup.changed', 'avail.conflict', 'word.request') or notifications.updated_at <= now() - interval '24 hours' then null else notifications.acknowledged_at end,
              updated_at = now()
            returning user_id`,
     [teamId, ids, type, String(targetId || ''), str(title, 120), str(body, 300), str(link, 200), !!actionable, expiresAt]);
@@ -2837,10 +2843,15 @@ on('PUT', '/teams/:id/availability', async ({ uid, params, body }) => {
   const date = str(body.date, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw bad('날짜가 이상해요');
   const state = str(body.state, 10), memo = str(body.memo, 40);
-  if (state === 'unset' || !state) { await q('delete from availability where team_id=$1 and user_id=$2 and date=$3', [params.id, uid, date]); return { ok: true, state: 'unset' }; }
+  // 불가능을 거두면 인도자의 '편성된 사람이 불가능으로 바꿈' 카드도 내린다
+  const unConflict = () => ackWhere(`team_id=$1 and type='avail.conflict' and split_part(target_id, ':', 2)=$2
+    and split_part(target_id, ':', 1) in (select id::text from service_dates where team_id=$1 and date=$3)`, [params.id, uid, date]);
+  if (state === 'unset' || !state) { await q('delete from availability where team_id=$1 and user_id=$2 and date=$3', [params.id, uid, date]); await unConflict(); return { ok: true, state: 'unset' }; }
   if (!AV.includes(state)) throw bad('상태가 이상해요');
   await q(`insert into availability(team_id, user_id, date, state, memo) values($1,$2,$3,$4,$5)
            on conflict (team_id, user_id, date) do update set state=excluded.state, memo=excluded.memo, updated_at=now()`, [params.id, uid, date, state, memo]);
+  await ackAvail(params.id, uid);
+  if (state !== 'no') await unConflict();
   // §1 avail.conflict: 편성된 날을 불가능으로 바꾸면 인도자에게.
   // 가능 여부는 날짜 하나에 하나지만 그날 예배는 여럿(1부·2부)일 수 있다 → 그날 내가 들어간 예배마다 알린다
   // (첫 예배만 보던 때는 2부에만 선 사람이 빠져도 인도자가 몰랐다)
@@ -2890,6 +2901,9 @@ on('PUT', '/teams/:id/dates/:did/lineup', async ({ uid, params, body }) => {
   } else {
     await q('update service_dates set lineup=$2 where id=$1', [params.did, JSON.stringify(next)]);
   }
+  // 불가능으로 바꾼 사람을 편성에서 빼면 그 '불가능으로 바꿈' 카드는 할 일이 끝난 것이다
+  await ackWhere(`team_id=$1 and type='avail.conflict' and split_part(target_id, ':', 1)=$2 and not (split_part(target_id, ':', 2) = any($3::text[]))`,
+    [params.id, String(row.id), next.map((r) => String(r.memberId))]);
   return { ok: true, lineup: next, slots, changed: lineupKey(prev) !== lineupKey(next) };
 });
 
@@ -2948,6 +2962,26 @@ on('GET', '/teams/:id/dates/:did/text', async ({ uid, params }) => {
   return { text: lines.join('\n') };
 });
 
+// 할 일이 끝난 알림 카드를 내린다 (§1.5 "할 일이 끝나면 카드는 사라진다"). 실패해도 본 동작은 그대로
+async function ackWhere(sql, args) { try { await q(`update notifications set acknowledged_at=now() where acknowledged_at is null and ${sql}`, args); } catch (e) { console.error('ack', e.message); } }
+// 목회자가 말씀을 적으면: 그 예배의 '다시 봐 주세요'와, 기간 안 말씀이 다 찬 주간 요청
+async function ackWord(teamId, serviceId) {
+  await ackWhere(`team_id=$1 and type='word.request' and target_id=$2`, [teamId, serviceId]);
+  await ackWhere(`team_id=$1 and type='word.request' and target_id ~ '^\\d{4}-\\d{2}-\\d{2}$'
+    and not exists (select 1 from service_dates sd left join service_words w on w.team_id=sd.team_id and w.service_id=sd.service_id
+      where sd.team_id=notifications.team_id and sd.open and sd.date between (notifications.updated_at at time zone 'Asia/Seoul')::date
+        and (case when notifications.target_id ~ '^\\d{4}-\\d{2}-\\d{2}$' then notifications.target_id::date end)
+        and (w.word is null or coalesce(w.word->>'passage','')=''))`, [teamId]);
+}
+// 가능 여부를 적으면: 요청 기간(target_id 의 달 ~ expires_at)의 열린 날을 다 답한 월간 요청.
+// 한 번에 석 달을 묻는데 첫 달만 보고 카드를 내리던 것도 여기서 기간 전체로 본다
+async function ackAvail(teamId, userId) {
+  await ackWhere(`team_id=$1 and user_id=$2 and type='avail.request' and target_id ~ '^\\d{4}-\\d{2}$' and expires_at is not null
+    and not exists (select 1 from service_dates sd where sd.team_id=notifications.team_id and sd.open
+      and sd.date between (case when notifications.target_id ~ '^\\d{4}-\\d{2}$' then (notifications.target_id || '-01')::date end)
+        and (notifications.expires_at at time zone 'Asia/Seoul')::date
+      and not exists (select 1 from availability a where a.team_id=sd.team_id and a.user_id=notifications.user_id and a.date=sd.date))`, [teamId, userId]);
+}
 // §1 알림함: 내 알림 목록(90일), 읽음, 처리(actionable 카드 닫기)
 on('GET', '/notifications', async ({ uid, url }) => {
   if (!uid) throw noAuth();
