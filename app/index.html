@@ -6097,8 +6097,11 @@ function pgPagesHTML(pages){
   const pb=p.box||{cw:PG.pw-PG.margin*2,gutter:PG.gutter,cols:1};
   const box={left:PG.margin,cw:pb.cw,gutter:pb.gutter,fullW:PG.pw-PG.margin*2,hl:PRT.hl,memos:PRT.memos};
   const pub=p.pub||{};
+  const blks=p.blocks.map(b=>pgBlockHTML(b,p.stage?{...box,left:b.px,cw:b.pw,fullW:b.pw,gutter:0,stage:true}:box,p)).join('');
+  // 무대 조판은 블록을 화면 밖으로 걸쳐 둘 수 있다. 무대에서는 화면 테두리가 잘라 주지만 종이에는
+  // 테두리가 없어 숨긴 부분이 여백·쪽번호 위로 찍혔다 → 화면(캔버스) 크기 칸에 담아 자른다
   return `<div class="ppage ${p.stage?'pstage':''}" style="width:${PG.pw}px;height:${PG.ph}px"><div class="pinner">
-   ${p.blocks.map(b=>pgBlockHTML(b,p.stage?{...box,left:PG.margin+b.px,cw:b.pw,fullW:b.pw,gutter:0,stage:true}:box,p)).join('')}
+   ${p.stage?`<div class="pclip" style="position:absolute;overflow:hidden;left:${PG.margin}px;top:${PG.margin}px;width:${p.clip.w}px;height:${p.clip.h}px">${blks}</div>`:blks}
    <div class="pfoot2" style="left:${PG.margin}px;right:${PG.margin}px;bottom:${PG.margin-6}px">
     <span>${esc(pub.name||'예배')} · v${esc(pub.version||0)} · ${esc(p.session||'')}</span>
     ${p.nextText?`<span class="nx">${esc(p.nextText)} ›</span>`:''}
@@ -7234,10 +7237,11 @@ function stgPrintPages(svc){
  pgPageSize();
  const pub=pubOrDraft(svc);
  const {W,H,cw}=SL;
- const pw=PG.pw-PG.margin*2, ph=PG.ph-PG.margin*2;
+ // 보통 쪽과 같은 본문 칸 — 사방 여백 안, 아래 쪽번호 줄 위
+ const pw=PG.pw-PG.margin*2, ph=PG.ph-PG.margin*2-PG.foot;
  const r=Math.min(pw/W,ph/H);
  return (SL.screens||[]).map(sc=>({pub,svc,session:PRT.session,stage:true,
-  box:{cw:pw,gutter:0,cols:1},
+  box:{cw:pw,gutter:0,cols:1},clip:{w:W*r,h:H*r},
   blocks:sc.blocks.filter(b=>!b.hidden).map(b=>{
    const {nb,w,left}=stgBlockAt(b,{cw},W,H);
    const out={...nb,top:nb.top*r,px:left*r,pw:w*r};
