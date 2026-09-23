@@ -1447,7 +1447,7 @@ function labelPicker(it,cb){
  modal(`<b style="font-size:17px">마커 라벨</b><div class="hint" style="margin:4px 0 12px">송폼에 쓴 문자와 맞추세요. 절단선은 위쪽 가장 가까운 여백에 자동으로 놓입니다.</div>
   <div>${letters.map(l=>`<button class="q ${used.has(l)?'on':''}" data-l="${l}">${l}</button>`).join('')}</div>
   <div>${letters.map(l=>`<button class="q" data-l="${l}'">${l}'</button>`).join('')}</div>
-  <div class="row" style="margin-top:6px"><input class="field grow" id="customLabel" placeholder="직접 입력 (A1, B2…)"><button class="btn" id="customOk">확인</button></div>`,{center:true});
+  <div class="row" style="margin-top:6px"><input class="field grow" id="customLabel" placeholder="직접 입력 (A1, B2…)" maxlength="40"><button class="btn" id="customOk">확인</button></div>`,{center:true});
  $('#modal').onclick=e=>{const b=e.target.closest('[data-l]');if(b){closeModal();cb(b.dataset.l)}if(e.target.id==='customOk'){const v=$('#customLabel').value.trim();if(v){closeModal();cb(v)}}};
 }
 function markerMenu(svc,it,mid){
@@ -3719,7 +3719,7 @@ async function pullSong(id){if(!online()||!S.team.id)return null;
 function songHTML(s){const lead=isLeader();const d=LIB.detail||{};const arrs=s.arrangements||[];
  const th=songThumb(s);const tab=LIB.tab;
  const notesOf=aid=>(d.notes||[]).filter(n=>n.arrangementId===aid);
- const layerName=n=>n.layer==='all'?'전체':n.layer==='session'?(n.session||'세션'):'나';
+ const layerName=n=>n.layer==='all'?(n.session||'전체'):n.layer==='session'?(n.session||'세션'):'나';
  const arrCard=a=>`<div class="acard">
    <div class="row" style="gap:8px;align-items:baseline">
     ${arrs.length>1?`<b>${esc(a.name)}</b>`:''}<span class="pill key">${esc(a.key||'-')}${a.mod?' – '+esc(a.mod):''}</span>
@@ -4975,13 +4975,15 @@ function notesOfMarker(item,mid){return (item.notes||[]).filter(n=>n.marker===mi
 // 발행할 때 그 시점의 고정 메모를 굳혀 둔다
 function frozenFixed(it){const a=arrOfItem(it);return a?clone(a.notes||[]):[]}
 // 편곡에 붙은 고정 메모 중 이 마커와 라벨이 같은 것. 라벨은 정확히 일치해야 한다 (A≠A1)
+// 예전 서버는 라벨을 8자로 잘라 저장했다('Pre-Chorus'→'Pre-Chor'). 그렇게 잘린 8자 라벨은 앞부분이 같은 긴 라벨에 붙여 준다
 // 발행본에는 발행 시점의 것이 굳어 있으니 그것을 먼저 본다
+const fixedLabelHit=(nl,ml)=>nl===ml||(!!nl&&nl.length===8&&!!ml&&ml.length>8&&ml.startsWith(nl));
 function fixedNotesOf(item,mid,ctx){
  const a=item.fixedNotes!==undefined?{notes:item.fixedNotes}:arrOfItem(item);
  if(!a||!(a.notes||[]).length)return [];
  const m=markerOf(item,mid);if(!m)return [];
  const hid=new Set(item.hideFixed||[]);
- return a.notes.filter(n=>n.markerLabel===m.label&&!hid.has(n.id)).map(n=>({
+ return a.notes.filter(n=>fixedLabelHit(n.markerLabel,m.label)&&!hid.has(n.id)).map(n=>({
   id:'fx-'+n.id,layer:n.layer==='all'?'leader':n.layer,session:n.session||null,
   text:n.text,author:n.authorName||'',fixed:true,authorId:n.authorId}))
   .filter(n=>{if(!ctx||ctx.mode==='edit')return true;

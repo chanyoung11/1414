@@ -1463,6 +1463,8 @@ on('POST', '/blobs/:id', async ({ req, uid, url, params }) => {
 });
 
 /* ---------- 라이브러리 A부: 곡 → 편곡 → 사용 이력 ---------- */
+// 마커 라벨 길이. 앱의 라벨 입력칸(labelPicker)도 같은 값으로 막는다 — 고정 메모는 라벨이 정확히 같아야 붙는다
+const MARKER_LABEL_MAX = 40;
 const arrBlobIds = (a) => {
   const ids = new Set();
   for (const p of (a && a.pieces) || []) if (p && p.blob) ids.add(p.blob);
@@ -1737,11 +1739,19 @@ on('POST', '/arrangements/:id/notes', async ({ uid, params, body }) => {
   if (layer === 'session' && m.role !== 'leader' && !(m.role === 'session_lead' && mySessions(m).includes(session)))
     throw forbidden('세션이 함께 보는 고정 메모는 인도자와 세션 리더만 남길 수 있어요');
   if (m.role === 'pastor' && !(await teamSettings(teamId)).pastorCanMemo) throw forbidden('목회자 메모는 팀 설정에서 켜야 해요');
+  // 인도자 메모('전체' 층)도 대상 세션을 고를 수 있다 (드럼에게만 '쉬기'). 전에는 층이 all 이면 대상을 버려서
+  // 보컬까지 모두에게 '전체'로 보였다. 팀에 없는 세션이면 아무에게도 안 보이니 받지 않는다
+  if (layer === 'all' && session && !(Array.isArray(m.sessions) ? m.sessions : []).includes(session))
+    throw bad('팀에 없는 세션이에요. 새로고침한 뒤 다시 골라 주세요');
   const text = str(body.text, 60);
   if (!text) throw bad('메모를 적어 주세요');
+  // 라벨은 마커와 정확히 같아야 붙는다(A≠A1). 잘라 저장하면 'Pre-Chorus' 가 'Pre-Chor' 가 되어 어디에도 안 보였다.
+  // 자르지 않고, 너무 길면 거절한다 (라벨 입력칸도 같은 길이로 막았다)
+  const label = typeof body.markerLabel === 'string' ? body.markerLabel.trim() : '';
+  if (label.length > MARKER_LABEL_MAX) throw bad('마커 라벨이 너무 길어요');
   const r = await one(`insert into arrangement_notes(arrangement_id, team_id, marker_label, layer, session, author_id, author_name, text)
     values($1,$2,$3,$4,$5,$6,$7,$8) returning *`,
-    [params.id, teamId, str(body.markerLabel, 8) || 'A', layer, layer === 'session' ? session : null, uid, m.mname || '', text]);
+    [params.id, teamId, label || 'A', layer, layer === 'mine' ? null : session, uid, m.mname || '', text]);
   await q('update songs set updated_at=now() where id=$1', [a.song_id]);
   return { note: { id: r.id, arrangementId: r.arrangement_id, markerLabel: r.marker_label, layer: r.layer, session: r.session, authorId: r.author_id, authorName: r.author_name, text: r.text, createdAt: r.created_at } };
 });
@@ -1799,14 +1809,14 @@ async function sharePayloadOf(teamId, songId, arrId) {
   const arrs = await q('select * from arrangements where song_id=$1 and deleted_at is null order by is_default desc, created_at asc', [s.id]);
   const a = (arrId ? arrs.find((x) => x.id === arrId) : null) || arrs[0];
   if (!a) throw bad('편곡이 없어요');
-  const notes = await q(`select marker_label as "label", text from arrangement_notes
+  const notes = await q(`select marker_label as "label", session, text from arrangement_notes
                          where arrangement_id=$1 and layer='all' order by created_at asc`, [a.id]);
   return {
     title: s.title, aliases: s.aliases || [], artist: s.artist || '', origKey: s.orig_key || '',
     tempo: s.tempo || '', tags: s.tags || [],
     arr: { name: a.name || '기본', key: a.key || '', mod: a.mod || '', form: a.form || '',
       bpm: a.bpm || null, songNote: a.song_note || '',
-      notes: notes.map((n) => ({ label: n.label, text: n.text })),
+      notes: notes.map((n) => ({ label: n.label, text: n.text, ...(n.session ? { session: n.session } : {}) })),
       media: (a.media || []).filter(ytOnly).map((m) => ({ type: 'youtube', url: m.url, name: m.name || '',
         start: +m.start || 0, end: +m.end || 0, sessions: Array.isArray(m.sessions) ? m.sessions : [] })) },
   };
@@ -1932,9 +1942,13 @@ async function takeSharePayload(teamId, uid, member, payload) {
       [s.id, teamId, str(ar.name, 40) || '기본', str(ar.key, 12), str(ar.mod, 12), str(ar.form, 500),
        +ar.bpm || null, str(ar.songNote, 300), JSON.stringify(media)]);
     for (const n of (Array.isArray(ar.notes) ? ar.notes : []).slice(0, 40)) {
-      const text = str(n.text, 60); if (!text) continue;
-      await q(`insert into arrangement_notes(arrangement_id, team_id, marker_label, layer, author_id, author_name, text)
-               values($1,$2,$3,'all',$4,$5,$6)`, [a.id, teamId, str(n.label, 8) || 'A', uid, from ? from + ' (받음)' : '', text]);
+      const t0 = str(n && n.text, 60); if (!t0) continue;
+      // 한 세션에게만 남긴 메모('드럼: 쉬기')는 받는 팀에 그 세션이 있으면 그대로, 없으면 전체에게 가되
+      // 누구에게 한 말인지 글 앞에 붙인다 — 그냥 전체로 두면 모두에게 '쉬기'가 된다
+      const ses = str(n.session, 40), keep = !!ses && teamSess.includes(ses);
+      const text = ses && !keep ? str(ses + ' · ' + t0, 60) : t0;
+      await q(`insert into arrangement_notes(arrangement_id, team_id, marker_label, layer, session, author_id, author_name, text)
+               values($1,$2,$3,'all',$4,$5,$6,$7)`, [a.id, teamId, str(n.label, MARKER_LABEL_MAX) || 'A', keep ? ses : null, uid, from ? from + ' (받음)' : '', text]);
     }
     out.push({ songId: s.id, arrangementId: a.id, title });
   }
