@@ -525,7 +525,7 @@ html.dark .pill.role-pastor{color:#B4A7F5}
 
 /* ---------- 워크스페이스 패널 (편집·연습) ---------- */
 .ws{flex:1;min-height:0;display:grid;gap:8px;padding:8px;background:var(--bg)}
-.ws.split{grid-template-columns:var(--lw,44%) 6px minmax(0,1fr)}
+.ws.split{grid-template-columns:clamp(300px,var(--lw,44%),calc(100% - 324px)) 6px minmax(0,1fr)} /* 저장된 폭(px)이 좁은 화면에서 악보 칸을 밀어내지 않게 — 끌 때와 같은 한계 */
 .stack{display:grid;grid-template-rows:fit-content(50%) 6px minmax(0,1fr);gap:0;min-height:0;min-width:0}
 .vgutter{cursor:row-resize;touch-action:none;position:relative;z-index:2}
 .vgutter::before{content:"";position:absolute;left:0;right:0;top:-8px;bottom:-8px}
@@ -1199,9 +1199,11 @@ function initGutter(onEnd){const ws=$('#ws');if(!ws)return;initVGutter(onEnd);co
  g.onpointerdown=e=>{g.setPointerCapture(e.pointerId);g.classList.add('drag');const r=ws.getBoundingClientRect();g.onpointermove=ev=>{const w=Math.min(Math.max(ev.clientX-r.left-8,300),r.width-340);ws.style.setProperty('--lw',w+'px')};
   g.onpointerup=()=>{g.onpointermove=null;g.classList.remove('drag');try{localStorage.setItem('conti-lw',ws.style.getPropertyValue('--lw'))}catch(e){}onEnd&&onEnd()}}}
 
-function initVGutter(onEnd){const st=$('#stack');if(!st)return;const g=$('.vgutter',st);if(!g)return;const key='conti-th-'+route().name;const saved=lsGet(key);if(saved)st.style.gridTemplateRows=saved+'px 6px minmax(0,1fr)';
- g.onpointerdown=e=>{g.setPointerCapture(e.pointerId);g.classList.add('drag');const r=st.getBoundingClientRect();g.onpointermove=ev=>{const h=Math.min(Math.max(ev.clientY-r.top-3,80),r.height-120);st.style.gridTemplateRows=h+'px 6px minmax(0,1fr)'};
-  g.onpointerup=()=>{g.onpointermove=null;g.classList.remove('drag');try{localStorage.setItem(key,parseInt(st.style.gridTemplateRows))}catch(e){}onEnd&&onEnd()}}}
+// 높이도 px 로 저장된다. 낮은 화면에서 아래 칸이 0 이 되지 않게 끌 때와 같은 한계(위 80px 이상 · 아래 120px 남김)를 CSS 로 건다
+const vgRows=h=>`clamp(80px,${h}px,calc(100% - 120px)) 6px minmax(0,1fr)`;
+function initVGutter(onEnd){const st=$('#stack');if(!st)return;const g=$('.vgutter',st);if(!g)return;const key='conti-th-'+route().name;const saved=parseInt(lsGet(key));if(saved>0)st.style.gridTemplateRows=vgRows(saved);
+ g.onpointerdown=e=>{g.setPointerCapture(e.pointerId);g.classList.add('drag');const r=st.getBoundingClientRect();let h=0;g.onpointermove=ev=>{h=Math.min(Math.max(ev.clientY-r.top-3,80),r.height-120);st.style.gridTemplateRows=vgRows(h)};
+  g.onpointerup=()=>{g.onpointermove=null;g.classList.remove('drag');if(h>0)try{localStorage.setItem(key,Math.round(h))}catch(e){}onEnd&&onEnd()}}}
 
 // 폰 하단 탭의 「더보기」 — 사이드바에 있던 나머지 항목 (§7)
 function moreMenu(){
