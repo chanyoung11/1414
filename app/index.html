@@ -2755,7 +2755,7 @@ const libSongs=()=>online()?(S.songs||[]).filter(x=>!x.archived)
     songNote:x.songNote||'',pieces:x.pieces||[],media:x.media||[],chart:x.chart||null,score:x.score||null}]}));
 function libraryPicker(svc){
  const all=libSongs();
- if(!all.length){if(!online()){toast('라이브러리가 비어 있어요');return}toast('라이브러리가 비어 있어요 · "새 곡"으로 만들어 보세요');newSongModal(true);return}
+ if(!all.length){if(!online()){toast('라이브러리가 비어 있어요');return}toast('라이브러리가 비어 있어요 · "새 곡"으로 만들어 보세요');newSongModal(true,svc);return}
  let q='';
  const rows=()=>{const list=(q.trim().length>=2?all.map(x=>({s:x,m:matchSong(x,q)})).filter(x=>x.m.rank>0).sort((a,b)=>a.m.rank-b.m.rank)
    :all.map(x=>({s:x,m:{rank:0,where:''}})).sort((a,b)=>(b.s.lastUsed||'').localeCompare(a.s.lastUsed||''))).slice(0,60);
@@ -2769,7 +2769,7 @@ function libraryPicker(svc){
   <div id="libList">${rows()}</div>`,{center:true});
  $('#libQ').oninput=debounce(e=>{q=e.target.value;const l=$('#libList');if(l)l.innerHTML=rows()},150);
  $('#modal').onclick=e=>{
-  if(e.target.closest('#lpNew')){closeModal();newSongModal(true);return}
+  if(e.target.closest('#lpNew')){closeModal();newSongModal(true,svc);return}   // 새 곡도 지금 고치는 예배에 넣는다
   const li=e.target.closest('[data-lib]');if(!li)return;
   const sg=all.find(x=>x.id===li.dataset.lib);if(!sg)return;const a=defArr(sg);
   const it=newItem();
@@ -4113,13 +4113,16 @@ function arrEditModal(s,a){
    refreshFromArr();closeModal();render();if(ok!==false)toast('저장했어요')}}}
 /* ---------- 예배에 넣기 (명세 A.5.3) ---------- */
 // 어디서 부르든 같은 창. songIds[] 를 받아 예배를 고르고 편곡·키를 정한 뒤 콘티 끝에 붙인다
-function addToServiceSheet(songIds,arrPick){
+function addToServiceSheet(songIds,arrPick,into){
  const ids=(songIds||[]).filter(Boolean);if(!ids.length)return;
  // 오늘부터 8주 (명세 A.5.3). 날짜 없는 예배는 뒤로
  const upto=new Date(Date.now()+56*864e5).toISOString().slice(0,10);
  const soon=S.services.slice().filter(sv=>!sv.date||(sv.date>=today()&&sv.date<=upto))
   .sort((a,b)=>(a.date?0:1)-(b.date?0:1)||(a.date||'').localeCompare(b.date||'')).slice(0,12);
- const sel={svc:soon[0]?soon[0].id:'',arr:{...(arrPick||{})},key:{},first:false};
+ // 에디터에서 왔으면(into) 그 예배를 고른 채로 연다. 8주 밖이거나 지난 예배여도 맨 앞에 넣어 둔다
+ const cur=into&&svcById(into.id||into);
+ if(cur&&!soon.includes(cur))soon.unshift(cur);
+ const sel={svc:cur?cur.id:soon[0]?soon[0].id:'',arr:{...(arrPick||{})},key:{},first:false};
  ids.forEach(id=>{const s=songById(id);if(s&&!sel.arr[id])sel.arr[id]=defArr(s).id});
  const body=()=>{
   const svc=svcById(sel.svc);
@@ -4175,7 +4178,7 @@ function nextSunday(){const d=new Date();d.setDate(d.getDate()+((7-d.getDay())%7
  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
 
 /* ---------- 새 곡 (중복 확인) ---------- */
-function newSongModal(afterAdd){
+function newSongModal(afterAdd,into){
  modal(`<b style="font-size:17px">새 곡</b>
   <div class="lbl">제목</div><input class="field" id="nsTitle" placeholder="곡 제목" autocomplete="off">
   <div id="nsDup"></div>
@@ -4184,7 +4187,8 @@ function newSongModal(afterAdd){
    <label><div class="lbl">키</div><input class="field mono" id="nsKey" placeholder="G" style="width:72px;text-align:center"></label></div>
   <div class="lbl">템포</div><div id="nsTempo">${TEMPOS.map(t=>`<button class="q" data-nst="${t}">${t}</button>`).join('')}</div>
   <div class="row" style="margin-top:18px;justify-content:flex-end;gap:6px"><button class="btn" data-close="1">취소</button><button class="btn pri" id="nsOk">${ic('plus')}만들기</button></div>`,{center:true});
- let tempo='';const inp=$('#nsTitle');setTimeout(()=>inp.focus(),50);
+ // 두 번 눌러도(느린 망에서 한 번 더) 곡은 하나 — 누르는 동안 막고, 같은 제목을 다시 보내면 같은 id 로 보낸다
+ let tempo='',busy=false,req=null;const inp=$('#nsTitle');setTimeout(()=>inp.focus(),50);
  const check=debounce(()=>{const t=inp.value.trim();const box=$('#nsDup');if(!box)return;
   if(t.length<2){box.innerHTML='';return}
   const hits=(S.songs||[]).map(s=>({s,m:matchSong(s,t)})).filter(x=>x.m.rank<=2&&x.m.rank>0).slice(0,3);
@@ -4192,13 +4196,16 @@ function newSongModal(afterAdd){
  inp.oninput=check;
  $('#modal').onclick=async e=>{
   if(e.target.closest('[data-close]')){closeModal();return}
-  const u=e.target.closest('[data-nsuse]');if(u){closeModal();if(afterAdd)addToServiceSheet([u.dataset.nsuse]);else go('library/'+u.dataset.nsuse);return}
+  const u=e.target.closest('[data-nsuse]');if(u){closeModal();if(afterAdd)addToServiceSheet([u.dataset.nsuse],null,into);else go('library/'+u.dataset.nsuse);return}
   const t=e.target.closest('[data-nst]');if(t){tempo=tempo===t.dataset.nst?'':t.dataset.nst;$$('[data-nst]').forEach(x=>x.classList.toggle('on',x.dataset.nst===tempo));return}
-  if(e.target.closest('#nsOk')){const title=inp.value.trim();if(!title){toast('곡 제목을 적어 주세요');return}
-   try{const r=await api('/songs',{method:'POST',body:{teamId:S.team.id,title,artist:$('#nsArtist').value.trim(),key:$('#nsKey').value.trim(),origKey:$('#nsKey').value.trim(),tempo}});
-    S.songs.push(r.song);save();closeModal();
-    if(afterAdd)addToServiceSheet([r.song.id]);else go('library/'+r.song.id)}
-   catch(err){toast(err.message)}}}}
+  const ok=e.target.closest('#nsOk');
+  if(ok){const title=inp.value.trim();if(!title){toast('곡 제목을 적어 주세요');return}
+   if(busy)return;busy=true;ok.disabled=true;
+   if(!req||req.title!==title)req={id:songReqId(),title};
+   try{const r=await api('/songs',{method:'POST',body:{teamId:S.team.id,id:req.id,title,artist:$('#nsArtist').value.trim(),key:$('#nsKey').value.trim(),origKey:$('#nsKey').value.trim(),tempo}});
+    if(!songById(r.song.id))S.songs.push(r.song);save();closeModal();
+    if(afterAdd)addToServiceSheet([r.song.id],null,into);else go('library/'+r.song.id)}
+   catch(err){busy=false;ok.disabled=false;if(err.status>=400&&err.status<500)req=null;toast(err.message)}}}}
 
 /* ---------- 정리: 합치기 (명세 A.8.1) ---------- */
 async function mergeModal(){
