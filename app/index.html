@@ -1130,7 +1130,7 @@ const lsGet=k=>{try{return localStorage.getItem(k)}catch(e){return null}}; // �
 const THEME={get(){try{return localStorage.getItem('conti-theme')||'system'}catch(e){return 'system'}},set(v){try{localStorage.setItem('conti-theme',v)}catch(e){}THEME.apply()},
  apply(){const v=THEME.get();const dark=v==='dark'||(v==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',dark);const mt=document.querySelector('meta[name=theme-color]');if(mt)mt.content=dark?'#0A0A0A':'#FAFAFA'},
 };
-window.addEventListener('pagehide',()=>{if(typeof SYNC!=='undefined')SYNC.flush()});document.addEventListener('visibilitychange',()=>{if(document.hidden&&typeof SYNC!=='undefined')SYNC.flush()});
+window.addEventListener('pagehide',()=>{if(typeof SYNC!=='undefined'){SYNC.flush();if(SAVE_DUE)flushSave()}});document.addEventListener('visibilitychange',()=>{if(document.hidden&&typeof SYNC!=='undefined'){SYNC.flush();if(SAVE_DUE)flushSave()}});
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{if(THEME.get()==='system')THEME.apply()});
 const fmtToday=()=>{const d=new Date();return `${d.getMonth()+1}월 ${d.getDate()}일 ${'일월화수목금토'[d.getDay()]}요일`};
 let toastT;function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),1800)}
@@ -2802,8 +2802,14 @@ let S={v:1,team:{sessions:DEF_SESS.slice(),phrases:DEF_PHR.slice(),me:{name:'',s
 // 로컬 상태는 (계정, 팀) 단위로 따로 저장한다 — 로그아웃·팀 전환 뒤에 다른 팀의 콘티·악보가 화면에 남거나 서버로 올라가지 않도록
 let saveT;let CUR_SCOPE='legacy';
 const scopeKey=(userId,teamId)=>'state:'+(userId||'local')+':'+(teamId||'none');
-function flushSave(){clearTimeout(saveT);return IDB.put('kv',CUR_SCOPE==='legacy'?'state':CUR_SCOPE,JSON.stringify(S)).then(()=>{if(CUR_SCOPE!=='legacy')return IDB.put('kv','scope',CUR_SCOPE)}).catch(e=>console.error(e))}
-function save(){clearTimeout(saveT);saveT=setTimeout(flushSave,250);if(typeof SYNC!=='undefined')SYNC.schedulePush()}
+// 저장은 상태 전체를 한 덩어리로 쓴다. 몇 년 치 콘티가 쌓인 팀은 한 번 쓰는 데 0.5초가 넘어, 250ms 쉴 때마다 쓰면
+// 글자 칠 때마다 화면이 멈췄다 → 지난번 쓰기에 걸린 시간만큼 쉬는 간격을 늘린다(작은 팀은 그대로 250ms, 최대 4초).
+// 늘어난 사이에 앱이 가려지거나 닫히면 그때 바로 쓴다(pagehide·visibilitychange)
+let SAVE_MS=0,SAVE_DUE=false;
+function flushSave(){clearTimeout(saveT);SAVE_DUE=false;const t0=performance.now();
+ const p=IDB.put('kv',CUR_SCOPE==='legacy'?'state':CUR_SCOPE,JSON.stringify(S));SAVE_MS=performance.now()-t0;
+ return p.then(()=>{if(CUR_SCOPE!=='legacy')return IDB.put('kv','scope',CUR_SCOPE)}).catch(e=>console.error(e))}
+function save(){clearTimeout(saveT);SAVE_DUE=true;saveT=setTimeout(flushSave,Math.min(4000,Math.max(250,SAVE_MS*5)));if(typeof SYNC!=='undefined')SYNC.schedulePush()}
 const DEF_TEAM=()=>({sessions:DEF_SESS.slice(),phrases:DEF_PHR.slice(),settings:{},me:{name:'',session:'건반',role:'leader'}});
 // 스코프 전환: 지금 상태를 저장해 두고, 새 (계정,팀)의 콘티·라이브러리·메모 그림자를 불러온다. 팀 정보(S.team)는 호출자가 이어서 채운다
 async function switchScope(next){if(next===CUR_SCOPE)return;
@@ -3137,9 +3143,11 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),
   if(!pushed){toast('메모를 아직 못 올렸어요. 잠시 뒤 다시 시도해요');SYNC.schedulePush();return}   // 못 올린 메모를 서버 목록으로 덮지 않는다
   let d;try{d=await api('/notes?team='+S.team.id+'&service='+svc.id)}catch(e){return}
   scrubIds(d.notes=d.notes||[]);const who=n=>n.layer==='leader'?'인도자':(n.authorId===d.me?(me().name||'나'):(n.authorName||'멤버'));const by={};d.notes.forEach(n=>{(by[n.itemId]||(by[n.itemId]=[])).push(n)});
+  // 받은 메모가 이 기기 것과 같으면 저장하지 않는다 — 큰 팀은 저장 한 번이 0.5초 넘게 걸려, 콘티를 열 때마다 멈췄다
+  const sig=()=>JSON.stringify(svc.items.map(it=>[it.notes,(it.media||[]).map(m=>m.notes)]))+JSON.stringify((S.noteShadow||{})[svc.id]||null);const sig0=sig();
   svc.items.forEach(it=>{const list=by[it.id]||[];it.notes=list.filter(n=>!n.mediaId).map(n=>({id:n.id,marker:n.markerId,layer:n.layer,session:n.session,text:n.text,author:who(n),at:new Date(n.createdAt).getTime()}));
    (it.media||[]).forEach(m=>{m.notes=list.filter(n=>n.mediaId===m.id).map(n=>({id:n.id,t:+n.t||0,marker:n.markerId||undefined,layer:n.layer,session:n.session,text:n.text,author:who(n)}))})});
-  S.noteShadow=S.noteShadow||{};S.noteShadow[svc.id]=d.notes.map(n=>({id:n.id,itemId:n.itemId||''}));SYNC.pulledAt[svc.id]=Date.now();save()},
+  S.noteShadow=S.noteShadow||{};S.noteShadow[svc.id]=d.notes.map(n=>({id:n.id,itemId:n.itemId||''}));SYNC.pulledAt[svc.id]=Date.now();if(sig()!==sig0)save()},
  flush(){const r=route();const svc=svcById(r.a);if(online()&&svc&&/^(edit|view|play)$/.test(r.name)){clearTimeout(SYNC.t);SYNC.pushNotes(svc,true);if(r.name==='edit'&&isLeader()){clearTimeout(SYNC.td);SYNC.pushDraft(svc)}}},
  schedulePush(){if(!online())return;clearTimeout(SYNC.tl);SYNC.tl=setTimeout(()=>{SYNC.pushLibrary();pushDirtySongs();pushSongs()},3000);clearTimeout(SYNC.t);SYNC.t=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&/^(edit|view|play)$/.test(r.name))SYNC.pushNotes(svc)},700);clearTimeout(SYNC.td);SYNC.td=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&r.name==='edit'&&isLeader())SYNC.pushDraft(svc)},2500)}
 };
@@ -3507,9 +3515,10 @@ async function pullSongs(force){if(!online()||!S.team.id)return false;
  if(tid!==S.team.id)return false;
  let changed=false;
  await SYNC.fetchBlobs(r.blobs);
+ // 통째로 다시 받아도(force) 바뀐 곡만 바꾼 것으로 친다. 전에는 라이브러리에 들어갈 때마다 전체 저장·다시 그리기가 돌았다
  (r.songs||[]).forEach(s=>{scrubIds(s);const i=(S.songs||[]).findIndex(x=>x.id===s.id);
   if(i<0){S.songs.push(s);changed=true}
-  else if(!S.songs[i].dirty){S.songs[i]=s;changed=true}});
+  else if(!S.songs[i].dirty&&JSON.stringify(S.songs[i])!==JSON.stringify(s)){S.songs[i]=s;changed=true}});
  (r.deleted||[]).forEach(id=>{const i=(S.songs||[]).findIndex(x=>x.id===id);if(i>=0){S.songs.splice(i,1);changed=true}});
  S.songsAt=r.now||S.songsAt;LIB.at=Date.now();if(changed){refreshFromArr();save()}
  await songURLs();
