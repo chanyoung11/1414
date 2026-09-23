@@ -845,12 +845,20 @@ body.stgon{overflow:hidden}
 .sblk.sel.on{outline:2px solid var(--brand)}
 .stgsel{position:absolute;left:50%;transform:translateX(-50%);bottom:58px;z-index:9;
  background:rgba(242,243,244,.95);color:#111213;font-size:12px;font-weight:700;
- padding:6px 12px;border-radius:999px;box-shadow:0 8px 20px rgba(0,0,0,.4);white-space:nowrap}
-.sblk .stag{position:absolute;left:0;top:-18px;font-size:10.5px;font-weight:700;color:#fff;
+ padding:6px 12px;border-radius:999px;box-shadow:0 8px 20px rgba(0,0,0,.4);white-space:nowrap;
+ pointer-events:none}   /* 안내만 한다 — 아래 블록·손잡이를 가리지 않게 */
+.sblk .stag{position:absolute;left:14px;top:-18px;font-size:10.5px;font-weight:700;color:#fff;
  background:rgba(0,0,0,.6);border-radius:5px;padding:1px 6px;white-space:nowrap;pointer-events:none}
 .sblk .blk{position:static!important;left:auto!important;top:auto!important;width:100%!important}
-.sblk .sgrip{position:absolute;right:-7px;bottom:-7px;width:16px;height:16px;border-radius:50%;
- background:var(--brand);border:2px solid #fff;cursor:nwse-resize}
+/* 크기 조절 손잡이는 꼭짓점 네 곳 — 잡은 꼭짓점의 맞은편이 제자리에 있다 */
+.sblk .sgrip{position:absolute;width:16px;height:16px;border-radius:50%;z-index:6;
+ background:var(--brand);border:2px solid #fff}
+.sblk .sgrip[data-c=se]{right:-7px;bottom:-7px;cursor:nwse-resize}
+.sblk .sgrip[data-c=nw]{left:-7px;top:-7px;cursor:nwse-resize}
+.sblk .sgrip[data-c=ne]{right:-7px;top:-7px;cursor:nesw-resize}
+.sblk .sgrip[data-c=sw]{left:-7px;bottom:-7px;cursor:nesw-resize}
+/* 편집 중에는 화면 밖으로 나간 부분도 보여 준다 (보여 줄 때는 화면 테두리에서 잘린다) */
+.stgpage.edit{overflow:visible}
 .sblkmenu{position:absolute;left:0;top:calc(100% + 8px);z-index:20;background:#F2F3F4;border:1px solid #C9CBCE;
  border-radius:10px;padding:6px;box-shadow:0 10px 28px rgba(0,0,0,.5)}
 .sblkmenu.up{top:auto;bottom:calc(100% + 8px)}          /* 블록이 화면 아래에 붙어 있으면 위로 */
@@ -5514,7 +5522,7 @@ function pgPieces(item,box,opt){
    if(big.some(q=>a>=q.s+pad-1&&b<=q.e-pad+1))continue;   // 큰 빈 여백은 접는다
    units.push({a,b,strip:forced.has(a)?markers.filter(m=>m.cut===a&&m.vis.length):null})}
   const hls=(p.hls||[]).filter(h=>h.kind!=='mask'),masks=(p.hls||[]).filter(h=>h.kind==='mask');
-  return {im,s,markers,units,hls,masks,chords:p.chords||[]}})}
+  return {pid:p.id,im,s,markers,units,hls,masks,chords:p.chords||[]}})}
 function pgLayout(items,box,opt){
  const pages=[];const P=()=>{const p={blocks:[],col:0,ys:Array(box.cols).fill(box.top)};pages.push(p);return p};
  const fill=opt.fillH?Math.min(box.ch,opt.fillH):box.ch;
@@ -6119,7 +6127,7 @@ function stgCompose(pub,W,H,pref){
   const fits=need()<=H;
   // 곡이 한 열에 들어가는데 지금 열에 자리가 모자라면 다음 열로
   if(fits&&y>0&&need()>rem())nextCol();
-  put({type:'head',id:'h'+idx,height:headH,item:it,idx,gap:10});
+  put({type:'head',id:'h'+idx,pid:it.id,height:headH,item:it,idx,gap:10});
   pcs.forEach((pc,pi)=>{
    const sc2=pc.s*f;let stn=0;
    const total=pc.units.reduce((a,u)=>a+(u.b-u.a)*sc2+(u.strip?STRIP_H+2:0),0);
@@ -6129,17 +6137,17 @@ function stgCompose(pub,W,H,pref){
    while(i<pc.units.length){
     const u=pc.units[i];
     if(u.strip){if(rem()<STRIP_H+20)nextCol();
-     put({type:'strip',id:`t${idx}.${pi}.${stn++}`,idx,pi,height:STRIP_H,markers:u.strip,mods:pgMods(it.form),gap:2});i++;continue}
+     put({type:'strip',id:`t${idx}.${pi}.${stn++}`,pid:pc.pid,idx,pi,height:STRIP_H,markers:u.strip,mods:pgMods(it.form),gap:2});i++;continue}
     let j=i,hSum=0;
     while(j<pc.units.length&&!pc.units[j].strip){const h=(pc.units[j].b-pc.units[j].a)*sc2;if(hSum+h>rem())break;hSum+=h;j++}
     if(j===i){                                        // 한 조각도 안 들어간다
      if(y>0){nextCol();continue}
      const s3=Math.min(sc2,rem()/(u.b-u.a));
-     put({type:'slice',id:`s${idx}.${pi}.${Math.round(u.a)}`,idx,pi,height:(u.b-u.a)*s3,pc,scale:s3,ranges:[[u.a,u.b]],gap:2});i++;continue}
+     put({type:'slice',id:`s${idx}.${pi}.${Math.round(u.a)}`,pid:pc.pid,idx,pi,height:(u.b-u.a)*s3,pc,scale:s3,ranges:[[u.a,u.b]],gap:2});i++;continue}
     const ranges=[];
     for(let k=i;k<j;k++){const q=pc.units[k];
      if(ranges.length&&ranges[ranges.length-1][1]===q.a)ranges[ranges.length-1][1]=q.b;else ranges.push([q.a,q.b])}
-    put({type:'slice',id:`s${idx}.${pi}.${Math.round(ranges[0][0])}`,idx,pi,height:hSum,pc,scale:sc2,ranges,gap:2});i=j}
+    put({type:'slice',id:`s${idx}.${pi}.${Math.round(ranges[0][0])}`,pid:pc.pid,idx,pi,height:hSum,pc,scale:sc2,ranges,gap:2});i=j}
   });
   y+=14;                                              // 곡 사이 여백
  });
@@ -6173,17 +6181,25 @@ function stgNatW(b,cw){
 // 저장해 둔 조판은 '어디에 얼마만큼'만 남아 있다. 지금 발행본으로 다시 짠 자동 조판에서
 // 그림·메모 같은 알맹이를 가져와 붙인다. 없어진 곡의 블록은 버리고, 새로 생긴 곡은 뒤에 붙인다
 function stgHydrate(autoL,saved){
- const live=new Map();
- autoL.screens.forEach(sc=>sc.blocks.forEach(b=>live.set(b.id,b)));
+ const live=new Map(),byPid=new Map();
+ // 블록 번호(s곡.조각.줄)는 순서로 매겨진다. 조각을 지우면 뒤 조각이 앞 번호를 물려받아
+ // 지운 조각의 자리·크기·자른 범위를 그대로 입고 나왔다 (지워도 틀이 안 줄던 것).
+ // 그래서 어느 곡·조각에서 나온 블록인지(pid)도 함께 저장해 두고 그것으로 맞춘다
+ const pidKey=(id,pid)=>String(id)[0]+':'+pid+':'+String(id).split('.').slice(2).join('.');
+ autoL.screens.forEach(sc=>sc.blocks.forEach(b=>{live.set(b.id,b);if(b.pid)byPid.set(pidKey(b.id,b.pid),b)}));
+ const find=(id,pid)=>{const lv=live.get(id);
+  if(!pid||(lv&&lv.pid===pid))return lv;          // 예전 조판(pid 없음)은 번호로만 찾는다
+  return byPid.get(pidKey(id,pid))||null};        // 없으면 그 조각이 지워진 것 — 버린다
  const used=new Set();
  let screens=(saved.screens||[]).map(sc=>({blocks:(sc.blocks||[]).map(b=>{
   if(b.type==='text')return {...b,height:b.height||56};
   const at=String(b.id).search(/[#~]/);   // 자른 것(#) · 복사한 것(~) 은 원본에서 알맹이를 가져온다
-  if(at>0){const lv=live.get(String(b.id).slice(0,at));if(!lv)return null;used.add(lv.id);
+  if(at>0){const lv=find(String(b.id).slice(0,at),b.pid);if(!lv)return null;used.add(lv.id);
+   const id=lv.id+String(b.id).slice(at);   // 번호가 바뀌었으면 새 번호로
    if(lv.type==='slice'){const rs=b.ranges&&b.ranges.length?b.ranges:lv.ranges;
-    return {...lv,id:b.id,ranges:rs,height:stgRH(rs,lv.scale),x:b.x,y:b.y,w:b.w,h:b.h,hidden:!!b.hidden}}
-   return {...lv,id:b.id,x:b.x,y:b.y,w:b.w,h:b.h,hidden:!!b.hidden,compact:!!b.compact}}
-  const lv=live.get(b.id);if(!lv)return null;used.add(b.id);
+    return {...lv,id,ranges:rs,height:stgRH(rs,lv.scale),x:b.x,y:b.y,w:b.w,h:b.h,hidden:!!b.hidden}}
+   return {...lv,id,x:b.x,y:b.y,w:b.w,h:b.h,hidden:!!b.hidden,compact:!!b.compact}}
+  const lv=find(b.id,b.pid);if(!lv)return null;used.add(lv.id);
   return {...lv,x:b.x,y:b.y,w:b.w,h:b.h,hidden:!!b.hidden,compact:!!b.compact};
  }).filter(Boolean)}));
  autoL.screens.forEach((sc,i)=>sc.blocks.forEach(b=>{
@@ -6217,7 +6233,7 @@ function stgLayoutSave(){
 // 저장할 때는 그릴 때 쓰는 큰 값(이미지·메모)을 빼고 자리만 남긴다
 function stgLayoutSlim(L){
  return {v:2,screens:(L.screens||[]).map(sc=>({blocks:(sc.blocks||[]).map(b=>({
-  id:b.id,type:b.type,hidden:b.hidden||undefined,compact:b.compact||undefined,text:b.type==='text'?b.text:undefined,
+  id:b.id,pid:b.pid||undefined,type:b.type,hidden:b.hidden||undefined,compact:b.compact||undefined,text:b.type==='text'?b.text:undefined,
   ranges:(b.type==='slice'&&/[#~]/.test(String(b.id)))?b.ranges:undefined,
   x:+(b.x||0).toFixed(4),y:+(b.y||0).toFixed(4),w:+(b.w||0).toFixed(4),h:+(b.h||0).toFixed(4)}))}))}}
 function stgLayoutLoad(){
@@ -6285,12 +6301,13 @@ function stgMoveScreen(bid,d){
  L.screens[to].blocks.push(b);
  STG.menu=null;stgLayoutSave();stageRender()}
 
-// 편집 중에는 사람이 고친 좌표대로 그린다. 손잡이로 크기를 바꾸고, 캔버스 밖으로
-// 끌면 옆 화면으로 간다
+// 편집 중에는 사람이 고친 좌표대로 그린다. 네 꼭짓점 손잡이로 크기를 바꾸고, 캔버스 밖으로
+// 끌면 옆 화면으로 간다. 화면 가장자리를 넘어가게 두어도 된다 (보여 줄 때는 잘린다)
 function stgEditBind(host,W,H,k){
  k=k||1;
  const page=host.querySelector('.stgpage');if(!page||!STG.layout)return;
  const cur=()=>STG.layout.screens[STG.screen];
+ const elOf=g=>page.querySelector('[data-sid="'+CSS.escape(g.id)+'"]');
  let st=null;
  page.addEventListener('pointerdown',e=>{
   const multi=e.shiftKey||e.metaKey||e.ctrlKey;
@@ -6308,11 +6325,25 @@ function stgEditBind(host,W,H,k){
    STG.sel=STG.sel.includes(id)?STG.sel.filter(x=>x!==id):STG.sel.concat(id);
    STG.menu=null;stageRender();return}
   if(!STG.sel.includes(id))STG.sel=[id];
-  const rs=!!e.target.closest('.sgrip');
-  const group=rs?[b]:STG.sel.map(x=>L.blocks.find(y=>y.id===x)).filter(Boolean);
+  const gp=e.target.closest('.sgrip');const rs=gp?(gp.dataset.c||'se'):'';
+  // 옮길 때도 크기를 바꿀 때도 고른 블록 전체가 함께 간다
+  const group=STG.sel.map(x=>L.blocks.find(y=>y.id===x)).filter(g=>g&&!g.hidden);
+  if(!group.includes(b))group.push(b);
   st={b,el,rs,x0:e.clientX,y0:e.clientY,moved:false,
-      w0:b.w*W,inner:el.querySelector('.blk,.pstrip'),
-      grab:group.map(g=>({g,x:g.x,y:g.y}))};
+      grab:group.map(g=>{const e2=elOf(g);
+       return {g,x:g.x,y:g.y,w:g.w,h:g.h,el:e2,inner:e2&&e2.querySelector('.blk,.pstrip'),
+        hp:e2?e2.offsetHeight:(g.h||0)*H}})};
+  if(rs){
+   // 여러 개를 고른 채 꼭짓점을 끌면 묶음 전체의 테두리 상자를 기준으로 모두 같은 배율로
+   // 커지고 줄어든다 (옮길 때 묶음째 가는 것과 같다). 잡은 꼭짓점의 맞은편 꼭짓점이 제자리에 있다
+   const x0=Math.min(...st.grab.map(o=>o.x)),y0=Math.min(...st.grab.map(o=>o.y));
+   const x1=Math.max(...st.grab.map(o=>o.x+o.w)),y1=Math.max(...st.grab.map(o=>o.y+o.hp/H));
+   st.ax=rs.includes('w')?x1:x0;st.ay=rs.includes('n')?y1:y0;
+   st.sx=rs.includes('w')?-1:1;st.sy=rs.includes('n')?-1:1;
+   st.gw=Math.max(1,(x1-x0)*W);st.gh=Math.max(1,(y1-y0)*H);
+   // 가장 작은 블록이 폭 0.08 밑으로, 가장 큰 블록이 캔버스 3배 위로 가지 않는 만큼만
+   st.fmin=Math.min(1,Math.max(...st.grab.map(o=>0.08/o.w)));
+   st.fmax=Math.max(1,Math.min(...st.grab.map(o=>3/o.w)))}
   el.setPointerCapture(e.pointerId);e.preventDefault()});
  page.addEventListener('pointermove',e=>{
   if(!st)return;
@@ -6320,31 +6351,51 @@ function stgEditBind(host,W,H,k){
   if(!st.moved&&Math.abs(e.clientX-st.x0)+Math.abs(e.clientY-st.y0)<6)return;
   st.moved=true;
   if(st.rs){
-   const w=Math.max(0.08,Math.min(1.6,(st.w0/W)+dx));
-   // 악보는 폭에 비례해 커진다 — 높이도 같은 비율로 (겹침·붙이기 계산이 맞아야 한다)
-   if(st.b.type==='slice'&&st.b.h)st.b.h=st.b.h*(w/st.b.w);
-   st.b.w=w;
-   // 끄는 동안 악보도 같이 커지고 줄어든다 (놓은 뒤에야 바뀌던 것).
-   // 안쪽은 처음 폭으로 묶어 두고 배율만 바꾼다 (글자가 다시 흐르지 않게)
-   if(st.inner&&st.w0){st.inner.style.setProperty('width',st.w0+'px','important');
-    st.inner.style.transformOrigin='top left';st.inner.style.transform='scale('+((w*W)/st.w0)+')'}
-   stgPaintBlock(st.el,st.b,W,H)}
+   // 가로·세로 중 더 많이 끈 쪽을 따른다 (가로세로 비율은 그대로)
+   const fx=(st.gw+st.sx*dx*W)/st.gw, fy=(st.gh+st.sy*dy*H)/st.gh;
+   const f=Math.max(st.fmin,Math.min(st.fmax,Math.abs(fx-1)>=Math.abs(fy-1)?fx:fy));
+   st.grab.forEach(o=>{const g=o.g;
+    g.w=o.w*f;g.x=st.ax+(o.x-st.ax)*f;g.y=st.ay+(o.y-st.ay)*f;
+    // 악보는 폭에 비례해 커진다 — 높이도 같은 비율로 (겹침·붙이기 계산이 맞아야 한다)
+    if(g.type==='slice'&&o.h)g.h=o.h*f;
+    // 끄는 동안 악보도 같이 커지고 줄어든다 (놓은 뒤에야 바뀌던 것).
+    // 안쪽은 처음 폭으로 묶어 두고 배율만 바꾼다 (글자가 다시 흐르지 않게)
+    const wp=o.w*W;
+    if(o.inner&&wp){o.inner.style.setProperty('width',wp+'px','important');
+     o.inner.style.transformOrigin='top left';o.inner.style.transform='scale('+f+')'}
+    if(o.el){stgPaintBlock(o.el,g,W,H);o.el.style.height=(o.hp*f)+'px'}})}   // 테두리도 같이 줄고 는다
   else{
-   st.grab.forEach(({g,x,y})=>{g.x=x+dx;g.y=y+dy;
-    const el2=page.querySelector('[data-sid="'+CSS.escape(g.id)+'"]');if(el2)stgPaintBlock(el2,g,W,H)})}});
+   st.grab.forEach(({g,x,y,el})=>{g.x=x+dx;g.y=y+dy;if(el)stgPaintBlock(el,g,W,H)})}});
  const up=e=>{
   if(!st)return;const b=st.b,el=st.el,moved=st.moved,rs=st.rs,grab=st.grab;st=null;
   try{el.releasePointerCapture(e.pointerId)}catch(_){}
   if(!moved){STG.menu=STG.menu===b.id?null:b.id;STG.sel=[b.id];stageRender();return}
-  if(rs){b.w=stgSnapX(Math.max(0.08,b.w));stgLayoutSave();stageRender();return}
-  // 캔버스 밖으로 끌면 옆 화면으로 (하나만 끌 때)
+  if(rs){grab.forEach(({g})=>{g.w=stgSnapX(Math.max(0.08,g.w))});
+   stgKeepIn(grab.map(o=>o.g),W,H,page);stgLayoutSave();stageRender();return}
+  // 캔버스 밖으로 통째로 끌어내면 옆 화면으로 (하나만 끌 때)
   if(grab.length===1){
    if(b.x>1.02){stgMoveScreen(b.id,1);return}
    if(b.x+b.w<-0.02){stgMoveScreen(b.id,-1);return}}
-  grab.forEach(({g})=>{g.x=stgSnapX(Math.max(-0.02,Math.min(1.02-g.w,g.x)));g.y=stgSnapY(Math.max(-0.02,g.y))});
+  stgKeepIn(grab.map(o=>o.g),W,H,page);
   if(grab.length===1&&b.type==='slice')stgTryMerge(cur(),b);
   stgLayoutSave();stageRender()};
  page.addEventListener('pointerup',up);page.addEventListener('pointercancel',up)}
+// 화면 가장자리를 넘어가도 되지만, 다시 잡을 수 있게 화면 안에 조금(STG_KEEP px)은 남긴다.
+// 여러 개면 서로의 자리는 그대로 두고 묶음째 민다
+const STG_KEEP=28;
+function stgKeepIn(gs,W,H,page){
+ if(!gs.length)return;
+ const hs=gs.map(b=>{if(b.type==='slice'&&b.h)return b.h;
+  const el=page&&page.querySelector('[data-sid="'+CSS.escape(b.id)+'"]');
+  return el?el.offsetHeight/H:(b.h||0.05)});
+ const fit=(pos,size,M,set)=>{
+  const rng=gs.map((b,i)=>{const s=size(b,i),m=Math.min(M,s);return [m-s,1-m]});
+  let lo=-Infinity,hi=Infinity;
+  gs.forEach((b,i)=>{lo=Math.max(lo,rng[i][0]-pos(b));hi=Math.min(hi,rng[i][1]-pos(b))});
+  if(lo<=hi){const d=Math.max(lo,Math.min(hi,0));gs.forEach(b=>set(b,pos(b)+d))}
+  else gs.forEach((b,i)=>set(b,Math.max(rng[i][0],Math.min(rng[i][1],pos(b)))))};   // 묶음이 너무 크면 하나씩
+ fit(b=>b.x,b=>b.w,STG_KEEP/W,(b,v)=>{b.x=stgSnapX(v)});
+ fit(b=>b.y,(b,i)=>hs[i],STG_KEEP/H,(b,v)=>{b.y=stgSnapY(v)})}
 
 function stgPaintBlock(el,b,W,H){
  el.style.left=(b.x*W)+'px';el.style.top=(b.y*H)+'px';el.style.width=(b.w*W)+'px'}
@@ -6370,6 +6421,7 @@ function stgDelSel(){const bs=stgSelBlocks();if(!bs.length)return;
  bs.forEach(b=>{b.hidden=true});STG.sel=[];STG.menu=null;stgLayoutSave();stageRender()}
 function stgNudge(dx,dy){const bs=stgSelBlocks();if(!bs.length)return false;
  bs.forEach(b=>{b.x=stgSnapX(b.x+dx);b.y=stgSnapY(b.y+dy)});
+ stgKeepIn(bs.filter(b=>!b.hidden),stgCanvasW(),stgCanvasH(),$('#stageWrap .stgpage'));   // 화살표로도 아주 사라지지는 않게
  clearTimeout(stgNudge.t);stgNudge.t=setTimeout(stgLayoutSave,400);stageRender();return true}
 function stgEditKey(e){
  if(!STG.layout)return false;
@@ -6550,7 +6602,7 @@ function stageRender(){
      const on=STG.menu===b.id,sel=STG.sel.includes(b.id);
      return `<div class="sblk ${on?'on':''} ${sel?'sel':''}" data-sid="${esc(b.id)}" style="left:${left}px;top:${nb.top}px;width:${w}px">
       <span class="stag">${b.type==='head'?'송폼 '+(b.idx+1):b.type==='strip'?'메모':b.type==='text'?'글':'악보'}</span>
-      ${inner}<span class="sgrip"></span>
+      ${inner}${['se','nw','ne','sw'].map(c=>`<span class="sgrip" data-c="${c}"></span>`).join('')}
       ${on?stgBlockMenu(b,pos):''}</div>`}).join('')}</div></div>
   ${STG.edit&&STG.sel.length>1?`<div class="stgsel">${STG.sel.length}개 선택 · ⌘C 복사 · ⌘V 붙이기 · Delete 숨기기 · 화살표 이동</div>`:''}
   ${STG.edit?stgStripHTML(screens):''}
@@ -6610,7 +6662,7 @@ function stageClick(e){
  if(sm){const L=STG.layout&&STG.layout.screens[STG.screen];const bb=L&&L.blocks.find(x=>x.id===sm.dataset.id);
   if(bb){const a2=sm.dataset.sm;
    if(a2==='small'||a2==='big'){const f=a2==='big'?1.1:0.9;
-    const w=Math.max(0.12,Math.min(0.98,bb.w*f));if(bb.h)bb.h*=w/bb.w;bb.w=w}
+    const w=Math.max(0.12,Math.min(3,bb.w*f));if(bb.h)bb.h*=w/bb.w;bb.w=w}
    else if(a2==='prev'){stgMoveScreen(bb.id,-1);return}
    else if(a2==='next'){stgMoveScreen(bb.id,1);return}
    else if(a2==='cut'){stgCut(bb.id);return}
