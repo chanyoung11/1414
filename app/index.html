@@ -2839,7 +2839,7 @@ async function switchScope(next){if(next===CUR_SCOPE)return;
  if(typeof SCH!=='undefined'){SCH.dates=[];SCH.availability=[];SCH.members=[];SCH.role='';SCH.at=0;SCH.month='';SCH.onlyUnset=false}
  if(typeof WORDS!=='undefined'){WORDS.list=[];WORDS.role='';WORDS.at=0}
  if(typeof REH!=='undefined'){REH.bySvc={};REH.urls={};REH.at={}}
- if(typeof LIB!=='undefined'){LIB.at=0;LIB.q='';LIB.key='';LIB.tempo='';LIB.tag='';LIB.last='';LIB.sel=[];LIB.pick=null;LIB.detail=null;LIB.dups=null}
+ if(typeof LIB!=='undefined'){LIB.at=0;LIB.q='';LIB.key='';LIB.tempo='';LIB.tag='';LIB.folder='';LIB.last='';LIB.archived=false;LIB.season=false;LIB.sel=[];LIB.pick=null;LIB.detail=null;LIB.dups=null}
  if(typeof TM!=='undefined'){TM.data=null;TM.invites=null;TM.at=0}}
 const me=()=>S.team.me;
 const isLeader=()=>me().role==='leader';
@@ -3940,6 +3940,7 @@ function libThumbs(){
 function libraryHTML(){
  const lead=isLeader();const list=libFiltered();const q=LIB.q.trim();
  const plain=!q&&!LIB.key&&!LIB.tempo&&!LIB.tag&&!LIB.folder&&!LIB.last&&!LIB.archived&&!LIB.season&&LIB.pick!=='multi';
+ const narrow=!!(LIB.key||LIB.tempo||LIB.tag||LIB.folder||LIB.last||LIB.archived||LIB.season);   // 칩으로 좁혀서 빈 것 — 곡이 없는 게 아니다
  const all=(S.songs||[]).filter(s=>!s.archived);
  const year=new Date().getFullYear();
  const thisYear=all.filter(s=>s.lastUsed&&new Date(s.lastUsed).getFullYear()===year).length;
@@ -3948,6 +3949,10 @@ function libraryHTML(){
  const tags=[...new Set(all.flatMap(s=>s.tags||[]))].slice(0,20);
  // 폴더는 곡에 적힌 이름에서 모은다 (따로 관리하는 목록이 없어 지워질 걱정이 없다)
  const lfolders=[...new Set(all.map(s=>(s.folder||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
+ // 켜 둔 폴더·태그는 칩이 목록에서 빠져도(마지막 곡을 딴 폴더로 옮김 · 태그가 20개 밖) 그린다.
+ // 칩이 없으면 끌 방법이 없어 목록이 '아직 곡이 없어요'로 갇혔다
+ if(LIB.tag&&!tags.includes(LIB.tag))tags.push(LIB.tag);
+ if(LIB.folder&&LIB.folder!=='__none'&&!lfolders.includes(LIB.folder))lfolders.push(LIB.folder);
  const noFolder=all.filter(s=>!(s.folder||'').trim()).length;
  const chip=(on,act,val,label)=>`<button class="q ${on?'on':''}" data-lf="${act}" data-v="${esc(val)}">${esc(label)}</button>`;
  const card=s=>{const th=songThumb(s);return `<button class="scard" data-songopen="${esc(s.id)}">
@@ -3963,7 +3968,7 @@ function libraryHTML(){
   <div class="filters">
    ${KEYS7.map(k=>chip(LIB.key===k,'key',k,k)).join('')}
    <span class="sep"></span>${TEMPOS.map(t=>chip(LIB.tempo===t,'tempo',t,t)).join('')}
-   ${lfolders.length?`<span class="sep"></span>${lfolders.map(f=>chip(LIB.folder===f,'folder',f,f+' '+all.filter(s=>(s.folder||'').trim()===f).length)).join('')}${noFolder?chip(LIB.folder==='__none','folder','__none','폴더 없음 '+noFolder):''}`:''}
+   ${lfolders.length||LIB.folder?`<span class="sep"></span>${lfolders.map(f=>chip(LIB.folder===f,'folder',f,f+' '+all.filter(s=>(s.folder||'').trim()===f).length)).join('')}${noFolder||LIB.folder==='__none'?chip(LIB.folder==='__none','folder','__none','폴더 없음 '+noFolder):''}`:''}
    ${tags.length?`<span class="sep"></span>${tags.map(t=>chip(LIB.tag===t,'tag',t,'#'+t)).join('')}`:''}
    <span class="sep"></span>${chip(LIB.last==='30','last','30','30일 안')}${chip(LIB.last==='90','last','90','90일 안')}${chip(LIB.last==='180','last','180','반년 넘음')}
    <span class="grow"></span>
@@ -3981,7 +3986,7 @@ function libraryHTML(){
    ${season.length?`<div class="lbl">작년 이맘때 부른 곡</div><div class="scards">${season.slice(0,8).map(card).join('')}</div>`:''}
    <div class="lbl">전체 ${all.length}곡</div>`:''}
   <div id="libList">${list.length?list.map(x=>songRow(x,{multi:LIB.pick==='multi',picked:LIB.sel.includes(x.s.id)})).join('')
-   :`<div class="empty"><span class="icon">${ic('music')}</span><b>${q?'찾는 곡이 없어요':'아직 곡이 없어요'}</b>${q?'다른 말로 찾아 보세요':(lead?'"새 곡"으로 만들면 라이브러리에 들어가요':'인도자가 곡을 넣으면 여기 보여요')}${!q&&lead?`<div><button class="btn" data-act="lib-new">${ic('plus')}새 곡</button></div>`:''}</div>`}</div>
+   :`<div class="empty"><span class="icon">${ic('music')}</span><b>${q?'찾는 곡이 없어요':narrow?'고른 조건에 맞는 곡이 없어요':'아직 곡이 없어요'}</b>${q?'다른 말로 찾아 보세요':narrow?'위에서 켜 둔 칩을 한 번 더 누르면 풀려요':(lead?'"새 곡"으로 만들면 라이브러리에 들어가요':'인도자가 곡을 넣으면 여기 보여요')}${!q&&!narrow&&lead?`<div><button class="btn" data-act="lib-new">${ic('plus')}새 곡</button></div>`:''}</div>`}</div>
  </div>`;
  const sub=`${all.length}곡${thisYear?` · 올해 ${thisYear}곡`:''}`;
  return shellHTML('library',{title:'라이브러리',sub,acts,body})}
@@ -4216,7 +4221,9 @@ function libMoveModal(ids){
   save();LIB.sel=[];LIB.pick=null;render();
   toast(folder?`${list.length}곡을 '${folder}'(으)로 옮겼어요`:`${list.length}곡을 폴더에서 뺐어요`)};
  const go=$('#mvGo');if(go)go.onclick=()=>{const v=($('#mvNew')||{value:''}).value.trim();if(!v){toast('폴더 이름을 적어 주세요');return}move(v)};
- $('#modal').addEventListener('click',e=>{const b=e.target.closest('[data-mv]');if(b)move(b.dataset.mv)});
+ // #modal 자체에 addEventListener 로 달면 closeModal 이 못 떼어 내서, 창을 열 때마다 쌓인 옛 듣개가
+ // 옛 곡 목록(ids)으로 같이 움직였다 — 다음에 고른 곡과 함께 전에 옮긴 곡들까지 다시 옮겨졌다. onclick 은 닫을 때 비워진다
+ $('#modal').onclick=e=>{const b=e.target.closest('[data-mv]');if(b)move(b.dataset.mv)};
 }
 function songInfoModal(s){
  modal(`<b style="font-size:17px">곡 정보</b>
@@ -7464,7 +7471,7 @@ document.addEventListener('click',async e=>{
   case 'lib-clear':LIB.q='';LIB.season=false;render();break;
   case 'lib-new':newSongModal(false);break;
   case 'lib-merge':mergeModal();break;
-  case 'lib-season':{LIB.q='';LIB.last='';LIB.key='';LIB.tempo='';LIB.tag='';
+  case 'lib-season':{LIB.q='';LIB.last='';LIB.key='';LIB.tempo='';LIB.tag='';LIB.folder='';LIB.archived=false;
    const ids=seasonSongs().map(x=>x.id);if(!ids.length){toast('작년 이맘때 부른 곡이 없어요');break}
    if(isLeader()){LIB.pick='multi';LIB.sel=ids.slice(0,8)}else{LIB.pick=null;LIB.sel=[]}
    LIB.season=true;render();break}
