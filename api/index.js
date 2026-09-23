@@ -2994,6 +2994,8 @@ function applyCors(req, res) {
   return true;
 }
 
+const S2S_PATHS = new Set(['/iap/webhook']);
+
 export default async function handler(req, res) {
   const cors = applyCors(req, res);
   if (req.method === 'OPTIONS') { res.statusCode = cors ? 204 : 403; return res.end(); }
@@ -3010,7 +3012,9 @@ export default async function handler(req, res) {
       if (routes.some((r) => r.re.test(path))) throw new HttpError(405, 'method_not_allowed', '허용되지 않는 방식이에요');
       throw notFound('그런 API는 없어요');
     }
-    if (method !== 'GET' && req.headers['x-conti'] !== '1') throw forbidden('앱에서만 호출할 수 있어요');
+    // x-conti 는 남의 웹페이지가 로그인 쿠키로 몰래 부르는 것을 막는 표시다. 서버끼리 부르는 웹훅(RevenueCat)은
+    // 이 헤더를 붙일 수 없고 쿠키도 쓰지 않는다 — 대신 Authorization 비밀값으로 따로 확인한다 (rcAuthOk)
+    if (method !== 'GET' && req.headers['x-conti'] !== '1' && !S2S_PATHS.has(path)) throw forbidden('앱에서만 호출할 수 있어요');
     const params = path.match(route.re).groups || {};
     // 파일 그 자체가 본문인 경로(POST /blobs/:id)만 JSON 파싱을 건너뛴다. 이미지 base64 를 싣는 경로는 크게
     const rawBody = method === 'POST' && /^\/blobs\/[^/]+$/.test(path);

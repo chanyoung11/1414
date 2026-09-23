@@ -10,7 +10,7 @@ def fail(m): print('FAIL:', m); sys.exit(1)
 def post(path, body, auth=None):
   req = urllib.request.Request(URL + path, method='POST',
         data=json.dumps(body).encode(),
-        headers={'content-type': 'application/json', 'x-conti': '1',
+        headers={'content-type': 'application/json',   # RevenueCat 은 x-conti 를 붙일 수 없다 (Authorization 만)
                  **({'authorization': auth} if auth else {})})
   try:
     with urllib.request.urlopen(req) as r: return r.status, json.loads(r.read() or b'{}')
