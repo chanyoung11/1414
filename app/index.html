@@ -3117,12 +3117,17 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),
   const ids=new Set();S.services.forEach(s=>{SYNC.blobIds(s.items).forEach(id=>ids.add(id));if(s.published)SYNC.blobIds(s.published.items).forEach(id=>ids.add(id))});
   (S.library||[]).forEach(x=>SYNC.libIds([x]).forEach(id=>ids.add(id)));
   const list=[...ids];if(!list.length)return 0;
-  for(const id of list){try{await IDB.del('blobs',id)}catch(e){}const u=urlCache.get(id);if(u){try{URL.revokeObjectURL(u)}catch(e){}urlCache.delete(id)}}
+  // 먼저 지우고 받으면, 서버에 없는 파일(아직 안 올린 초안 악보·옛 저장소라 주소를 못 만드는 파일)이나
+  // 받다 끊긴 파일은 이 기기의 마지막 사본까지 사라진다. 새로 받은 것이 온전할 때만 갈아 끼운다
   let got=0;
   for(let i=0;i<list.length;i+=40){const part=list.slice(i,i+40);
    const r=await api('/blobs?team='+S.team.id+'&ids='+part.join(',')+'&urls=1');
-   const map={};part.forEach(id=>{const u=(r.urls||{})[id];if(u)map[id]=u});
-   await SYNC.fetchBlobs(map);got+=Object.keys(map).length;
+   for(const id of part){const u=(r.urls||{})[id];if(!u)continue;
+    try{const res=await fetch(u);if(!res.ok)continue;const b=await res.blob();
+     if(b.size<200||/^(text\/|application\/json)/.test(b.type||''))continue;   // 오류 본문을 악보로 저장하지 않는다
+     await IDB.put('blobs',id,b);SYNC.missing.delete(id);got++;
+     const old=urlCache.get(id);if(old){try{URL.revokeObjectURL(old)}catch(e){}urlCache.delete(id)}}
+    catch(e){console.warn('refetch',id,e.message)}}
    toast(`악보 받는 중 ${Math.min(i+40,list.length)}/${list.length}…`)}
   await Promise.all(list.map(blobURL));
   return got},
