@@ -1482,16 +1482,20 @@ const songView = (s, extra) => ({
   fromTeam: s.from_team || null, fromAt: s.from_at || null,
   titleNorm: s.title_norm, titleCho: s.title_cho, ...(extra || {}),
 });
-// 파생값 (명세 A.1.3). 목록에 붙여 내려보낸다
-async function songStats(teamId) {
-  const rows = await q(`select song_id, count(*)::int as n, max(service_date) as last, min(service_date) as first,
-                        array_remove(array_agg(service_date order by service_date desc), null) as dates
-                        from song_usages where team_id=$1 group by song_id`, [teamId]);
+// 파생값 (명세 A.1.3). 목록에 붙여 내려보낸다. ids 를 주면 그 곡들만
+// 날짜는 글자('2025-09-24')로 받는다. date 를 그대로 받으면 드라이버가 Date 로 바꿔서 String(d) 가
+// 'Tue Sep 23' 이 됐고(연도 없음) '작년 이맘때' 가 늘 비었다. 서버 시간대에 따라 하루 밀리지도 않는다
+async function songStats(teamId, ids) {
+  if (ids && !ids.length) return {};
+  const only = ids ? ' and song_id = any($2::uuid[])' : '', args = ids ? [teamId, ids] : [teamId];
+  const rows = await q(`select song_id, count(*)::int as n, max(service_date)::text as last, min(service_date)::text as first,
+                        array_remove(array_agg(service_date::text order by service_date desc), null) as dates
+                        from song_usages where team_id=$1${only} group by song_id`, args);
   const keys = await q(`select song_id, key_used, count(*)::int as n from song_usages
-                        where team_id=$1 and key_used<>'' group by song_id, key_used`, [teamId]);
+                        where team_id=$1${only} and key_used<>'' group by song_id, key_used`, args);
   const out = {};
   for (const r of rows) out[r.song_id] = { useCount: r.n, lastUsed: r.last, firstUsed: r.first,
-    usedDates: (r.dates || []).slice(0, 40).map((d) => String(d).slice(0, 10)), keyStats: {} };
+    usedDates: (r.dates || []).slice(0, 40), keyStats: {} };
   for (const k of keys) if (out[k.song_id]) out[k.song_id].keyStats[k.key_used] = k.n;
   return out;
 }
@@ -1567,7 +1571,7 @@ on('GET', '/songs/:id', async ({ uid, params, url }) => {
   const s = await one('select * from songs where id=$1 and team_id=$2 and deleted_at is null', [params.id, teamId]);
   if (!s) throw notFound('그 곡이 없어요');
   const arrs = await q('select * from arrangements where song_id=$1 and deleted_at is null order by is_default desc, created_at asc', [s.id]);
-  const usages = await q(`select service_id as "serviceId", service_date as "serviceDate", service_name as "serviceName",
+  const usages = await q(`select service_id as "serviceId", service_date::text as "serviceDate", service_name as "serviceName",
       position, is_application as "isApplication", key_used as "keyUsed", via_medley as "viaMedley", arrangement_id as "arrangementId"
       from song_usages where team_id=$1 and song_id=$2 order by service_date desc nulls last`, [teamId, s.id]);
   const me1 = await membership(uid, teamId);
@@ -1576,7 +1580,7 @@ on('GET', '/songs/:id', async ({ uid, params, url }) => {
       from arrangement_notes where arrangement_id = any($1::uuid[])
         and (layer='all' or (layer='mine' and author_id=$2) or (layer='session' and ($3 or session = any($4::text[]))))
       order by created_at asc`, [arrs.map((a) => a.id), uid, me1.role === 'leader', mySessions(me1)]);
-  const stats = (await songStats(teamId))[s.id] || { useCount: 0, lastUsed: null, firstUsed: null, keyStats: {} };
+  const stats = (await songStats(teamId, [s.id]))[s.id] || { useCount: 0, lastUsed: null, firstUsed: null, keyStats: {} };
   const ids = [...new Set(arrs.flatMap(arrBlobIds))];
   const blobs = ids.length ? await q('select id, url, pathname from blobs where team_id=$1 and id = any($2::text[])', [teamId, ids]) : [];
   return { song: songView(s, { arrangements: arrs.map(arrView), ...stats }), usages, notes,
