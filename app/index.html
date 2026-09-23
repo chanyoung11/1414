@@ -3429,14 +3429,16 @@ async function saveSong(s,fields){if(!isLeader())return;
  if(!online())return;
  try{await api('/songs/'+s.id,{method:'PATCH',body:{teamId:S.team.id,...s.pend}});delete s.pend;songClean(s);save()}
  catch(e){toast(e.message);SYNC.schedulePush()}}
+// 서버가 받지 않는 내용(400·413)은 다시 밀어도 영영 안 된다. 쌓아 두면 그 곡이 dirty 로 굳어 받지도 못한다 → 버리고 서버 것으로 되돌린다
+const songRejected=e=>e&&(e.status===400||e.status===413);
 async function saveArr(s,a,fields){if(!isLeader())return;
  Object.assign(a,fields);
  s.pendArr=s.pendArr||{};s.pendArr[a.id]=Object.assign(s.pendArr[a.id]||{},fields);s.dirty=true;save();
- if(!online())return;
- try{await api('/arrangements/'+a.id,{method:'PATCH',body:{teamId:S.team.id,...s.pendArr[a.id]}});delete s.pendArr[a.id];songClean(s);save()}
- catch(e){toast(e.message);SYNC.schedulePush()}}
+ if(!online())return true;
+ try{await api('/arrangements/'+a.id,{method:'PATCH',body:{teamId:S.team.id,...s.pendArr[a.id]}});delete s.pendArr[a.id];songClean(s);save();return true}
+ catch(e){toast(e.message);if(songRejected(e)){delete s.pendArr[a.id];songClean(s);save();pullSongs(true).then(()=>render()).catch(()=>{})}else SYNC.schedulePush();return false}}
 // 쌓아 둔 것을 다시 민다
-async function pushDirtySongs(){if(!online()||!isLeader()||!S.team.id)return false;let n=0;
+async function pushDirtySongs(){if(!online()||!isLeader()||!S.team.id)return false;let n=0,resync=false;
  for(const s of (S.songs||[])){
   if(!s.dirty)continue;
   try{
@@ -3444,8 +3446,9 @@ async function pushDirtySongs(){if(!online()||!isLeader()||!S.team.id)return fal
    for(const id of Object.keys(s.pendArr||{})){
     await api('/arrangements/'+id,{method:'PATCH',body:{teamId:S.team.id,...s.pendArr[id]}});delete s.pendArr[id];n++}
    songClean(s);
-  }catch(e){if(e.status===404){delete s.pend;delete s.pendArr;songClean(s)}else console.warn('song retry',e.message)}}
+  }catch(e){if(e.status===404||songRejected(e)){delete s.pend;delete s.pendArr;songClean(s);save();if(e.status!==404)resync=true}else console.warn('song retry',e.message)}}
  if(n)save();
+ if(resync)pullSongs(true).catch(()=>{});   // 버린 수정이 있으면 서버 것으로 다시 맞춘다
  return n>0}
 // 콘티의 곡 → 라이브러리의 편곡. 곡 하나의 지금 모습을 뽑는다
 const arrSnap=(x)=>({key:x.key||'',mod:x.mod||'',form:x.form||'',songNote:x.songNote||'',
@@ -3792,10 +3795,12 @@ function arrEditModal(s,a){
  $('#modal').onclick=async e=>{
   if(e.target.closest('[data-close]')){closeModal();return}
   if(e.target.closest('#aeOk')){
+   // ♩= 는 서버처럼 정수로 (20~400). 72.5 를 그대로 보내면 예전 서버는 저장 전체를 500 으로 버렸다
+   const bpm=Math.round(+$('#aeBpm').value);
    const f={name:$('#aeName').value.trim()||'기본',key:$('#aeKey').value.trim(),mod:$('#aeMod').value.trim(),
-    bpm:+$('#aeBpm').value||null,form:$('#aeForm').value.trim(),songNote:$('#aeNote').value.trim()};
-   await saveArr(s,a,f);a.updatedAt=new Date().toISOString();
-   refreshFromArr();closeModal();render();toast('저장했어요')}}}
+    bpm:bpm>0?Math.min(400,Math.max(20,bpm)):null,form:$('#aeForm').value.trim(),songNote:$('#aeNote').value.trim()};
+   const ok=await saveArr(s,a,f);a.updatedAt=new Date().toISOString();
+   refreshFromArr();closeModal();render();if(ok!==false)toast('저장했어요')}}}
 /* ---------- 예배에 넣기 (명세 A.5.3) ---------- */
 // 어디서 부르든 같은 창. songIds[] 를 받아 예배를 고르고 편곡·키를 정한 뒤 콘티 끝에 붙인다
 function addToServiceSheet(songIds,arrPick){

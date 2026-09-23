@@ -1465,6 +1465,8 @@ on('POST', '/blobs/:id', async ({ req, uid, url, params }) => {
 /* ---------- 라이브러리 A부: 곡 → 편곡 → 사용 이력 ---------- */
 // 마커 라벨 길이. 앱의 라벨 입력칸(labelPicker)도 같은 값으로 막는다 — 고정 메모는 라벨이 정확히 같아야 붙는다
 const MARKER_LABEL_MAX = 40;
+// ♩= 는 정수 칸이다. 72.5 나 아주 큰 수가 오면 저장 전체가 500 으로 날아갔다 (키·송폼까지 같이)
+const bpmOf = (v) => { const n = Math.round(+v); return Number.isFinite(n) && n > 0 ? Math.min(400, Math.max(20, n)) : null; };
 const arrBlobIds = (a) => {
   const ids = new Set();
   for (const p of (a && a.pieces) || []) if (p && p.blob) ids.add(p.blob);
@@ -1690,7 +1692,7 @@ on('PATCH', '/arrangements/:id', async ({ uid, params, body }) => {
   if (body.mod !== undefined) put('mod', str(body.mod, 12));
   if (body.form !== undefined) put('form', str(body.form, 500));
   if (body.songNote !== undefined) put('song_note', str(body.songNote, 300));
-  if (body.bpm !== undefined) put('bpm', +body.bpm || null);
+  if (body.bpm !== undefined) put('bpm', bpmOf(body.bpm));
   if (body.pieces !== undefined) put('pieces', JSON.stringify(Array.isArray(body.pieces) ? body.pieces : []));
   if (body.media !== undefined) put('media', JSON.stringify(Array.isArray(body.media) ? body.media : []));
   if (body.chart !== undefined) put('chart', body.chart ? JSON.stringify(body.chart) : null);
@@ -1940,7 +1942,7 @@ async function takeSharePayload(teamId, uid, member, payload) {
     const a = await one(`insert into arrangements(song_id, team_id, name, is_default, key, mod, form, bpm, song_note, pieces, media)
       values($1,$2,$3,true,$4,$5,$6,$7,$8,'[]',$9) returning *`,
       [s.id, teamId, str(ar.name, 40) || '기본', str(ar.key, 12), str(ar.mod, 12), str(ar.form, 500),
-       +ar.bpm || null, str(ar.songNote, 300), JSON.stringify(media)]);
+       bpmOf(ar.bpm), str(ar.songNote, 300), JSON.stringify(media)]);
     for (const n of (Array.isArray(ar.notes) ? ar.notes : []).slice(0, 40)) {
       const t0 = str(n && n.text, 60); if (!t0) continue;
       // 한 세션에게만 남긴 메모('드럼: 쉬기')는 받는 팀에 그 세션이 있으면 그대로, 없으면 전체에게 가되
