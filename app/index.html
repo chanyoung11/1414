@@ -3200,6 +3200,7 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),notePut:{},noteGone:new Set(),
   if(!v)return (S.noteShadow[id]=[]);
   return v.map(x=>typeof x==='string'?{id:x,itemId:''}:x)},
  async pushNotes(svc,keep){if(!online()||!svc||!S.team.id)return true;
+  const scope=CUR_SCOPE;
   const sh=SYNC.shadow(svc.id);const local=SYNC.localNotes(svc);
   const localIds=new Set(local.map(n=>n.id));const shSet=new Set(sh.map(x=>x.id));
   const add=local.filter(n=>!shSet.has(n.id));
@@ -3209,23 +3210,50 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),notePut:{},noteGone:new Set(),
   const inPub=new Set(((svc.published&&svc.published.items)||[]).map(i=>i.id));
   // 초안을 고치는 사람은 인도자뿐이다. 멤버 화면에서 메모가 없어진 것은 언제나 진짜 삭제다
   const shielded=x=>!!(isLeader()&&x.itemId&&!inDraft.has(x.itemId)&&inPub.has(x.itemId));
-  const keepSh=sh.filter(x=>!localIds.has(x.id)&&shielded(x));
-  const del=sh.filter(x=>!localIds.has(x.id)&&!shielded(x)).map(x=>x.id);
-  if(!add.length&&!del.length)return true;
+  // 지우는 것은 이 기기에 있는 곡의 메모뿐이다. 이 기기에 없는 곡(다른 기기가 받은 새 버전에 더해진 곡 등)의
+  // 메모는 여기서 지운 게 아니다 → 서버는 두고 그림자에서만 뺀다. 곡을 모르는 옛 그림자(문자열)는 예전처럼 지운다
+  const del=sh.filter(x=>!localIds.has(x.id)&&(!x.itemId||inDraft.has(x.itemId))).map(x=>x.id);
+  const drop=new Set(sh.filter(x=>!localIds.has(x.id)&&x.itemId&&!inDraft.has(x.itemId)&&!shielded(x)).map(x=>x.id));
+  if(!add.length&&!del.length){if(drop.size)S.noteShadow[svc.id]=sh.filter(x=>!drop.has(x.id));return true}
   try{if(add.length)await api('/notes',{method:'POST',keepalive:!!keep,body:{teamId:S.team.id,serviceId:svc.id,notes:add.map(n=>({id:n.id,itemId:n.itemId,markerId:n.markerId,mediaId:n.mediaId,t:n.t,layer:n.layer,session:n.session,text:n.text,at:n.at}))}});
    if(del.length)await api('/notes',{method:'DELETE',keepalive:!!keep,body:{teamId:S.team.id,ids:del}});
-   S.noteShadow[svc.id]=local.map(n=>({id:n.id,itemId:n.itemId})).concat(keepSh);save();return true}
+   if(scope!==CUR_SCOPE)return true;   // 보내는 사이 팀을 바꿨으면 새 팀의 그림자를 건드리지 않는다
+   // 보내는 사이 pullNotes 가 그림자를 새로 세웠을 수 있다. 시작할 때 본 목록으로 통째로 덮으면
+   // 그 사이 받은 것·지운 것이 어긋나 다음 전송 때 멀쩡한 메모를 지웠다 → 이번에 보낸 만큼만 고친다
+   const gone=new Set(del);drop.forEach(id=>gone.add(id));
+   const next=SYNC.shadow(svc.id).filter(x=>!gone.has(x.id));const have=new Set(next.map(x=>x.id));
+   add.forEach(n=>{if(!have.has(n.id))next.push({id:n.id,itemId:n.itemId})});
+   const now=Date.now();add.forEach(n=>{SYNC.notePut[n.id]=now});del.forEach(id=>SYNC.noteGone.add(id));   // pullNotes 가 늦게 온 목록과 견줄 때 쓴다
+   S.noteShadow[svc.id]=next;save();return true}
   catch(e){console.warn('notes push',e.message);return false}},
  async pullNotes(svc){if(!online()||!svc||!S.team.id)return;
   const pushed=await SYNC.pushNotes(svc);
   if(!pushed){toast('메모를 아직 못 올렸어요. 잠시 뒤 다시 시도해요');SYNC.schedulePush();return}   // 못 올린 메모를 서버 목록으로 덮지 않는다
+  const scope=CUR_SCOPE,t0=Date.now();
   let d;try{d=await api('/notes?team='+S.team.id+'&service='+svc.id)}catch(e){return}
-  scrubIds(d.notes=d.notes||[]);const who=n=>n.layer==='leader'?'인도자':(n.authorId===d.me?(me().name||'나'):(n.authorName||'멤버'));const by={};d.notes.forEach(n=>{(by[n.itemId]||(by[n.itemId]=[])).push(n)});
+  if(scope!==CUR_SCOPE)return;
+  scrubIds(d.notes=d.notes||[]);const who=n=>n.layer==='leader'?'인도자':(n.authorId===d.me?(me().name||'나'):(n.authorName||'멤버'));
   // 받은 메모가 이 기기 것과 같으면 저장하지 않는다 — 큰 팀은 저장 한 번이 0.5초 넘게 걸려, 콘티를 열 때마다 멈췄다
   const sig=()=>JSON.stringify(svc.items.map(it=>[it.notes,(it.media||[]).map(m=>m.notes)]))+JSON.stringify((S.noteShadow||{})[svc.id]||null);const sig0=sig();
-  svc.items.forEach(it=>{const list=by[it.id]||[];it.notes=list.filter(n=>!n.mediaId).map(n=>({id:n.id,marker:n.markerId,layer:n.layer,session:n.session,text:n.text,author:who(n),at:new Date(n.createdAt).getTime()}));
-   (it.media||[]).forEach(m=>{m.notes=list.filter(n=>n.mediaId===m.id).map(n=>({id:n.id,t:+n.t||0,marker:n.markerId||undefined,layer:n.layer,session:n.session,text:n.text,author:who(n)}))})});
-  S.noteShadow=S.noteShadow||{};S.noteShadow[svc.id]=d.notes.map(n=>({id:n.id,itemId:n.itemId||''}));SYNC.pulledAt[svc.id]=Date.now();if(sig()!==sig0)save()},
+  // 받는 사이 이 기기에서 쓰거나 지운 메모는 서버 목록(보내기 전 모습)으로 덮지 않는다.
+  // 덮으면 새 메모가 화면에서 사라지고, 겹쳐 돌던 전송이 그림자에 남겨 다음 전송 때 서버에서도 지웠다
+  d.notes=d.notes.filter(n=>!SYNC.noteGone.has(n.id));                                   // 받는 사이 지워진 것
+  const shNow=new Set(SYNC.shadow(svc.id).map(x=>x.id));const loc=SYNC.localNotes(svc);const locIds=new Set(loc.map(n=>n.id));
+  const srvIds=new Set(d.notes.map(n=>n.id));
+  // 아직 못 올렸거나, 목록을 달라고 한 뒤에 올린 새 메모 (그 목록에는 없는 게 맞다)
+  const keep=n=>!srvIds.has(n.id)&&(!shNow.has(n.id)||(SYNC.notePut[n.id]||0)>=t0);
+  const fresh=new Set(loc.filter(keep).map(n=>n.id));
+  const cut=new Set([...shNow].filter(id=>!locIds.has(id)));                               // 아직 서버에 못 알린 지운 메모
+  const by={};d.notes.forEach(n=>{if(!cut.has(n.id))(by[n.itemId]||(by[n.itemId]=[])).push(n)});
+  svc.items.forEach(it=>{const list=by[it.id]||[];const keepI=(it.notes||[]).filter(n=>fresh.has(n.id));
+   it.notes=list.filter(n=>!n.mediaId).map(n=>({id:n.id,marker:n.markerId,layer:n.layer,session:n.session,text:n.text,author:who(n),at:new Date(n.createdAt).getTime()})).concat(keepI);
+   (it.media||[]).forEach(m=>{const keepM=(m.notes||[]).filter(n=>fresh.has(n.id));m.notes=list.filter(n=>n.mediaId===m.id).map(n=>({id:n.id,t:+n.t||0,marker:n.markerId||undefined,layer:n.layer,session:n.session,text:n.text,author:who(n)})).concat(keepM)})});
+  // 그림자에는 이 기기에 있는 곡의 메모만 넣는다. 없는 곡(더 새 버전에 더해진 곡)의 메모까지 넣으면
+  // 다음 전송이 '이 기기에서 지운 것'으로 보고 서버에서 지웠다 — 다른 기기에서 쓴 팀원 메모가 사라졌다
+  const here=new Set(svc.items.map(it=>it.id));
+  S.noteShadow=S.noteShadow||{};S.noteShadow[svc.id]=d.notes.filter(n=>here.has(n.itemId)).map(n=>({id:n.id,itemId:n.itemId||''}))
+   .concat(loc.filter(n=>fresh.has(n.id)&&shNow.has(n.id)).map(n=>({id:n.id,itemId:n.itemId})));   // 이미 올린 새 메모는 그림자에 그대로
+  SYNC.pulledAt[svc.id]=Date.now();if(sig()!==sig0)save()},
  flush(){const r=route();const svc=svcById(r.a);if(online()&&svc&&/^(edit|view|play)$/.test(r.name)){clearTimeout(SYNC.t);SYNC.pushNotes(svc,true);if(r.name==='edit'&&isLeader()){clearTimeout(SYNC.td);SYNC.pushDraft(svc)}}},
  schedulePush(){if(!online())return;clearTimeout(SYNC.tl);SYNC.tl=setTimeout(()=>{SYNC.pushLibrary();pushDirtySongs();pushSongs()},3000);clearTimeout(SYNC.t);SYNC.t=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&/^(edit|view|play)$/.test(r.name))SYNC.pushNotes(svc)},700);clearTimeout(SYNC.td);SYNC.td=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&r.name==='edit'&&isLeader())SYNC.pushDraft(svc);
   // 에디터를 거치지 않고 만든 새 콘티(라이브러리 '넣고 계속 고르기')도 올려 둔다. 안 올리면 다른 기기에 안 보이고 서버에도 없다
