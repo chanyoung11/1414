@@ -2334,7 +2334,7 @@ const BIZ={name:'바디페인팅',ceo:'박찬영',regNo:'469-06-03606',
 // 결제를 붙이기 전까지 '결제 담당' 화면을 숨긴다. 결제가 없는데 이 말이 보이면
 // 앱 심사에서 외부 결제로 오해받는다. 서버의 billing_user_id 기록은 그대로 둔다
 const BILLING_UI=false;
-const LEGAL_AT='2026-09-17';       // 시행일. 내용을 고치면 같이 올린다
+const LEGAL_AT='2026-09-24';       // 시행일. 내용을 고치면 같이 올린다 (서버 LEGAL_VERSION 과 같게)
 function legalHTML(kind){
  const K=kind==='terms'?'terms':kind==='delete'?'delete':'privacy';
  const bizRow=`<table class="ltab"><tbody>
@@ -2377,10 +2377,13 @@ function legalHTML(kind){
    광고가 이용자와 덜 맞을 뿐입니다. 안드로이드는 휴대폰 설정 → Google → 광고에서 맞춤 광고를 끌 수 있습니다.</p>
 
   <h3>3. 맡기는 곳과 국외 이전</h3>
-  <p>서비스를 돌리기 위해 아래에 처리를 맡깁니다. 서버가 <b>국외(미국)</b>에 있어 정보가 국외로 옮겨 저장·처리됩니다.</p>
+  <p>서비스를 돌리기 위해 아래에 처리를 맡깁니다. 서버와 데이터베이스가 <b>국외(싱가포르)</b>에 있고 파일 저장·알림 전달은
+  미국 회사가 맡아, 정보가 국외로 옮겨 저장·처리됩니다.</p>
   <table class="ltab"><thead><tr><th>받는 곳</th><th>맡기는 일</th><th>옮겨지는 항목</th><th>나라 · 시점</th></tr></thead><tbody>
-   <tr><th>Vercel Inc.</th><td>서비스 호스팅, 파일 저장</td><td>서비스 이용 중 생기는 정보 전부, 올린 악보·녹음 파일</td><td>미국 · 이용 시 수시 전송</td></tr>
-   <tr><th>Neon Inc.</th><td>데이터베이스 운영</td><td>계정·팀·콘티·메모 등 저장 정보</td><td>미국 · 이용 시 수시 전송</td></tr>
+   <tr><th>Google LLC</th><td>서비스 호스팅(Google Cloud Run)</td><td>서비스 이용 중 생기는 정보 전부</td><td>싱가포르 · 이용 시 수시 전송</td></tr>
+   <tr><th>Neon Inc.</th><td>데이터베이스 운영</td><td>계정·팀·콘티·메모 등 저장 정보</td><td>싱가포르 · 이용 시 수시 전송</td></tr>
+   <tr><th>Cloudflare, Inc.</th><td>파일 저장(Cloudflare R2)</td><td>올린 악보 사진·연습 녹음 파일</td><td>미국 회사 · Cloudflare 데이터센터 · 파일을 올리고 볼 때</td></tr>
+   <tr><th>Google LLC · Apple Inc.</th><td>앱 푸시 알림 전달(FCM · APNs)</td><td>알림 제목·내용, 기기 푸시 토큰</td><td>미국 · 알림을 보낼 때</td></tr>
    <tr><th>Google LLC</th><td>악보 사진에서 코드·음표 읽기(Gemini, Cloud Vision)</td><td>이용자가 올린 <b>악보 이미지</b></td><td>미국 · 해당 기능을 쓸 때</td></tr>
    <tr><th>Google LLC</th><td>광고 보여주기(AdMob · Google 광고)</td><td>광고 식별자, 기기 정보, 광고를 본 기록</td><td>미국 · 무료 플랜에서 광고가 보일 때</td></tr>
   </tbody></table>

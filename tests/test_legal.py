@@ -15,8 +15,9 @@ def run():
         # ---- 로그인 없이도 볼 수 있다 ----
         pg.goto(URL + '#/legal/privacy'); pg.wait_for_selector('.legal', timeout=10000); pg.wait_for_timeout(500)
         t = pg.locator('.legal').inner_text()
-        for must in ['바디페인팅','469-06-03606','chanyoung07119@gmail.com','국외','Google','Vercel','Neon','계정을 지우면']:
+        for must in ['바디페인팅','469-06-03606','chanyoung07119@gmail.com','국외','Google','Cloudflare','Neon','싱가포르','계정을 지우면']:
             if must not in t: fail('개인정보처리방침에 "%s" 없음' % must)
+        if 'Vercel' in t: fail('더 쓰지 않는 Vercel 이 처리위탁에 남아 있음')   # 2026-09-24 Cloud Run·R2 로 옮김
         if '주민등록번호를 받지 않습니다' not in t: fail('주민번호 비수집 문구 없음')
         print('개인정보처리방침 ok (로그인 없이 열림)')
         pg.screenshot(path=os.path.join(ROOT,'tests','t_legal_privacy.png'))
