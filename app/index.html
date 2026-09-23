@@ -5120,7 +5120,12 @@ function shiftAt(item,pi,y){let best=null;(item.pieces||[]).forEach((p,i)=>{if(i
 // 조각의 코드를 off 만큼 옮겼을 때 그 코드가 속한 키 — 카포·'여기부터 전조'까지 반영한 실제로 치는 키다.
 // 원래 연주 키의 #·b 로 적으면 G 에서 +1 전조한 Ab 에 G#·C#·D# 이, F 카포 3(D 모양)에 Gbm·D/Gb 가 나왔다
 function chordKeyAt(item,piece,off){if(keySemi(piece&&piece.sheetKey)!=null)return keyShiftName(piece.sheetKey,off);return keyShiftName(item.key||'',off-chordOffset(item,piece))}
-function chordOffset(item,piece){if(!piece)return 0;if(piece.offset!=null)return piece.offset;const a=keySemi(item.key),b=keySemi(piece.sheetKey);if(a==null||b==null)return 0;let d=a-b;while(d>6)d-=12;while(d<-6)d+=12;return d}
+// ▲▼ 로 고친 offset 은 그때의 연주 키(offKey) 기준이다. 연주 키를 바꾸면 그만큼 따라간다 —
+// 예전엔 한 번 누르면 절대값으로 굳어 키를 바꿔도(다른 예배로 옮겨도) 옛 키 코드가 나왔다 (F88).
+// offKey 가 없는 예전 데이터·연주 키 없이 고친 값은 어디에 맞춘 건지 모르니 그대로 쓴다
+function chordOffset(item,piece){if(!piece)return 0;const wrap=d=>{while(d>6)d-=12;while(d<-6)d+=12;return d};const a=keySemi(item.key);
+ if(piece.offset!=null){const k=keySemi(piece.offKey);return wrap(piece.offset+(a!=null&&k!=null?a-k:0))}
+ const b=keySemi(piece.sheetKey);if(a==null||b==null)return 0;return wrap(a-b)}
 function estimateKey(chords){const roots=(chords||[]).map(c=>parseChord(c.text)).filter(Boolean).map(c=>c.root);if(!roots.length)return '';const cnt={};roots.forEach(r=>cnt[r]=(cnt[r]||0)+1);const top=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a]);const last=roots[roots.length-1];return top.slice(0,2).includes(last)?last:top[0]}
 // 오선 위치: 폭의 40% 이상 이어지는 어두운 행 → 선 → 4줄 이상 묶음이 시스템
 // 오선 검출: 얇은 세로 런(선 두께)만 남긴 마스크를 8개 세로 띠로 나눠 행별 덮임률로 선을 찾고, 등간격 4줄 이상을 시스템으로.
@@ -8314,7 +8319,7 @@ document.addEventListener('click',async e=>{
   case 'score-menu':{const {svc:s3,it:i3}=scoreItem(r);if(i3&&i3.score)scoreMenuModal(s3,i3);break}
   case 'score-print':{const {svc:s4,it:i4}=scoreItem(r);if(i4&&i4.score)printScore(s4,i4);break}
   case 'sheet-key':{const s=svcById(r.a);const it=curItem(s);const p=it&&it.pieces.find(x=>x.id===el.dataset.id);if(!p)break;keyPickerModal(p.sheetKey||'',k=>{p.sheetKey=k;p.keyConfirmed=!!k;p.offset=null;touch(s);save();syncLib(it);drawEditorSheet(s)});break}
-  case 'chord-off':{const s=svcById(r.a);const it=curItem(s);const p=it&&it.pieces.find(x=>x.id===el.dataset.id);if(!p)break;p.offset=chordOffset(it,p)+ +el.dataset.d;if(p.offset>6)p.offset-=12;if(p.offset<-6)p.offset+=12;touch(s);save();syncLib(it);drawEditorSheet(s);break}
+  case 'chord-off':{const s=svcById(r.a);const it=curItem(s);const p=it&&it.pieces.find(x=>x.id===el.dataset.id);if(!p)break;p.offset=chordOffset(it,p)+ +el.dataset.d;if(p.offset>6)p.offset-=12;if(p.offset<-6)p.offset+=12;p.offKey=it.key||'';touch(s);save();syncLib(it);drawEditorSheet(s);break}
   case 'md-target':{const s=svcById(r.a);const it=curItem(s);const md=it&&it.media.find(m=>m.id===el.dataset.id);if(!md)break;mediaTargetModal(s,it,md);break}
   case 'del-media':{const s=svcById(r.a);const it=curItem(s);it.media=it.media.filter(m=>m.id!==el.dataset.id);touch(s);save();syncLib(it);render();break}
   case 'del-note':{const s=svcById(r.a);const it=curItem(s);if(!confirm('이 메모를 지울까요?'))break;it.notes=it.notes.filter(n=>n.id!==el.dataset.id);save();render();break}
