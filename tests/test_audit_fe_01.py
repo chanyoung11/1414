@@ -166,9 +166,10 @@ def run():
     song = api.post(URL + 'api/songs', headers=H, data={'teamId': team, 'title': '고정 메모 곡', 'key': 'G', 'form': 'A – B'}).json()['song']
     aid = song['arrangements'][0]['id']
     piece = {'id': 'pc1', 'blob': bid, 'w': 2120, 'h': 3163, 'markers': [{'id': 'mk1', 'label': 'A', 'x': 200, 'y': 400, 'cut': 360}], 'hls': [], 'chords': []}
-    api.patch(URL + 'api/arrangements/' + aid, headers=HJ, data=json.dumps({'teamId': team, 'pieces': [piece]}))
-    s1 = 'fx' + tag
     media = {'id': 'md1', 'type': 'youtube', 'url': 'https://youtu.be/abcdefghijk', 'name': '영상', 'start': 0, 'end': 0}
+    am = dict(media, id='am1')   # 편곡에도 같은 영상 (예배 곡이 편곡을 따라가는 상태)
+    api.patch(URL + 'api/arrangements/' + aid, headers=HJ, data=json.dumps({'teamId': team, 'pieces': [piece], 'media': [am]}))
+    s1 = 'fx' + tag
     doc = {'id': s1, 'name': '고정 메모 예배', 'date': '2031-03-01', 'version': 1, 'items': [
       {'id': 'it1', 'title': '고정 메모 곡', 'key': 'G', 'form': 'A – B', 'songId': song['id'], 'arrId': aid, 'pieces': [piece], 'media': [media], 'fixedNotes': []}]}
     r = api.put(URL + 'api/services/' + s1, headers=HJ, data=json.dumps({'teamId': team, 'doc': doc}))
@@ -212,6 +213,15 @@ def run():
     M.evaluate("CONTI.pullSongs(true)"); M.wait_for_timeout(1500)
     me_m = cM.request.get(URL + 'api/me').json()
     mid = me_m['user']['id']; msess = M.evaluate('CONTI.S.team.me.session')
+    # ---- F16 뿌리: 라이브러리에서 영상을 바꿔도 팀원 기기의 예배 곡(발행본 사본)은 그대로 ----
+    api.patch(URL + 'api/arrangements/' + aid, headers=HJ, data=json.dumps({'teamId': team, 'media': [dict(am, url='https://youtu.be/zyxwvutsrqp')]}))
+    M.evaluate("CONTI.pullSongs(true)"); M.wait_for_timeout(1500)
+    mids = M.evaluate("CONTI.S.services.find(x=>x.id==='%s').items[0].media.map(m=>m.id)" % s1)
+    if mids != ['md1']: fail('라이브러리 영상이 바뀌자 팀원 기기의 예배 영상이 갈아 끼워짐: %s' % mids)
+    n0 = len(errs)
+    M.evaluate("()=>location.hash='#/view/%s'" % s1); M.wait_for_selector('.card', timeout=8000); M.wait_for_timeout(800)
+    if len(errs) > n0: fail('팀원 콘티 보기가 오류로 멈춤: %s' % errs[n0:])
+    log('F16 member copy keeps published media ok')
     M.evaluate("()=>location.hash='#/play/%s/0'" % s1); M.wait_for_selector('#sheet [data-marker="mk1"]', timeout=15000); M.wait_for_timeout(800)
     if '연습중새메모' not in M.locator('#sheet').inner_text(): fail('팀원에게 발행 뒤 남긴 고정 메모가 안 보임')
     # ---- G24: 멤버는 "이 곡에 항상"이면 세션에 공유를 못 고른다 ----

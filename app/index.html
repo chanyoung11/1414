@@ -3556,7 +3556,9 @@ const arrVal=(a,k)=>k==='pieces'||k==='media'?(a[k]||[]):(a[k]||(k==='chart'||k=
 // 편곡이 바뀌면 예배에서 안 고친 값만 따라 바꾼다. 세 갈래로 본다:
 //   예배 쪽이 마지막으로 맞춘 값과 다르면 → 예배에서 고친 것 (덮어쓰기로 표시)
 //   편곡 쪽이 마지막으로 맞춘 값과 다르면 → 라이브러리에서 고친 것 (따라 바꾼다)
-function refreshFromArr(){let changed=false;
+// 인도자 기기에서만 한다. 팀원 기기의 예배 곡은 발행본 사본인데, 라이브러리를 따라 영상을 갈아 끼우면
+// 영상 id 가 발행본과 어긋나 그 영상에 단 타임라인 메모가 끊기고 콘티 보기가 발행본 영상을 못 찾는다
+function refreshFromArr(){let changed=false;if(!isLeader())return false;
  for(const sv of S.services){for(const it of (sv.items||[])){
   const a=arrOfItem(it);if(!a)continue;
   // 편곡이 그대로면 견줄 것이 없다. 예배 쪽 수정은 markOverride·pushSongs 가 잡는다
