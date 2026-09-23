@@ -310,6 +310,7 @@ html.dark .a-ok{color:#5FBF8A}html.dark .a-maybe{color:#E9C35C}html.dark .a-no{c
 .hd h1{margin:0;font-family:"Satoshi","Pretendard Variable",sans-serif;font-size:20px;font-weight:700;letter-spacing:-.025em;white-space:nowrap}
 .hd .date{font-size:13px;color:var(--muted-fg);white-space:nowrap}
 .hd .acts{display:flex;align-items:center;gap:6px}
+.hd .acts .hdmore{display:none;width:34px;height:34px}   /* 폰에서만 (아래 768 미만) */
 .sect-hd{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:6px 2px 12px}
 .sect-hd h2{margin:0;font-size:17px;font-weight:700;letter-spacing:-.03em}
 .sect-hd p{margin:3px 0 0;font-size:12.5px;color:var(--muted-fg)}
@@ -516,8 +517,9 @@ html.dark .pill.role-pastor{color:#B4A7F5}
  .shell{padding:10px 12px 10px}
  .main>main{padding-bottom:calc(var(--bnavh,100px) + 16px)}
  .hd{min-height:56px}
- .hd .acts .btn{display:none}       /* 좁은 폭에서는 제목 + 종만 (§7) */
- .hd .acts .btn.pri{display:inline-flex}
+ .hd .acts>.btn{display:none}       /* 좁은 폭에서는 제목 + 종만 (§7). 종 드롭다운 안의 버튼(모두 읽음)은 접지 않는다 */
+ .hd .acts>.btn.pri{display:inline-flex}
+ .hd .acts .hdmore{display:inline-flex}   /* 접힌 버튼들은 「⋯」 안에 */
  .main>main.w-read{max-width:none}
  .calpage{max-width:none}
  .wgrid{grid-template-columns:minmax(0,1fr)}
@@ -1249,6 +1251,18 @@ function moreMenu(){
   <div class="morelist">${items.map(([act,i,t])=>`<button class="btn" data-act="${act}">${ic(i)}${esc(t)}</button>`).join('')}</div>`,{sheet:true});
  // 전역 클릭은 #modal 안을 건너뛴다 → 여기서 직접 받는다 (눌러도 반응이 없던 것)
  $('#modal').onclick=e=>{const b=e.target.closest('.morelist [data-act]');if(!b)return;const act=b.dataset.act;closeModal();NOTI.open=false;go(act)}}
+// 폰(768 미만) 머리글은 주 버튼(.pri)과 종만 남기고 나머지 버튼을 접는다 (§7).
+// 접힌 버튼(팀 전환·코드로 받기·여러 곡 고르기…)은 다른 데서 들어갈 길이 없어서 「⋯」 하나에 모아 둔다
+function hdMoreBtn(acts){
+ const cls=String(acts||'').match(/class="btn\b[^"]*"/g)||[];
+ return cls.some(c=>!/\bpri\b/.test(c))?`<button class="icon ghost hdmore" data-act="hd-more" title="더보기" aria-label="더보기">${ic('more')}</button>`:''}
+function hdMoreMenu(){
+ const hid=$$('.hd .acts>.btn').filter(b=>getComputedStyle(b).display==='none');
+ if(!hid.length)return;
+ modal(`<b style="font-size:17px">더보기</b>
+  <div class="morelist">${hid.map((b,i)=>`<button class="btn" data-i="${i}" ${b.disabled?'disabled':''}>${b.innerHTML}</button>`).join('')}</div>`,{sheet:true});
+ // 머리글에 있는 그 버튼을 그대로 누른다 — 동작·조건을 한 곳(전역 클릭)에서만 다룬다
+ $('#modal').onclick=e=>{const x=e.target.closest('.morelist [data-i]');if(!x)return;const b=hid[+x.dataset.i];closeModal();if(b&&b.isConnected)b.click()}}
 /* ---------- 앱 셸: 사이드바·페이지 헤더 한 벌 (UI 통일 §1·§2) ---------- */
 // 사이드바 항목. 역할에 따라 숨는다 (멤버: 편성·말씀 없음 / 목회자: 내 일정·편성 없음)
 function navItems(){
@@ -1288,7 +1302,7 @@ function shellHTML(active,o){
  return `<div class="shell" data-page="${esc(active)}">${sidebarHTML(active)}
   <div class="main">
    <header class="hd"><div class="ttl"><h1>${esc(o.title)}</h1>${o.sub?`<span class="date">${o.sub}</span>`:''}</div>
-    <div class="acts">${o.acts||''}${bellHTML()}</div></header>
+    <div class="acts">${o.acts||''}${hdMoreBtn(o.acts)}${bellHTML()}</div></header>
    <main class="${o.wide?'w-full':'w-read'}${o.bodyClass?' '+o.bodyClass:''}">${o.body}</main>
   </div></div>${bnavHTML(active)}`}
 // 그릴 때마다 한 번: 하단바가 실제로 차지하는 높이를 재서 본문 아래 여백으로 (마지막 카드가 바에 가리던 것),
@@ -8009,6 +8023,7 @@ document.addEventListener('click',async e=>{
   case 'noti-all':{await markAllRead();render();break}
   case 'noti-open':await openNoti(el.dataset.id);break;
   case 'more-menu':moreMenu();break;
+  case 'hd-more':hdMoreMenu();break;
   case 'repub':{if(!svc||!svc.published)break;toast('다시 올리는 중…');
    try{if(await SYNC.pushPending(svc.id))toast('팀에 공유됐어요');render()}
    catch(e){toast(e.message)}break}
