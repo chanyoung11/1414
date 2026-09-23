@@ -556,7 +556,8 @@ html.dark .pill.role-pastor{color:#B4A7F5}
 .sheetwrap{flex:1;min-height:0;overflow:auto;background:var(--muted);-webkit-overflow-scrolling:touch;padding:14px;touch-action:pan-x pan-y}
 .sheet{position:relative;background:#fff;border-radius:var(--r-xl);padding:12px 12px 70px 44px;box-shadow:0 1px 3px rgba(0,0,0,.08),0 12px 40px rgba(0,0,0,.12);border:1px solid rgba(0,0,0,.06);
  --panel:#fff;--panel2:#F2F3EE;--panel3:#E6E7E1;--ink:#1B1C19;--mute:#6D7069;--faint:#9A9D94;--line:#D6D8D0;--line2:#B9BCB2;--teal-soft:#EFEFEF;--teal:#0A0A0A;--tealink:#0A0A0A;--amber-soft:#EFEFEF;--amber:#0A0A0A;
- --fg:#1B1C19;--card:#fff;--secondary:#F2F3EE;--accent:#E6E7E1;--muted-fg:#6D7069;--faint-fg:#9A9D94;--border:#D6D8D0;--border-2:#B9BCB2;color:var(--ink)}
+ --fg:#1B1C19;--card:#fff;--secondary:#F2F3EE;--accent:#E6E7E1;--muted-fg:#6D7069;--faint-fg:#9A9D94;--border:#D6D8D0;--border-2:#B9BCB2;
+ --primary:#0A0A0A;--primary-fg:#FFFFFF;color:var(--ink)}   /* 주 버튼(코드 인식)도 종이 색 기준 — 다크의 흰 버튼은 흰 종이에 묻힌다 */
 html.dark .sheet{box-shadow:0 10px 40px rgba(0,0,0,.5);border-color:transparent}
 .sheet .mk{background:#fff;border-color:#1B1C19;color:#1B1C19}
 .sheet .mk.now{background:#0A0A0A;border-color:#0A0A0A;color:#fff}
@@ -737,7 +738,8 @@ body.hasad .sidetool{bottom:calc(var(--sab) + var(--adh,50px));padding-bottom:14
 .pk.b.on{background:#4a4b4d}
 .chordbar.slim{padding:2px 8px;background:transparent;border-style:dashed;justify-content:flex-end}
 /* 악보 상단 바 — 키 블록 · 상태 줄 · 동작 블록. 좁으면 두 줄로 접힌다 */
-.cb-status{flex:1 1 200px;min-width:0;display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12px}
+/* 글자색은 --muted-fg. --muted 는 배경 토큰(#F4F4F4)이라 글자에 쓰면 흰 바탕에 안 보인다 */
+.cb-status{flex:1 1 200px;min-width:0;display:flex;align-items:center;gap:7px;color:var(--muted-fg);font-size:12px}
 .cb-status b{color:var(--fg)}
 .cb-dot{width:8px;height:8px;border-radius:50%;background:var(--line2,#9a9a94);flex:0 0 auto}
 .cb-dot.ok{background:#3AA76D}.cb-dot.bad{background:var(--destructive)}
@@ -780,7 +782,7 @@ html.dark .cb-credit.p-plus,html.dark .pill.p-plus{--pc:#A78BFA}
 .lk-ic.apple{background:#000;border-color:#000;color:#fff}
 html.dark .lk-ic.apple{background:#fff;border-color:#fff;color:#000}
 .socialbox{margin-top:20px}
-.socialbox .orline{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:12px;margin:0 0 16px}
+.socialbox .orline{display:flex;align-items:center;gap:12px;color:var(--muted-fg);font-size:12px;margin:0 0 16px}
 .socialbox .orline::before,.socialbox .orline::after{content:'';flex:1;height:1px;background:var(--line)}
 .socialbtn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:46px;
  border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--fg);
@@ -793,7 +795,7 @@ html.dark .lk-ic.apple{background:#fff;border-color:#fff;color:#000}
 .auth .socialbox .orline{color:#9A9A94}
 .auth .socialbox .orline::before,.auth .socialbox .orline::after{background:#33353A}
 .socialbtn svg{width:18px;height:18px;flex:0 0 auto}
-.cb-note{width:100%;font-size:11.5px;color:var(--muted);margin-top:2px}
+.cb-note{width:100%;font-size:11.5px;color:var(--muted-fg);margin-top:2px}
 .cb-note.bad{color:var(--destructive)}
 .btn .cost{font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;background:rgba(127,127,127,.22);margin-left:2px}
 .btn.pri .cost{background:rgba(255,255,255,.2)}
@@ -801,7 +803,7 @@ html.dark .lk-ic.apple{background:#fff;border-color:#fff;color:#000}
 .cb-pop{position:relative}
 .cb-confirm{position:absolute;right:0;top:38px;width:min(300px,78vw);background:var(--panel);border:1px solid var(--line);
  border-radius:var(--r-lg);box-shadow:0 10px 30px rgba(0,0,0,.35);padding:14px;z-index:30;color:var(--fg);text-align:left}
-.cb-confirm p{margin:6px 0 10px;color:var(--muted);font-size:12px;line-height:1.5}
+.cb-confirm p{margin:6px 0 10px;color:var(--muted-fg);font-size:12px;line-height:1.5}
 .cb-confirm .cnt{display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px}
 .cb-confirm .cnt .n{font-weight:800;font-size:18px}
 .cb-confirm .row{gap:6px}
