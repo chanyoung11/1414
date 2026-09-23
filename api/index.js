@@ -1873,16 +1873,20 @@ on('DELETE', '/share/:code', async ({ uid, params, url }) => {
   if (!r.length) throw notFound('그 코드가 없어요');
   return { ok: true };
 });
-// 미리보기 (받는 쪽). 담기 전에 무엇이 들어오는지 본다
-on('GET', '/share/:code', async ({ uid, params, req }) => {
-  if (!uid) throw noAuth();
-  // 코드는 6자라 마구 넣어 보면 남의 팀 곡을 긁을 수 있다. 틀린 시도를 세어 막는다
+// 코드는 6자라 마구 넣어 보면 남의 팀 곡을 긁을 수 있다. 틀린 시도를 세어 막는다.
+// 미리보기와 담기가 같은 셈을 쓴다 — 전에는 담기(take)에 셈이 없어서 미리보기가 잠겨도 담기로 계속 두드릴 수 있었다
+async function shareGuard(uid) {
   const key = 'share|' + uid;
   const la = await one('select n, last from login_attempts where username=$1', [key]).catch(() => null);
   if (la && la.n >= 20 && Date.now() - new Date(la.last).getTime() < 60 * 60 * 1000)
     throw new HttpError(429, 'too_many', '코드를 너무 많이 시도했어요. 한 시간 뒤에 다시 해 주세요');
-  const miss = async () => { await q(`insert into login_attempts(username, n, last) values($1,1,now())
+  return async () => { await q(`insert into login_attempts(username, n, last) values($1,1,now())
     on conflict (username) do update set n = case when login_attempts.last < now() - interval '1 hour' then 1 else login_attempts.n + 1 end, last = now()`, [key]).catch(() => {}); };
+}
+// 미리보기 (받는 쪽). 담기 전에 무엇이 들어오는지 본다
+on('GET', '/share/:code', async ({ uid, params }) => {
+  if (!uid) throw noAuth();
+  const miss = await shareGuard(uid);
   const r = await one('select * from share_codes where code=$1', [String(params.code || '').toUpperCase()]);
   if (!r) { await miss(); throw notFound('그런 코드가 없어요'); }
   if (r.revoked_at) throw notFound('이 코드는 회수됐어요');
@@ -1895,13 +1899,15 @@ on('POST', '/share/:code/take', async ({ uid, params, body }) => {
   if (!uid) throw noAuth();
   const teamId = str(body.teamId, 64);
   const m = await requireMember(uid, teamId, 'leader');
+  const miss = await shareGuard(uid);
   const code = String(params.code || '').toUpperCase();
   // 먼저 한 자리를 선점한다. 검사하고 나중에 세면 '한 팀만' 코드가 여러 팀에 나간다
   const claim = await one(`update share_codes set uses = uses + 1 where code=$1 and revoked_at is null
     and expires_at > now() and (max_uses is null or uses < max_uses) returning payload`, [code]);
   if (!claim) {
     const exists = await one('select code from share_codes where code=$1', [code]);
-    throw notFound(exists ? '이 코드는 더 쓸 수 없어요' : '그런 코드가 없어요');
+    if (!exists) { await miss(); throw notFound('그런 코드가 없어요'); }
+    throw notFound('이 코드는 더 쓸 수 없어요');
   }
   try { return await takeSharePayload(teamId, uid, m, claim.payload); }
   catch (e) { await q('update share_codes set uses = greatest(uses - 1, 0) where code=$1', [code]).catch(() => {}); throw e; }
