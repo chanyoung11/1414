@@ -28,6 +28,8 @@
 /* 안전 영역(노치·홈 인디케이터·안드로이드 상태바). iOS 는 env() 가 채우고,
    안드로이드는 MainActivity 가 --sat/--sab 를 인라인으로 넣는다 (15+ 는 env 가 0) */
 :root{--sat:env(safe-area-inset-top,0px);--sab:env(safe-area-inset-bottom,0px)}
+/* 좌우도 있다 — 아이폰을 눕히면 노치가 옆으로 가고, 안드로이드 버튼 내비게이션 바도 옆에 붙는다 */
+:root{--sal:env(safe-area-inset-left,0px);--sar:env(safe-area-inset-right,0px)}
 /* ============================================================
    콘티 디자인 시스템 — 모노크롬 미니멀 (TatQ DESIGN.md 이식)
    색은 의미가 있는 곳(상태·송폼 바·악보 마커)에만. 라이트/다크 모두 1급.
@@ -80,7 +82,7 @@ svg.ic{width:20px;height:20px;flex:0 0 auto;display:block}
 html,body{touch-action:pan-x pan-y}
 html.noscroll{overflow:hidden}   /* 시트가 떠 있는 동안 뒤 화면 고정 */
 body.authbg{background:#111213}   /* 로그인 화면은 테마와 상관없이 어둡다 — 상태바 뒤까지 */
-#app{height:100%;display:flex;flex-direction:column;color:var(--fg);padding-top:var(--sat);padding-bottom:var(--sab)} /* iOS 홈 화면 설치 시 상태바·홈 인디케이터 피함 */
+#app{height:100%;display:flex;flex-direction:column;color:var(--fg);padding-top:var(--sat);padding-bottom:var(--sab);padding-left:var(--sal);padding-right:var(--sar)} /* iOS 홈 화면 설치 시 상태바·홈 인디케이터 피함 (가로면 노치도) */
 .display{font-family:"Satoshi","Pretendard Variable","Pretendard",sans-serif}
 .tnum{font-variant-numeric:tabular-nums}
 
@@ -311,7 +313,7 @@ html.dark .a-ok{color:#5FBF8A}html.dark .a-maybe{color:#E9C35C}html.dark .a-no{c
 .sect-hd{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:6px 2px 12px}
 .sect-hd h2{margin:0;font-size:17px;font-weight:700;letter-spacing:-.03em}
 .sect-hd p{margin:3px 0 0;font-size:12.5px;color:var(--muted-fg)}
-.bnav{position:fixed;left:0;right:0;bottom:0;z-index:40;border-top:1px solid var(--surface-border);background:color-mix(in srgb,var(--card) 88%,transparent);padding:6px 6px calc(6px + var(--sab));backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:2px}
+.bnav{position:fixed;left:0;right:0;bottom:0;z-index:40;border-top:1px solid var(--surface-border);background:color-mix(in srgb,var(--card) 88%,transparent);padding:6px calc(6px + var(--sar)) calc(6px + var(--sab)) calc(6px + var(--sal));backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:2px}
 .bnav button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:8px 2px;border-radius:var(--r-lg);font-size:11px;font-weight:600;color:var(--muted-fg);min-width:0;white-space:nowrap;letter-spacing:-.02em}
 .bnav button svg.ic{width:22px;height:22px}
 .bnav button.on{color:var(--fg)}
@@ -657,11 +659,13 @@ html.dark .sheet{box-shadow:0 10px 40px rgba(0,0,0,.5);border-color:transparent}
 .switch.on i::after{left:18px;background:var(--primary-fg)}
 
 /* ---------- 모달·토스트 ---------- */
-.ov{position:fixed;inset:0;background:rgba(2,6,23,.6);display:flex;align-items:flex-end;justify-content:center;z-index:50;backdrop-filter:blur(3px);animation:fade-in .18s ease-out}
-.ov.center{align-items:center;padding:16px}
-.sheetm{background:var(--card);color:var(--fg);border:1px solid var(--border);width:min(720px,100%);max-height:92vh;overflow:auto;border-radius:var(--r-xl) var(--r-xl) 0 0;padding:14px 22px 28px;box-shadow:var(--shadow-card);animation:pop-in .22s cubic-bezier(.22,1,.36,1)}
+/* 시트는 body 바로 밑(#modal)이라 #app 의 안전 영역 여백을 못 받는다 → 여기서 따로 피한다.
+   아래 시트는 마지막 줄이 홈 인디케이터 밑에 깔리지 않게, 가운데 창은 상태바·노치 안쪽에서만 */
+.ov{position:fixed;inset:0;background:rgba(2,6,23,.6);display:flex;align-items:flex-end;justify-content:center;z-index:50;backdrop-filter:blur(3px);animation:fade-in .18s ease-out;padding-left:var(--sal);padding-right:var(--sar)}
+.ov.center{align-items:center;padding:max(16px,var(--sat)) max(16px,var(--sar)) max(16px,var(--sab)) max(16px,var(--sal))}
+.sheetm{background:var(--card);color:var(--fg);border:1px solid var(--border);width:min(720px,100%);max-height:92vh;overflow:auto;border-radius:var(--r-xl) var(--r-xl) 0 0;padding:14px 22px calc(28px + var(--sab));box-shadow:var(--shadow-card);animation:pop-in .22s cubic-bezier(.22,1,.36,1)}
 .sheetm .handle{width:38px;height:4px;border-radius:2px;background:var(--border-2);margin:0 auto 14px}
-.ov.center .sheetm{border-radius:var(--r-xl);width:min(640px,100%)}
+.ov.center .sheetm{border-radius:var(--r-xl);width:min(640px,100%);padding-bottom:28px;max-height:min(92vh,100%)}
 .sheetm>b:first-child{font-size:18px;font-weight:800;letter-spacing:-.04em}
 @keyframes fade-in{from{opacity:0}to{opacity:1}}
 @keyframes pop-in{from{opacity:0;transform:translate3d(0,10px,0) scale(.97)}to{opacity:1;transform:none}}
@@ -803,7 +807,10 @@ html.dark .lk-ic.apple{background:#fff;border-color:#fff;color:#000}
 .stagelogo .logo{color:inherit}
 /* ---------- 무대 모드: 자동 조판 (§1-A) ---------- */
 body.stgon{overflow:hidden}
-.stgw{position:fixed;inset:0;z-index:210;background:#0B0C0D;color:#F2F2F0;overflow:hidden;-webkit-user-select:none;user-select:none;touch-action:pan-y}
+.stgw{position:fixed;inset:0;z-index:210;background:#0B0C0D;color:#F2F2F0;overflow:hidden;-webkit-user-select:none;user-select:none;touch-action:pan-y;
+ /* 가로 노치·옆 내비게이션 바·홈 인디케이터는 같은 색 테두리로 비운다. 안쪽 칸들이 테두리 안에서 자리를 잡고,
+    조판 폭·높이(clientWidth/Height)도 테두리를 뺀 값이라 계산을 따로 고칠 데가 없다. 위(상태바)는 바가 --sat 로 피한다 */
+ border-style:solid;border-color:#0B0C0D;border-width:0 var(--sar) var(--sab) var(--sal)}
 .stgbar{position:absolute;left:0;right:0;top:var(--sat);height:46px;display:flex;align-items:center;gap:10px;padding:0 12px;background:#17181A;border-bottom:1px solid #2A2B2E;white-space:nowrap;overflow:hidden;z-index:2}
 .stgbar b{font-size:15px;font-weight:800;letter-spacing:-.02em;flex:0 0 auto}
 .stgform{font-family:"Geist Mono",ui-monospace,Menlo,monospace;font-size:12px;color:#A0A29C;overflow:hidden;text-overflow:ellipsis;min-width:0}
@@ -989,7 +996,9 @@ body.nprint #printArea svg{max-width:100%;height:auto}
  pointer-events:none;background:transparent}
 .lnpanel{pointer-events:auto}
 @keyframes lnfade{from{opacity:0}to{opacity:1}}
-.lnpanel{width:min(460px,100%);background:var(--card);display:flex;flex-direction:column;box-shadow:-12px 0 40px rgba(0,0,0,.28);animation:lnin .18s cubic-bezier(.2,.7,.3,1)}
+/* 화면 오른쪽 끝부터 끝까지 서는 판이라 상태바(위)·노치(오른쪽)·홈 인디케이터(아래)를 직접 피한다 */
+.lnpanel{width:min(460px,100%);background:var(--card);display:flex;flex-direction:column;box-shadow:-12px 0 40px rgba(0,0,0,.28);animation:lnin .18s cubic-bezier(.2,.7,.3,1);
+ padding:var(--sat) var(--sar) var(--sab) 0}
 @keyframes lnin{from{transform:translateX(24px);opacity:.6}to{transform:none;opacity:1}}
 .lnhd{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid var(--border)}
 .lnhd b{font-size:16px}
@@ -1001,7 +1010,7 @@ body.lnopen .main>main,body.lnopen .main>.hd{padding-right:min(476px,100%)}
 .lnpanel .lsess{display:flex;align-items:center;gap:6px}
 @media(max-width:640px){
  .lnov{align-items:flex-end;justify-content:center;pointer-events:auto;background:rgba(0,0,0,.42)}
- .lnpanel{width:100%;max-height:88vh;border-radius:var(--r-xl) var(--r-xl) 0 0;animation:lnup .2s cubic-bezier(.2,.7,.3,1)}
+ .lnpanel{width:100%;max-height:88vh;border-radius:var(--r-xl) var(--r-xl) 0 0;animation:lnup .2s cubic-bezier(.2,.7,.3,1);padding:0 var(--sar) var(--sab) var(--sal)}
  @keyframes lnup{from{transform:translateY(28px);opacity:.6}to{transform:none;opacity:1}}
 }
 /* 날짜 머리글이 눌리는 것이라는 걸 보이게 */
