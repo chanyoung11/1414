@@ -10,7 +10,9 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
   @Override public void onCreate(Bundle savedInstanceState) {
     // 디버그 빌드에서는 크롬 devtools 로 웹뷰를 들여다볼 수 있게 한다 (chrome://inspect).
-    // 웹뷰가 만들어지기 전(super.onCreate 전)에 켜야 붙는다
+    // 웹뷰가 만들어지기 전(super.onCreate 전)에 켜야 붙는다.
+    // capacitor.config.json 에 android.webContentsDebuggingEnabled 를 두지 않는다 — 두면 Capacitor 가
+    // 이 뒤에 그 값으로 덮어써 출시 빌드에서도 켜진다 (남의 폰을 잠깐 꽂아 로그인 토큰을 읽을 수 있다)
     if ((getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0) WebView.setWebContentsDebuggingEnabled(true);
     registerPlugin(PrinterPlugin.class);
     super.onCreate(savedInstanceState);

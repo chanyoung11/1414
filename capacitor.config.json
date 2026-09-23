@@ -9,8 +9,7 @@
   "android": {
     "allowMixedContent": false,
     "backgroundColor": "#111213",
-    "adjustMarginsForEdgeToEdge": "disable",
-    "webContentsDebuggingEnabled": true
+    "adjustMarginsForEdgeToEdge": "disable"
   },
   "ios": {
     "contentInset": "never",
