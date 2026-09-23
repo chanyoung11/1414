@@ -820,6 +820,13 @@ body.stgon{overflow:hidden}
 .stgpage .blk{position:absolute}
 .stgpage .pslice{position:absolute;left:0;overflow:hidden}
 .stgpage .pslice>img{position:absolute;left:0;display:block;max-width:none}
+/* 메모 띠 — 인쇄(.ppage .pstrip)와 같은 모양. 무대에는 이 규칙이 없어 띠가 제자리에 안 서고 송폼 상자 밑에 깔렸다 */
+.stgpage .pstrip{position:absolute;display:flex;align-items:center;gap:6px;font-size:11px;overflow:hidden;border-left:3px solid #111;padding-left:7px}
+.stgpage .pstrip .mk2{min-width:17px;height:17px;border-radius:999px;background:#111;color:#fff;font-size:10px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;padding:0 4px;flex:0 0 auto}
+.stgpage .pstrip .mod{font-size:10px;font-weight:700;color:#111;border:1px solid #111;border-radius:3px;padding:0 4px;flex:0 0 auto}
+.stgpage .pstrip .m{display:inline-flex;align-items:center;gap:4px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stgpage .pstrip .m .who{font-size:9px;font-weight:700;color:#fff;background:#777;border-radius:3px;padding:0 4px}
+.stgpage .pstrip .m.all .who{background:#111}
 .stgpop{position:absolute;right:12px;top:54px;width:min(340px,calc(100vw - 24px));background:var(--card);color:var(--fg);border:1px solid var(--border-2);border-radius:var(--r-xl);padding:12px;z-index:4;box-shadow:0 24px 56px -20px rgba(0,0,0,.7)}
 @media(max-width:640px){.stgbar .stgform{display:none}.stgcanvas{left:8px;right:8px}}
 /* ---------- 인쇄 조판 결과 (미리보기 + 종이) ---------- */
@@ -850,7 +857,7 @@ body.stgon{overflow:hidden}
  pointer-events:none}   /* 안내만 한다 — 아래 블록·손잡이를 가리지 않게 */
 .sblk .stag{position:absolute;left:14px;top:-18px;font-size:10.5px;font-weight:700;color:#fff;
  background:rgba(0,0,0,.6);border-radius:5px;padding:1px 6px;white-space:nowrap;pointer-events:none}
-.sblk .blk{position:static!important;left:auto!important;top:auto!important;width:100%!important}
+.sblk .blk,.sblk .pstrip{position:static!important;left:auto!important;top:auto!important;width:100%!important}
 /* 크기 조절 손잡이는 꼭짓점 네 곳 — 잡은 꼭짓점의 맞은편이 제자리에 있다 */
 .sblk .sgrip{position:absolute;width:16px;height:16px;border-radius:50%;z-index:6;
  background:var(--brand);border:2px solid #fff}
@@ -6575,8 +6582,15 @@ function stgCompose(pub,W,H,pref){
  const rem=()=>H-y;
  const put=b=>{b.col=col;b.top=y;sc.blocks.push(b);y+=b.height+(b.gap||0)};
  newScreen();
+ // 발행본 곡에는 메모가 없다 (발행할 때 notes 를 비운다). 메모는 콘티(svc.items)에 산다 —
+ // 인쇄(pgCompose)·stgItem 처럼 거기서 붙여 온다. 안 붙이면 무대와 그 내보내기에서만 구간 메모 띠가 하나도 안 나왔다
+ const liveOf=it=>((STG.svc||{}).items||[]).find(x=>x.id===it.id)||it;
+ const items=(pub.items||[]).map(it=>({...it,notes:liveOf(it).notes||[]}));
+ // 크기(×) — 자동이 고른 배율에 곱한다 (v1 과 같은 뜻). 열 폭보다 크게는 못 한다.
+ // v2 로 바꾸며 이 값을 안 읽어 팝업의 −/+ 가 화면에서 아무 일도 안 했다
+ const Z=Math.max(0.1,Math.min(3,+pref.zoom||1));
 
- (pub.items||[]).forEach((it,idx)=>{
+ items.forEach((it,idx)=>{
   const pcs=pgPieces(it,box,opt);                    // s = cw/im.w (폭 맞춤)
   const headH=stgHeadH(it,cw);
   const unitsH=f=>pcs.reduce((a,pc)=>a+pc.units.reduce((b,u)=>b+(u.b-u.a)*pc.s*f+(u.strip?STRIP_H+2:0),0),0);
@@ -6584,15 +6598,24 @@ function stgCompose(pub,W,H,pref){
   let f=1;
   const need=()=>headH+10+unitsH(f);
   if(need()>H){f=STG_MIN;for(let t=0.98;t>=STG_MIN;t-=0.02){const q=t;const h=headH+10+unitsH(q);if(h<=H){f=q;break}}}
+  f=Math.min(1,f*Z);
   const fits=need()<=H;
-  // 곡이 한 열에 들어가는데 지금 열에 자리가 모자라면 다음 열로
-  if(fits&&y>0&&need()>rem())nextCol();
+  // 송폼 + 첫 조각은 같은 열 (§2-5). 곡이 한 열에 들어가면 곡 전체, 안 들어가도 첫 조각
+  // (그 조각이 송폼 밑에 통째로 못 들어가면 첫 줄)만큼은 이 열에 자리가 있어야 한다.
+  // 안 들어가는 곡은 이 검사를 건너뛰어, 앞 곡이 열을 채웠을 때 송폼이 열 바닥(화면 밖)에 놓였다
+  const pc0=pcs[0];
+  const first=()=>{if(!pc0)return 0;const s0=pc0.s*f;
+   const t0=pc0.units.reduce((a,u)=>a+(u.b-u.a)*s0+(u.strip?STRIP_H+2:0),0);
+   if(t0<=H-headH-10)return t0;
+   const u0=pc0.units[0];return u0?(u0.strip?STRIP_H+2:0)+(u0.b-u0.a)*s0:0};
+  if(y>0&&(fits?need():headH+10+first())>rem())nextCol();
   put({type:'head',id:'h'+idx,pid:it.id,height:headH,item:it,idx,gap:10});
   pcs.forEach((pc,pi)=>{
    const sc2=pc.s*f;let stn=0;
    const total=pc.units.reduce((a,u)=>a+(u.b-u.a)*sc2+(u.strip?STRIP_H+2:0),0);
-   // 조각은 통째로. 이 열에 안 들어가면 다음 열로 (조각 자체가 한 열보다 길면 나눈다)
-   if(y>0&&total>rem()&&total<=H)nextCol();
+   // 조각은 통째로. 이 열에 안 들어가면 다음 열로 (조각 자체가 한 열보다 길면 나눈다).
+   // 첫 조각은 송폼 바로 밑에서 시작한다 — 넘기면 송폼만 홀로 남는다
+   if(pi>0&&y>0&&total>rem()&&total<=H)nextCol();
    let i=0;
    while(i<pc.units.length){
     const u=pc.units[i];
