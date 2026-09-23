@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#FAFAFA">
@@ -69,7 +69,10 @@ html.dark{
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:"Pretendard Variable","Pretendard","Apple SD Gothic Neo","Noto Sans KR",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;font-size:13.5px;line-height:1.5;-webkit-font-smoothing:antialiased;overscroll-behavior:none}
 button,input,select,textarea{font:inherit;color:inherit}
-/* iOS 는 글자가 16px 미만인 입력에 포커스하면 화면을 자동으로 확대한다 */
+/* iOS 는 글자가 16px 미만인 입력에 포커스하면 화면을 자동으로 확대한다.
+   아래 규칙은 태그 선택자라 .songbar(12.5px)·.lslot select 같은 클래스 규칙에 져서
+   송폼·편성 칸은 그대로 확대됐다 → 확대 자체는 viewport 의 maximum-scale=1 이 막는다
+   (사파리는 손가락 확대는 계속 허용하고, 앱 웹뷰는 원래 페이지 확대를 막아 두었다) */
 @supports (-webkit-touch-callout:none){input,select,textarea{font-size:16px}}
 button{cursor:pointer;background:none;border:0;padding:0}
 button:active:not(:disabled){transform:scale(.98)}
