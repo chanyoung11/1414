@@ -94,6 +94,54 @@ def run():
     if b2[0][1] != '전체': fail("전체 공개인데 라벨이 바뀜: %s" % b2)
     if len([x for x in b2 if x[0]]) != len(sess): fail('전체 공개인데 세션이 빠짐: %s (팀 %s)' % (b2, sess))
     print('15-b 전체 공개면 제한 없음 ok', len(b2))
+    pg.click('#modal [data-close]'); pg.wait_for_timeout(400)
+
+    # ---- 15-c 편집 화면의 타임라인 메모 줄도 태그 안에서만 (전에는 팀 전체가 보였다)
+    other = [s for s in sess if s != pick][0]
+    pg.goto(URL + '#/edit/' + sid); pg.wait_for_selector('.tlEdit', timeout=10000); pg.wait_for_timeout(500)
+    opt_all = pg.evaluate("()=>[...document.querySelectorAll('.tlEdit [data-tl=\"s\"] option')].map(o=>o.value)")
+    if len([x for x in opt_all if x]) != len(sess): fail('전체 공개 영상인데 편집 화면 대상이 빠짐: %s' % opt_all)
+    pg.evaluate("(s)=>{CONTI.S.services[0].items[0].media[0].sessions=[s];CONTI.save();CONTI.render()}", pick)
+    pg.wait_for_selector('.tlEdit', timeout=5000); pg.wait_for_timeout(300)
+    opts = pg.evaluate("()=>[...document.querySelectorAll('.tlEdit [data-tl=\"s\"] option')].map(o=>[o.value,o.textContent.trim()])")
+    if [x[0] for x in opts] != ['', pick]: fail('편집 화면 대상이 태그 밖까지 보임: %s (기대 [\"\", %s])' % (opts, pick))
+    if not opts[0][1].startswith('태그된 전체'): fail("편집 화면 '전체'가 태그된 전체로 안 바뀜: %s" % opts)
+    box = pg.locator('.tlEdit').first
+    box.locator('[data-tl="t"]').fill('0:42'); box.locator('[data-tl="text"]').fill('태그전체메모'); pg.click('[data-act="add-tnote"]'); pg.wait_for_timeout(400)
+    # 누가 억지로 태그 밖 세션을 골라 넣어도 저장될 땐 '태그된 전체'로
+    box = pg.locator('.tlEdit').first
+    pg.evaluate("(s)=>{const sel=document.querySelector('.tlEdit [data-tl=\"s\"]');const o=document.createElement('option');o.value=s;sel.appendChild(o);sel.value=s}", other)
+    box.locator('[data-tl="t"]').fill('0:50'); box.locator('[data-tl="text"]').fill('밖세션시도'); pg.click('[data-act="add-tnote"]'); pg.wait_for_timeout(400)
+    ns = pg.evaluate("()=>CONTI.S.services[0].items[0].media[0].notes.map(n=>[n.text,n.session])")
+    if ['태그전체메모', None] not in ns: fail('태그된 전체 메모가 안 저장됨: %s' % ns)
+    if ['밖세션시도', None] not in ns: fail('태그 밖 세션이 그대로 저장됨: %s' % ns)
+    rows = pg.evaluate("()=>[...document.querySelectorAll('.tlEdit .row.small .tag')].map(t=>t.textContent.trim())")
+    if '태그된 전체' not in rows: fail("편집 목록 라벨이 '태그된 전체'가 아님: %s" % rows)
+    print('15-c 편집 화면 대상 제한 ok', opts)
+
+    # ---- 15-d 발행 → 태그된 멤버에게는 보이고, 태그 밖 멤버에게는 안 보인다
+    pg.click('[data-act="publish"]'); pg.wait_for_selector('#pubOnly'); pg.click('#pubOnly'); pg.wait_for_timeout(4000)
+    team = pg.evaluate('CONTI.S.team.id'); inv = pg.evaluate('CONTI.S.team.invite')
+    srv = c.request.get(URL + 'api/notes?team=%s&service=%s' % (team, sid)).json()['notes']
+    if not any(n['text'] == '태그전체메모' for n in srv): fail('메모가 서버에 안 올라감: %s' % srv)
+    H = {'x-conti': '1'}
+    def member(name, uname, session):
+      cm = b.new_context(viewport={'width': 1180, 'height': 820}); pm = cm.new_page()
+      pm.on('pageerror', lambda e: errs.append(name + ':' + repr(e)[:200]))
+      r = cm.request.post(URL + 'api/auth/signup', headers=H, data={'name': name, 'username': uname, 'password': 'secret1'})
+      if r.status != 200: fail('가입 실패: ' + r.text()[:120])
+      r = cm.request.post(URL + 'api/invite/%s/join' % inv, headers=H, data={'name': name, 'session': session})
+      if r.status != 200: fail('합류 실패: ' + r.text()[:120])
+      pm.goto(URL + '#/view/' + sid); pm.wait_for_timeout(3500); pm.reload(); pm.wait_for_timeout(3500)
+      txt = pm.locator('#app').inner_text()
+      return cm, pm, txt
+    cA, pA, tA = member('태그됨', 'a14' + tag, pick)
+    if '태그전체메모' not in tA: fail('태그된 멤버(%s)에게 태그된 전체 메모가 안 보임' % pick)
+    if '밖세션시도' not in tA: fail('태그된 멤버에게 두 번째 메모가 안 보임')
+    cB, pB, tB = member('밖사람', 'b14' + tag, other)
+    if '태그전체메모' in tB or '밖세션시도' in tB: fail('태그 밖 멤버(%s)에게 메모가 보임' % other)
+    print('15-d 태그된 멤버만 보임 ok', pick, '/', other)
+    cA.close(); cB.close()
 
     if errs: fail('콘솔 오류: %s' % errs[:3])
     b.close()
