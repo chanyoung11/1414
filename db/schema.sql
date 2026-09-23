@@ -456,6 +456,9 @@ create table if not exists ai_songs (
   created_at timestamptz not null default now(),
   primary key (team_id, month, kind, song_key)
 );
+-- 크레딧 팩으로 낸 곡도 적어 둔다 ('credit'). 같은 곡을 다시 채보해도 또 빠지지 않고, 실패하면 크레딧을 돌려준다.
+-- 월 한도 사용량(요금제 몫)을 셀 때는 뺀다. null 이면 요금제 몫
+alter table ai_songs add column if not exists source text;
 
 -- 유료 기간과 어디서 왔는지. plan_until 이 지나면 무료로 돌아간다
 alter table teams add column if not exists plan_until  timestamptz;
