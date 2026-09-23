@@ -887,24 +887,39 @@ on('DELETE', '/teams/:id/invites/:inviteId', async ({ uid, params }) => {
   return { ok: true };
 });
 
+// 활성 멤버 자리: 목회자는 활성 두 명까지(나간 목회자는 세지 않는다), 나머지는 요금제 정원까지(ENFORCE_PLAN).
+// 새로 들어오기뿐 아니라 다시 들어오기·다시 켜기·목회자에서 내리기도 같은 검사를 한다 (F41·F116).
+// 세고 쓰는 것을 팀마다 잠근 한 트랜잭션에서 한다 — 따로 하면 동시에 들어온 사람이 모두 빈자리를 본다 (F115).
+// 쓰는 문장은 $1=팀, $2=정원(null 이면 정원 검사 없음) 을 받고, where 에 seatOk(역할식) 을 넣어 자리가 있을 때만 쓴다
+const PASTOR_MAX = 2;
+const seatOk = (role) => `(case when ${role}='pastor'
+    then (select count(*) from members where team_id=$1 and active and role='pastor') < ${PASTOR_MAX}
+    else $2::int is null or (select count(*) from members where team_id=$1 and active and role<>'pastor') < $2::int end)`;
+async function seated(teamId, t, text, params) {
+  const cap = ENFORCE_PLAN ? planOf(t).members : null;
+  const [, rows] = await tx([[`select pg_advisory_xact_lock(hashtext($1))`, ['seat:' + teamId]], [text, [teamId, cap, ...params]]]);
+  return rows;
+}
+const seatFull = (role, t) => role === 'pastor' ? bad(`목회자는 팀에 ${PASTOR_MAX}명까지예요`)
+  : new HttpError(402, 'plan_limit', `정원(${planOf(t).members}명)이 찼어요. 먼저 다른 멤버를 비활성으로 두세요`);
+
 // B.4.2 멤버 고치기: 이름·세션·역할·활성. 인도자는 여기서 만들 수 없다(넘기기로만)
 on('PATCH', '/teams/:id/members/:userId', async ({ uid, params, body }) => {
   if (!uid) throw noAuth();
   await requireMember(uid, params.id, 'leader');
   const cur = await one('select * from members where team_id=$1 and user_id=$2', [params.id, params.userId]);
   if (!cur) throw notFound('그 멤버가 없어요');
-  const t = await one('select sessions from teams where id=$1', [params.id]);
+  const t = await one('select sessions, name, plan, plan_until, plan_source, billing_user_id, created_by from teams where id=$1', [params.id]);
   const teamSessions = Array.isArray(t && t.sessions) ? t.sessions : [];
 
   if (body.role !== undefined) {
     const role = str(body.role, 20);
     if (!['session_lead', 'member', 'pastor'].includes(role)) throw bad('인도자는 「인도자 넘기기」로만 바꿔요');
     if (cur.role === 'leader') throw bad('인도자는 「인도자 넘기기」로만 바꿔요');
-    if (role === 'pastor') {
-      const n = await one(`select count(*)::int as n from members where team_id=$1 and role='pastor' and user_id<>$2`, [params.id, params.userId]);
-      if (n.n >= 2) throw bad('목회자는 팀에 두 명까지예요');
-    }
-    await q('update members set role=$3 where team_id=$1 and user_id=$2', [params.id, params.userId, role]);
+    // 목회자가 되거나 목회자에서 내려오면 세는 자리가 바뀐다 (목회자 두 명 · 정원). 비활성이면 켤 때 센다
+    const ok = await seated(params.id, t, `update members set role=$4 where team_id=$1 and user_id=$3
+        and (not active or role=$4 or (role<>'pastor' and $4<>'pastor') or ${seatOk('$4')}) returning 1`, [params.userId, role]);
+    if (!ok.length) throw seatFull(role, t);
     // 목회자가 되면 세션은 비운다. 목회자에서 내려오면 세션 하나는 있어야 한다
     if (role === 'pastor') await q(`update members set sessions='{}', session='' where team_id=$1 and user_id=$2`, [params.id, params.userId]);
     else if (cur.role === 'pastor') await q('update members set sessions=$3, session=$4 where team_id=$1 and user_id=$2',
@@ -925,9 +940,19 @@ on('PATCH', '/teams/:id/members/:userId', async ({ uid, params, body }) => {
     const on = !!body.active;
     if (!on && cur.role === 'leader') throw bad('인도자는 비활성으로 둘 수 없어요. 먼저 인도자를 넘기세요');
     if (!on && params.userId === uid) throw bad('나를 비활성으로 둘 수는 없어요');
-    await q('update members set active=$3, deactivated_at=$4 where team_id=$1 and user_id=$2',
-      [params.id, params.userId, on, on ? null : new Date().toISOString()]);
-    if (!on) await clearFromLineups(params.id, params.userId);
+    if (on) {
+      // 다시 켤 때도 새로 들어올 때와 같은 자리 검사 (F41·F116)
+      const ok = await seated(params.id, t, `update members set active=true, deactivated_at=null where team_id=$1 and user_id=$3
+          and (active or ${seatOk('role')}) returning 1`, [params.userId]);
+      if (!ok.length) throw seatFull((await one('select role from members where team_id=$1 and user_id=$2', [params.id, params.userId]) || cur).role, t);
+    } else {
+      // 그사이 인도자가 된 사람은 끄지 않는다 (넘기기와 겹치면 팀에 인도자가 없어진다, F113)
+      const off = await q(`update members set active=false, deactivated_at=now() where team_id=$1 and user_id=$2 and role<>'leader' returning 1`,
+        [params.id, params.userId]);
+      if (!off.length) throw bad('인도자는 비활성으로 둘 수 없어요. 먼저 인도자를 넘기세요');
+      await releaseBilling(t, params.id, params.userId);
+      await clearFromLineups(params.id, params.userId);
+    }
     await audit(params.id, uid, on ? 'member.activate' : 'member.deactivate', params.userId, {});
   }
   return { ok: true };
@@ -966,11 +991,22 @@ on('POST', '/teams/:id/transfer', async ({ uid, params, body }) => {
   if (!target) throw notFound('그 멤버가 없어요');
   if (target.active === false) throw bad('비활성 멤버에게는 넘길 수 없어요');
   if (target.role === 'pastor') throw bad('목회자에게는 넘길 수 없어요');
+  // 내리기·세우기를 한 트랜잭션으로 (F113). 따로 보내면 둘째가 실패하거나, 그사이 받을 사람이 나가거나,
+  // 두 번 눌러 두 사람에게 넘기면 팀에 활성 인도자가 없어져 인도자 기능이 전부 막혔다.
   // 새 인도자를 먼저 세우면 유일 인덱스에 걸리니 옛 인도자를 먼저 내린다
-  await q(`update members set role='session_lead' where team_id=$1 and user_id=$2`, [params.id, uid]);
-  await q(`update members set role='leader' where team_id=$1 and user_id=$2`, [params.id, to]);
-  // created_by 를 옮기기 전에 결제 담당을 못박아 둔다 (기본값이 created_by 라 같이 넘어가 버린다)
-  await q(`update teams set billing_user_id = coalesce(billing_user_id, created_by), created_by=$2 where id=$1`, [params.id, to]);
+  const [, up] = await tx([
+    [`update members set role='session_lead' where team_id=$1 and user_id=$2 and role='leader'`, [params.id, uid]],
+    // 받을 사람이 아직 활성이고, 다른 넘기기가 먼저 끝나 인도자가 이미 선 게 아닐 때만
+    [`update members set role='leader' where team_id=$1 and user_id=$2 and active and role in ('member','session_lead')
+        and not exists (select 1 from members where team_id=$1 and role='leader' and active) returning user_id`, [params.id, to]],
+    // 못 세웠으면 옛 인도자를 되돌린다
+    [`update members set role='leader' where team_id=$1 and user_id=$2 and role='session_lead'
+        and not exists (select 1 from members where team_id=$1 and role='leader' and active)`, [params.id, uid]],
+    // created_by 를 옮기기 전에 결제 담당을 못박아 둔다 (기본값이 created_by 라 같이 넘어가 버린다)
+    [`update teams set billing_user_id = coalesce(billing_user_id, created_by), created_by=$2 where id=$1
+        and exists (select 1 from members where team_id=$1 and user_id=$2 and role='leader' and active)`, [params.id, to]],
+  ]);
+  if (!up.length) throw bad('인도자를 넘기지 못했어요. 그 멤버가 방금 나갔거나 인도자가 이미 바뀌었어요');
   await audit(params.id, uid, 'team.transfer', to, {});
   const all = await teamUserIds(params.id);
   await notify(params.id, all, 'team.transfer', to, { title: `인도자가 ${target.name}으로 바뀌었어요`, link: '#/team' });
@@ -991,6 +1027,17 @@ on('POST', '/teams/:id/billing', async ({ uid, params, body }) => {
   await audit(params.id, uid, 'team.billing', to, {});
   return { ok: true };
 });
+// 스토어 구독(인앱결제)이 살아 있는 팀. 이때만 결제 담당이 실제로 돈을 내고 있다
+const storePaid = (t) => !!t && t.plan_source === 'iap' && planName(t) !== 'free';
+// 결제 담당이 팀을 떠나거나 비활성이 되면 담당을 인도자에게 돌린다 (G03). billing_user_id 를 비우면
+// created_by(= 지금 인도자)가 담당이 된다. 떠나는 사람이 created_by 인 옛 자료면 인도자를 직접 적는다
+async function releaseBilling(t, teamId, userId) {
+  if (!t || (t.billing_user_id || t.created_by) !== userId || storePaid(t)) return;
+  await q(`update teams set billing_user_id = case when created_by=$2
+             then (select user_id from members where team_id=$1 and role='leader' and active limit 1) end
+           where id=$1 and coalesce(billing_user_id, created_by)=$2`, [teamId, userId]);
+  await audit(teamId, null, 'team.billing', null, { from: userId, auto: true });
+}
 
 on('POST', '/teams/:id/members/:userId/reset', async ({ uid, params }) => {
   if (!uid) throw noAuth();
@@ -1020,16 +1067,23 @@ on('DELETE', '/teams/:id/members/:userId', async ({ uid, params }) => {
   const target = await one('select * from members where team_id=$1 and user_id=$2', [params.id, params.userId]);
   if (!target) throw notFound('그 멤버가 없어요');
   if (target.role === 'leader') throw bad('인도자는 먼저 「인도자 넘기기」를 해야 해요');
-  const t = await one('select billing_user_id, created_by from teams where id=$1', [params.id]);
-  if ((t.billing_user_id || t.created_by) === params.userId) throw bad('결제 담당자예요. 먼저 결제 담당을 넘겨 주세요');
+  const t = await one('select billing_user_id, created_by, plan, plan_until, plan_source from teams where id=$1', [params.id]);
+  // 결제 담당은 스토어 구독이 살아 있는 동안만 막는다 (그 사람 계정에서 돈이 나가고 있다).
+  // 결제 화면을 숨긴 지금(BILLING_UI)은 담당을 넘길 길이 없어, 늘 막으면 인도자를 넘긴 옛 인도자가
+  // 나가지도 내보내지지도 못했다 (G03). 나가면 담당은 인도자에게 돌아간다 (releaseBilling)
+  if ((t.billing_user_id || t.created_by) === params.userId && storePaid(t)) throw bad('결제 담당자예요. 먼저 결제 담당을 넘겨 주세요');
 
+  // 그사이 인도자로 바뀐 사람은 건드리지 않는다. 넘기기와 겹치면 팀에 활성 인도자가 없어진다 (F113)
+  const gone = self
+    ? await q(`update members set active=false, deactivated_at=now() where team_id=$1 and user_id=$2 and role<>'leader' returning 1`, [params.id, params.userId])
+    : await q(`delete from members where team_id=$1 and user_id=$2 and role<>'leader' returning 1`, [params.id, params.userId]);
+  if (!gone.length) throw bad('인도자는 먼저 「인도자 넘기기」를 해야 해요');
+  await releaseBilling(t, params.id, params.userId);
   await clearFromLineups(params.id, params.userId);
   if (self) {
-    await q(`update members set active=false, deactivated_at=now() where team_id=$1 and user_id=$2`, [params.id, params.userId]);
     await audit(params.id, uid, 'member.leave', params.userId, {});
   } else {
     await q('delete from notes where team_id=$1 and author_id=$2', [params.id, params.userId]).catch(() => {});
-    await q('delete from members where team_id=$1 and user_id=$2', [params.id, params.userId]);
     await audit(params.id, uid, 'member.remove', params.userId, { name: target.name });
   }
   const leader = await one(`select user_id from members where team_id=$1 and role='leader' and active limit 1`, [params.id]);
@@ -1069,7 +1123,9 @@ on('GET', '/invite/:token', async ({ uid, params }) => {
   if (r.err) throw notFound(r.err);
   const n = await one('select count(*)::int as n from members where team_id=$1 and active', [r.team.id]);
   const mine = await membership(uid, r.team.id);
-  return { teamName: r.team.name, sessions: r.team.sessions, count: n.n, role: r.invite.role, alreadyMember: !!mine };
+  // 나갔거나 비활성인 사람은 '이미 팀에 있어요'가 아니다. 가입 화면을 보여 다시 들어오게 한다 (F42)
+  return { teamName: r.team.name, sessions: r.team.sessions, count: n.n, role: r.invite.role,
+           alreadyMember: !!mine && mine.active !== false, rejoin: !!mine && mine.active === false };
 });
 
 on('POST', '/invite/:token/join', async ({ uid, params, body }) => {
@@ -1080,32 +1136,41 @@ on('POST', '/invite/:token/join', async ({ uid, params, body }) => {
   const name = str(body.name, 40);
   if (!name) throw bad('이름을 적어 주세요');
   const already = await one('select role, active from members where team_id=$1 and user_id=$2', [t.id, uid]);
-  // 비활성이던 사람이 다시 들어오면 원래 역할로 되살린다 (초대 링크의 역할이 아니라)
+  const leaderOf = () => one(`select user_id from members where team_id=$1 and role='leader' and active limit 1`, [t.id]);
+  // 자리가 없을 때. 정원이 찼다는 것은 인도자가 알아야 한다
+  const full = async (role) => {
+    if (role === 'pastor') return bad(`목회자는 팀에 ${PASTOR_MAX}명까지예요`);
+    const cap = planOf(t).members, l = await leaderOf();
+    if (l) await notify(t.id, [l.user_id], 'invite.full', t.id,
+      { title: `${t.name} 정원(${cap}명)이 찼어요`, body: '누군가 초대 링크로 들어오려다 막혔어요', link: '#/team', actionable: true });
+    return new HttpError(402, 'plan_limit', `${t.name}은 지금 ${cap}명까지예요. 인도자에게 알려 주세요`);
+  };
+  // 비활성이던 사람이 다시 들어오면 원래 역할로 되살린다 (초대 링크의 역할이 아니라).
+  // 새로 들어올 때와 같은 자리 검사를 하고, 인도자에게도 알린다 (F41·F42)
   if (already) {
-    await q(`update members set name=$3, active=true, deactivated_at=null where team_id=$1 and user_id=$2`, [t.id, uid, name]);
+    if (already.active === false) {
+      const back = await seated(t.id, t, `update members set name=$4, active=true, deactivated_at=null where team_id=$1 and user_id=$3
+          and (active or ${seatOk('role')}) returning 1`, [uid, name]);
+      if (!back.length) throw await full(already.role);
+      await audit(t.id, uid, 'member.rejoin', uid, {});
+      const l = await leaderOf();
+      if (l && l.user_id !== uid) await notify(t.id, [l.user_id], 'member.join', uid,
+        { title: `${josa(name, '이', '가')} 팀에 다시 들어왔어요`, link: '#/team' });
+    } else await q('update members set name=$3 where team_id=$1 and user_id=$2', [t.id, uid, name]);
     await q('update users set display_name=$2 where id=$1', [uid, name]);
-    if (already.active === false) await audit(t.id, uid, 'member.rejoin', uid, {});
     return viewOf(await membership(uid, t.id));
   }
   const pastor = inv.role === 'pastor';
-  if (pastor) {
-    const n = await one(`select count(*)::int as n from members where team_id=$1 and role='pastor'`, [t.id]);
-    if (n.n >= 2) throw bad('목회자는 팀에 두 명까지예요');
-  } else if (ENFORCE_PLAN) {
-    const n = await one(`select count(*)::int as n from members where team_id=$1 and active and role<>'pastor'`, [t.id]);
-    const cap = planOf(t).members;
-    if (n.n >= cap) {
-      // 정원이 찼다는 것은 인도자가 알아야 한다
-      const l = await one(`select user_id from members where team_id=$1 and role='leader' and active limit 1`, [t.id]);
-      if (l) await notify(t.id, [l.user_id], 'invite.full', t.id,
-        { title: `${t.name} 정원(${cap}명)이 찼어요`, body: '누군가 초대 링크로 들어오려다 막혔어요', link: '#/team', actionable: true });
-      throw new HttpError(402, 'plan_limit', `${t.name}은 지금 ${cap}명까지예요. 인도자에게 알려 주세요`);
-    }
-  }
   const sessions = pastor ? [] : (strList(body.sessions) || [pickSession(t, str(body.session, 40))]).filter(Boolean);
   const session = pastor ? '' : (sessions[0] || pickSession(t, ''));
-  await q(`insert into members(user_id, team_id, name, session, sessions, role) values($1,$2,$3,$4,$5,$6)`,
-    [uid, t.id, name, session, sessions, inv.role]);
+  const ins = await seated(t.id, t, `insert into members(user_id, team_id, name, session, sessions, role)
+      select $3::uuid, $1::uuid, $4::text, $5::text, $6::text[], $7::text where ${seatOk('$7::text')}
+      on conflict (user_id, team_id) do nothing returning 1`, [uid, name, session, sessions, inv.role]);
+  if (!ins.length) {
+    // 가입을 두 번 눌러 먼저 간 요청이 이미 넣었으면 그대로 성공이다 (전에는 500)
+    if (await one('select 1 from members where team_id=$1 and user_id=$2 and active', [t.id, uid])) return viewOf(await membership(uid, t.id));
+    throw await full(inv.role);
+  }
   await q('update users set display_name=$2 where id=$1', [uid, name]);
   // 먼저 세지 않으면 동시에 들어올 때 1회용 링크가 두 번 쓰인다
   const claimed = await one(`update invites set uses = uses + 1 where id=$1
@@ -1306,7 +1371,8 @@ on('POST', '/services/:id/word-request', async ({ uid, params, body }) => {
   if (!uid) throw noAuth();
   const teamId = str(body.teamId, 64);
   await requireMember(uid, teamId, 'leader');
-  const pastors = (await q(`select user_id from members where team_id=$1 and role='pastor'`, [teamId])).map((r) => r.user_id);
+  // 나간 목회자에게는 보내지 않는다 (주간 요청 크론과 같게, F116)
+  const pastors = (await q(`select user_id from members where team_id=$1 and role='pastor' and active`, [teamId])).map((r) => r.user_id);
   if (!pastors.length) throw bad('팀에 목회자가 없어요. 링크로 보내 주세요');
   const svc = await one('select name from services where team_id=$1 and id=$2', [teamId, params.id]);
   // 그 예배가 지나면 할 일 카드도 내린다 (전에는 기한이 없어 영영 남았다)

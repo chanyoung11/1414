@@ -3355,10 +3355,10 @@ function blockedHTML(){const u=NET.user||{};const b=NET.blocked||{};
   <div class="foot"><span class="hint">${esc(u.username||'')}</span><button class="btn sm ghost" data-act="logout">${ic('logout')}로그아웃</button></div></div>`)}
 function joinHTML(tok){const p=GATE.preview,u=NET.user||{};return authShell(`<div class="auth-card"><div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div>
  ${!p?`<h1>초대 확인 중…</h1><p class="sub">잠시만요.</p>`:p.error?`<h1>초대를 열 수 없어요</h1><p class="sub">${esc(p.error)}</p><button class="btn wide" style="margin-top:18px" data-act="go-home">처음으로</button>`:
- `<p class="kicker">팀 초대${p.role&&p.role!=='member'?' · '+RL[p.role]:''}</p><h1 style="margin-top:6px">${esc(p.teamName)}</h1><p class="sub">멤버 ${p.count}명 · ${p.role==='pastor'?'이름만 적으면':'이름과 세션만 고르면'} 바로 들어가요.</p>
+ `<p class="kicker">${p.rejoin?'다시 들어가기':'팀 초대'+(p.role&&p.role!=='member'?' · '+RL[p.role]:'')}</p><h1 style="margin-top:6px">${esc(p.teamName)}</h1><p class="sub">${p.rejoin?'예전에 있던 팀이에요. 역할과 세션은 그대로 돌아가요.':`멤버 ${p.count}명 · ${p.role==='pastor'?'이름만 적으면':'이름과 세션만 고르면'} 바로 들어가요.`}</p>
   <div class="lbl">내 이름</div><input class="field" id="jnName" value="${esc(u.name||'')}" maxlength="12">
-  ${p.role==='pastor'?'':`<div class="lbl">내 세션 <span class="hint">여러 개 고를 수 있어요</span></div><div id="gtSess">${(p.sessions||DEF_SESS).map(x=>`<button class="q ${(GATE.sessList||[]).includes(x)?'on':''}" data-s="${esc(x)}">${esc(x)}</button>`).join('')}</div>`}
-  <div class="err" id="jnErr"></div><button class="btn pri wide" data-act="team-join" data-tok="${esc(tok)}">${ic('check')}${esc(p.teamName)} 팀에 가입</button>`}
+  ${p.role==='pastor'||p.rejoin?'':`<div class="lbl">내 세션 <span class="hint">여러 개 고를 수 있어요</span></div><div id="gtSess">${(p.sessions||DEF_SESS).map(x=>`<button class="q ${(GATE.sessList||[]).includes(x)?'on':''}" data-s="${esc(x)}">${esc(x)}</button>`).join('')}</div>`}
+  <div class="err" id="jnErr"></div><button class="btn pri wide" data-act="team-join" data-tok="${esc(tok)}">${ic('check')}${esc(p.teamName)} 팀에 ${p.rejoin?'다시 들어가기':'가입'}</button>`}
  <div class="foot"><span class="hint">${esc(u.username||'')}</span><button class="btn sm ghost" data-act="logout">${ic('logout')}로그아웃</button></div></div>`)}
 async function afterGate(){const gs=$('#gtSess');if(gs)gs.onclick=e=>{const b=e.target.closest('[data-s]');if(!b)return;
   // 첫 세션을 미리 골라 두되, 처음 누른 것이 그 자리를 대신한다. 그 뒤로는 켜고 끄기(겸임)
