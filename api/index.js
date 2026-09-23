@@ -890,6 +890,7 @@ const planName = (t) => {
   return PLAN[p] ? p : 'free';
 };
 const planOf = (t) => PLAN[planName(t)] || PLAN.free;
+const PLAN_RANK = { free: 0, pro: 1, plus: 2 };   // 프로모션·결제가 플랜을 내리지 않게 비교할 때
 const ENFORCE_PLAN = process.env.ENFORCE_PLAN === '1';
 const LEGAL_VERSION = '2026-09-24';   // 약관·개인정보처리방침 시행일. 내용을 고치면 앱과 함께 올린다 (09-24: Cloud Run·R2 로 옮긴 처리위탁·국외이전 표)
 // 한도를 넘었는지 본다. 검사가 꺼져 있으면 언제나 통과 (컬럼과 자리만 미리 만들어 둔 것)
@@ -2696,17 +2697,44 @@ on('POST', '/promo/redeem', async ({ uid, body }) => {
     throw bad('이 팀은 이미 쓴 코드예요');
 
   const t = await one('select plan, plan_until, plan_source from teams where id=$1', [teamId]);
+  const cur = planName(t);
   // 결제로 유료인 팀에는 코드를 덮어쓰지 않는다 (결제 상태가 꼬인다)
-  if (t && t.plan_source === 'iap' && planName(t) !== 'free')
+  if (t && t.plan_source === 'iap' && cur !== 'free')
     throw bad('이미 구독 중이에요. 구독이 끝난 뒤에 쓸 수 있어요');
-  // 남은 기간이 있으면 거기에 이어 붙인다
-  const base = (t && t.plan_until && new Date(t.plan_until) > new Date()) ? new Date(t.plan_until) : new Date();
-  const until = new Date(base.getTime() + c.days * 86400000);
-  await q('update teams set plan=$2, plan_until=$3, plan_source=$4 where id=$1', [teamId, c.plan, until, 'promo']);
-  await q('update promo_codes set used = used + 1 where code=$1', [c.code]);
-  await q('insert into promo_redemptions(code, team_id, user_id, days) values($1,$2,$3,$4)', [c.code, teamId, uid, c.days]);
-  await audit(teamId, uid, 'promo.redeem', c.code, { plan: c.plan, days: c.days });
-  return { plan: c.plan, days: c.days, until };
+  // 기한 없는 유료(수동 지정)에 코드를 넣으면 기한이 생겨 며칠 뒤 무료로 떨어진다. 코드를 아껴 둔다
+  if (cur !== 'free' && !t.plan_until) throw bad('기한 없는 유료 플랜이라 코드를 쓸 필요가 없어요');
+  // 더 높은 플랜이 남아 있으면 낮은 코드로 덮어 내려가게 하지 않는다. 기간이 끝난 뒤에 쓰면 된다
+  if (PLAN_RANK[cur] > (PLAN_RANK[c.plan] || 0)) throw bad(`지금 플랜(${cur === 'plus' ? 'Plus' : 'Pro'})이 이 코드보다 높아요. 기간이 끝난 뒤에 써 주세요`);
+  // 코드 한 번 쓰기 → 이 팀 사용 기록 → 팀 기간 늘리기를 한 문장으로 한다 (한 트랜잭션).
+  // 따로따로 하면 동시에 누른 요청들이 모두 '남았다'를 보고 들어와 한도를 넘기고, 같은 팀이 여러 번 기간을 쌓았다.
+  // 한도는 update 가 줄을 잠근 채 다시 보고, 같은 팀의 두 번째 기록은 기본키에 걸려 문장 전체가 되돌려진다.
+  // 기간은 그 순간의 plan_until 에서 이어 붙이고, 더 높은 플랜·기한 없는 플랜은 (경합 중에도) 내리지 않는다
+  const active = `(teams.plan in ('pro','plus') and (teams.plan_until is null or teams.plan_until > now()))`;
+  const rank = (p) => `(case ${p} when 'plus' then 2 when 'pro' then 1 else 0 end)`;
+  let row;
+  try {
+    row = await one(`with u as (
+        update promo_codes set used = used + 1
+        where code=$1 and used < max_uses and (expires_at is null or expires_at > now())
+        returning code, plan, days
+      ), r as (
+        insert into promo_redemptions(code, team_id, user_id, days) select code, $2::uuid, $3::uuid, days from u returning code
+      ), t as (
+        update teams set
+          plan = case when ${active} and ${rank('teams.plan')} > ${rank('u.plan')} then teams.plan else u.plan end,
+          plan_until = case when ${active} and teams.plan_until is null then null
+                            else greatest(coalesce(teams.plan_until, now()), now()) + u.days * interval '1 day' end,
+          plan_source = case when ${active} and teams.plan_until is null then teams.plan_source else 'promo' end
+        from u, r where teams.id=$2
+        returning teams.plan, teams.plan_until
+      ) select plan, plan_until as until from t`, [c.code, teamId, uid]);
+  } catch (e) {
+    if (e && e.code === '23505') throw bad('이 팀은 이미 쓴 코드예요');
+    throw e;
+  }
+  if (!row) throw bad('이미 다 쓰인 코드예요');
+  await audit(teamId, uid, 'promo.redeem', c.code, { plan: row.plan, days: c.days });
+  return { plan: row.plan, days: c.days, until: row.until };
 });
 
 /* ---------- §2 정기 예배 · 사역 날짜 ---------- */
