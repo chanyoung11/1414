@@ -1634,7 +1634,7 @@ async function freeBlobs(teamId, ids) {
   const orphan = ids.filter((id) => !used.has(id));
   if (!orphan.length) return 0;
   const rows = await q('delete from blobs where team_id=$1 and id = any($2::text[]) returning url', [teamId, orphan]);
-  await delBlobs(rows.map((r) => r.url));
+  await delBlobs(await unsharedUrls(teamId, rows.map((r) => r.url)));   // 다른 행이 같은 파일을 가리키면 남긴다 (F118)
   return rows.length;
 }
 // 팀 안에서 아직 쓰이는 파일 id 전부 — 콘티·초안뿐 아니라 라이브러리·녹음까지 봐야 남의 파일을 지우지 않는다
@@ -2273,6 +2273,10 @@ const ROLE_RANK = { member: 0, session_lead: 1, pastor: 0, leader: 2 };
 const canUploadRehearsal = (m, st) => m.role !== 'pastor' && ROLE_RANK[m.role] >= ROLE_RANK[st.rehearsalUploadRole || 'member'];
 const REHEARSAL_MAX = 150 * 1024 * 1024, REHEARSAL_KEEP_DAYS = 90;
 
+// upload-url 이 이름 뒤에 붙이는 확장자. 올린 뒤 등록할 때 경로가 '팀/id + 이 중 하나'와 똑같아야 한다
+const BLOB_EXT = ['', '.jpg', '.png', '.webp', '.audio'], REH_EXT = ['.m4a', '.webm', '.mp3', '.audio'];
+const isPathOf = (pathname, base, exts) => exts.some((e) => pathname === base + e);
+
 // 콘티 파일(악보·오디오)도 4.5MB 를 넘으면 브라우저가 Blob 으로 바로 올린다
 on('POST', '/blobs/:id/upload-url', async ({ uid, params, body }) => {
   if (!uid) throw noAuth();
@@ -2310,7 +2314,9 @@ on('POST', '/blobs/:id/register', async ({ uid, params, body }) => {
   const pathname = str(body.pathname, 300);
   if (!pathname.startsWith(`teams/${teamId}/`)) throw bad('경로가 이상해요');
   if (!/^[A-Za-z0-9_-]{4,40}$/.test(params.id)) throw bad('파일 id가 이상해요');
-  if (!pathname.startsWith(`teams/${teamId}/${params.id}`)) throw bad('경로가 id 와 맞지 않아요');   // 남의 파일을 자기 id 로 등록하지 못하게
+  // 남의 파일을 자기 id 로 등록하지 못하게. 앞부분만 보면 짧은 id('rehe')로 녹음 파일(teams/…/rehearsals/…)까지
+  // 가리킬 수 있어, 그 행을 지울 때 원래 파일이 같이 지워진다 → upload-url 이 만든 이름과 똑같아야 한다
+  if (!isPathOf(pathname, `teams/${teamId}/${params.id}`, BLOB_EXT)) throw bad('경로가 id 와 맞지 않아요');
   const h = await headBlob(pathname);
   if (!h) throw bad('파일이 올라오지 않았어요');
   if (h.size > 200 * 1024 * 1024) { await delBlobs([h.url]); throw new HttpError(413, 'too_large', '파일이 너무 커요 (200MB 이하)'); }
@@ -2348,7 +2354,9 @@ on('POST', '/rehearsals', async ({ uid, body }) => {
   const serviceId = str(body.serviceId, 64); if (!serviceId) throw bad('어느 예배인지 알 수 없어요');
   const pathname = str(body.pathname, 300); const blobId = str(body.blobId, 64);
   if (!/^[A-Za-z0-9_-]{4,40}$/.test(blobId)) throw bad('파일 id가 이상해요');
-  if (!pathname.startsWith(`teams/${teamId}/rehearsals/${blobId}`)) throw bad('경로가 id 와 맞지 않아요');   // 남의 파일 id 로 등록·삭제되지 않게
+  // 남의 파일 id 로 등록·삭제되지 않게. 앞부분만 맞춰 보면 남의 녹음 id 의 앞 몇 글자로 그 파일을 가리키는
+  // 별칭을 만들 수 있고, 별칭을 지우면(또는 만료되면) 보관 잠금한 원본까지 지워졌다 → 이름이 똑같아야 한다
+  if (!isPathOf(pathname, `teams/${teamId}/rehearsals/${blobId}`, REH_EXT)) throw bad('경로가 id 와 맞지 않아요');
   const h = await headBlob(pathname);
   if (!h) throw bad('파일이 올라오지 않았어요. 다시 시도해 주세요');
   if (h.size > REHEARSAL_MAX) { await delBlobs([h.url]); throw new HttpError(413, 'too_large', '녹음은 150MB 이하만 올릴 수 있어요'); }
@@ -2472,8 +2480,15 @@ async function dropBlobs(teamId, ids) {
   if (!gone.length) return 0;
   const rows = await q('select url from blobs where team_id=$1 and id = any($2::text[])', [teamId, gone]);
   await q('delete from blobs where team_id=$1 and id = any($2::text[])', [teamId, gone]);
-  await delBlobs(rows.map((r) => r.url));
+  await delBlobs(await unsharedUrls(teamId, rows.map((r) => r.url)));
   return gone.length;
+}
+// 다른 blobs 행이 아직 같은 파일을 가리키면 파일은 남긴다. 예전 등록 검사(앞부분만 비교)로
+// 남의 파일을 가리키는 별칭 행이 이미 DB 에 있을 수 있다 — 별칭을 지운다고 원본 파일이 사라지면 안 된다
+async function unsharedUrls(teamId, urls) {
+  if (!urls.length) return urls;
+  const still = new Set((await q('select url from blobs where team_id=$1 and url = any($2::text[])', [teamId, urls])).map((r) => r.url));
+  return urls.filter((u) => !still.has(u));
 }
 
 // 메모: 내가 볼 수 있는 것 = 인도자 메모 전부 + 내 세션 공유 메모 + 내 메모
