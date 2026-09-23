@@ -2481,27 +2481,59 @@ async function notify(teamId, userIds, type, targetId, { title, body = '', link 
 // 콘티(발행본·초안)를 같은 날짜의 사역 날짜에 연결한다. 없으면 manual 날짜를 만든다 (§2.2)
 async function linkDate(teamId, serviceId, date, label) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return;
-  if (await one('select id from service_dates where team_id=$1 and service_id=$2', [teamId, serviceId])) return;
+  const lbl = str(label, 40) || '예배';
+  const cur = await q('select id, date::text as date, source, lineup from service_dates where team_id=$1 and service_id=$2', [teamId, serviceId]);
+  // 날짜를 옮겼으면 옛 날짜에서 뗀다. 전에는 어디든 붙어 있기만 하면 그냥 돌아가서, 옛 날짜가 계속 이 콘티를
+  // 가리키고 새 날짜는 빈 채로 남아 자동 생성이 거기에 빈 초안을 하나 더 만들었다 (편성·말씀·D-day 가 엉뚱한 콘티로).
+  // 인도자가 연 날짜·정기 예배는 남기되, 콘티를 지웠을 때처럼 자동 초안으로 다시 채우지는 않는다 (그날 편성도 그대로)
+  for (const r of cur) if (r.date !== date && r.source !== 'service')
+    await q('update service_dates set service_id=null, auto_skip=true where id=$1 and service_id=$2', [r.id, serviceId]);
+  // 콘티 때문에 생긴 옛 날짜(source='service')는 콘티를 따라간다 — 거기 짜 둔 편성도 같이
+  const own = cur.filter((r) => r.date !== date && r.source === 'service');
+  const drop = async (keep) => { for (const r of own) if (r.id !== keep) await q('delete from service_dates where id=$1 and service_id=$2', [r.id, serviceId]); };
+  if (cur.some((r) => r.date === date)) return drop(null);
+  const carry = own.find((r) => Array.isArray(r.lineup) && r.lineup.length);
+  // 날짜가 바뀌었으니 전에 한 통보는 옛 날짜 이야기다 → 통보 기록을 비워 새 날짜로 다시 알리게 한다
+  const fresh = (l) => JSON.stringify((Array.isArray(l) ? l : []).map((x) => (x && typeof x === 'object' ? { ...x, notifiedAt: null, acknowledgedAt: null } : x)));
   const free = await one(`select id from service_dates where team_id=$1 and date=$2 and service_id is null order by (source='recurring') desc, created_at asc limit 1`, [teamId, date]);
-  if (free) await q('update service_dates set service_id=$2, auto_skip=false where id=$1', [free.id, serviceId]);
+  // 비어 있을 때만 잡는다. 자동 생성과 동시에 같은 날짜를 잡으면 한쪽 연결이 덮여 사라졌다
+  if (free && await one('update service_dates set service_id=$2, auto_skip=false where id=$1 and service_id is null returning id', [free.id, serviceId])) {
+    if (carry) await q(`update service_dates set lineup=$2, notified='[]' where id=$1 and coalesce(jsonb_array_length(lineup), 0) = 0`, [free.id, fresh(carry.lineup)]);
+    return drop(null);
+  }
+  if (own.length) {
+    const mv = carry || own[0];
+    const ok = await one(`update service_dates set date=$3, label=$4, lineup=$5, notified='[]' where id=$1 and service_id=$2
+                          and not exists (select 1 from service_dates o where o.team_id=$6 and o.date=$3 and o.label=$4) returning id`,
+      [mv.id, serviceId, date, lbl, fresh(mv.lineup), teamId]);
+    if (ok) return drop(mv.id);
+  }
   // source='service' 는 이 콘티 때문에 생긴 날짜라는 뜻이다. 인도자가 직접 연 날짜('manual')와
   // 구분해야, 콘티를 지웠을 때 남길지 같이 지울지 정할 수 있다
-  else await q(`insert into service_dates(team_id, date, label, source, open, service_id) values($1,$2,$3,'service',true,$4)
-                on conflict (team_id, date, label) do update set service_id=coalesce(service_dates.service_id, excluded.service_id)`, [teamId, date, str(label, 40) || '예배', serviceId]);
+  await q(`insert into service_dates(team_id, date, label, source, open, service_id) values($1,$2,$3,'service',true,$4)
+           on conflict (team_id, date, label) do update set service_id=coalesce(service_dates.service_id, excluded.service_id)`, [teamId, date, lbl, serviceId]);
+  return drop(null);
 }
+// 한국 날짜의 오늘. DB 의 current_date 는 세션 시간대(운영 UTC)라 한국 00~09시에는 어제다
+const KST_TODAY_SQL = "(now() at time zone 'Asia/Seoul')::date";
 // D-N주 안의 열린 날짜에 콘티가 없으면 초안을 자동 생성한다 (§2.2). 이름 = 팀 이름 규칙
 async function autoCreateServices(teamId) {
   const t = await one('select settings from teams where id=$1', [teamId]);
   const st = { ...DEF_SETTINGS, ...(t && t.settings || {}) };
   const rows = await q(`select id, date::text as date, label from service_dates where team_id=$1 and open and service_id is null
                         and not auto_skip
-                        and date >= current_date and date < current_date + ($2::int * interval '1 day') order by date`, [teamId, st.serviceAutoCreateWeeks * 7]);
+                        and date >= ${KST_TODAY_SQL} and date < ${KST_TODAY_SQL} + ($2::int * interval '1 day') order by date`, [teamId, st.serviceAutoCreateWeeks * 7]);
   let n = 0;
   for (const r of rows) {
     const id = 'a' + randomToken(9).replace(/[^A-Za-z0-9]/g, '').slice(0, 10).toLowerCase();
     const doc = { id, name: fmtName(st.nameRule, r.date, r.label), date: r.date, notice: '', message: '', messageRev: 0, version: 0, editedAt: Date.now(), items: [], auto: true, dateId: r.id };
-    await q('insert into drafts(team_id, id, doc, updated_at) values($1,$2,$3,now()) on conflict (team_id, id) do nothing', [teamId, id, JSON.stringify(doc)]);
-    await q('update service_dates set service_id=$2 where id=$1', [r.id, id]);
+    // 날짜를 먼저 잡고, 잡았을 때만 초안을 넣는다 (한 문장이라 같이 되거나 같이 안 된다).
+    // 인도자 앱은 켤 때 목록을 두 번 받고 크론도 같은 일을 해서, 동시에 돌면 날짜마다 초안이 둘씩 생기고
+    // 남은 초안이 새 날짜 줄('10/3 성탄예배')로 따로 붙었다
+    const got = await one(`with c as (update service_dates set service_id=$2 where id=$3 and service_id is null and open and not auto_skip returning id)
+                           insert into drafts(team_id, id, doc, updated_at) select $1::uuid, $2::text, $4::jsonb, now() from c
+                           on conflict (team_id, id) do nothing returning id`, [teamId, id, r.id, JSON.stringify(doc)]);
+    if (!got) continue;
     try { await fillDefaultLineup(teamId, r.id, r.date, st); } catch (e) { console.error('defaultLineup', e); }
     n++;
   }
@@ -2532,18 +2564,18 @@ function isoDate(dt) { return dt.toISOString().slice(0, 10); }
 
 // 정기 예배 하나가 앞으로 13주 안에 놓는 날짜들을 채운다 (빠진 것만 insert)
 async function fillDates(teamId, rec, weeks = 13) {
-  const start = new Date(); start.setHours(0, 0, 0, 0);
-  const end = new Date(start); end.setDate(end.getDate() + weeks * 7);
-  const t = await one('select settings from teams where id=$1', [teamId]);
-  const rule = (t && t.settings && t.settings.nameRule) || DEF_SETTINGS.nameRule;
-  const d = new Date(start);
-  d.setDate(d.getDate() + ((rec.weekday - d.getDay() + 7) % 7));
-  for (; d < end; d.setDate(d.getDate() + 7)) {
-    const iso = isoDate(d);
-    await q(`insert into service_dates(team_id, date, label, time, source, recurring_id, open)
-             values($1,$2,$3,$4,'recurring',$5,true) on conflict (team_id, date, label) do nothing`,
-      [teamId, iso, rec.label, rec.time || null, rec.id]);
-  }
+  // 한국 날짜로 센다. 서버 시계(운영 UTC)의 오늘로 세면 한국 00~09시에 추가한 정기 예배가 어제 날짜부터 들어가
+  // 이미 지난 예배에 초안·편성이 생겼다. 요일 계산도 UTC 로만 해서 서버 시간대와 상관없게 한다
+  // (로컬 시각으로 요일을 세고 toISOString 으로 날짜를 뽑으면 한국 시간대 기계에서는 하루씩 앞당겨졌다)
+  const d = new Date(new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10) + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + ((rec.weekday - d.getUTCDay() + 7) % 7));
+  const dates = [];
+  for (let i = 0; i < weeks; i++, d.setUTCDate(d.getUTCDate() + 7)) dates.push(isoDate(d));
+  // 한 문장으로 넣는다 (크론이 팀·정기 예배마다 13번씩 따로 부르던 것)
+  await q(`insert into service_dates(team_id, date, label, time, source, recurring_id, open)
+           select $1::uuid, x::date, $3::text, $4::text, 'recurring', $5::uuid, true from unnest($2::text[]) x
+           on conflict (team_id, date, label) do nothing`,
+    [teamId, dates, rec.label, rec.time || null, rec.id]);
 }
 
 // 이번 달 AI 사용량 (상단 바의 크레딧 알약·설정의 플랜 화면에서 쓴다)
@@ -2704,15 +2736,27 @@ const lineupKey = (l) => (l || []).map((r) => r.session + ':' + r.memberId).sort
 // 편성 표는 service_dates 를 본다. 콘티를 지웠는데 날짜가 남거나, 콘티는 있는데 날짜가 없으면
 // 표가 실제와 어긋난다 → 읽을 때마다 맞춘다 (지운 콘티가 보이고 있는 콘티가 안 보이던 것)
 async function reconcileDates(teamId) {
-  const live = await q(`select id, name, date::text as date from services where team_id=$1 and date is not null
-                        union select id, doc->>'name' as name, doc->>'date' as date from drafts where team_id=$1 and doc->>'date' <> ''`, [teamId]);
-  const ids = live.map((r) => r.id);
-  // 콘티가 사라진 날짜: 콘티 때문에 생긴 날짜는 지우고, 직접 연 날짜는 연결만 푼다
-  await q(`delete from service_dates where team_id=$1 and source='service' and service_id is not null and not (service_id = any($2::text[]))`, [teamId, ids]);
-  await q(`update service_dates set service_id=null where team_id=$1 and service_id is not null and not (service_id = any($2::text[]))`, [teamId, ids]);
-  // 날짜가 없는 콘티: 연결한다 (빈 날짜가 있으면 거기에, 없으면 새로)
-  const linked = new Set((await q('select service_id from service_dates where team_id=$1 and service_id is not null', [teamId])).map((r) => r.service_id));
-  for (const r of live) if (!linked.has(r.id) && /^\d{4}-\d{2}-\d{2}$/.test(r.date || '')) await linkDate(teamId, r.id, r.date, r.name);
+  // 콘티의 날짜: 발행본과 초안 중 나중에 저장된 쪽이 인도자가 지금 정해 둔 날짜다
+  const live = await q(`select distinct on (id) id, name, date from (
+                          select id, name, date::text as date, updated_at from services where team_id=$1 and date is not null
+                          union all select id, doc->>'name', doc->>'date', updated_at from drafts where team_id=$1 and doc->>'date' <> '') s
+                        order by id, updated_at desc`, [teamId]);
+  // 콘티가 사라진 날짜: 콘티 때문에 생긴 날짜는 지우고, 직접 연 날짜는 연결만 푼다.
+  // 있는지는 SQL 안에서 본다 — 목록을 먼저 읽고 나서 그 사이 자동 생성이 붙인 새 초안의 연결을 풀지 않게
+  const gone = `service_id is not null
+    and not exists (select 1 from services s where s.team_id=$1 and s.id=service_dates.service_id and s.date is not null)
+    and not exists (select 1 from drafts d where d.team_id=$1 and d.id=service_dates.service_id and d.doc->>'date' <> '')`;
+  await q(`delete from service_dates where team_id=$1 and source='service' and ${gone}`, [teamId]);
+  await q(`update service_dates set service_id=null where team_id=$1 and ${gone}`, [teamId]);
+  // 날짜가 없는 콘티는 연결하고, 날짜를 옮긴 콘티는 새 날짜로 옮긴다 (예전 코드가 옛 날짜에 남겨 둔 것도 여기서 바로잡힌다)
+  const at = new Map();
+  for (const r of await q('select service_id, date::text as date from service_dates where team_id=$1 and service_id is not null', [teamId]))
+    at.set(r.service_id, (at.get(r.service_id) || []).concat(r.date));
+  for (const r of live) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(r.date || '')) continue;
+    const ds = at.get(r.id) || [];
+    if (ds.length !== 1 || ds[0] !== r.date) await linkDate(teamId, r.id, r.date, r.name);
+  }
 }
 
 on('GET', '/teams/:id/schedule', async ({ uid, url, params }) => {
