@@ -6297,7 +6297,7 @@ function webAdsRender(){
  $$('.webad').forEach(el=>{if(el.dataset.done)return;el.dataset.done='1';
   try{(window.adsbygoogle=window.adsbygoogle||[]).push({})}catch(e){}});
 }
-const ADSTATE={on:false,ready:false,consent:false};
+const ADSTATE={on:false,ready:false,consent:false,want:false,q:null};
 // 유료 플랜이면 광고를 띄우지 않는다. 한도 검사가 꺼져 있으면(결제 전) 모두 무료로 본다
 const adsAllowed=()=>{
  if(!NATIVE)return false;
@@ -6324,12 +6324,22 @@ async function adsTracking(A){
   if(st&&st.status==='notDetermined')await A.requestTrackingAuthorization();
  }catch(e){}
 }
-async function adsShow(){
- const A=CapPlug().AdMob;if(!A||!adsAllowed()){await adsHide();return}
+// 켜기·끄기는 '바라는 상태'만 적고 한 줄로 세워 차례로 맞춘다. 처음 켤 때는 추적 허용·초기화·
+// 동의 확인(네트워크)으로 1~2초 걸리는데, 예전에는 그 사이 무대를 열면 adsHide 가 '아직 안 켜짐'으로
+// 그냥 지나가고 뒤늦게 배너가 무대 악보 위에 떴다. 렌더마다 부르는 adsSync 가 겹쳐 초기화도 여러 번 돌았다
+function adsShow(){return adsWant(true)}
+function adsHide(){return adsWant(false)}
+function adsWant(on){ADSTATE.want=on;ADSTATE.q=(ADSTATE.q||Promise.resolve()).then(adsApply,adsApply);return ADSTATE.q}
+async function adsApply(){
+ const A=CapPlug().AdMob;if(!A)return;
+ const want=()=>ADSTATE.want&&adsAllowed();
+ if(!want()){if(!ADSTATE.on)return;
+  try{await A.hideBanner()}catch(e){}
+  ADSTATE.on=false;document.body.classList.remove('hasad');return}
  const plat=(window.Capacitor.getPlatform&&window.Capacitor.getPlatform())||'android';
  try{
   if(!ADSTATE.ready){await adsTracking(A);await A.initialize({initializeForTesting:false});await adsConsent(A);ADSTATE.ready=true}
-  if(ADSTATE.on)return;
+  if(ADSTATE.on||!want())return;   // 준비하는 사이 무대·팝업이 열렸으면 띄우지 않는다
   // 배너가 실제 높이를 가질 때만 본문을 밀어 올린다. 광고가 안 오면(승인 전·무필)
   // 배너 뷰는 투명한 채로 떠 있어서, 그때 자리를 비우면 바만 공중에 뜬다
   if(!ADSTATE.bound){ADSTATE.bound=true;
@@ -6340,13 +6350,8 @@ async function adsShow(){
    A.addListener('bannerAdFailedToLoad',()=>document.body.classList.remove('hasad'))}
   // 크기는 고정 배너(320×50). 적응형은 안드로이드에서 화면 절반을 차지하는 시안이 와서 하단바가 한가운데로 밀렸다
   await A.showBanner({adId:ADS[plat].banner,adSize:window.innerWidth>=728?'LEADERBOARD':'BANNER',position:'BOTTOM_CENTER',margin:0,isTesting:false});
-  ADSTATE.on=true;
+  ADSTATE.on=true;   // 띄우는 사이 내리라는 말이 왔으면 줄 선 다음 차례가 내린다
  }catch(e){console.warn('ads',e)}
-}
-async function adsHide(){
- const A=CapPlug().AdMob;if(!A||!ADSTATE.on)return;
- try{await A.hideBanner()}catch(e){}
- ADSTATE.on=false;document.body.classList.remove('hasad');
 }
 // 예배 중에는 광고를 내린다 — 무대 모드·연습·콘티 보기
 // 광고는 연습 화면에만 — 체류 시간이 길고, 탭바가 없어서 아무것도 안 가린다. 무대(연습 안 스위치 포함)에서는 내린다
