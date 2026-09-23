@@ -2146,7 +2146,7 @@ on('POST', '/rehearsals', async ({ uid, body }) => {
     if (!to.length) to = await teamUserIds(teamId, { exceptRole: 'pastor' });
     to = to.filter((x) => x !== uid);
     const mm = Math.floor((+body.duration || 0) / 60), ss = Math.round((+body.duration || 0) % 60);
-    await notify(teamId, to, 'rehearsal.uploaded', r.id, { title: `${label} 녹음이 올라왔어요`, body: (+body.duration ? `${mm}:${String(ss).padStart(2, '0')}` : '') , link: '#/view/' + serviceId });
+    await notify(teamId, to, 'rehearsal.uploaded', r.id, { title: `${label} 녹음이 올라왔어요`, body: (+body.duration ? `${mm}:${String(ss).padStart(2, '0')}` : '') , link: await viewLinkOr(teamId, serviceId, '#/home') });
   } catch (e) { console.error('notify rehearsal', e); }
   return { ok: true, rehearsal: { ...r, uploadedBy: uid, uploaderName: m.mname } };
 });
@@ -2495,6 +2495,12 @@ async function notify(teamId, userIds, type, targetId, { title, body = '', link 
   } catch (e) { console.warn('push', e && e.message); }
   return to.length;
 }
+// 멤버가 눌러서 여는 콘티 주소. 멤버는 발행본만 열 수 있어서, 발행 전(자동 초안·인도자 초안)을 가리키면
+// '발행된 콘티가 없어요'와 함께 홈으로 떨어졌다 → 발행본이 있을 때만 콘티로, 아니면 fallback
+async function viewLinkOr(teamId, serviceId, fallback) {
+  if (serviceId && await one('select 1 from services where team_id=$1 and id=$2', [teamId, serviceId])) return '#/view/' + serviceId;
+  return fallback;
+}
 // 콘티(발행본·초안)를 같은 날짜의 사역 날짜에 연결한다. 없으면 manual 날짜를 만든다 (§2.2)
 async function linkDate(teamId, serviceId, date, label) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return;
@@ -2702,7 +2708,13 @@ on('PATCH', '/teams/:id/dates/:did', async ({ uid, params, body }) => {
       try {
         const iso = String(row.dtext).slice(0, 10), md = mdOf(iso);
         if (body.open) await notify(params.id, await teamUserIds(params.id, { exceptRole: 'pastor', except: uid }), 'date.opened', row.id, { title: `${md} ${row.label} 일정이 열렸어요`, body: row.time ? `${row.time} · 참여 가능한지 알려주세요` : '참여 가능한지 알려주세요', link: '#/cal', actionable: true, expiresAt: new Date(iso + 'T23:59:59+09:00') });
-        else await notify(params.id, await teamUserIds(params.id, { except: uid }), 'date.closed', row.id, { title: `${md} ${row.label}는 이번 주 쉽니다`, body: '', link: '#/cal' });
+        else {
+          // 목회자도 알아야 하지만 목회자의 달력은 누를 수 있는 게 없다 (누르면 전부 403) → 목회자는 홈으로
+          const all = await q('select user_id, role from members where team_id=$1 and active and user_id<>$2', [params.id, uid]);
+          const closed = { title: `${md} ${row.label}는 이번 주 쉽니다`, body: '' };
+          await notify(params.id, all.filter((x) => x.role !== 'pastor').map((x) => x.user_id), 'date.closed', row.id, { ...closed, link: '#/cal' });
+          await notify(params.id, all.filter((x) => x.role === 'pastor').map((x) => x.user_id), 'date.closed', row.id, { ...closed, link: '#/home' });
+        }
       } catch (e) { console.error('notify date', e); }
     }
   }
@@ -2804,15 +2816,20 @@ on('PUT', '/teams/:id/availability', async ({ uid, params, body }) => {
   if (!AV.includes(state)) throw bad('상태가 이상해요');
   await q(`insert into availability(team_id, user_id, date, state, memo) values($1,$2,$3,$4,$5)
            on conflict (team_id, user_id, date) do update set state=excluded.state, memo=excluded.memo, updated_at=now()`, [params.id, uid, date, state, memo]);
-  // §1 avail.conflict: 편성된 날을 불가능으로 바꾸면 인도자에게
+  // §1 avail.conflict: 편성된 날을 불가능으로 바꾸면 인도자에게.
+  // 가능 여부는 날짜 하나에 하나지만 그날 예배는 여럿(1부·2부)일 수 있다 → 그날 내가 들어간 예배마다 알린다
+  // (첫 예배만 보던 때는 2부에만 선 사람이 빠져도 인도자가 몰랐다)
   if (state === 'no') {
     try {
-      const d = await one('select id, date::text as date, label, lineup from service_dates where team_id=$1 and date=$2 and open order by created_at asc limit 1', [params.id, date]);
-      const mine = d && cleanLineup(d.lineup).filter((r) => r.memberId === uid);
-      if (mine && mine.length) {
-        const leaders = (await q(`select user_id from members where team_id=$1 and role='leader'`, [params.id])).map((r) => r.user_id);
+      const ds = await q('select id, date::text as date, label, lineup from service_dates where team_id=$1 and date=$2 and open order by created_at asc', [params.id, date]);
+      let leaders = null;
+      for (const d of ds) {
+        const mine = cleanLineup(d.lineup).filter((r) => r.memberId === uid);
+        if (!mine.length) continue;
+        leaders = leaders || (await q(`select user_id from members where team_id=$1 and role='leader'`, [params.id])).map((r) => r.user_id);
+        const where = ds.length > 1 ? `${d.label} ` : '';
         await notify(params.id, leaders, 'avail.conflict', d.id + ':' + uid, {
-          title: `${josa(m.mname, '이', '가')} ${josa(mdOf(date), '을', '를')} 불가능으로 바꿨어요`, body: [memo ? `"${memo}"` : '', `${mine.map((r) => r.session).join('·')}으로 편성돼 있음`].filter(Boolean).join(' · '),
+          title: `${josa(m.mname, '이', '가')} ${josa(mdOf(date), '을', '를')} 불가능으로 바꿨어요`, body: [memo ? `"${memo}"` : '', `${where}${josa(mine.map((r) => r.session).join('·'), '으로', '로')} 편성돼 있음`].filter(Boolean).join(' · '),
           link: '#/lineup/' + d.id, actionable: true, expiresAt: new Date(date + 'T23:59:59+09:00'),
         });
       }
@@ -2828,8 +2845,14 @@ on('PUT', '/teams/:id/dates/:did/lineup', async ({ uid, params, body }) => {
   const row = await one('select id, lineup from service_dates where id=$1 and team_id=$2', [params.did, params.id]);
   if (!row) throw notFound('날짜가 없어요');
   const prev = cleanLineup(row.lineup);
-  const next = cleanLineup(body.lineup, m.sessions || null).map((r) => {
-    const old = prev.find((p) => p.session === r.session && p.memberId === r.memberId);
+  // 이 팀의 활성 멤버(목회자 제외)만 편성에 들어간다. 다른 id 는 빈 자리로 — 팀 밖 사람 id 를 넣으면 통보가 그 사람에게 갔다
+  const okIds = new Set((await q(`select user_id from members where team_id=$1 and active and role<>'pastor'`, [params.id])).map((r) => r.user_id));
+  const raw = cleanLineup(body.lineup, m.sessions || null).map((r) => (r.memberId && !okIds.has(r.memberId) ? { ...r, memberId: '' } : r));
+  // 통보 기록은 그 사람이 맡은 세션들이 그대로일 때만 잇는다. 세션을 옮기거나 겸임을 늘리고 줄이면
+  // 그 사람 자리를 전부 '통보 전'으로 돌린다 — 전에 받은 알림('드럼으로 섭니다')이 이제 틀리기 때문이다
+  const sessKey = (l, mid) => l.filter((r) => r.memberId === mid).map((r) => r.session).sort().join('|');
+  const next = raw.map((r) => {
+    const old = r.memberId && sessKey(prev, r.memberId) === sessKey(raw, r.memberId) ? prev.find((p) => p.session === r.session && p.memberId === r.memberId) : null;
     return { ...r, notifiedAt: old ? old.notifiedAt : null, acknowledgedAt: old ? old.acknowledgedAt : null };
   });
   // 그날만 세션 인원을 늘리거나 줄일 수 있다. 팀 기본 정원은 건드리지 않는다
@@ -2853,30 +2876,37 @@ on('POST', '/teams/:id/dates/:did/notify', async ({ uid, params }) => {
   if (!row) throw notFound('날짜가 없어요');
   const lineup = cleanLineup(row.lineup);
   const md = mdOf(row.date), where = `${md} ${row.label}`;
-  const link = row.serviceId ? '#/view/' + row.serviceId : '#/cal';
+  // 발행 전이면(보통 1~3주 전에 통보한다) 그 달 편성 화면으로 — 거기에 '9/26 일렉으로 서요'가 보인다
+  const link = await viewLinkOr(params.id, row.serviceId, '#/sched/' + row.date.slice(0, 7));
   const now = new Date().toISOString();
   // 누구에게 이미 알렸는지는 따로 기록해 둔다. 편성에서 빠진 사람은 지금 lineup 에 없으므로 lineup 만으로는 알 수 없다
   const already = new Set((Array.isArray(row.notified) ? row.notified : []).map((x) => str(x, 64)).filter(Boolean));
   const firstTime = already.size === 0;
   const nowIn = new Set(lineup.map((r) => r.memberId).filter(Boolean));   // 빈 자리('')는 제외
   const added = [...nowIn].filter((x) => !already.has(x));
+  // 사람은 그대로인데 세션이 바뀐 사람 (편성 저장 때 그 사람 자리의 notifiedAt 을 비워 둔다).
+  // 사람만 보던 때는 드럼→베이스로 옮겨도 '바뀐 사람이 없어요'로 끝나 본인은 계속 드럼인 줄 알았다
+  const moved = [...nowIn].filter((x) => already.has(x) && lineup.some((r) => r.memberId === x && !r.notifiedAt));
   const dropped = [...already].filter((x) => !nowIn.has(x));
   const sessionsOf = (mid) => lineup.filter((r) => r.memberId === mid).map((r) => r.session).join('·');
   const timeLine = row.time ? `${row.time} 시작` : '';
   let sent = 0;
-  for (const mid of (firstTime ? [...nowIn] : added)) {
-    await notify(params.id, [mid], firstTime ? 'lineup.notify' : 'lineup.changed', row.id, {
+  for (const mid of (firstTime ? [...nowIn] : [...added, ...moved])) {
+    sent += await notify(params.id, [mid], firstTime ? 'lineup.notify' : 'lineup.changed', row.id, {
       title: `${where} · ${josa(sessionsOf(mid), '으로', '로')} 섭니다`, body: timeLine, link, actionable: true, expiresAt: new Date(row.date + 'T23:59:59+09:00'),
     });
-    sent++;
   }
+  // 빠진 사람에게도 알린다. 계정을 지웠거나 팀을 떠난 사람은 notify 가 건너뛴다 (셈에도 안 들어간다)
   for (const mid of dropped) {
-    await notify(params.id, [mid], 'lineup.changed', row.id, { title: `${md} 편성에서 빠졌어요`, body: row.label, link: '#/cal', actionable: true, expiresAt: new Date(row.date + 'T23:59:59+09:00') });
-    sent++;
+    sent += await notify(params.id, [mid], 'lineup.changed', row.id, { title: `${md} 편성에서 빠졌어요`, body: row.label, link: '#/cal', actionable: true, expiresAt: new Date(row.date + 'T23:59:59+09:00') });
   }
+  // 세션이 바뀌었거나 빠진 사람의 처음 통보 카드('드럼으로 섭니다')는 이제 틀렸다 → 처리한 것으로 내린다 (알림함에는 남는다)
+  if (!firstTime && moved.length + dropped.length)
+    await q(`update notifications set acknowledged_at=coalesce(acknowledged_at, now()) where team_id=$1 and type='lineup.notify' and target_id=$2 and user_id::text = any($3::text[])`,
+      [params.id, row.id, [...moved, ...dropped]]);
   await q('update service_dates set lineup=$2, notified=$3 where id=$1',
     [params.did, JSON.stringify(lineup.map((r) => ({ ...r, notifiedAt: r.memberId ? (r.notifiedAt || now) : null }))), JSON.stringify([...nowIn])]);
-  return { ok: true, sent, added: added.length, dropped: dropped.length, firstTime };
+  return { ok: true, sent, added: added.length, moved: moved.length, dropped: dropped.length, firstTime };
 });
 
 // 카톡용 편성 문구

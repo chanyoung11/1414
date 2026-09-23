@@ -1921,7 +1921,7 @@ function calMonthHTML(k){const me0=me();const lead=isLeader();
   const open=ds.some(d=>d.open);const gone=iso<today();const st=myAv(me0.userId,iso);const memo=avMemo(me0.userId,iso);
   const mySess=ds.flatMap(d=>dateSessionsOf(d,me0.userId)).filter(Boolean);
   const dim=SCH.onlyUnset&&open&&st!=='unset';
-  cells+=`<div class="cal-cell ${open?'on':'off'} ${gone?'past':''} ${AVN[st].cls} ${mySess.length?'assigned':''} ${dim?'dim':''}" ${open&&!gone?`data-cal="${iso}"`:''}>
+  cells+=`<div class="cal-cell ${open?'on':'off'} ${gone?'past':''} ${AVN[st].cls} ${mySess.length?'assigned':''} ${dim?'dim':''}" ${open&&!gone&&!isPastor()?`data-cal="${iso}"`:''}>
    <span class="d">${n}</span>${open?`<span class="sym">${AVN[st].sym}</span>`:''}
    ${ds.length?`<span class="lb">${esc(shortLabel(ds[0].label))}</span>`:''}${mySess.length?`<span class="mys">${esc(abbr(mySess[0]))}</span>`:''}${memo?'<i class="memodot"></i>':''}</div>`}
  return `<section class="calmo">
@@ -2028,7 +2028,8 @@ function lineupHTML(dateId){const d=SCH.dates.find(x=>x.id===dateId);
  const notifiedList=(d.notified||[]).filter(Boolean);
  const notified=notifiedList.length>0;
  const inNow=[...new Set(lineup.map(r=>r.memberId).filter(Boolean))];
- const changed=inNow.some(x=>!notifiedList.includes(x))||notifiedList.some(x=>!inNow.includes(x));   // 넣은 사람·뺀 사람 둘 다 변경
+ const changed=inNow.some(x=>!notifiedList.includes(x))||notifiedList.some(x=>!inNow.includes(x))   // 넣은 사람·뺀 사람 둘 다 변경
+  ||lineup.some(r=>r.memberId&&!r.notifiedAt);   // 사람은 그대로여도 세션을 옮기거나 늘리고 줄이면 그 사람 자리는 '통보 전'이 된다
  // 편성 표 위에 떠 있는 패널. 뒤에 표가 그대로 보여서 다른 날짜로 바로 옮겨 갈 수 있다
  return schedHTML()+`<div class="lnov" data-act="lclose"><aside class="lnpanel" data-stop="1">
   <header class="lnhd"><div><b>${esc(fmtDate(d.date).md)} ${esc(d.label)}</b>
