@@ -3195,9 +3195,12 @@ export default async function handler(req, res) {
     const params = path.match(route.re).groups || {};
     // 파일 그 자체가 본문인 경로(POST /blobs/:id)만 JSON 파싱을 건너뛴다. 이미지 base64 를 싣는 경로는 크게
     const rawBody = method === 'POST' && /^\/blobs\/[^/]+$/.test(path);
-    const body = (method === 'GET' || rawBody) ? {} : await readBody(req, /^\/(ocr|omr|score)$/.test(path) ? 12e6 : 1e6);
     // 세션: 서명·만료 검사 후, 비밀번호 변경(auth_epoch) 이전에 발급된 토큰과 로그아웃한 토큰은 무효 처리
     let uid = null; const claims = sessionClaims(req);
+    // 콘티 한 벌(발행본·초안)은 AI 악보·코드가 많은 곡이 스무 곡쯤이면 1MB 를 넘는다 (앱의 DOC_MAX 와 같은 값).
+    // 서명된 세션이 있을 때만 크게 받는다 — 로그인 없는 큰 요청으로 메모리를 채우지 못하게
+    const big = /^\/(ocr|omr|score)$/.test(path) ? 12e6 : (claims && method === 'PUT' && /^\/services\/[^/]+(\/draft)?$/.test(path) ? 4e6 : 1e6);
+    const body = (method === 'GET' || rawBody) ? {} : await readBody(req, big);
     if (claims) {
       const ep = await one('select extract(epoch from auth_epoch)::bigint as e, exists (select 1 from revoked_sessions where id=$2) as out from users where id=$1', [claims.uid, claims.tid]);
       if (ep && !ep.out && (ep.e == null || (claims.iat && claims.iat >= Number(ep.e)))) uid = claims.uid;

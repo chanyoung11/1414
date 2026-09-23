@@ -1831,7 +1831,15 @@ function rehAddModal(svc){
    catch(err){prog.innerHTML=`<span style="color:var(--destructive)">${esc(err.message)}</span> <button class="btn sm" id="rhOk">다시 시도</button>`;btn.disabled=false;toast(err.message)}return}}}
 // 파일 하나 올리기. 서버리스 본문 한도(4.5MB)를 넘으면 Blob 스토어로 바로 올린 뒤 등록한다
 const DIRECT_OVER=3.5*1024*1024;
-async function uploadBlob(id,b,onProgress,force){
+// 같은 파일을 겹쳐 올리지 않는다. 초안·라이브러리·곡 자동 저장이 저마다 올리기를 시작해서
+// 느린 망에서는 큰 녹음 하나를 몇 번씩 처음부터 올렸다 (데이터가 몇 배로 들고 저장소에 사본이 남았다)
+const UPLOADING=new Map();
+function uploadBlob(id,b,onProgress,force){
+ if(!force&&UPLOADING.has(id))return UPLOADING.get(id);
+ const p=uploadBlobOnce(id,b,onProgress,force);
+ if(!force){UPLOADING.set(id,p);p.finally(()=>{if(UPLOADING.get(id)===p)UPLOADING.delete(id)}).catch(()=>{})}
+ return p}
+async function uploadBlobOnce(id,b,onProgress,force){
  if(b.size<=DIRECT_OVER){
   const r=await fetch(API_BASE+'/api/blobs/'+id+'?team='+S.team.id+(force?'&force=1':''),{method:'POST',headers:{'x-conti':'1',...(NATIVE?{'x-conti-app':'1'}:{}),...(NATIVE&&APP_TOKEN?{authorization:'Bearer '+APP_TOKEN}:{}),'content-type':b.type||'application/octet-stream'},body:b,credentials:NATIVE?'include':'same-origin'});
   if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.message||'파일 업로드 실패')}
@@ -2260,7 +2268,10 @@ function publishModal(svc){
    if(S.team.id)svc.pubPending=true;
    S.readRev=S.readRev||{};S.readRev[svc.id]=svc.messageRev||0;save();flushSave();closeModal();
    const myPub=svc.published;
-   if(online()){toast('팀 서버에 올리는 중…');try{await SYNC.pushPublish(svc);if(svc.published===myPub)delete svc.pubPending;save();toast('v'+nextV+' 발행 · 팀에 공유됐어요')}catch(err){if(err.code==='version_conflict'){delete svc.pubPending;svc.published=prevPub;svc.version=prevVer;svc.messageRev=prevRev;save();alert(err.message);try{await SYNC.pullService(svc.id)}catch(e2){}}else{save();toast('서버에 못 올렸어요. 다시 연결되면 올리고, 홈의 "서버에 다시 올리기"로 바로 올릴 수도 있어요')}}}
+   if(online()){toast('팀 서버에 올리는 중…');try{await SYNC.pushPublish(svc);if(svc.published===myPub)delete svc.pubPending;save();toast('v'+nextV+' 발행 · 팀에 공유됐어요')}catch(err){if(err.code==='version_conflict'){delete svc.pubPending;svc.published=prevPub;svc.version=prevVer;svc.messageRev=prevRev;save();alert(err.message);try{await SYNC.pullService(svc.id)}catch(e2){}}
+    // 너무 커서 못 올린 것은 '다시 올리기'로도 안 된다 → 발행 대기로 두지 말고 되돌린 뒤 무엇을 줄일지 알린다
+    else if(err.status===413){delete svc.pubPending;svc.published=prevPub;svc.version=prevVer;svc.messageRev=prevRev;save();alert(err.code==='too_large'&&/MB/.test(err.message)?err.message:tooBig(JSON.stringify(svc.items).length).message)}
+    else{save();toast('서버에 못 올렸어요. 다시 연결되면 올리고, 홈의 "서버에 다시 올리기"로 바로 올릴 수도 있어요')}}}
    else toast(S.team.id?'v'+nextV+' 발행 · 서버에 연결되면 팀에 올려요':'v'+nextV+' 발행');
    if(withFile)await exportJSON(svc.id);render()}
  };
@@ -2999,7 +3010,10 @@ function scrubIds(x){if(Array.isArray(x)){x.forEach(scrubIds);return x}if(x&&typ
 function scrubVer(d){if(d&&typeof d==='object'){d.version=+d.version||0;if(d.published&&typeof d.published==='object')d.published.version=+d.published.version||0}return d}
 
 /* ---------- 서버 동기화: 발행본 · 파일 · 메모 ---------- */
-const SYNC={t:null,pulledAt:{},missing:new Set(),
+// 콘티 한 벌(초안·발행본)을 올릴 수 있는 크기. 서버(api/index.js readBody)와 같은 값. AI 악보·코드가 많은 곡이 수십 곡이면 넘는다
+const DOC_MAX=4e6;
+function tooBig(n){const e=new Error(`콘티가 너무 커서(${(n/1e6).toFixed(1)}MB · 한도 ${DOC_MAX/1e6}MB) 서버에 올리지 못했어요. 곡이나 악보 조각을 줄여 주세요`);e.code='too_large';e.status=413;return e}
+const SYNC={t:null,pulledAt:{},missing:new Set(),notePut:{},noteGone:new Set(),
  blobIds(items){const ids=[];(items||[]).forEach(it=>{(it.pieces||[]).forEach(p=>p.blob&&ids.push(p.blob));(it.media||[]).forEach(m=>m.type==='audio'&&m.blob&&ids.push(m.blob))});return [...new Set(ids)]},
  // 팀의 발행본 목록을 받아 새 것·새 버전만 내려받음. 바뀐 게 있으면 true
  // 켤 때·홈·팀 전환·로그인이 겹쳐 부르면 하나만 돈다. 둘이 같이 돌면 같은 초안이 두 번 들어가
@@ -3105,12 +3119,19 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),
   (r.deleted||[]).forEach(id=>{const i=S.library.findIndex(x=>x.id===id);if(i>=0){S.library.splice(i,1);changed=true}});
   S.libAt=r.now;if(changed)save();return changed},
  async pushLibrary(){if(!online()||!isLeader()||!S.team.id)return false;
+  if(SYNC.libBusy){SYNC.libAgain=true;return false}   // 올리는 중이면 겹쳐 보내지 않고 끝난 뒤 한 번 더
   const dirty=S.library.filter(s=>s.dirty);const del=(S.libDeleted||[]).slice();
   if(!dirty.length&&!del.length)return false;
+  SYNC.libBusy=true;const scope=CUR_SCOPE;
   try{await SYNC.ensureBlobs(dirty.map(s=>({pieces:s.pieces,media:s.media})),true);
-   const r=await api('/library',{method:'PUT',body:{teamId:S.team.id,songs:dirty.map(s=>{const c=clone(s);delete c.dirty;return c}),deleted:del}});
-   dirty.forEach(s=>delete s.dirty);S.libDeleted=[];S.libAt=r.now;save();return true}
-  catch(e){console.warn('library push',e.message);return false}},
+   const sent=dirty.map(s=>{const c=clone(s);delete c.dirty;return c});
+   const r=await api('/library',{method:'PUT',body:{teamId:S.team.id,songs:sent,deleted:del}});
+   if(scope!==CUR_SCOPE)return true;
+   // 보내는 사이 또 고친 곡은 dirty 를 남겨 다음에 다시 민다 (전에는 표를 지워 그 수정이 영영 안 올라갔다)
+   dirty.forEach((s,i)=>{const c=clone(s);delete c.dirty;if(JSON.stringify(c)===JSON.stringify(sent[i]))delete s.dirty});
+   S.libDeleted=(S.libDeleted||[]).filter(id=>!del.includes(id));S.libAt=r.now;save();return true}
+  catch(e){console.warn('library push',e.message);return false}
+  finally{SYNC.libBusy=false;if(SYNC.libAgain){SYNC.libAgain=false;setTimeout(()=>SYNC.pushLibrary(),0)}}},
  // 파일 복구(인도자): 이 팀의 콘티가 참조하는 파일을 이 기기의 저장소에서 강제로 다시 올린다 — 스토어에서 파일이 사라졌을 때 팀원들 화면을 살리는 용도
  // 악보가 안 보인다는 사람용: 이 기기에 캐시된 악보를 지우고 서버에서 새로 받는다 (명세 B.8)
  async refetchBlobs(){if(!online()||!S.team.id)return 0;
@@ -3133,7 +3154,22 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),
   return got},
  // 초안(인도자): 기기 간 이어서 편집
  draftDoc(svc){return {id:svc.id,name:svc.name,date:svc.date,folder:svc.folder||'',notice:svc.notice||'',message:svc.message||'',messageRev:svc.messageRev||0,word:svc.word||null,version:svc.version||0,editedAt:svc.editedAt||0,items:clone(svc.items).map(it=>({...it,notes:undefined,media:(it.media||[]).map(m=>({...m,notes:undefined}))}))}},
- async pushDraft(svc){if(!online()||!isLeader()||!svc||!svc.editedAt)return;if(svc.draftPushedAt===svc.editedAt)return;try{await SYNC.ensureBlobs(svc.items,true);await api('/services/'+svc.id+'/draft',{method:'PUT',body:{teamId:S.team.id,doc:SYNC.draftDoc(svc)}});svc.draftPushedAt=svc.editedAt;save()}catch(e){console.warn('draft push',e.message)}},
+ draftBusy:{},draftFail:{},
+ async pushDraft(svc){if(!online()||!isLeader()||!svc||!svc.editedAt)return;if(svc.draftPushedAt===svc.editedAt)return;
+  // 올리는 중이면 겹쳐 보내지 않는다. 전에는 저장할 때마다 큰 파일을 처음부터 또 올렸다. 끝난 뒤 그 사이 고친 것을 한 번 더 민다
+  const busy=SYNC.draftBusy[svc.id];if(busy){busy.again=true;return}
+  const job=SYNC.draftBusy[svc.id]={again:false};let ok=false,n=0;
+  try{
+   // 보내는 문서를 만드는 그 순간의 editedAt 을 기록한다. 끝난 뒤의 값을 쓰면 보내는 사이 고친 것까지 올린 것으로 쳐서 다시 안 올렸다
+   const at=svc.editedAt;const body={teamId:S.team.id,doc:SYNC.draftDoc(svc)};
+   n=JSON.stringify(body).length;if(n>DOC_MAX)throw tooBig(n);   // 파일부터 올리고 거절당하지 않게 먼저 잰다
+   await SYNC.ensureBlobs(body.doc.items,true);
+   await api('/services/'+svc.id+'/draft',{method:'PUT',body});svc.draftPushedAt=at;delete SYNC.draftFail[svc.id];delete SYNC.draftFail['big:'+svc.id];ok=true;save()}
+  catch(e){console.warn('draft push',e.message);SYNC.draftFail[svc.id]=svc.editedAt;
+   // 너무 커서 못 올리는 것은 다시 보내도 안 된다. 말없이 저장마다 다시 보내지 말고 인도자에게 한 번 알린다
+   if(e.status===413&&!SYNC.draftFail['big:'+svc.id]){SYNC.draftFail['big:'+svc.id]=1;toast(tooBig(n).message)}}
+  finally{delete SYNC.draftBusy[svc.id]}
+  if(ok&&job.again)return SYNC.pushDraft(svc)},
  applyDraft(svc,doc){scrubVer(scrubIds(doc));const old=new Map(svc.items.map(it=>[it.id,it]));if(doc.word&&!svc.word)svc.word=doc.word;svc.name=doc.name;svc.date=doc.date;svc.folder=doc.folder||'';svc.notice=doc.notice||'';svc.message=doc.message||'';svc.messageRev=doc.messageRev||0;svc.version=Math.max(svc.version||0,doc.version||0);svc.editedAt=doc.editedAt||Date.now();svc.draftPushedAt=svc.editedAt;
   svc.items=clone(doc.items).map(it=>{const o=old.get(it.id);it.notes=o?(o.notes||[]):[];it.media=(it.media||[]).map(m=>{const om=o&&(o.media||[]).find(x=>x.id===m.id);return {...m,notes:om?(om.notes||[]):[]}});return it});save()},
  async pullDraft(svc){if(!online()||!isLeader()||!svc)return false;let d;try{d=await api('/services/'+svc.id+'/draft?team='+S.team.id)}catch(e){return false}
@@ -3142,8 +3178,11 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),
   if(!confirm(`다른 기기에서 ${when}에 저장한 초안이 더 새로워요. 가져올까요?\n(취소하면 이 기기의 초안을 유지하고, 다음 저장 때 서버에 덮어씁니다)`)){svc.editedAt=Date.now();save();return false}
   await SYNC.fetchBlobs(d.blobs);SYNC.applyDraft(svc,d.doc);toast('다른 기기의 초안을 가져왔어요');return true},
  // 발행(인도자): 새 파일 업로드 → 스냅샷 저장
- async pushPublish(svc){if(!online()||!isLeader())return false;const pub=svc.published;await SYNC.ensureBlobs(pub.items);
-  await api('/services/'+svc.id,{method:'PUT',body:{teamId:S.team.id,doc:{id:svc.id,name:pub.name,date:pub.date,folder:pub.folder||'',notice:pub.notice,message:pub.message||'',messageRev:pub.messageRev||0,word:pub.word||null,author:pub.author||'',version:pub.version,items:pub.items,changes:pub.changes||[]}}});return true},
+ async pushPublish(svc){if(!online()||!isLeader())return false;const pub=svc.published;
+  const body={teamId:S.team.id,doc:{id:svc.id,name:pub.name,date:pub.date,folder:pub.folder||'',notice:pub.notice,message:pub.message||'',messageRev:pub.messageRev||0,word:pub.word||null,author:pub.author||'',version:pub.version,items:pub.items,changes:pub.changes||[]}};
+  const n=JSON.stringify(body).length;if(n>DOC_MAX)throw tooBig(n);   // 파일부터 다 올리고 나서야 거절당하지 않게 먼저 잰다
+  await SYNC.ensureBlobs(pub.items);
+  await api('/services/'+svc.id,{method:'PUT',body});return true},
  // 발행 대기(pubPending)를 서버에 올린다 — 오프라인 발행, 올리다 끊긴 발행. 켤 때·다시 연결될 때·'서버에 다시 올리기'.
  // 응답만 못 받고 서버에는 들어간 경우도 서버가 같은 판이면 받아 준다. 다른 기기가 같은·더 새 버전을 냈으면 서버 것을 받는다
  async pushPending(only){if(!online()||!isLeader()||!S.team.id)return 0;let n=0;
@@ -3188,7 +3227,9 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),
    (it.media||[]).forEach(m=>{m.notes=list.filter(n=>n.mediaId===m.id).map(n=>({id:n.id,t:+n.t||0,marker:n.markerId||undefined,layer:n.layer,session:n.session,text:n.text,author:who(n)}))})});
   S.noteShadow=S.noteShadow||{};S.noteShadow[svc.id]=d.notes.map(n=>({id:n.id,itemId:n.itemId||''}));SYNC.pulledAt[svc.id]=Date.now();if(sig()!==sig0)save()},
  flush(){const r=route();const svc=svcById(r.a);if(online()&&svc&&/^(edit|view|play)$/.test(r.name)){clearTimeout(SYNC.t);SYNC.pushNotes(svc,true);if(r.name==='edit'&&isLeader()){clearTimeout(SYNC.td);SYNC.pushDraft(svc)}}},
- schedulePush(){if(!online())return;clearTimeout(SYNC.tl);SYNC.tl=setTimeout(()=>{SYNC.pushLibrary();pushDirtySongs();pushSongs()},3000);clearTimeout(SYNC.t);SYNC.t=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&/^(edit|view|play)$/.test(r.name))SYNC.pushNotes(svc)},700);clearTimeout(SYNC.td);SYNC.td=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&r.name==='edit'&&isLeader())SYNC.pushDraft(svc)},2500)}
+ schedulePush(){if(!online())return;clearTimeout(SYNC.tl);SYNC.tl=setTimeout(()=>{SYNC.pushLibrary();pushDirtySongs();pushSongs()},3000);clearTimeout(SYNC.t);SYNC.t=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&/^(edit|view|play)$/.test(r.name))SYNC.pushNotes(svc)},700);clearTimeout(SYNC.td);SYNC.td=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&r.name==='edit'&&isLeader())SYNC.pushDraft(svc);
+  // 에디터를 거치지 않고 만든 새 콘티(라이브러리 '넣고 계속 고르기')도 올려 둔다. 안 올리면 다른 기기에 안 보이고 서버에도 없다
+  if(isLeader())S.services.forEach(x=>{if(x!==svc&&!x.published&&x.editedAt&&!x.draftPushedAt&&SYNC.draftFail[x.id]!==x.editedAt)SYNC.pushDraft(x)})},2500)}
 };
 // 켤 때 부팅과 홈 그리기가 발행본 목록을 동시에 받는다. 겹쳐 돌면 같은 초안을 두 번 넣으므로(둘 다 '없음'을 보고 넣는다)
 // 같은 팀이면 이미 도는 것을 같이 기다린다
@@ -3735,6 +3776,8 @@ async function pushSongs(){
  try{
   // 손댄 콘티만 본다. 전부 훑으면 콘티가 쌓일수록 저장할 때마다 조각을 통째로 복사하게 된다
   const todo=S.services.filter(sv=>(sv.editedAt||0)!==(sv.songsPushedAt||0)||(sv.items||[]).some(it=>!it.arrId&&(it.title||'').trim()));
+  // 미는 동안 고친 것은 다음 번에 다시 봐야 한다 → 시작할 때의 editedAt 을 기록한다 (끝날 때 값을 쓰면 그 사이 수정이 묻힌다)
+  const at=new Map(todo.map(sv=>[sv,sv.editedAt||0]));
   for(const sv of todo){
    for(const it of (sv.items||[])){
     if(moved())return false;
@@ -3773,7 +3816,7 @@ async function pushSongs(){
     }
    }
   }
-  if(!relink)todo.forEach(sv=>{sv.songsPushedAt=sv.editedAt||0});
+  if(!relink)todo.forEach(sv=>{sv.songsPushedAt=at.get(sv)});
   if(changed||todo.length)save();
  }finally{PUSH_SONGS=false}
  if(relink){clearTimeout(pushSongs.retry);pushSongs.retry=setTimeout(pushSongs,1200)}
