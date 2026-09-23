@@ -13,6 +13,7 @@ import { apnsConfigured } from '../lib/apns.js';
 import { rcAuthOk, rcConfigured, planFromEvent } from '../lib/iap.js';
 import { transcribeSheet, transcribeScore, geminiConfigured, geminiModel, estimateUSD, ocrChordsGemini } from '../lib/gemini.js';
 import { norm as normSong, cho as choSong } from '../lib/song.js';
+import { safeDoc, safeItem } from '../lib/docsafe.js';
 import { randomBytes } from 'node:crypto';
 
 class HttpError extends Error { constructor(status, code, message) { super(message || code); this.status = status; this.code = code; } }
@@ -1109,6 +1110,7 @@ on('GET', '/services/:id', async ({ uid, url, params }) => {
     ? await one('select doc, 0 as version, updated_at as "updatedAt" from drafts where team_id=$1 and id=$2', [teamId, params.id])
     : await one('select doc, version, updated_at as "updatedAt" from services where team_id=$1 and id=$2', [teamId, params.id]);
   if (!row) throw notFound(wantDraft ? '초안이 없어요' : '발행된 콘티가 없어요');
+  safeDoc(row.doc);   // 숫자 칸에 글자가 든 문서가 팀원 화면에 그대로 끼워지지 않게 (lib/docsafe.js)
   // 발행본 안에 들어 있는 말씀은 스냅샷이라 메모까지 담겨 있을 수 있다 → 보는 사람 권한으로 다시 거른다
   if (row.doc && row.doc.word) row.doc = { ...row.doc, word: wordView(row.doc.word, await membership(uid, teamId)) };
   const ids = blobIdsOf(row.doc);
@@ -1293,7 +1295,7 @@ on('PUT', '/services/:id', async ({ uid, params, body }) => {
   if (!uid) throw noAuth();
   const teamId = str(body.teamId, 64);
   await requireMember(uid, teamId, 'leader');
-  const doc = body.doc;
+  const doc = safeDoc(body.doc);
   if (!doc || !Array.isArray(doc.items)) throw bad('발행본이 비어 있어요');
   const missing = blobIdsOf(doc);
   const have = missing.length ? (await q('select id from blobs where team_id=$1 and id = any($2::text[])', [teamId, missing])).map((r) => r.id) : [];
@@ -1384,6 +1386,7 @@ on('GET', '/services/:id/draft', async ({ uid, url, params }) => {
   await requireMember(uid, teamId, 'leader');
   const row = await one('select doc, updated_at as "updatedAt" from drafts where team_id=$1 and id=$2', [teamId, params.id]);
   if (!row) return { doc: null };
+  safeDoc(row.doc);
   const ids = blobIdsOf(row.doc);
   const blobs = ids.length ? await q('select id, url, pathname from blobs where team_id=$1 and id = any($2::text[])', [teamId, ids]) : [];
   return { doc: row.doc, updatedAt: row.updatedAt, blobs: await readUrls(blobs) };
@@ -1392,7 +1395,7 @@ on('PUT', '/services/:id/draft', async ({ uid, params, body }) => {
   if (!uid) throw noAuth();
   const teamId = str(body.teamId, 64);
   await requireMember(uid, teamId, 'leader');
-  const doc = body.doc;
+  const doc = safeDoc(body.doc);
   if (!doc || !Array.isArray(doc.items)) throw bad('초안이 비어 있어요');
   await q(`insert into drafts(team_id, id, doc, updated_by, updated_at) values($1,$2,$3,$4,now())
            on conflict (team_id, id) do update set doc=excluded.doc, updated_by=excluded.updated_by, updated_at=now()`, [teamId, params.id, JSON.stringify(doc), uid]);
@@ -1486,7 +1489,7 @@ const arrBlobIds = (a) => {
   for (const m of (a && a.media) || []) if (m && m.blob) ids.add(m.blob);
   return [...ids];
 };
-const arrView = (a) => ({
+const arrView = (a) => safeItem({
   id: a.id, songId: a.song_id, name: a.name, isDefault: a.is_default,
   medleySongIds: a.medley_song_ids || [], key: a.key, mod: a.mod, form: a.form,
   bpm: a.bpm, songNote: a.song_note, pieces: a.pieces || [], media: a.media || [],
@@ -1722,6 +1725,7 @@ on('PATCH', '/arrangements/:id', async ({ uid, params, body }) => {
   if (!a) throw notFound('그 편곡이 없어요');
   const set = [], vals = [params.id];
   const put = (col, v) => { vals.push(v); set.push(`${col}=$${vals.length}`); };
+  safeItem(body);   // pieces·media·score 의 숫자 칸 (lib/docsafe.js)
   if (body.name !== undefined) put('name', str(body.name, 40) || '기본');
   if (body.key !== undefined) put('key', str(body.key, 12));
   if (body.mod !== undefined) put('mod', str(body.mod, 12));
