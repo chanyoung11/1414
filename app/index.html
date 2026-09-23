@@ -3013,7 +3013,7 @@ function scrubVer(d){if(d&&typeof d==='object'){d.version=+d.version||0;if(d.pub
 // 콘티 한 벌(초안·발행본)을 올릴 수 있는 크기. 서버(api/index.js readBody)와 같은 값. AI 악보·코드가 많은 곡이 수십 곡이면 넘는다
 const DOC_MAX=4e6;
 function tooBig(n){const e=new Error(`콘티가 너무 커서(${(n/1e6).toFixed(1)}MB · 한도 ${DOC_MAX/1e6}MB) 서버에 올리지 못했어요. 곡이나 악보 조각을 줄여 주세요`);e.code='too_large';e.status=413;return e}
-const SYNC={t:null,pulledAt:{},missing:new Set(),notePut:{},noteGone:new Set(),
+const SYNC={t:null,pulledAt:{},missing:new Set(),getting:new Map(),notePut:{},noteGone:new Set(),
  blobIds(items){const ids=[];(items||[]).forEach(it=>{(it.pieces||[]).forEach(p=>p.blob&&ids.push(p.blob));(it.media||[]).forEach(m=>m.type==='audio'&&m.blob&&ids.push(m.blob))});return [...new Set(ids)]},
  // 팀의 발행본 목록을 받아 새 것·새 버전만 내려받음. 바뀐 게 있으면 true
  // 켤 때·홈·팀 전환·로그인이 겹쳐 부르면 하나만 돈다. 둘이 같이 돌면 같은 초안이 두 번 들어가
@@ -3083,16 +3083,20 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),notePut:{},noteGone:new Set(),
   save();return cur},
  // 파일 내려받기. 한 번 실패한 파일은 기억해 뒀다가 다음 진입 때 다시 시도한다
  async fetchBlobs(map,onProgress){const ids=Object.keys(map||{});let done=0,failed=0;
-  for(const id of ids){done++;if(await IDB.get('blobs',id)){if(onProgress)onProgress(done,ids.length);continue}
-   try{const r=await fetch(map[id]);
-    if(!r.ok){failed++;
-     // 기록은 있는데 파일이 없다 → 서버에 알려 기록을 지우게 한다. 파일을 가진 기기가 다시 올린다
-     if(r.status===404)api('/blobs/'+id+'/gone',{method:'POST',body:{teamId:S.team.id}}).catch(()=>{});
-     continue}
-    const b=await r.blob();await IDB.put('blobs',id,b);SYNC.missing.delete(id)}
-   catch(e){failed++;SYNC.missing.add(id);console.warn('blob',id,e.message)}
+  for(const id of ids){done++;
+   // 같은 파일을 벌써 받고 있으면(부팅 때 라이브러리 받기가 겹침 등) 그것을 기다린다. 예전에는 녹음까지 두 번씩 받았다
+   if(!await (SYNC.getting.get(id)||SYNC.fetchOne(id,map[id])))failed++;
    if(onProgress)onProgress(done,ids.length)}
   return {failed}},
+ fetchOne(id,u){const p=(async()=>{if(await IDB.get('blobs',id))return true;
+   try{const r=await fetch(u);
+    if(!r.ok){
+     // 기록은 있는데 파일이 없다 → 서버에 알려 기록을 지우게 한다. 파일을 가진 기기가 다시 올린다
+     if(r.status===404)api('/blobs/'+id+'/gone',{method:'POST',body:{teamId:S.team.id}}).catch(()=>{});
+     return false}
+    const b=await r.blob();await IDB.put('blobs',id,b);SYNC.missing.delete(id);return true}
+   catch(e){SYNC.missing.add(id);console.warn('blob',id,e.message);return false}})().finally(()=>SYNC.getting.delete(id));
+  SYNC.getting.set(id,p);return p},
  async ensureBlobs(items,quiet){const ids=SYNC.blobIds(items);let have={};if(ids.length){have=(await api('/blobs?team='+S.team.id+'&ids='+ids.join(','))).blobs}
   const todo=ids.filter(id=>!have[id]);let k=0;
   for(const id of todo){k++;if(!quiet)toast(`파일 올리는 중 ${k}/${todo.length}…`);const b=await IDB.get('blobs',id);if(!b)throw new Error('이 기기에 없는 파일이 있어요');
