@@ -247,7 +247,8 @@ alter table service_dates add column if not exists notified jsonb not null defau
 -- B.9 플랜. 지금은 값만 두고 한도 검사는 하지 않는다(결제 연동 때 켠다)
 alter table teams add column if not exists plan text not null default 'free';
 alter table teams drop constraint if exists teams_plan_check;
-alter table teams add constraint teams_plan_check check (plan in ('free','pro'));
+-- plus 도 넣는다. 전에는 free/pro 만 받아서 Plus 결제 웹훅과 Plus 프로모션 코드가 전부 500 이었다
+alter table teams add constraint teams_plan_check check (plan in ('free','pro','plus'));
 -- B.6.2 결제 담당자. null 이면 인도자(teams.created_by)
 alter table teams add column if not exists billing_user_id uuid references users(id);
 -- B.7.1 팀 삭제는 30일 유예 뒤 크론이 실제로 지운다
