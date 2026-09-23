@@ -5231,8 +5231,10 @@ function fixOctaves(parts){
  const g=median(meds.filter(x=>x!=null));if(g==null)return parts;
  // 1) 줄끼리 옥타브가 어긋난 것 맞추기
  // (9반음 넘게 벌어진 줄만 건드린다. 진짜로 높은 후렴을 억지로 내리지 않으려고)
- const lined=parts.map((p,i)=>{if(!p||meds[i]==null)return p;
-  const d=Math.abs(g-meds[i])>=9?Math.round((g-meds[i])/12):0;
+ // 그 줄 혼자 C4~A5 밖이면 그 안으로 들어올 만큼만(가장 적게) 옮기고, 안이면 한 옥타브 넘게 벌어졌을 때만 옮긴다.
+ // D4 언저리 벌스와 B4 언저리 후렴은 9반음 차이가 흔한데, 예전엔 9반음을 한 옥타브로 반올림해 제대로 적힌 벌스를 후렴 위로 올려 버렸다 (G18)
+ const lined=parts.map((p,i)=>{if(!p||meds[i]==null)return p;const m=meds[i],gap=g-m;let d=0;
+  if(Math.abs(gap)>=9){if(m<60&&gap>0)d=Math.ceil((60-m)/12);else if(m>81&&gap<0)d=-Math.ceil((m-81)/12);else if(Math.abs(gap)>=12)d=Math.round(gap/12)}
   return d?{...p,measures:shiftOctave(p.measures,d)}:p});
  // 2) 음 높이 한가운데가 오선 밖(E4~E5 바깥)이면 그만큼만 옮긴다.
  // 절반 넘는 음이 오선 아래에 깔리면 높은음자리표 멜로디로는 이상하다.
