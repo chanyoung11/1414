@@ -2720,7 +2720,8 @@ function afterSettings(){
    try{const n=await SYNC.refetchBlobs();toast(n?`악보 ${n}개를 다시 받았어요`:'다시 받을 악보가 없어요');render()}
    catch(err){toast(err.message);btn.disabled=false}return}
   if(e.target.closest('#sLogout')){
-   if(!confirm('로그아웃할까요?\n이 기기에 받아 둔 콘티·악보도 함께 지워져요. 다시 로그인하면 서버에서 다시 받습니다.'))return;
+   const un=unsyncedCount();
+   if(!confirm('로그아웃할까요?\n이 기기에 받아 둔 콘티·악보도 함께 지워져요. 다시 로그인하면 서버에서 다시 받습니다.'+(un?`\n\n아직 서버에 못 올린 수정이 ${un}개 있어요. 지금 로그아웃하면 사라져요.`:'')))return;
    doGate('logout');return}
   // 다른 기기의 로그인까지 서버에서 끊는다 (비밀번호를 바꿀 때와 같은 방식)
   if(e.target.closest('#sLogoutAll')){
@@ -3424,6 +3425,19 @@ async function socialLogin(provider, idToken, name){
     if(S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()});
   }catch(e){ if(err)err.textContent=e.message; else toast(e.message); }
 }
+// 로그아웃하면 이 계정이 이 기기에 남긴 콘티·메모(모든 팀)와 거기에만 쓰인 악보·녹음 파일을 지운다.
+// 확인 창은 '함께 지워져요'라고 했는데 실제로는 IndexedDB 에 그대로 남아, 공용 PC 의 다음 사람이 읽을 수 있었다.
+// 다른 계정·로그아웃 상태가 쓰는 파일은 남긴다 (파일 id 는 상태 안의 "blob" 값으로 찾는다)
+async function wipeAccountData(userId){if(!userId)return;
+ try{const keys=(await IDB.tx('kv','readonly',s=>s.getAllKeys())).filter(k=>typeof k==='string'&&k.startsWith('state:'));
+  const mine=keys.filter(k=>k.startsWith('state:'+userId+':'));if(!mine.length)return;
+  const refs=async ks=>{const ids=new Set();for(const k of ks){try{const raw=await IDB.get('kv',k);if(raw)for(const m of String(raw).matchAll(/"blob":"([A-Za-z0-9_-]{1,64})"/g))ids.add(m[1])}catch(e){}}return ids};
+  const drop=await refs(mine),keep=await refs(keys.filter(k=>!mine.includes(k)));
+  for(const id of drop){if(keep.has(id))continue;try{await IDB.del('blobs',id)}catch(e){}const u=urlCache.get(id);if(u){try{URL.revokeObjectURL(u)}catch(e){}urlCache.delete(id)}}
+  for(const k of mine){try{await IDB.del('kv',k)}catch(e){}}
+ }catch(e){console.warn('wipe',e)}}
+// 아직 서버에 못 올린 것 (로그아웃하면 사라진다)
+const unsyncedCount=()=>S.services.filter(x=>x.pubPending).length+(S.library||[]).filter(x=>x.dirty).length+(S.songs||[]).filter(x=>x.dirty).length;
 async function doGate(act,el){
  try{
   if(act==='lg-mode'){GATE.mode=el.dataset.m;GATE.err='';GATE.user=($('#lgUser')||{value:''}).value;GATE.pw=($('#lgPass')||{value:''}).value;GATE.agree=!!($('#lgAgree')||{}).checked;render();return}
@@ -3433,7 +3447,7 @@ async function doGate(act,el){
     if(!GATE.agree){GATE.err='이용약관과 개인정보처리방침에 동의해 주세요';render();return}}
    const m=GATE.mode==='login'?await api('/auth/login',{method:'POST',body:{username,password}}):await api('/auth/signup',{method:'POST',body:{username,password,name:$('#lgName').value.trim(),agreedAt:new Date().toISOString()}});
    GATE.err='';GATE.preview=null;GATE.pw='';GATE.name='';await takeMe(m);render();probeOmr();if(S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()});return}
-  if(act==='logout'){try{await api('/auth/logout',{method:'POST'})}catch(e){}setAppToken('');NET.user=null;NET.teams=[];await switchScope(scopeKey('',''));S.team=Object.assign(DEF_TEAM(),{id:'',invite:''});save();GATE.preview=null;if(route().name!=='home')go('home');render();return}
+  if(act==='logout'){const uid0=NET.user&&NET.user.id;try{await api('/auth/logout',{method:'POST'})}catch(e){}setAppToken('');NET.user=null;NET.teams=[];await switchScope(scopeKey('',''));S.team=Object.assign(DEF_TEAM(),{id:'',invite:''});save();await wipeAccountData(uid0);GATE.preview=null;if(route().name!=='home')go('home');render();return}
   if(act==='join-go'){const v=$('#gtLink').value.trim();const tok=(v.match(/join\/([A-Za-z0-9_-]+)/)||[])[1]||v;if(!tok){$('#gtErr').textContent='링크나 코드를 붙여넣어 주세요';return}GATE.preview=null;go('join/'+tok);return}
   if(act==='team-create'){const t=await api('/teams',{method:'POST',body:{name:$('#gtTeam').value.trim(),myName:$('#gtName').value.trim(),session:GATE.sess||'인도자'}});await applyMembership(t);NET.teams.push(t);toast('팀을 만들었어요');go('home');render();return}
   if(act==='team-join'){const p=GATE.preview;
