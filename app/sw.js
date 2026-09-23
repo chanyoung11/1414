@@ -10,8 +10,16 @@ self.addEventListener('fetch', e => {
   if (url.pathname.startsWith('/api/') || url.pathname === '/api') return;
   const isPage = req.mode === 'navigate' || url.pathname.endsWith('/') || url.pathname.endsWith('index.html');
   if (isPage) {
-    e.respondWith(fetch(req).then(res => { if (res && res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => { c.put('./index.html', copy); }); } return res; })
-      .catch(() => caches.match('./index.html')));
+    // 약한 와이파이·교회 포털에서는 네트워크가 끝없이 붙잡고 있어 흰 화면이 1분씩 갔다.
+    // 캐시가 있으면 4초만 기다리고 캐시로 연다. 늦게 온 응답은 뒤에서 캐시에 넣어 다음에 쓴다
+    const net = fetch(req).then(res => { if (res && res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => { c.put('./index.html', copy); }); } return res; });
+    e.respondWith(new Promise(resolve => {
+      let done = false; const fin = r => { if (!done && r) { done = true; resolve(r); } };
+      const t = setTimeout(() => caches.match('./index.html').then(fin), 4000);
+      net.then(r => { clearTimeout(t); fin(r); })
+        .catch(() => { clearTimeout(t); caches.match('./index.html').then(hit => fin(hit || Response.error())); });
+    }));
+    e.waitUntil(net.catch(() => {}));
     return;
   }
   e.respondWith(caches.match(req).then(hit => hit || fetch(req).then(res => { if (res && res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); } return res; })));

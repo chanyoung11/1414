@@ -2965,7 +2965,8 @@ function recheckServer(){return RECHECK||(RECHECK=(async()=>{
  if(NET.server===true)return;
  const was=NET.server;NET.server=await probeServer();
  if(NET.server===true&&was!==true){
-  try{await takeMe(await api('/me'))}catch(e){if(e.status===401)NET.user=null}
+  // 서버는 닿는데 /me 가 아직 안 되면(503·느림) 로그인 화면으로 넘기지 않는다 — 오프라인(모름)으로 두고 다음에 다시
+  try{await takeMe(await api('/me',{timeout:10000}))}catch(e){if(e.status===401)NET.user=null;else{NET.server=null;return}}
   toast('서버에 다시 연결됐어요');
   // 못 올린 발행을 먼저 올리고 나서 목록을 받는다 (거꾸로면 방금 올린 것을 '서버에서 지워진 것'으로 볼 수 있다)
   if(S.team.id){SYNC.pushPending().catch(()=>0).then(()=>SYNC.pullServices()).then(ch=>{if(ch)render()});pullSongs('fresh').catch(()=>{})}
@@ -2995,15 +2996,21 @@ let APP_TOKEN=NATIVE?(()=>{try{return localStorage.getItem(TOKEN_KEY)||''}catch(
 function setAppToken(t){if(!NATIVE)return;APP_TOKEN=t||'';
  try{if(t)localStorage.setItem(TOKEN_KEY,t);else localStorage.removeItem(TOKEN_KEY)}catch(e){}}
 async function api(path,o){const opt={method:(o&&o.method)||'GET',headers:{'x-conti':'1',...(NATIVE?{'x-conti-app':'1'}:{}),...(NATIVE&&APP_TOKEN?{authorization:'Bearer '+APP_TOKEN}:{})},credentials:NATIVE?'include':'same-origin',cache:'no-store'};if(o&&o.keepalive)opt.keepalive=true;if(o&&o.body){opt.headers['content-type']='application/json';opt.body=JSON.stringify(o.body)}
- const r=await fetch(API_BASE+'/api'+path,opt);let j=null;try{j=await r.json()}catch(e){}
+ // timeout: 켤 때처럼 기다리는 동안 화면이 막히는 부르기만 쓴다 (올리기는 오래 걸려도 정상이다)
+ const ac=o&&o.timeout&&typeof AbortController!=='undefined'?new AbortController():null;let tm=0;if(ac){opt.signal=ac.signal;tm=setTimeout(()=>ac.abort(),o.timeout)}
+ const late=()=>{const err=new Error('서버 응답이 늦어요');err.timeout=true;return err};
+ let r,j=null;try{r=await fetch(API_BASE+'/api'+path,opt);try{j=await r.json()}catch(e){}}catch(e){if(ac&&ac.signal.aborted)throw late();throw e}finally{clearTimeout(tm)}
+ if(ac&&ac.signal.aborted)throw late();
  // 로그인·가입·비밀번호 변경 때 새 토큰(appToken)이 온다. 아무 응답의 token 이나 받으면 안 된다 —
  // 말씀 링크 만들기 응답의 token(링크 값)이 로그인 토큰을 덮어 iOS 앱이 다음 실행 때 로그아웃됐다
  const tk=j&&(j.appToken||(/^\/auth\//.test(path)&&j.token));if(tk)setAppToken(tk);
  if(!r.ok){const err=new Error((j&&j.message)||('오류 '+r.status));err.status=r.status;err.code=j&&j.error;throw err}return j}
-// false 는 '여기엔 서버가 없다'(정적 호스팅의 404)일 때만. 503·429 같은 일시 오류는 null(모름) — 다시 묻는다
-async function probeServer(){try{const r=await fetch(API_BASE+'/api/health',{cache:'no-store',credentials:NATIVE?'include':'same-origin',headers:NATIVE?{'x-conti-app':'1'}:{}});if(!r.ok)return r.status===404?false:null;const j=await r.json();
+// false 는 '여기엔 서버가 없다'(정적 호스팅의 404)일 때만. 503·429 같은 일시 오류는 null(모름) — 다시 묻는다.
+// 약한 와이파이·교회 포털에서는 fetch 가 1분 넘게 안 끝난다 → 시간을 넘기면 '모름(null)'으로 보고 받아 둔 것으로 연다
+async function probeServer(){const ac=typeof AbortController!=='undefined'?new AbortController():null;const tm=ac?setTimeout(()=>ac.abort(),8000):0;
+ try{const r=await fetch(API_BASE+'/api/health',{cache:'no-store',credentials:NATIVE?'include':'same-origin',headers:NATIVE?{'x-conti-app':'1'}:{},signal:ac?ac.signal:undefined});if(!r.ok)return r.status===404?false:null;const j=await r.json();
  if(j&&j.app==='conti')NET.enforcePlan=!!j.enforcePlan;
- return !!(j&&j.app==='conti')}catch(e){return null}}
+ return !!(j&&j.app==='conti')}catch(e){return null}finally{clearTimeout(tm)}}
 // 채보 엔진 연결 여부 (인도자 편집기의 '채보' 버튼 표시용)
 function probeOmr(){if(!online()||!NET.user)return;api('/omr').then(r=>{const on=!!(r&&r.available);if(on!==NET.omr){NET.omr=on;if(route().name==='edit')render()}}).catch(()=>{})}
 async function applyMembership(t){const next=scopeKey(NET.user&&NET.user.id,t.teamId);
@@ -8010,13 +8017,20 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
  const seed=document.getElementById('seed');if(seed&&seed.textContent.trim()){try{const d=JSON.parse(seed.textContent);if(!S.seedAt||d.at>S.seedAt){S.seedAt=d.at;await importJSON(new Blob([seed.textContent],{type:'application/json'}))}}catch(e){console.warn('seed',e)}}
  // 서버 감지: /api 가 있으면 로그인·팀 흐름, 없으면(정적 호스팅) 기기 안에서만. 네트워크가 끊겼으면 마지막으로 받은 팀 정보로 그대로 진행
  clearStalePending();   // 인식 중에 앱이 닫혀 pending 으로 굳은 조각을 풀어 준다
- NET.server=await probeServer();
- if(NET.server===true){try{await takeMe(await api('/me'))}catch(e){
-  // 401 은 그냥 로그인 안 된 것. 그 밖의 실패는 서버가 닿지 않는 것으로 보되,
-  // 건강검진이 방금 통과했으므로 오프라인으로 굳히지 않고 한 번 더 확인한다
-  if(e.status===401)NET.user=null;
-  else if(await probeServer()!==true)NET.server=null;
-  else console.warn('me 실패',e&&e.message)}}
+ // 약한 와이파이·교회 포털에서는 서버 확인과 /me 가 한참 걸린다. 받아 둔 팀이 있으면 흰 화면으로 기다리게 하지 않고
+ // 2.5초 뒤 먼저 오프라인으로 그린다(무대 모드는 캐시로 돈다). 연결되면 아래에서 다시 그린다.
+ // NET.server 는 /me 까지 끝난 뒤에 정한다 — 먼저 true 로 두면 그 사이 그린 화면이 사용자 없이 로그인 창이 된다
+ const early=(S.team.id&&me().name)?setTimeout(()=>{if(NET.server==null)render()},2500):0;
+ let srv=await probeServer();
+ if(srv===true)for(let i=0;;i++){try{await takeMe(await api('/me',{timeout:10000}));break}catch(e){
+  // 401 은 그냥 로그인 안 된 것. 그 밖의 실패(503·끊김·느림) 한 번으로 로그인한 사람에게 로그인 창을 띄우지 않는다:
+  // 빨리 실패하면 잠깐 뒤 다시, 그래도 안 되면 받아 둔 것으로 열고(오프라인) 뒤에서 다시 붙는다 (recheckServer)
+  if(e.status===401){NET.user=null;break}
+  if(i<2&&!e.timeout){await new Promise(r=>setTimeout(r,700*(i+1)));continue}
+  console.warn('me 실패',e&&e.message);
+  if(S.team.id||await probeServer()!==true)srv=null;
+  break}}
+ clearTimeout(early);NET.server=srv;
  // 알림을 눌러 새 창으로 열렸으면 주소의 ?team= 이 그 알림의 팀이다 (sw.js). 그 팀으로 바꾸고 주소에서는 뗀다
  const pushTeam=new URLSearchParams(location.search).get('team');
  if(pushTeam){const h=location.hash;try{history.replaceState(null,'',location.pathname+h)}catch(e){}
@@ -8024,8 +8038,12 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
    if(location.hash!==h)try{history.replaceState(null,'',location.pathname+h)}catch(e){}}}   // 팀을 바꾸면 홈으로 보내는 것을 되돌린다
  if(!online()&&!me().name){location.hash='#/settings';render()}else render();
  // 못 올린 발행(오프라인 발행·올리다 닫힌 앱)을 먼저 올리고 목록을 받는다
- if(online()&&S.team.id){SYNC.pushPending().then(n=>{if(n)render()}).catch(()=>0).then(()=>SYNC.pullServices()).then(ch=>{if(ch)render()});SYNC.pullLibrary();pullSongs('fresh').then(ch=>{if(ch&&/^(edit|view|play|library)$/.test(route().name))render()}).catch(()=>{})}
+ if(online()&&S.team.id){SYNC.pushPending().then(n=>{if(n)render()}).catch(()=>0).then(()=>SYNC.pullServices()).then(ch=>{if(ch)render()});SYNC.pullLibrary();pullSongs('fresh').then(ch=>{if(ch&&/^(edit|view|play|library)$/.test(route().name))render()}).catch(()=>{});
+  SYNC.schedulePush()}   // 오프라인에서 고친 것. 예전에는 /me 뒤 save() 가 대신 불러 줬는데, 이제 그때는 아직 연결 전(NET.server)이다
+ // 시간 초과로 오프라인이 됐어도 브라우저는 여전히 '온라인'이라 online 이벤트가 오지 않는다 → 간격을 늘려 가며 다시 묻고(scheduleReprobe),
+ // 20초마다도 한 번 본다. 앱으로 돌아올 때는 위의 visibilitychange 가 바로 묻는다
  if(!online())scheduleReprobe();
+ setInterval(()=>{if(NET.server===null&&!document.hidden)recheckServer()},20000);
  probeOmr();startNotiPoll();nativeSetup();
  window.CONTI={ADS,WEBADS,AD_HOSTS,setZoom,P,pl:()=>PL,STG,stageOpen,stageExit,adsAllowed,webAdsAllowed,MET,PIANO,metOpen,metStart,metStop,metSet,pianoOpen,HOME,PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go,PLANQ,planCls,ytOriginParam,ytEmbedSrc,YT};
 })();
