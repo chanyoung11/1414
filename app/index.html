@@ -2843,7 +2843,7 @@ const DEF_TEAM=()=>({sessions:DEF_SESS.slice(),phrases:DEF_PHR.slice(),settings:
 async function switchScope(next){if(next===CUR_SCOPE)return;
  if(CUR_SCOPE==='legacy'){CUR_SCOPE=next;await flushSave();try{await IDB.del('kv','state')}catch(e){}return} // 예전 단일 저장소는 첫 스코프가 그대로 물려받음
  await flushSave();CUR_SCOPE=next;let s=null;try{const raw=await IDB.get('kv',next);if(raw)s=JSON.parse(raw)}catch(e){console.warn('scope',e)}
- S.services=uniqSvcs(s&&s.services);S.library=(s&&s.library)||[];S.songs=(s&&s.songs)||[];S.songsAt=(s&&s.songsAt)||'';S.seenVer=(s&&s.seenVer)||{};S.noteShadow=(s&&s.noteShadow)||{};S.seedAt=(s&&s.seedAt)||0;S.dropped=(s&&s.dropped)||[];S.libAt=(s&&s.libAt)||'';S.libDeleted=(s&&s.libDeleted)||[];S.team=Object.assign(DEF_TEAM(),(s&&s.team)||{});
+ S.services=uniqSvcs(s&&s.services);S.library=(s&&s.library)||[];S.songs=(s&&s.songs)||[];S.songsAt=(s&&s.songsAt)||'';S.seenVer=(s&&s.seenVer)||{};S.noteShadow=(s&&s.noteShadow)||{};S.seedAt=(s&&s.seedAt)||0;S.dropped=(s&&s.dropped)||[];S.delPending=(s&&s.delPending)||[];S.libAt=(s&&s.libAt)||'';S.libDeleted=(s&&s.libDeleted)||[];S.team=Object.assign(DEF_TEAM(),(s&&s.team)||{});
  if(typeof SYNC!=='undefined')Object.keys(SYNC.pulledAt).forEach(k=>delete SYNC.pulledAt[k]);
  // 팀·계정이 바뀌면 화면 캐시도 모두 비운다 (이전 팀 일정·말씀·녹음이 남지 않게)
  if(typeof NOTI!=='undefined'){NOTI.list=[];NOTI.unread=0;NOTI.at=0;NOTI.sig=''}
@@ -3053,6 +3053,8 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),getting:new Map(),notePut:{},no
   const moved=()=>scope!==CUR_SCOPE||tid!==S.team.id;
   // 목록을 받는 사이에 올라간 발행(대기 중이던 것·방금 발행한 것)은 목록에 없어도 '서버에서 지워진 것'이 아니다
   const t0=Date.now(),pend0=new Set(S.services.filter(x=>x.pubPending).map(x=>x.id));
+  // 오프라인에서 지운 것을 먼저 서버에서도 지운다 (목록을 먼저 받으면 지운 콘티가 다시 들어온 것처럼 보일 수 있다)
+  if(isLeader()){await SYNC.flushDeletes();if(moved())return false}
   let list,drafts=[];try{const r=await api('/services?team='+tid);list=r.services;drafts=r.drafts||[]}catch(e){return false}
   if(moved())return false;
   let changed=false;
@@ -3223,7 +3225,15 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),getting:new Map(),notePut:{},no
    catch(e){if(e.code==='version_conflict'){delete svc.pubPending;save();toast(e.message);try{await SYNC.pullService(svc.id)}catch(e2){}}
     else{console.warn('pub retry',svc.id,e.message);if(only)throw e}}}
   if(n)save();return n},
- async deleteService(id){if(!online()||!isLeader())return false;try{await api('/services/'+id+'?team='+S.team.id,{method:'DELETE'});return true}catch(e){toast(e.message);return false}},
+ // 못 지운 것(오프라인·끊김·5xx)은 S.delPending 에 남겨 두고 다시 연결되면 보낸다 (flushDeletes). 확인창이 그렇게 약속한다.
+ // S.dropped 는 '다시 받아오지 않기'일 뿐이라, 그것만으로는 서버에 영원히 남아 팀원들에게 계속 보였다
+ async deleteService(id){const later=()=>{if(S.team.id&&!(S.delPending||[]).includes(id)){S.delPending=(S.delPending||[]).concat(id);save()}return false};
+  if(!isLeader())return false;if(!online())return later();
+  try{await api('/services/'+id+'?team='+S.team.id,{method:'DELETE'});return true}catch(e){if(e.status===403||e.status===404){toast(e.message);return false}return later()}},
+ async flushDeletes(){if(!online()||!isLeader()||!S.team.id)return;
+  for(const id of (S.delPending||[]).slice()){
+   try{await api('/services/'+id+'?team='+S.team.id,{method:'DELETE'})}catch(e){if(e.status!==403&&e.status!==404)continue}   // 끊김·5xx 는 다음에 다시. 권한 없음은 다시 해도 같으니 버린다
+   S.delPending=(S.delPending||[]).filter(x=>x!==id);save()}},
  // 메모: 로컬 ↔ 서버 차이만 올림 (실패하면 다음 저장 때 다시)
  localNotes(svc){const out=[];svc.items.forEach(it=>{(it.notes||[]).forEach(n=>out.push({...n,itemId:it.id,markerId:n.marker||null,mediaId:null}));(it.media||[]).forEach(m=>(m.notes||[]).forEach(n=>out.push({...n,itemId:it.id,markerId:n.marker||null,mediaId:m.id})))});return out},
  // 그림자: 서버에 올려 둔 메모 {id, itemId, mediaId}. 옛 형식(문자열 배열 · mediaId 없음)도 읽는다
@@ -7869,7 +7879,7 @@ document.addEventListener('click',async e=>{
    const id=svc.id;S.services=S.services.filter(s=>s.id!==id);
    if(S.noteShadow)delete S.noteShadow[id];              // 그림자를 남기면 다시 받은 콘티의 첫 동기화가 서버 메모를 지운다
    S.dropped=(S.dropped||[]).concat(id);                  // 서버 삭제가 실패해도 다시 받아오지 않게
-   save();SYNC.deleteService(id).then(ok=>{if(ok===false)toast('서버에서는 아직 안 지워졌어요. 온라인에서 다시 시도해요')});render()}break}
+   save();SYNC.deleteService(id).then(ok=>{if(ok===false&&(S.delPending||[]).includes(id))toast('서버에서는 아직 안 지워졌어요. 다시 연결되면 지워요')});render()}break}
   case 'sync':{toast('팀 서버와 맞추는 중…');SYNC.pullServices().then(ch=>{toast(ch?'새 콘티를 받았어요':'이미 최신이에요');render()});break}
   case 'import':{const inp=document.createElement('input');inp.type='file';inp.accept='.json,application/json';inp.onchange=()=>importJSON(inp.files[0]);inp.click();break}
   case 'export':exportJSON();break;
@@ -7898,7 +7908,8 @@ document.addEventListener('click',async e=>{
    S.dropped=(S.dropped||[]).concat(ids);
    HOME.pick=false;HOME.sel=[];save();render();
    {let bad=0;for(const id of ids){const ok=await SYNC.deleteService(id);if(ok===false)bad++}
-    toast(bad?`${ids.length-bad}개 지웠어요 · ${bad}개는 서버에서 못 지웠어요`:`${ids.length}개 지웠어요`);render()}
+    const later=ids.filter(id=>(S.delPending||[]).includes(id)).length;
+    toast(bad?(later===bad?`${ids.length}개 지웠어요 · ${bad}개는 다시 연결되면 서버에서도 지워요`:`${ids.length-bad}개 지웠어요 · ${bad}개는 서버에서 못 지웠어요`):`${ids.length}개 지웠어요`);render()}
    break}
   case 'span-piece':{const sv=svcById(r.a);const it=sv&&curItem(sv);const p=it&&it.pieces.find(x=>x.id===el.dataset.id);if(!p)break;
    p.span=(+p.span>1?+p.span:1)%3+1;if(p.span===1)delete p.span;   // 전체 → ½ → ⅓ → 전체
