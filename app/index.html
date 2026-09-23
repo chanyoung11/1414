@@ -5272,6 +5272,7 @@ async function rebuildScore(svc,it,piece){
  catch(e){toast(e.message||'악보를 만들지 못했어요')}
  finally{SCORE_BUSY=false;$$('[data-act="score-make"]').forEach(b=>b.disabled=false)}}
 async function rebuildRun(svc,it,piece,blob,append){const tok=aiTok();
+ const from=location.hash.replace(/^#\/?/,'');
  const img=await loadImg(URL.createObjectURL(blob));
  const cv=document.createElement('canvas');cv.width=img.naturalWidth;cv.height=img.naturalHeight;cv.getContext('2d').drawImage(img,0,0);
  let sys=[];try{sys=detectSystems(cv)}catch(e){console.warn('detectSystems',e)}
@@ -5308,7 +5309,10 @@ async function rebuildRun(svc,it,piece,blob,append){const tok=aiTok();
  if(!L.here){toast(AI_ELSEWHERE);return}
  const bad=badMeasuresOf(sc);
  toast(`악보 ${sc.measures.length}마디 완성${bad.length?` · 박자 확인 필요 ${bad.length}마디`:''}${fail?` · ${fail}줄 실패`:''}`);
- go(`score/${svc.id}/${it.id}`);
+ // 기다리는 사이 그 악보 화면을 열어 뒀으면 같은 주소라 hashchange 가 안 나 옛 그림이 남는다 → 직접 다시 그린다.
+ // 다른 화면으로 옮겨 갔으면 끌고 가지 않는다 (알림으로 충분). 시작한 화면에 그대로 있을 때만 악보로 간다 (F135)
+ const to=`score/${svc.id}/${it.id}`,now=location.hash.replace(/^#\/?/,'');
+ if(now===to)render();else if(now===from)go(to);
 }
 
 /* ---------- 악보 화면 ---------- */
