@@ -1696,22 +1696,32 @@ on('POST', '/songs', async ({ uid, body }) => {
   const m = await requireMember(uid, teamId, 'leader');
   const title = str(body.title, 120);
   if (!title) throw bad('곡 제목을 적어 주세요');
-  if (ENFORCE_PLAN) {
+  // 기기가 정한 id(uuid)가 오면 그 id 로 만든다. 응답을 못 받아 다시 보내거나 두 번 눌러도 곡은 하나다
+  const cid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(body.id || '')) ? String(body.id).toLowerCase() : null;
+  const had = cid ? await one('select * from songs where id=$1', [cid]) : null;
+  if (had && (String(had.team_id) !== String(teamId).toLowerCase() || had.deleted_at)) throw new HttpError(409, 'song_id_taken', '곡을 다시 만들어 주세요');
+  if (ENFORCE_PLAN && !had) {
     const n = await one('select count(*)::int as n from songs where team_id=$1 and not archived and deleted_at is null', [teamId]);
     const cap = planOf(m).songs;
     if (n.n >= cap) throw new HttpError(402, 'plan_limit', `무료는 ${cap}곡까지예요. 안 부르는 곡을 보관하면 자리가 생겨요`);
   }
   const tn = normSong(title);
-  const s = await one(`insert into songs(team_id, title, title_norm, title_cho, artist, orig_key, tempo, tags, aliases, first_line, folder, created_by)
-    values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) returning *`,
+  const s = had || await one(`insert into songs(id, team_id, title, title_norm, title_cho, artist, orig_key, tempo, tags, aliases, first_line, folder, created_by)
+    values(coalesce($13::uuid, gen_random_uuid()),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) on conflict (id) do nothing returning *`,
     [teamId, title, tn, choSong(tn), str(body.artist, 60), str(body.origKey, 12), str(body.tempo, 8),
-     strList(body.tags) || [], strList(body.aliases) || [], str(body.firstLine, 200), str(body.folder, 30).trim(), uid]);
-  const a = await one(`insert into arrangements(song_id, team_id, name, is_default, key, mod, form, song_note, pieces, media, chart, score)
-    values($1,$2,'기본',true,$3,$4,$5,$6,$7,$8,$9,$10) returning *`,
+     strList(body.tags) || [], strList(body.aliases) || [], str(body.firstLine, 200), str(body.folder, 30).trim(), uid, cid])
+    || await one('select * from songs where id=$1 and team_id=$2 and deleted_at is null', [cid, teamId]);   // 같은 id 가 동시에 두 번
+  if (!s) throw new HttpError(409, 'song_id_taken', '곡을 다시 만들어 주세요');
+  // 기본 편곡도 한 번만. 같은 곡으로 동시에 두 번 오면 먼저 넣은 것을 쓴다 (기본 편곡은 곡마다 하나 — 유일 인덱스)
+  const firstArr = () => one('select * from arrangements where song_id=$1 and deleted_at is null order by is_default desc, created_at asc limit 1', [s.id]);
+  const a = (had && await firstArr()) || await one(`insert into arrangements(song_id, team_id, name, is_default, key, mod, form, song_note, pieces, media, chart, score)
+    values($1,$2,'기본',true,$3,$4,$5,$6,$7,$8,$9,$10) on conflict do nothing returning *`,
     [s.id, teamId, str(body.key, 12), str(body.mod, 12), str(body.form, 500), str(body.songNote, 300),
      JSON.stringify(Array.isArray(body.pieces) ? body.pieces : []), JSON.stringify(Array.isArray(body.media) ? body.media : []),
-     body.chart ? JSON.stringify(body.chart) : null, body.score ? JSON.stringify(body.score) : null]);
-  return { song: songView(s, { arrangements: [arrView(a)], useCount: 0, lastUsed: null, firstUsed: null, keyStats: {} }) };
+     body.chart ? JSON.stringify(body.chart) : null, body.score ? JSON.stringify(body.score) : null])
+    || await firstArr();
+  const stats = had ? ((await songStats(teamId))[s.id] || {}) : {};
+  return { song: songView(s, { arrangements: [arrView(a)], useCount: 0, lastUsed: null, firstUsed: null, keyStats: {}, ...stats }) };
 });
 
 // 곡 정보 고치기 · 보관 (인도자)
