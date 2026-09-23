@@ -467,10 +467,16 @@ on('PATCH', '/me/prefs', async ({ uid, body }) => {
   const patch = body && typeof body.prefs === 'object' && body.prefs && !Array.isArray(body.prefs) ? { ...body.prefs } : {};
   delete patch.stage;   // 조판은 아래 PUT 으로만 (따로 둔 표)
   const txt = JSON.stringify(patch);
+  // 한 단계 더 깊게 합친다: notiOff·quiet 는 객체라 통째로 덮으면 다른 기기에서 끈 종류가 다시 켜졌다
+  // (PC 에서 한 종류를 끄면 폰에서 꺼 둔 '콘티 발행'이 되살아남). 앱은 바뀐 키만 보낸다
+  const merged = `coalesce(prefs,'{}'::jsonb) || coalesce((
+      select jsonb_object_agg(e.key, case when jsonb_typeof(e.value)='object' and jsonb_typeof(users.prefs->e.key)='object'
+                                          then (users.prefs->e.key) || e.value else e.value end)
+      from jsonb_each($2::jsonb) e), '{}'::jsonb)`;
   // 한 번에 보내는 양만 보던 것을 합친 결과까지 본다. 전에는 키를 바꿔 가며 보내면 한없이 커졌다
   const u = Buffer.byteLength(txt) > PREFS_MAX ? null
-    : await one(`update users set prefs = coalesce(prefs,'{}'::jsonb) || $2::jsonb
-                 where id=$1 and octet_length(((coalesce(prefs,'{}'::jsonb) - 'stage') || $2::jsonb)::text) <= $3 returning id`,
+    : await one(`update users set prefs = ${merged}
+                 where id=$1 and octet_length((${merged} - 'stage')::text) <= $3 returning id`,
       [uid, txt, PREFS_MAX]);
   if (!u) throw new HttpError(413, 'too_big', '설정이 너무 큽니다');
   return { prefs: await prefsOf(uid) };
