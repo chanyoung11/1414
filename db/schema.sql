@@ -534,3 +534,27 @@ create table if not exists identities (
 create index if not exists identities_user_idx on identities(user_id);
 -- 같은 제공자를 한 계정에 두 번 붙이지 않는다
 create unique index if not exists identities_one_per_provider on identities(user_id, provider);
+
+-- 계정 삭제(§7)가 '누가 했는지'만 가리키는 칸에 막히지 않게: 사람이 지워지면 그 칸만 비운다.
+-- 결제 담당·초대 링크 만든 사람·관리 기록·곡·공유 코드가 on delete 없이 users 를 가리켜서
+-- 전 인도자나 팀을 나간 사람의 삭제가 500 이었다. 제약 이름은 그대로 두고 삭제 동작만 바꾼다
+alter table invites alter column created_by drop not null;
+do $$
+declare r record; c text;
+begin
+  for r in select * from (values ('teams','billing_user_id'), ('invites','created_by'), ('team_audit','actor_id'),
+      ('songs','created_by'), ('share_codes','created_by'), ('services','updated_by'), ('drafts','updated_by'),
+      ('service_words','updated_by'), ('rehearsals','uploaded_by'), ('word_links','created_by'), ('library','updated_by')) v(t, col)
+  loop
+    c := null;
+    select con.conname into c from pg_constraint con
+      join pg_attribute a on a.attrelid = con.conrelid and a.attnum = con.conkey[1]
+     where con.contype = 'f' and con.conrelid = r.t::regclass and con.confrelid = 'users'::regclass
+       and array_length(con.conkey, 1) = 1 and a.attname = r.col and con.confdeltype <> 'n'
+     limit 1;
+    if c is not null then
+      execute format('alter table %I drop constraint %I', r.t, c);
+      execute format('alter table %I add constraint %I foreign key (%I) references users(id) on delete set null', r.t, c, r.col);
+    end if;
+  end loop;
+end $$;

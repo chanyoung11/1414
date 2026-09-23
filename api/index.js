@@ -1,7 +1,7 @@
 // 콘티 API — 계정 · 팀 · 초대. Vercel 서버리스 함수 하나(api/index.js)에 작은 라우터.
 // vercel.json 의 rewrite 가 /api/* 를 /api?p=<경로> 로 보내고, 여기서 p(또는 원래 pathname)로 라우팅합니다.
 // 로컬: npm run dev (scripts/dev.mjs가 이 핸들러를 /api/* 에 그대로 붙임)
-import { q, one } from '../lib/db.js';
+import { q, one, tx } from '../lib/db.js';
 import { sessionClaims, sessionCookie, clearSessionCookie, randomToken, isApp, appSessionToken } from '../lib/session.js';
 import { hashPassword, verifyPassword, USERNAME_RE, PASSWORD_MIN } from '../lib/password.js';
 import { verifyIdToken, audiencesOf, socialConfigured } from '../lib/social.js';
@@ -290,37 +290,63 @@ on('DELETE', '/auth/social/:provider', async ({ uid, params }) => {
 
 on('POST', '/auth/logout', async ({ req }) => ({ data: { ok: true }, headers: { 'Set-Cookie': clearSessionCookie(req) } }));
 
+// 로그인한 채로 하는 되돌릴 수 없는 일(계정 삭제·복구 코드·비밀번호 바꾸기)은 현재 비밀번호를 다시 묻는다.
+// 소셜로만 가입한 계정은 비밀번호가 없다 → 로그인만으로 (비밀번호 만들기와 같은 기준).
+// 세션만 가진 사람(교회 공용 PC)이 비밀번호를 맞혀 보지 못하게 로그인처럼 횟수를 센다
+async function recheckPassword(uid, hash, password, msg) {
+  if (!hash) return;
+  const keys = [[`reauth:${uid}`, 8]];
+  await assertNotLocked(keys);
+  if (!verifyPassword(String(password || ''), hash)) { await noteFailure(keys); throw new HttpError(401, 'bad_login', msg || '비밀번호가 맞지 않아요'); }
+  await clearFailures(keys);
+}
+
 // 계정 삭제 (§7): 아이디·비밀번호로 두 번 확인. 인도자로 남아 있는 팀이 있으면 먼저 넘기게 한다
 on('POST', '/auth/delete', async ({ req, uid, body }) => {
   if (!uid) throw noAuth();
   const u = await one('select id, username, password_hash from users where id=$1', [uid]);
   if (!u) throw noAuth();
   if (str(body.username, 40).toLowerCase() !== u.username) throw bad('아이디가 맞지 않아요');
-  if (!verifyPassword(String(body.password || ''), u.password_hash)) throw new HttpError(401, 'bad_login', '비밀번호가 맞지 않아요');
+  // 소셜로만 가입한 계정은 아이디 확인만으로 (전에는 비밀번호가 없어 영영 못 지웠다)
+  await recheckPassword(uid, u.password_hash, body.password);
+  // 넘길 사람이 있는 팀만 막는다. 삭제 예약한 팀(30일 유예)과 나머지가 모두 비활성인 팀은
+  // 넘길 수도 없으니(비활성에게는 못 넘긴다) 막지 않고 아래에서 정리한다
   const stuck = await q(`select t.name from members m join teams t on t.id=m.team_id
-                         where m.user_id=$1 and m.role='leader'
+                         where m.user_id=$1 and m.role='leader' and t.deleted_at is null
                            and (select count(*) from members m2 where m2.team_id=m.team_id and m2.role='leader') = 1
-                           and (select count(*) from members m3 where m3.team_id=m.team_id) > 1`, [uid]);
+                           and exists (select 1 from members m3 where m3.team_id=m.team_id and m3.user_id<>$1 and m3.active)`, [uid]);
   if (stuck.length) throw bad(`${stuck.map((r) => r.name).join(', ')} 팀의 인도자예요. 다른 사람을 인도자로 지정한 뒤 다시 시도해 주세요`);
-  // '누가 했는지'만 가리키는 칸을 먼저 비운다 (지운 계정을 참조하면 삭제가 막히므로)
-  for (const [t, c] of [['services', 'updated_by'], ['drafts', 'updated_by'], ['service_words', 'updated_by'], ['rehearsals', 'uploaded_by'], ['word_links', 'created_by'], ['library', 'updated_by']]) {
-    try { await q(`update ${t} set ${c}=null where ${c}=$1`, [uid]); } catch (e) { console.error('null out', t, e.message); }
-  }
-  // 팀을 만든 사람 칸은 not null 이라 비울 수 없다 → 남은 인도자(없으면 가장 오래된 멤버)에게 넘긴다
-  for (const t of await q('select id from teams where created_by=$1', [uid])) {
-    const heir = await one(`select user_id from members where team_id=$1 and user_id<>$2 order by (role='leader') desc, created_at asc limit 1`, [t.id, uid]);
-    if (heir) await q('update teams set created_by=$2 where id=$1', [t.id, heir.user_id]);
-  }
-  await q('delete from notes where author_id=$1', [uid]);
-  // 혼자 있는 팀은 팀째로 지운다. 파일 삭제는 계정이 실제로 지워진 뒤에 (중간에 실패해도 파일이 남도록)
-  const solo = await q(`select m.team_id from members m where m.user_id=$1 and (select count(*) from members m2 where m2.team_id=m.team_id) = 1`, [uid]);
-  const soloUrls = [];
-  for (const t of solo) {
-    for (const r of await q('select url from blobs where team_id=$1', [t.team_id])) soloUrls.push(r.url);
-    await q('delete from teams where id=$1', [t.team_id]);
-  }
-  await q('delete from users where id=$1', [uid]);
-  await delBlobs(soloUrls);
+  // 한 트랜잭션으로 지운다. 전에는 한 줄씩이라 중간(사람을 가리키는 칸)에서 막히면
+  // 메모와 혼자 쓰던 팀만 먼저 지워지고 계정은 남았다. 운영 DB(Neon HTTP)는 문장 묶음을 한 번에 보내므로
+  // 문장마다 스스로 대상을 고른다 (앞 문장의 결과를 JS 로 받아 다음을 정하지 않는다)
+  const P = [uid];
+  // 나만 있는 팀 (내가 만들었는데 아무도 없는 팀 포함) → 팀째로 지운다
+  const solo = `select t.id from teams t where (t.created_by=$1 or exists (select 1 from members m where m.team_id=t.id and m.user_id=$1))
+                  and not exists (select 1 from members m where m.team_id=t.id and m.user_id<>$1)`;
+  const steps = [
+    // '누가 했는지'만 가리키는 칸은 비운다. 스키마도 on delete set null 이지만 옛 DB 에서도 되게 직접 비운다
+    // (결제 담당·초대 링크·관리 기록·곡·공유 코드를 빠뜨려 전 인도자·팀을 나간 사람의 삭제가 500 이었다)
+    ...[['services', 'updated_by'], ['drafts', 'updated_by'], ['service_words', 'updated_by'], ['rehearsals', 'uploaded_by'],
+      ['word_links', 'created_by'], ['library', 'updated_by'], ['teams', 'billing_user_id'], ['invites', 'created_by'],
+      ['team_audit', 'actor_id'], ['songs', 'created_by'], ['share_codes', 'created_by']]
+      .map(([t, c]) => [`update ${t} set ${c}=null where ${c}=$1`, P]),
+    // 팀을 만든 사람 칸은 not null → 남은 사람에게 넘긴다 (활성 인도자 → 활성 멤버 → 오래된 순)
+    [`update teams t set created_by = (select m.user_id from members m where m.team_id=t.id and m.user_id<>$1
+         order by m.active desc, (m.role='leader') desc, m.created_at asc limit 1)
+      where t.created_by=$1 and exists (select 1 from members m where m.team_id=t.id and m.user_id<>$1)`, P],
+    // 내가 인도자인데 나머지가 모두 비활성이면 들어올 사람도 되살릴 사람도 없다 → 삭제 예약 (30일 뒤 크론이 파일까지)
+    [`update teams t set deleted_at=now() where t.deleted_at is null
+        and exists (select 1 from members m where m.team_id=t.id and m.user_id=$1 and m.role='leader')
+        and exists (select 1 from members m where m.team_id=t.id and m.user_id<>$1)
+        and not exists (select 1 from members m where m.team_id=t.id and m.user_id<>$1 and m.active)`, P],
+    [`delete from notes where author_id=$1`, P],
+    [`delete from blobs where team_id in (${solo}) returning url`, P],
+    [`delete from teams where id in (${solo})`, P],
+    [`delete from users where id=$1`, P],
+  ];
+  const out = await tx(steps);
+  // 파일은 계정이 실제로 지워진 뒤에 (되돌려진 삭제가 파일만 지우지 않게)
+  await delBlobs(out[steps.length - 3].map((r) => r.url));
   return { data: { ok: true }, headers: { 'Set-Cookie': clearSessionCookie(req) } };
 });
 

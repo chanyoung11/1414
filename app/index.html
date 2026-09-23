@@ -2811,11 +2811,16 @@ function notiPrefs(){try{return JSON.parse(lsGet('conti-noti')||'{}')}catch(e){r
 const notiOn=t=>notiPrefs()[t]!==false;
 function setNotiOn(t,on){const p=notiPrefs();if(on)delete p[t];else p[t]=false;try{localStorage.setItem('conti-noti',JSON.stringify(p))}catch(e){}
  NOTI.sig='';updateBadges();if(route().name==='home')render()}
-function deleteAccountModal(){
+// 소셜로만 가입한 계정은 비밀번호가 없다. 계정을 바꿔 로그인했을 수도 있어 열 때마다 서버에 묻는다
+async function knowHasPassword(){
+ try{const r=await api('/auth/social');LINK.linked=r.linked||[];LINK.hasPassword=!!r.hasPassword;LINK.available=r.available||{}}catch(e){}
+ return LINK.hasPassword!==false}
+async function deleteAccountModal(){
+ const needPw=await knowHasPassword();   // 소셜로만 가입한 계정은 아이디 확인만 (서버도 같은 기준)
  modal(`<b style="font-size:17px">계정 삭제</b><div class="hint" style="margin-top:6px">이 계정과 내가 쓴 메모가 지워져요. 되돌릴 수 없습니다.<br>내가 인도자인 팀은 <b>먼저 다른 사람을 인도자로 지정</b>하거나 팀을 지워야 해요.</div>
   <div class="lbl">확인을 위해 아이디를 적어 주세요 <span class="hint">${esc((NET.user&&NET.user.username)||'')}</span></div>
   <input class="field" id="daUser" autocapitalize="none" spellcheck="false" placeholder="${esc((NET.user&&NET.user.username)||'')}">
-  <div class="lbl">비밀번호</div><input class="field" id="daPw" type="password" autocomplete="current-password">
+  ${needPw?'<div class="lbl">비밀번호</div><input class="field" id="daPw" type="password" autocomplete="current-password">':''}
   <div class="err" id="daErr"></div>
   <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" data-close="1">취소</button><button class="btn ghost danger" id="daGo">${ic('trash')}영구 삭제</button></div>`,{center:true});
  $('#modal').onclick=async e=>{
@@ -2823,7 +2828,7 @@ function deleteAccountModal(){
   if(e.target.closest('#daGo')){const err=$('#daErr');err.textContent='';
    if($('#daUser').value.trim()!==((NET.user&&NET.user.username)||'')){err.textContent='아이디가 맞지 않아요';return}
    if(!confirm('정말 지울까요? 되돌릴 수 없어요.'))return;
-   try{await api('/auth/delete',{method:'POST',body:{username:$('#daUser').value.trim(),password:$('#daPw').value}});
+   try{await api('/auth/delete',{method:'POST',body:{username:$('#daUser').value.trim(),password:needPw?$('#daPw').value:''}});
     NET.user=null;NET.teams=[];await switchScope(scopeKey('',''));S.team=Object.assign(DEF_TEAM(),{id:'',invite:''});save();
     try{indexedDB.deleteDatabase('conti-v1')}catch(e2){}
     closeModal();location.hash='#/home';location.reload()}
