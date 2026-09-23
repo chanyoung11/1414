@@ -5797,10 +5797,10 @@ async function appPushRegister(){
     APP_PUSH_TOKEN=token;
     api('/push/token',{method:'POST',body:{token,platform:(window.Capacitor.getPlatform&&window.Capacitor.getPlatform())||'android'}}).catch(()=>{})});
    P.addListener('registrationError',e=>console.warn('push reg',e));
-   // 알림을 눌러 앱이 열렸을 때 그 화면으로 간다
+   // 알림을 눌러 앱이 열렸을 때 그 화면으로 간다 (다른 팀 알림이면 그 팀으로 바꾼 뒤)
    P.addListener('pushNotificationActionPerformed',a=>{
-    const link=a&&a.notification&&a.notification.data&&a.notification.data.link;
-    if(link)go(String(link).replace(/^#\/?/,''));refreshNoti&&refreshNoti()});
+    const d=(a&&a.notification&&a.notification.data)||{};
+    openPushLink(d.link,d.teamId)});
    P.addListener('pushNotificationReceived',()=>{refreshNoti&&refreshNoti()});
   }
   await P.register();
@@ -5810,6 +5810,18 @@ async function appPushUnregister(){
  const P=CapPlug().PushNotifications;if(!NATIVE||!P)return;
  try{if(APP_PUSH_TOKEN)await api('/push/token/remove',{method:'POST',body:{token:APP_PUSH_TOKEN}}).catch(()=>{});
   await P.removeAllListeners();appPushRegister.bound=false;APP_PUSH_TOKEN=''}catch(e){}}
+// 푸시를 눌렀을 때. 링크(#/view/…, #/cal/…)는 팀 안 주소라 여러 팀에 있는 사람이 다른 팀 알림을 누르면
+// 지금 팀에서 열려 엉뚱한 팀에 답하거나 '발행된 콘티가 없어요'가 떴다 → 알림에 실린 팀으로 먼저 바꾼다
+async function openPushLink(link,teamId){
+ if(teamId&&teamId!==S.team.id&&online()&&NET.user){
+  try{const t=await api('/teams/'+encodeURIComponent(teamId));await applyMembership(t);TM.data=null;toast((t.teamName||'다른')+' 팀으로 전환했어요');
+   SYNC.pullServices().then(ch=>{if(ch)render()})}
+  catch(e){toast(e.message);return}}   // 이제 그 팀 사람이 아니면 열지 않는다
+ if(link)go(String(link).replace(/^#\/?/,''));
+ refreshNoti&&refreshNoti()}
+// 웹: 이미 열린 창이면 sw.js 가 메시지로 알려 준다. 답(ack)을 하면 sw 는 주소를 바꾸지 않는다
+if('serviceWorker' in navigator)navigator.serviceWorker.addEventListener('message',e=>{const d=e.data||{};if(d.type!=='push-open')return;
+ if(e.ports&&e.ports[0])e.ports[0].postMessage(1);openPushLink(d.link,d.teamId)});
 const PUSH={key:'',configured:false,sub:null};
 const pushSupported=()=>'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;
 function b64ToU8(b64){const pad='='.repeat((4-b64.length%4)%4);const s=(b64+pad).replace(/-/g,'+').replace(/_/g,'/');
@@ -7452,6 +7464,11 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
   if(e.status===401)NET.user=null;
   else if(await probeServer()!==true)NET.server=null;
   else console.warn('me 실패',e&&e.message)}}
+ // 알림을 눌러 새 창으로 열렸으면 주소의 ?team= 이 그 알림의 팀이다 (sw.js). 그 팀으로 바꾸고 주소에서는 뗀다
+ const pushTeam=new URLSearchParams(location.search).get('team');
+ if(pushTeam){const h=location.hash;try{history.replaceState(null,'',location.pathname+h)}catch(e){}
+  if(online()&&NET.user&&pushTeam!==S.team.id){try{await applyMembership(await api('/teams/'+encodeURIComponent(pushTeam)))}catch(e){console.warn('push team',e&&e.message)}
+   if(location.hash!==h)try{history.replaceState(null,'',location.pathname+h)}catch(e){}}}   // 팀을 바꾸면 홈으로 보내는 것을 되돌린다
  if(!online()&&!me().name){location.hash='#/settings';render()}else render();
  if(online()&&S.team.id){SYNC.pullServices().then(ch=>{if(ch)render()});SYNC.pullLibrary();pullSongs('fresh').then(ch=>{if(ch&&/^(edit|view|play|library)$/.test(route().name))render()}).catch(()=>{})}
  probeOmr();startNotiPoll();nativeSetup();

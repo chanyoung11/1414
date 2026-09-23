@@ -28,18 +28,29 @@ self.addEventListener('push', e => {
     badge: './favicon-32.png',
     tag: d.tag || d.type || 'conti',
     renotify: true,
-    data: { link: d.link || '#/home' }
+    data: { link: d.link || '#/home', teamId: d.teamId || '' }
   }));
 });
+// 링크는 팀 안 주소다(#/view/…). 여러 팀에 있는 사람이 다른 팀 알림을 누르면 지금 팀에서 열려
+// 엉뚱한 팀에 답하거나 '발행된 콘티가 없어요'가 떴다 → 알림의 팀을 화면에 넘겨 그 팀으로 바꾼 뒤 연다
 self.addEventListener('notificationclick', e => {
   e.notification.close();
-  const link = (e.notification.data && e.notification.data.link) || '#/home';
-  const url = new URL(link.replace(/^#\/?/, '#/'), self.location.origin + self.location.pathname.replace(/sw\.js$/, '')).href;
-  e.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
-    for (const c of list) {
-      // 이미 열려 있는 창이 있으면 그 창을 쓴다
-      if (c.url.indexOf(self.location.origin) === 0 && 'focus' in c) { c.navigate ? c.navigate(url) : null; return c.focus(); }
-    }
-    return clients.openWindow(url);
+  const data = e.notification.data || {};
+  const link = data.link || '#/home', team = data.teamId || '';
+  // 새로 여는 창은 주소의 ?team= 으로 팀을 안다 (화면이 켜질 때 읽고 지운다)
+  const base = self.location.origin + self.location.pathname.replace(/sw\.js$/, '') + (team ? '?team=' + encodeURIComponent(team) : '');
+  const url = new URL(link.replace(/^#\/?/, '#/'), base).href;
+  e.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async list => {
+    const c = list.find(x => x.url.indexOf(self.location.origin) === 0 && 'focus' in x);
+    if (!c) return clients.openWindow(url);
+    // 이미 열려 있는 창이 있으면 그 창에 알린다. 답이 없으면(메시지를 모르는 예전 화면) 주소로 옮긴다 —
+    // ?team= 이 붙은 주소라 새로 열리며 팀을 바꾼다
+    await c.focus().catch(() => {});
+    const ok = await new Promise(res => {
+      const ch = new MessageChannel(); const t = setTimeout(() => res(false), 1500);
+      ch.port1.onmessage = () => { clearTimeout(t); res(true); };
+      try { c.postMessage({ type: 'push-open', link, teamId: team }, [ch.port2]); } catch (err) { clearTimeout(t); res(false); }
+    });
+    if (!ok && c.navigate) return c.navigate(url).catch(() => clients.openWindow(url));
   }));
 });

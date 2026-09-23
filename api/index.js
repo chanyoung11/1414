@@ -393,7 +393,14 @@ on('POST', '/auth/delete', async ({ req, uid, body }) => {
     [`delete from teams where id in (${solo})`, P],
     [`delete from users where id=$1`, P],
   ];
+  // 편성에서 뺄 팀은 멤버 줄이 지워지기 전에 적어 둔다
+  const myTeams = await q('select team_id from members where user_id=$1', [uid]);
   const out = await tx(steps);
+  // 앞으로의 편성에서 뺀다 (비활성·내보내기와 같게). 안 빼면 지운 계정이 편성 표에 남아 자리를 차지한다.
+  // 계정이 실제로 지워진 뒤에 (삭제가 되돌려지면 편성은 그대로)
+  for (const m of myTeams) {
+    try { await clearFromLineups(m.team_id, uid); } catch (e) { console.error('clear lineup', e.message); }
+  }
   // 파일은 계정이 실제로 지워진 뒤에 (되돌려진 삭제가 파일만 지우지 않게)
   await delBlobs(out[steps.length - 3].map((r) => r.url));
   return { data: { ok: true }, headers: { 'Set-Cookie': clearSessionCookie(req) } };
@@ -2462,21 +2469,31 @@ const DEF_SETTINGS = { serviceAutoCreateWeeks: 4, nameRule: '{월}/{일} {이름
 const WD = ['일', '월', '화', '수', '목', '금', '토'];
 
 // 알림 (§1): 알림함에 남기고, 같은 (type, targetId, user) 키가 24시간 안에 다시 오면 갱신만(읽음 상태 유지). actionable 이면 홈 카드에 뜸
+// 이 팀 사람에게만 남긴다. 계정을 지운 사람이 편성·통보 기록에 남아 있으면 외래키로 insert 가 실패해 통보 전체가 500 이었고
+// (다시 누를 때마다 다른 사람에게 또 푸시), 편성에 팀 밖 사람 id 를 넣으면 그 사람에게 푸시가 갔다.
+// 한 문장으로 모두 넣고, 실제로 남긴 사람에게만 푸시를 보낸다. 돌려주는 값 = 받은 사람 수
 async function notify(teamId, userIds, type, targetId, { title, body = '', link = '', actionable = false, expiresAt = null }) {
-  for (const u of [...new Set(userIds)]) {
-    await q(`insert into notifications(team_id, user_id, type, target_id, title, body, link, actionable, expires_at)
-             values($1,$2,$3,$4,$5,$6,$7,$8,$9)
-             on conflict (team_id, user_id, type, target_id) do update set
-               title=excluded.title, body=excluded.body, link=excluded.link, actionable=excluded.actionable, expires_at=excluded.expires_at,
-               read_at = case when notifications.updated_at > now() - interval '24 hours' then notifications.read_at else null end,
-               acknowledged_at = case when excluded.type = 'lineup.changed' or notifications.updated_at <= now() - interval '24 hours' then null else notifications.acknowledged_at end,
-               updated_at = now()`,
-      [teamId, u, type, String(targetId || ''), str(title, 120), str(body, 300), str(link, 200), !!actionable, expiresAt]);
-  }
+  const ids = [...new Set(userIds || [])].map((u) => str(u, 64)).filter(Boolean);
+  if (!ids.length) return 0;
+  const rows = await q(`insert into notifications(team_id, user_id, type, target_id, title, body, link, actionable, expires_at)
+           select $1::uuid, m.user_id, $3::text, $4::text, $5::text, $6::text, $7::text, $8::bool, $9::timestamptz
+             from members m where m.team_id=$1::uuid and m.user_id::text = any($2::text[])
+           on conflict (team_id, user_id, type, target_id) do update set
+             title=excluded.title, body=excluded.body, link=excluded.link, actionable=excluded.actionable, expires_at=excluded.expires_at,
+             read_at = case when notifications.updated_at > now() - interval '24 hours' then notifications.read_at else null end,
+             acknowledged_at = case when excluded.type = 'lineup.changed' or notifications.updated_at <= now() - interval '24 hours' then null else notifications.acknowledged_at end,
+             updated_at = now()
+           returning user_id`,
+    [teamId, ids, type, String(targetId || ''), str(title, 120), str(body, 300), str(link, 200), !!actionable, expiresAt]);
+  const to = rows.map((r) => r.user_id);
+  if (!to.length) return 0;
   // 앱 안 알림은 전부 푸시로도 나간다. 종류별 끄기·조용한 시간은 sendPush 안에서 거른다
+  // teamId 를 같이 싣는다: 링크(#/view/…, #/cal/…)는 팀 안 주소라, 여러 팀에 있는 사람이 다른 팀 알림을 누르면
+  // 지금 보고 있는 팀에서 열려 엉뚱한 팀에 답하거나 '발행된 콘티가 없어요'가 떴다. 앱은 이걸 보고 팀을 바꾼 뒤 연다
   try {
-    await sendPush(userIds, { title: str(title, 120), body: str(body, 300), link: str(link, 200), type, tag: `${type}:${targetId || ''}` }, { type });
+    await sendPush(to, { title: str(title, 120), body: str(body, 300), link: str(link, 200), type, tag: `${type}:${targetId || ''}`, teamId: String(teamId || '') }, { type });
   } catch (e) { console.warn('push', e && e.message); }
+  return to.length;
 }
 // 콘티(발행본·초안)를 같은 날짜의 사역 날짜에 연결한다. 없으면 manual 날짜를 만든다 (§2.2)
 async function linkDate(teamId, serviceId, date, label) {
