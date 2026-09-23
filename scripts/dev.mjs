@@ -31,12 +31,14 @@ const PORT = +(process.env.PORT || 8766);
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.css': 'text/css' };
 
 http.createServer(async (req, res) => {
-  const url = new URL(req.url, 'http://local');
+  // server.mjs 와 같이 '//' 같은 주소에는 400 을 준다 (전에는 여기서 던져 개발 서버가 통째로 죽었다)
+  let url;
+  try { url = new URL(req.url, 'http://local'); } catch { res.statusCode = 400; return res.end('bad url'); }
   if (url.pathname.startsWith('/api/') || url.pathname === '/api') return api(req, res);
   // 로컬 파일 저장소 (BLOB_LOCAL_DIR). 운영에는 없는 경로다
   if (url.pathname.startsWith('/localblob/') && process.env.BLOB_LOCAL_DIR) {
     const dir = path.resolve(process.env.BLOB_LOCAL_DIR);
-    const f = path.normalize(path.join(dir, decodeURIComponent(url.pathname.slice('/localblob/'.length))));
+    let f; try { f = path.normalize(path.join(dir, decodeURIComponent(url.pathname.slice('/localblob/'.length)))); } catch { f = ''; }
     if (!f.startsWith(dir)) { res.statusCode = 400; return res.end('bad path'); }
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,PUT,HEAD,OPTIONS');
@@ -58,7 +60,8 @@ http.createServer(async (req, res) => {
     if (req.method === 'HEAD') { res.setHeader('Content-Length', fs.statSync(f).size); return res.end(); }
     return fs.createReadStream(f).pipe(res);
   }
-  let p = decodeURIComponent(url.pathname); if (p.endsWith('/')) p += 'index.html';
+  let p; try { p = decodeURIComponent(url.pathname); } catch { res.statusCode = 400; return res.end('bad path'); }
+  if (p.endsWith('/')) p += 'index.html';
   const file = path.normalize(path.join(appDir, p));
   if (!file.startsWith(appDir) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.statusCode = 404; return res.end('not found'); }
   res.setHeader('Content-Type', MIME[path.extname(file)] || 'application/octet-stream');

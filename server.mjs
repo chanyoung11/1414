@@ -66,13 +66,21 @@ function serveStatic(req, res, url) {
 }
 
 const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, 'http://local');
-  if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
-    res.setHeader('Cache-Control', 'no-store');
-    return api(req, res);
+  // 여기서 던지면 응답이 영영 안 나가고 요청 자리(인스턴스당 80개)를 5분씩 붙잡는다. 무슨 일이 나도 끝을 맺는다
+  try {
+    let url;
+    // '//' · '//x:y@' 같은 주소는 URL 로 풀리지 않는다 (전에는 여기서 던져 매달렸다)
+    try { url = new URL(req.url, 'http://local'); } catch { res.statusCode = 400; return res.end('bad url'); }
+    if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
+      res.setHeader('Cache-Control', 'no-store');
+      return await api(req, res);
+    }
+    if (req.method !== 'GET' && req.method !== 'HEAD') { res.statusCode = 405; return res.end(); }
+    serveStatic(req, res, url);
+  } catch (e) {
+    console.error('request', req.method, String(req.url).slice(0, 200), e);
+    if (!res.headersSent) { res.statusCode = 500; res.end(); } else if (!res.writableEnded) res.destroy();
   }
-  if (req.method !== 'GET' && req.method !== 'HEAD') { res.statusCode = 405; return res.end(); }
-  serveStatic(req, res, url);
 });
 // Cloud Run 앞단(GFE)이 연결을 오래 붙잡는다. Node 기본 5초보다 길게 둬야 가끔 나는 502 가 없다
 server.keepAliveTimeout = 620 * 1000;
