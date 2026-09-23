@@ -2921,7 +2921,9 @@ function setAppToken(t){if(!NATIVE)return;APP_TOKEN=t||'';
  try{if(t)localStorage.setItem(TOKEN_KEY,t);else localStorage.removeItem(TOKEN_KEY)}catch(e){}}
 async function api(path,o){const opt={method:(o&&o.method)||'GET',headers:{'x-conti':'1',...(NATIVE?{'x-conti-app':'1'}:{}),...(NATIVE&&APP_TOKEN?{authorization:'Bearer '+APP_TOKEN}:{})},credentials:NATIVE?'include':'same-origin',cache:'no-store'};if(o&&o.keepalive)opt.keepalive=true;if(o&&o.body){opt.headers['content-type']='application/json';opt.body=JSON.stringify(o.body)}
  const r=await fetch(API_BASE+'/api'+path,opt);let j=null;try{j=await r.json()}catch(e){}
- if(j&&j.token)setAppToken(j.token);            // 로그인·가입·비밀번호 변경 때 새 토큰이 온다
+ // 로그인·가입·비밀번호 변경 때 새 토큰(appToken)이 온다. 아무 응답의 token 이나 받으면 안 된다 —
+ // 말씀 링크 만들기 응답의 token(링크 값)이 로그인 토큰을 덮어 iOS 앱이 다음 실행 때 로그아웃됐다
+ const tk=j&&(j.appToken||(/^\/auth\//.test(path)&&j.token));if(tk)setAppToken(tk);
  if(!r.ok){const err=new Error((j&&j.message)||('오류 '+r.status));err.status=r.status;err.code=j&&j.error;throw err}return j}
 async function probeServer(){try{const r=await fetch(API_BASE+'/api/health',{cache:'no-store',credentials:NATIVE?'include':'same-origin',headers:NATIVE?{'x-conti-app':'1'}:{}});if(!r.ok)return false;const j=await r.json();
  if(j&&j.app==='conti')NET.enforcePlan=!!j.enforcePlan;

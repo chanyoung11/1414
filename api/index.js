@@ -206,7 +206,9 @@ on('POST', '/auth/signup', async ({ req, body }) => {
   return { data: withAppToken(req, await meView(u.id), u.id), headers: { 'Set-Cookie': sessionCookie(req, u.id) } };
 });
 
-const withAppToken = (req, data, uid) => (isApp(req) ? { ...data, token: appSessionToken(uid) } : data);
+// 앱은 appToken 만 세션으로 받는다. 다른 응답에도 token 이 있어서(목사님 말씀 링크) 그 값이 로그인 토큰을
+// 덮어 iOS 앱이 로그아웃됐다. token 은 이미 깔린 앱(아무 token 이나 받는 판)을 위해 같이 둔다
+const withAppToken = (req, data, uid) => { if (!isApp(req)) return data; const t = appSessionToken(uid); return { ...data, token: t, appToken: t }; };
 
 // X-Forwarded-For 의 맨 앞은 클라이언트가 마음대로 적을 수 있다. Cloud Run 앞단은 받은 값을 지우지 않고
 // 진짜 주소를 맨 뒤에 붙인다 (Vercel 은 통째로 덮어써서 첫 값이 곧 진짜였다) → 맨 뒤 값을 쓴다
