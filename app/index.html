@@ -681,7 +681,8 @@ html.dark .sheet{box-shadow:0 10px 40px rgba(0,0,0,.5);border-color:transparent}
 .q:hover{border-color:var(--muted-fg)}
 .q.on2{border-color:var(--fg);font-weight:600}   /* 겸임 세션 (대표는 .on) */
 .q.on{background:var(--primary);color:var(--primary-fg);border-color:transparent;font-weight:600}
-.toast{position:fixed;left:50%;bottom:calc(88px + var(--sab));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 18px;border-radius:var(--r-lg);font-size:13.5px;font-weight:600;z-index:60;opacity:0;transition:opacity .2s;pointer-events:none;box-shadow:0 12px 32px rgba(0,0,0,.25)}
+/* 토스트는 어떤 판보다 위다 — 무대(210)·인쇄 미리보기(200) 안에서 낸 결과·오류도 보여야 한다. 누르기는 안 받는다 */
+.toast{position:fixed;left:50%;bottom:calc(88px + var(--sab));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 18px;border-radius:var(--r-lg);font-size:13.5px;font-weight:600;z-index:300;opacity:0;transition:opacity .2s;pointer-events:none;box-shadow:0 12px 32px rgba(0,0,0,.25)}
 .toast.show{opacity:1}
 .mrow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
 .mrow:last-child{border-bottom:0}
