@@ -7527,7 +7527,11 @@ function updateTL(){
 async function exportJSON(onlySvcId){
  const svcs=clone(onlySvcId?S.services.filter(s=>s.id===onlySvcId):S.services);const lib=onlySvcId?[]:clone(S.library);
  // 개인('나만') 메모는 내보내지 않는다 — 받는 사람(인도자)이 남의 개인 메모를 보게 되므로
- const shared=n=>n.layer==='leader'||n.layer==='session';svcs.forEach(s=>[...s.items,...(s.published?s.published.items:[])].forEach(it=>{it.notes=(it.notes||[]).filter(shared);(it.media||[]).forEach(m=>m.notes=(m.notes||[]).filter(shared))}));
+ const shared=n=>n.layer==='leader'||n.layer==='session';svcs.forEach(s=>[...s.items,...(s.published?s.published.items:[])].forEach(it=>{it.notes=(it.notes||[]).filter(shared);(it.media||[]).forEach(m=>m.notes=(m.notes||[]).filter(shared));if(Array.isArray(it.fixedNotes))it.fixedNotes=it.fixedNotes.filter(n=>n.layer!=='mine')}));
+ // 말씀의 목회자 메모는 공개로 둔 것만 담는다 — 인도자 기기에는 비공개 메모도 내려와 있고(서버가 인도자에게는 준다), 이 파일은 단톡방에 돈다.
+ // 발행할 때 빼는 것(publishModal)과 같다. 보낸 사람의 계정 id 도 뺀다
+ const pubWord=w=>w?{...w,memo:w.memoPublic?(w.memo||''):'',from:w.from?{...w.from,memberId:undefined}:w.from}:w;
+ svcs.forEach(s=>{if(s.word)s.word=pubWord(s.word);if(s.published&&s.published.word)s.published.word=pubWord(s.published.word)});
  const ids=new Set();const collect=it=>{(it.pieces||[]).forEach(p=>p.blob&&ids.add(p.blob));(it.media||[]).forEach(m=>{if(m.blob)ids.add(m.blob)})};svcs.forEach(s=>[...s.items,...(s.published?s.published.items:[])].forEach(collect));lib.forEach(collect); // 라이브러리 악보 파일도 같이
  const blobs={};let total=0;const skipped=[];for(const id of ids){const b=await IDB.get('blobs',id);if(!b)continue;if(b.type&&!b.type.startsWith('image/')&&b.size>25*1024*1024){skipped.push(id);continue}total+=b.size;blobs[id]={type:b.type,b64:await toB64(b)}}
  if(skipped.length&&!confirm(`25MB가 넘는 오디오 ${skipped.length}개는 파일에 담기지 않아요. 받는 기기에서는 그 녹음이 재생되지 않습니다. 계속할까요?`))return;
