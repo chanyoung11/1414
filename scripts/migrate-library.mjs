@@ -66,6 +66,9 @@ try {
       for (const it of items) {
         let m = it.libId ? made.find((x) => x.libId === it.libId) : null;
         if (!m && it.title) m = made.find((x) => x.titleNorm === norm(it.title));
+        // 제목 없는 칸은 곡으로 만들지 않는다 (앱의 pushSongs 도 건너뛴다). 전에는 칸마다 '(제목 없음)' 곡이
+        // 하나씩 따로 생겨 라이브러리를 어지럽혔다. 연결이 없으니 사용 이력도 남지 않는다
+        if (!m && !String(it.title || '').trim()) continue;
         if (!m) {
           const title = String(it.title || '').trim() || '(제목 없음)';
           const tn = norm(title);
