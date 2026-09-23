@@ -6592,7 +6592,8 @@ function stgCompose(pub,W,H,pref){
   y+=14;                                              // 곡 사이 여백
  });
  // 송폼 모드에 따라 송폼 블록을 뺀다. 뺀 자리는 같은 열의 아래 블록이 끌어올린다 (§4)
- const dropHead=(sc,h)=>{const d=h.height+(h.gap||0);
+ const off=[];   // 모드가 뺀 송폼 블록 — 손으로 고친 조판에서 그 자리를 버리지 않게 (stageRender)
+ const dropHead=(sc,h)=>{const d=h.height+(h.gap||0);off.push(h);
   sc.blocks=sc.blocks.filter(b=>b!==h);
   sc.blocks.forEach(b=>{if(b.col===h.col&&b.top>h.top)b.top-=d})};
  const fm=pref.form||'auto';
@@ -6600,7 +6601,7 @@ function stgCompose(pub,W,H,pref){
   const heads=sc.blocks.filter(b=>b.type==='head');
   if(fm==='auto'&&new Set(heads.map(b=>b.idx)).size>1)return;
   heads.forEach(h=>dropHead(sc,h))});
- return {screens,box,cols,cw,fullW}}
+ return {screens,box,cols,cw,fullW,off}}
 
 /* ---------- 무대 편집: 블록을 끌어 옮긴다 (기획 §3) ---------- */
 // 자동 조판 결과를 '고칠 수 있는 조판'으로 바꾼다. 좌표는 캔버스 비율(0~1)이라
@@ -6672,10 +6673,12 @@ function stgLayoutSave(){
   api('/me/prefs/stage/'+encodeURIComponent(slot),{method:'PUT',body:{value:PREFS.data.stage[slot]}}).catch(()=>{})},600)}
 // 저장할 때는 그릴 때 쓰는 큰 값(이미지·메모)을 빼고 자리만 남긴다
 function stgLayoutSlim(L){
- return {v:2,screens:(L.screens||[]).map(sc=>({blocks:(sc.blocks||[]).map(b=>({
+ const slim=b=>({
   id:b.id,pid:b.pid||undefined,type:b.type,hidden:b.hidden||undefined,compact:b.compact||undefined,text:b.type==='text'?b.text:undefined,
   ranges:(b.type==='slice'&&/[#~]/.test(String(b.id)))?b.ranges:undefined,
-  x:+(b.x||0).toFixed(4),y:+(b.y||0).toFixed(4),w:+(b.w||0).toFixed(4),h:+(b.h||0).toFixed(4)}))}))}}
+  x:+(b.x||0).toFixed(4),y:+(b.y||0).toFixed(4),w:+(b.w||0).toFixed(4),h:+(b.h||0).toFixed(4)});
+ return {v:2,screens:(L.screens||[]).map(sc=>({blocks:(sc.blocks||[]).map(slim)})),
+  off:L.off&&L.off.length?L.off.map(o=>({s:o.s,b:slim(o.b)})):undefined}}   // 송폼 모드가 잠시 뺀 송폼 블록 (stageRender)
 function stgLayoutLoad(){
  const slot=stgLaySlot();
  const srv=((PREFS.data||{}).stage||{})[slot];
@@ -7008,7 +7011,19 @@ function stageRender(){
  const auto=stgCompose(pub,W,H,STG.pref);STG.lay=auto;
  // 사람이 고친 조판이 있으면 그것을 쓴다 (없으면 자동 그대로)
  const autoL=stgToLayout(auto,W,H);
- if(STG.layout){const h2=stgHydrate(autoL,STG.layout);if(h2)STG.layout=h2;else STG.layout=null}
+ if(STG.layout){const L=STG.layout;
+  // 송폼 모드가 뺀 송폼 블록은 조판에서 잠시 빼 두었다가(off) 모드가 돌아오면 그 자리로 되돌린다.
+  // 그냥 두면 hydrate 가 '없어진 곡'의 블록으로 알고 버려서, 모드를 한 바퀴 돌리면 손으로 옮긴 자리가
+  // 사라졌고, 송폼 블록뿐인 조판(악보 없는 곡들)은 통째로 없어져 편집 중인데 아무것도 안 됐다.
+  // 저장본(추천 조판일 수도 있다)은 건드리지 않게 복사해서 나눈다
+  const offP=new Set(auto.off.map(h=>h.pid)),offI=new Set(auto.off.map(h=>h.id));
+  const isOff=b=>b.type==='head'&&(b.pid?offP.has(b.pid):offI.has(b.id));
+  const off=[],screens=(L.screens||[]).map(sc=>({blocks:(sc.blocks||[]).slice()}));
+  (L.off||[]).forEach(o=>{if(isOff(o.b)){off.push(o);return}
+   while(screens.length<=o.s)screens.push({blocks:[]});screens[o.s].blocks.push(o.b)});
+  screens.forEach((sc,s)=>{sc.blocks=sc.blocks.filter(b=>{if(!isOff(b))return true;off.push({s,b});return false})});
+  STG.layout=stgHydrate(autoL,{screens})||(off.length||STG.edit?{screens:screens.length?screens.map(()=>({blocks:[]})):[{blocks:[]}]}:null);
+  if(STG.layout)STG.layout.off=off}
  const custom=!!STG.layout;
  const lay=custom?{...auto,screens:STG.layout.screens}:auto;
  const screens=lay.screens;STG.nscreens=screens.length;
