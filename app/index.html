@@ -7142,7 +7142,10 @@ function stageClick(e){
   if(e.target.closest('.stgpop'))return;
   if(STG.edit){if(STG.menu){STG.menu=null;stageRender()}return}
   const si=e.target.closest('[data-si]');
-  if(si&&+si.dataset.si!==STG.idx){STG.idx=+si.dataset.si;stageRender();return}
+  // 다른 곡 조각을 탭하면 바가 그 곡으로 바뀐다 (기획 §5). 그런데 '조각 위 블록'(기본)이나 바를 끈
+  // 때는 바에 곡이 안 나와 바뀌는 것이 없고, 첫 탭이 그냥 먹혀 두 번 눌러야 넘어갔다 → 그때는 넘긴다
+  if(si&&+si.dataset.si!==STG.idx){STG.idx=+si.dataset.si;
+   if(STG.pref.bar&&(STG.pref.form||'auto')!=='block'){stageRender();return}}
   const n=STG.nscreens||((STG.lay&&STG.lay.screens)||[]).length;
   if(n>1){STG.screen=(STG.screen+1)%n;stageRender()}
   return}
