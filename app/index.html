@@ -665,6 +665,14 @@ html.dark .sheet{box-shadow:0 10px 40px rgba(0,0,0,.5);border-color:transparent}
 .sheetm>b:first-child{font-size:18px;font-weight:800;letter-spacing:-.04em}
 @keyframes fade-in{from{opacity:0}to{opacity:1}}
 @keyframes pop-in{from{opacity:0;transform:translate3d(0,10px,0) scale(.97)}to{opacity:1;transform:none}}
+/* 「더보기」처럼 아래에서 올라오는 시트 — 화면 밑에서 밀려 올라오고, 닫을 때 다시 내려간다 (.out 은 closeModal 이 붙인다) */
+.ov.up .sheetm{animation:sheet-up .3s cubic-bezier(.22,1,.36,1)}
+.ov.up.out{pointer-events:none;animation:fade-out .22s ease-in forwards}
+.ov.up.out .sheetm{animation:sheet-down .22s cubic-bezier(.4,0,1,1) forwards}
+@keyframes sheet-up{from{transform:translate3d(0,100%,0)}to{transform:none}}
+@keyframes sheet-down{from{transform:none}to{transform:translate3d(0,100%,0)}}
+@keyframes fade-out{from{opacity:1}to{opacity:0}}
+@media (prefers-reduced-motion:reduce){.ov.up .sheetm,.ov.up.out,.ov.up.out .sheetm{animation:none}}
 .q{display:inline-flex;align-items:center;border:1px solid var(--border);border-radius:999px;padding:0 13px;height:34px;font-size:13px;margin:0 6px 8px 0;background:var(--secondary);color:var(--fg);font-weight:500;transition:border-color .12s,background .12s}
 .q:hover{border-color:var(--muted-fg)}
 .q.on2{border-color:var(--fg);font-weight:600}   /* 겸임 세션 (대표는 .on) */
@@ -1424,7 +1432,7 @@ function stripHTML(m,notes,mods,ctx){
 /* ---------- modals ---------- */
 function modal(html,o){if(NATIVE&&typeof adsHide==='function')adsHide();   // 아래에서 올라오는 시트가 배너에 가리지 않게
  document.documentElement.classList.add('noscroll');   // 뒤 화면이 따라 움직이면 시트를 내리려다 목록이 넘어간다
- $('#modal').innerHTML=`<div class="ov ${o&&o.center?'center':''}"><div class="sheetm">${o&&o.center?'':'<div class="handle"></div>'}${html}</div></div>`;$('#modal').firstChild.addEventListener('click',e=>{if(e.target.classList.contains('ov'))closeModal()})}
+ $('#modal').innerHTML=`<div class="ov ${o&&o.center?'center':''}${o&&o.sheet?' up':''}"><div class="sheetm">${o&&o.center?'':'<div class="handle"></div>'}${html}</div></div>`;$('#modal').firstChild.addEventListener('click',e=>{if(e.target.classList.contains('ov'))closeModal()})}
 function labelPicker(it,cb){
  const used=new Set(it.pieces.flatMap(p=>p.markers.map(m=>m.label)));
  const letters=['A','B','C','D','E','F','G','H'];
@@ -2045,10 +2053,12 @@ function lineupLine(svc){const d=SCH.dates.find(x=>x.serviceId===svc.id);if(!d)r
  if(!txt)return '';
  return `<div class="wordline">${ic('users')}<span>${esc(txt)}</span></div>`}
 // 달력 셀: 탭하면 순환, 꾹 누르면(보류·불가능) 메모
-function afterCal(){let t=null,long=false;
+function afterCal(){let t=null,long=false,p0=null;
  const cells=$$('[data-cal]');
  cells.forEach(c=>{const iso=c.dataset.cal;
-  c.addEventListener('pointerdown',()=>{long=false;clearTimeout(t);t=setTimeout(()=>{long=true;const st=myAv(me().userId,iso);if(st==='maybe'||st==='no')avMemoSheet(iso,st)},500)});
+  // 옆 탭으로 쓸다가 손가락이 셀 위에서 떨어져도 '누름'으로 치지 않는다 (10px 넘게 움직였으면 무시)
+  c.addEventListener('pointermove',e=>{if(p0&&Math.hypot(e.clientX-p0[0],e.clientY-p0[1])>10){p0=null;clearTimeout(t);long=true}});
+  c.addEventListener('pointerdown',e=>{p0=[e.clientX,e.clientY];long=false;clearTimeout(t);t=setTimeout(()=>{long=true;const st=myAv(me().userId,iso);if(st==='maybe'||st==='no')avMemoSheet(iso,st)},500)});
   c.addEventListener('pointerup',async()=>{clearTimeout(t);if(long)return;
    const cur=myAv(me().userId,iso);const next=AVNEXT[cur];
    // 편성된 날을 불가능으로 바꾸면 먼저 확인 (§3.2)
@@ -6776,18 +6786,86 @@ document.addEventListener('touchmove',e=>{if(!pinch||e.touches.length!==2)return
 document.addEventListener('touchend',()=>{pinch=null},{passive:true});
 document.addEventListener('wheel',e=>{if(!e.ctrlKey||route().name!=='play'||!e.target.closest('#sheetwrap'))return;e.preventDefault();setZoom((PL.zoom||1)-e.deltaY*0.004)},{passive:false});
 function navSong(d){const svc=PL.svc;if(!svc)return;const pub=pubOrDraft(svc);const i=PL.idx+d;if(i<0||i>=pub.items.length){toast(d<0?'첫 곡이에요':'마지막 곡이에요');return}go('play/'+svc.id+'/'+i)}
-// 왼쪽 가장자리에서 오른쪽으로 밀면 뒤로. 가장자리(24px)에서 시작한 것만 받아서
-// 악보 좌우 스크롤·편성 표 가로 스크롤과 겹치지 않는다
-let edX=null,edY=null;
-document.addEventListener('touchstart',e=>{edX=null;
+/* ---------- 좌우로 쓸기 (폰·앱) ----------
+   ① 왼쪽 가장자리(24px)에서 오른쪽으로 → 뒤로. 페이지가 손가락을 따라 오른쪽으로 빠지고, 덜 밀면 제자리로
+   ② 하단 탭이 보이는 탭 첫 화면(예배·일정·편성·라이브러리)에서 가로로 쓸면 옆 탭으로
+   누르기는 절대 건드리지 않는다: 리스너는 전부 passive, preventDefault 없음. 시작점만 기억해 두고
+   가로로 12px 넘게 · 세로의 1.5배 넘게 움직였을 때에야 제스처로 잡는다. 세로가 먼저 10px 넘으면 스크롤 — 끝까지 손 떼고.
+   손가락 아래에 가로 스크롤(편성 표·카드 줄)·악보·무대·입력칸·끌기 손잡이가 있으면 그쪽 몫 */
+function reduceMotion(){try{return matchMedia('(prefers-reduced-motion: reduce)').matches}catch(e){return false}}
+let SW=null,PGIN=null;
+const swEl=()=>$('#app>.shell')||$('#app');   // 탭 화면이면 본문만 움직인다 — 하단 탭은 그대로
+function swOwnsX(el){
+ if(!el||!el.closest)return false;
+ if(el.closest('#sheetwrap,.schwrap,.cropwrap,.stgw,input,textarea,select,[contenteditable],[data-noswipe],.grip,[data-sgrip],[data-pdrag]'))return true;
+ for(let n=el;n&&n.nodeType===1&&n!==document.body;n=n.parentElement){
+  const cs=getComputedStyle(n);if(cs.touchAction==='none')return true;
+  if(n.scrollWidth>n.clientWidth+1&&/(auto|scroll)/.test(cs.overflowX))return true}
+ return false}
+// 지금 화면이 하단 탭의 몇 번째인지. 하위 페이지(곡 상세·라인업)나 하단 탭이 안 보이는 폭이면 null
+function swTabs(){
+ const nav=$('#app>.bnav');if(!nav||getComputedStyle(nav).display==='none')return null;
+ const r=route();if(!/^(home|cal|sched|library)$/.test(r.name)||(r.name==='library'&&r.a))return null;
+ const bs=$$('button[data-act]:not([data-act="more-menu"])',nav);const i=bs.findIndex(b=>b.classList.contains('on'));
+ return i<0?null:{bs,i}}
+function swReset(el){if(!el)return;el._swTok=0;['transition','transform','opacity','willChange','boxShadow'].forEach(k=>el.style[k]='')}
+function swPaint(s,dx){const el=s.el;if(!el||reduceMotion())return;
+ if(s.kind==='edge')dx=Math.max(0,dx);
+ else if(!s.tb.bs[s.tb.i+(dx<0?1:-1)])dx=dx/4;   // 끝 탭이면 고무줄처럼 조금만
+ el.style.transition='none';el.style.willChange='transform';el.style.transform=`translate3d(${dx}px,0,0)`;
+ if(s.kind==='edge')el.style.boxShadow='-10px 0 28px rgba(0,0,0,.18)'}
+// 덜 밀었다 → 제자리로 미끄러져 돌아온다
+function swBack(s){const el=s&&s.el;if(!el||!el.style.transform)return;if(reduceMotion()){swReset(el);return}
+ const tok=el._swTok=Math.random();const fin=()=>{if(el._swTok===tok)swReset(el)};
+ el.style.transition='transform .22s cubic-bezier(.22,1,.36,1)';el.style.transform='translate3d(0,0,0)';
+ el.addEventListener('transitionend',fin,{once:true});setTimeout(fin,300)}
+// 넘겼다 → 지금 페이지가 dir(+1 오른쪽 / -1 왼쪽) 쪽으로 빠진 뒤 이동. 새 화면은 반대편에서 들어온다 (swEnter)
+function swLeave(s,dir,nav){const el=s.el=s.el||swEl();
+ if(!el||reduceMotion()){swReset(el);nav();return}
+ const edge=s.kind==='edge',ms=edge?200:140;
+ el.style.transition=`transform ${ms}ms cubic-bezier(.3,.6,.4,1),opacity ${ms}ms linear`;
+ el.style.transform=`translate3d(${dir*(edge?innerWidth:innerWidth*.35)}px,0,0)`;if(!edge)el.style.opacity='0';
+ const tok=el._swTok=Math.random();let done=false;
+ const fin=()=>{if(done)return;done=true;
+  PGIN={from:edge?'translate3d(-30%,0,0)':`translate3d(${-dir*56}px,0,0)`,op:edge?.7:0,ms:edge?300:240};
+  nav();
+  // 화면이 안 바뀌었으면(같은 주소 등) 제자리로 — 페이지가 화면 밖에 남지 않게
+  setTimeout(()=>{if(PGIN){PGIN=null;swReset($('#app'));swReset(swEl())}else if(el._swTok===tok&&el.isConnected)swReset(el)},900)};
+ el.addEventListener('transitionend',fin,{once:true});setTimeout(fin,ms+60)}
+function swEnter(){const p=PGIN;PGIN=null;if(!p)return;swReset($('#app'));const el=swEl();swReset(el);
+ if(el.animate)el.animate([{transform:p.from,opacity:p.op},{transform:'none',opacity:1}],{duration:p.ms,easing:'cubic-bezier(.22,1,.36,1)'})}
+new MutationObserver(()=>{if(PGIN)swEnter()}).observe(document.getElementById('app'),{childList:true});
+document.addEventListener('touchstart',e=>{
+ if(SW&&SW.on)swBack(SW);SW=null;
  if(e.touches.length!==1||$('#stageWrap')||($('#modal')&&$('#modal').firstChild)||$('#printArea'))return;
- if(route().name==='home'||!route().name)return;
- const t=e.touches[0];if(t.clientX>24)return;
- if(e.target.closest('#sheetwrap,.schwrap,.cropwrap,.stgw,input,textarea'))return;
- edX=t.clientX;edY=t.clientY},{passive:true});
-document.addEventListener('touchend',e=>{if(edX==null)return;
- const t=e.changedTouches[0];const dx=t.clientX-edX,dy=t.clientY-edY;edX=null;
- if(dx>70&&Math.abs(dy)<60&&dx>Math.abs(dy)*1.5)goBack()},{passive:true});
+ const t=e.touches[0];const base={x0:t.clientX,y0:t.clientY,px:t.clientX,pt:e.timeStamp,v:0,on:false,dead:false};
+ if(t.clientX<=24){   // ① 가장자리 → 뒤로 (첫 화면 '예배'에서는 갈 데가 없다)
+  if(route().name==='home'||!route().name)return;
+  if(e.target.closest&&e.target.closest('#sheetwrap,.schwrap,.cropwrap,.stgw,input,textarea'))return;
+  SW={kind:'edge',...base};return}
+ const tb=swTabs();if(tb)SW={kind:'tab',tb,target:e.target,...base}},{passive:true});
+document.addEventListener('touchmove',e=>{const s=SW;if(!s||s.dead)return;
+ if(e.touches.length!==1){s.dead=true;swBack(s);return}   // 두 손가락(확대)이면 손 뗀다
+ const t=e.touches[0];const dx=t.clientX-s.x0,dy=t.clientY-s.y0;
+ if(e.timeStamp>s.pt){s.v=(t.clientX-s.px)/(e.timeStamp-s.pt);s.px=t.clientX;s.pt=e.timeStamp}
+ if(!s.on){
+  if(Math.abs(dy)>10&&Math.abs(dy)>=Math.abs(dx)){s.dead=true;return}   // 세로 스크롤이다
+  if(Math.abs(dx)<12||Math.abs(dx)<Math.abs(dy)*1.5)return;
+  if(s.kind==='edge'&&dx<0){s.dead=true;return}
+  if(s.kind==='tab'){const sel=getSelection&&getSelection();
+   if(swOwnsX(s.target)||(sel&&!sel.isCollapsed)){s.dead=true;return}}
+  s.on=true;s.el=swEl()}
+ swPaint(s,dx)},{passive:true});
+document.addEventListener('touchend',e=>{const s=SW;SW=null;if(!s||s.dead)return;
+ const t=e.changedTouches[0];const dx=t.clientX-s.x0,dy=t.clientY-s.y0;
+ const horiz=Math.abs(dy)<60&&Math.abs(dx)>Math.abs(dy)*1.5;
+ const fast=Math.abs(dx)>40&&Math.abs(s.v)>.5&&Math.sign(s.v)===Math.sign(dx);   // 짧아도 휙 쓸면
+ if(s.kind==='edge'){if(horiz&&dx>0&&(dx>70||fast))swLeave(s,1,goBack);else swBack(s);return}
+ if(!s.on)return;
+ const d=dx<0?1:-1,b=s.tb.bs[s.tb.i+d];
+ if(horiz&&b&&(Math.abs(dx)>80||fast))swLeave(s,-d,()=>{if(b.isConnected)b.click();else{PGIN=null;swReset(s.el)}});
+ else swBack(s)},{passive:true});
+document.addEventListener('touchcancel',()=>{if(SW&&SW.on)swBack(SW);SW=null},{passive:true});
 // 뒤로: 히스토리가 있으면 그것을, 없으면 홈으로 (앱이 통째로 닫히지 않게)
 function goBack(){if(history.length>1)history.back();else go('home')}
 let swX=null,swY=null;
@@ -6869,7 +6947,14 @@ async function importJSON(file){
 }
 
 /* ---------- modal helpers ---------- */
-function closeModal(){document.documentElement.classList.remove('noscroll');$('#modal').innerHTML='';$('#modal').onclick=null;$('#modal').onchange=null;if(NATIVE)setTimeout(adsSync,0)}
+function closeModal(){document.documentElement.classList.remove('noscroll');
+ // 올라온 시트(.up)는 내려가며 닫힌다. #modal 은 곧바로 비우고(다음 시트가 바로 떠도 겹치지 않게)
+ // 떼어 낸 껍데기만 body 에서 내려가다 사라진다 — 누르기는 받지 않는다(pointer-events:none)
+ const ov=$('#modal').firstChild;
+ if(ov&&ov.classList&&ov.classList.contains('up')&&!reduceMotion()){
+  ov.classList.add('out');document.body.appendChild(ov);
+  const rm=()=>ov.remove();ov.addEventListener('animationend',e=>{if(e.target===ov)rm()});setTimeout(rm,400)}
+ $('#modal').innerHTML='';$('#modal').onclick=null;$('#modal').onchange=null;if(NATIVE)setTimeout(adsSync,0)}
 
 /* ---------- global click handling ---------- */
 document.addEventListener('keydown',e=>{
