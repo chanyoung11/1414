@@ -3195,7 +3195,7 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),notePut:{},noteGone:new Set(),
  async deleteService(id){if(!online()||!isLeader())return false;try{await api('/services/'+id+'?team='+S.team.id,{method:'DELETE'});return true}catch(e){toast(e.message);return false}},
  // 메모: 로컬 ↔ 서버 차이만 올림 (실패하면 다음 저장 때 다시)
  localNotes(svc){const out=[];svc.items.forEach(it=>{(it.notes||[]).forEach(n=>out.push({...n,itemId:it.id,markerId:n.marker||null,mediaId:null}));(it.media||[]).forEach(m=>(m.notes||[]).forEach(n=>out.push({...n,itemId:it.id,markerId:n.marker||null,mediaId:m.id})))});return out},
- // 그림자: 서버에 올려 둔 메모 {id, itemId}. 옛 형식(문자열 배열)도 읽는다
+ // 그림자: 서버에 올려 둔 메모 {id, itemId, mediaId}. 옛 형식(문자열 배열 · mediaId 없음)도 읽는다
  shadow(id){S.noteShadow=S.noteShadow||{};const v=S.noteShadow[id];
   if(!v)return (S.noteShadow[id]=[]);
   return v.map(x=>typeof x==='string'?{id:x,itemId:''}:x)},
@@ -3207,12 +3207,18 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),notePut:{},noteGone:new Set(),
   // 곡이 초안에 그대로 있는데 메모만 없어졌으면 사용자가 지운 것 → 서버에서도 지운다.
   // 곡을 초안에서 뺐는데 아직 발행본에 있으면, 그 곡에 붙은 팀원 메모는 건드리지 않는다
   const inDraft=new Set((svc.items||[]).map(i=>i.id));
-  const inPub=new Set(((svc.published&&svc.published.items)||[]).map(i=>i.id));
-  // 초안을 고치는 사람은 인도자뿐이다. 멤버 화면에서 메모가 없어진 것은 언제나 진짜 삭제다
-  const shielded=x=>!!(isLeader()&&x.itemId&&!inDraft.has(x.itemId)&&inPub.has(x.itemId));
+  const pubItems=new Map(((svc.published&&svc.published.items)||[]).map(i=>[i.id,i]));
+  const draftItems=new Map((svc.items||[]).map(i=>[i.id,i]));
+  const hasMedia=(it,mid)=>!!(it&&(it.media||[]).some(m=>m.id===mid));
+  // 초안을 고치는 사람은 인도자뿐이다. 멤버 화면에서 메모가 없어진 것은 진짜 삭제다 — 그 메모가 달린 영상·녹음이 화면에 있을 때만.
+  // 초안의 곡이 라이브러리 편곡을 따라 영상이 바뀌면 옛 영상의 메모가 초안에서 빠지는데, 발행본에는 그 영상이 남아 팀원이 보고 있다
+  const shielded=x=>!!(x.itemId&&pubItems.has(x.itemId)&&(
+   (isLeader()&&!inDraft.has(x.itemId))||
+   (x.mediaId&&!hasMedia(draftItems.get(x.itemId),x.mediaId)&&hasMedia(pubItems.get(x.itemId),x.mediaId))));
   // 지우는 것은 이 기기에 있는 곡의 메모뿐이다. 이 기기에 없는 곡(다른 기기가 받은 새 버전에 더해진 곡 등)의
   // 메모는 여기서 지운 게 아니다 → 서버는 두고 그림자에서만 뺀다. 곡을 모르는 옛 그림자(문자열)는 예전처럼 지운다
-  const del=sh.filter(x=>!localIds.has(x.id)&&(!x.itemId||inDraft.has(x.itemId))).map(x=>x.id);
+  // 가려 둔 메모(shielded)는 지우지도 그림자에서 빼지도 않는다
+  const del=sh.filter(x=>!localIds.has(x.id)&&(!x.itemId||inDraft.has(x.itemId))&&!shielded(x)).map(x=>x.id);
   const drop=new Set(sh.filter(x=>!localIds.has(x.id)&&x.itemId&&!inDraft.has(x.itemId)&&!shielded(x)).map(x=>x.id));
   if(!add.length&&!del.length){if(drop.size)S.noteShadow[svc.id]=sh.filter(x=>!drop.has(x.id));return true}
   try{if(add.length)await api('/notes',{method:'POST',keepalive:!!keep,body:{teamId:S.team.id,serviceId:svc.id,notes:add.map(n=>({id:n.id,itemId:n.itemId,markerId:n.markerId,mediaId:n.mediaId,t:n.t,layer:n.layer,session:n.session,text:n.text,at:n.at}))}});
@@ -3222,7 +3228,7 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),notePut:{},noteGone:new Set(),
    // 그 사이 받은 것·지운 것이 어긋나 다음 전송 때 멀쩡한 메모를 지웠다 → 이번에 보낸 만큼만 고친다
    const gone=new Set(del);drop.forEach(id=>gone.add(id));
    const next=SYNC.shadow(svc.id).filter(x=>!gone.has(x.id));const have=new Set(next.map(x=>x.id));
-   add.forEach(n=>{if(!have.has(n.id))next.push({id:n.id,itemId:n.itemId})});
+   add.forEach(n=>{if(!have.has(n.id))next.push({id:n.id,itemId:n.itemId,mediaId:n.mediaId||null})});
    const now=Date.now();add.forEach(n=>{SYNC.notePut[n.id]=now});del.forEach(id=>SYNC.noteGone.add(id));   // pullNotes 가 늦게 온 목록과 견줄 때 쓴다
    S.noteShadow[svc.id]=next;save();return true}
   catch(e){console.warn('notes push',e.message);return false}},
@@ -3251,8 +3257,8 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),notePut:{},noteGone:new Set(),
   // 그림자에는 이 기기에 있는 곡의 메모만 넣는다. 없는 곡(더 새 버전에 더해진 곡)의 메모까지 넣으면
   // 다음 전송이 '이 기기에서 지운 것'으로 보고 서버에서 지웠다 — 다른 기기에서 쓴 팀원 메모가 사라졌다
   const here=new Set(svc.items.map(it=>it.id));
-  S.noteShadow=S.noteShadow||{};S.noteShadow[svc.id]=d.notes.filter(n=>here.has(n.itemId)).map(n=>({id:n.id,itemId:n.itemId||''}))
-   .concat(loc.filter(n=>fresh.has(n.id)&&shNow.has(n.id)).map(n=>({id:n.id,itemId:n.itemId})));   // 이미 올린 새 메모는 그림자에 그대로
+  S.noteShadow=S.noteShadow||{};S.noteShadow[svc.id]=d.notes.filter(n=>here.has(n.itemId)).map(n=>({id:n.id,itemId:n.itemId||'',mediaId:n.mediaId||null}))
+   .concat(loc.filter(n=>fresh.has(n.id)&&shNow.has(n.id)).map(n=>({id:n.id,itemId:n.itemId,mediaId:n.mediaId||null})));   // 이미 올린 새 메모는 그림자에 그대로
   SYNC.pulledAt[svc.id]=Date.now();if(sig()!==sig0)save()},
  flush(){const r=route();const svc=svcById(r.a);if(online()&&svc&&/^(edit|view|play)$/.test(r.name)){clearTimeout(SYNC.t);SYNC.pushNotes(svc,true);if(r.name==='edit'&&isLeader()){clearTimeout(SYNC.td);SYNC.pushDraft(svc)}}},
  schedulePush(){if(!online())return;clearTimeout(SYNC.tl);SYNC.tl=setTimeout(()=>{SYNC.pushLibrary();pushDirtySongs();pushSongs()},3000);clearTimeout(SYNC.t);SYNC.t=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&/^(edit|view|play)$/.test(r.name))SYNC.pushNotes(svc)},700);clearTimeout(SYNC.td);SYNC.td=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&r.name==='edit'&&isLeader())SYNC.pushDraft(svc);
