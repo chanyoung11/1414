@@ -6612,7 +6612,7 @@ function stgCompose(pub,W,H,pref){
    if(t0<=H-headH-10)return t0;
    const u0=pc0.units[0];return u0?(u0.strip?STRIP_H+2:0)+(u0.b-u0.a)*s0:0};
   if(y>0&&(fits?need():headH+10+first())>rem())nextCol();
-  put({type:'head',id:'h'+idx,pid:it.id,height:headH,item:it,idx,gap:10});
+  put({type:'head',id:'h'+idx,pid:it.id,iid:it.id,height:headH,item:it,idx,gap:10});
   pcs.forEach((pc,pi)=>{
    const sc2=pc.s*f;let stn=0;
    const total=pc.units.reduce((a,u)=>a+(u.b-u.a)*sc2+(u.strip?STRIP_H+2:0),0);
@@ -6628,14 +6628,14 @@ function stgCompose(pub,W,H,pref){
     let j=i,hSum=0;
     while(j<pc.units.length&&(j===i||!pc.units[j].strip)){const h=(pc.units[j].b-pc.units[j].a)*sc2;if(hSum+h>rem()-sh)break;hSum+=h;j++}
     if(j===i&&y>0){nextCol();continue}                // 한 조각도 안 들어간다 → 다음 열에서
-    if(u.strip)put({type:'strip',id:`t${idx}.${pi}.${stn++}`,pid:pc.pid,idx,pi,height:STRIP_H,markers:u.strip,mods:pgMods(it.form),gap:2});
+    if(u.strip)put({type:'strip',id:`t${idx}.${pi}.${stn++}`,pid:pc.pid,iid:it.id,idx,pi,height:STRIP_H,markers:u.strip,mods:pgMods(it.form),gap:2});
     if(j===i){
      const s3=Math.min(sc2,Math.max(rem(),1)/(u.b-u.a));
-     put({type:'slice',id:`s${idx}.${pi}.${Math.round(u.a)}`,pid:pc.pid,idx,pi,height:(u.b-u.a)*s3,pc,scale:s3,ranges:[[u.a,u.b]],gap:2});i++;continue}
+     put({type:'slice',id:`s${idx}.${pi}.${Math.round(u.a)}`,pid:pc.pid,iid:it.id,idx,pi,height:(u.b-u.a)*s3,pc,scale:s3,ranges:[[u.a,u.b]],gap:2});i++;continue}
     const ranges=[];
     for(let k=i;k<j;k++){const q=pc.units[k];
      if(ranges.length&&ranges[ranges.length-1][1]===q.a)ranges[ranges.length-1][1]=q.b;else ranges.push([q.a,q.b])}
-    put({type:'slice',id:`s${idx}.${pi}.${Math.round(ranges[0][0])}`,pid:pc.pid,idx,pi,height:hSum,pc,scale:sc2,ranges,gap:2});i=j}
+    put({type:'slice',id:`s${idx}.${pi}.${Math.round(ranges[0][0])}`,pid:pc.pid,iid:it.id,idx,pi,height:hSum,pc,scale:sc2,ranges,gap:2});i=j}
   });
   y+=14;                                              // 곡 사이 여백
  });
@@ -6670,33 +6670,76 @@ function stgNatW(b,cw){
 // 저장해 둔 조판은 '어디에 얼마만큼'만 남아 있다. 지금 발행본으로 다시 짠 자동 조판에서
 // 그림·메모 같은 알맹이를 가져와 붙인다. 없어진 곡의 블록은 버리고, 새로 생긴 곡은 뒤에 붙인다
 function stgHydrate(autoL,saved){
- const live=new Map(),byPid=new Map();
+ const live=new Map(),byPid=new Map(),byKey=new Map(),pieces=new Map();
  // 블록 번호(s곡.조각.줄)는 순서로 매겨진다. 조각을 지우면 뒤 조각이 앞 번호를 물려받아
  // 지운 조각의 자리·크기·자른 범위를 그대로 입고 나왔다 (지워도 틀이 안 줄던 것).
  // 그래서 어느 곡·조각에서 나온 블록인지(pid)도 함께 저장해 두고 그것으로 맞춘다
  const pidKey=(id,pid)=>String(id)[0]+':'+pid+':'+String(id).split('.').slice(2).join('.');
- autoL.screens.forEach(sc=>sc.blocks.forEach(b=>{live.set(b.id,b);if(b.pid)byPid.set(pidKey(b.id,b.pid),b)}));
- const find=(id,pid)=>{const lv=live.get(id);
-  if(!pid||(lv&&lv.pid===pid))return lv;          // 예전 조판(pid 없음)은 번호로만 찾는다
-  return byPid.get(pidKey(id,pid))||null};        // 없으면 그 조각이 지워진 것 — 버린다
+ // pid 만으로는 모자란다 — 라이브러리에서 넣은 곡은 조각을 그대로 복사해, 같은 곡이 콘티에 두 번 있으면
+ // 조각 id 도 같다. 그중 하나를 빼면 남은 곡 악보가 두 틀에 같은 이름표로 나왔다. 곡(iid)까지 함께 본다.
+ // 악보 블록은 곡·조각까지만 맞추고(줄 번호는 캔버스 크기에 따라 바뀐다) 알맹이는 저장한 범위를 쓴다
+ const T={head:'h',slice:'s',strip:'t'};
+ const ipKey=b=>T[b.type]+':'+b.iid+':'+b.pid+(b.type==='strip'?':'+stgRoot(b.id).split('.')[2]:'');
+ autoL.screens.forEach((sc,si)=>sc.blocks.forEach(b=>{live.set(b.id,b);if(b.pid)byPid.set(pidKey(b.id,b.pid),b);
+  if(b.iid==null)return;const k=ipKey(b);if(!byKey.has(k))byKey.set(k,b);
+  if(b.type==='slice'){if(!pieces.has(k))pieces.set(k,[]);pieces.get(k).push({b,si})}}));
  const used=new Set();
+ const find=(id,pid,once)=>{const lv0=live.get(id);
+  const lv=(!pid||(lv0&&lv0.pid===pid))?lv0:byPid.get(pidKey(id,pid));   // 예전 조판(pid 없음)은 번호로만 찾는다
+  // 없으면 그 조각이 지워진 것 — 버린다. 이미 입힌 블록을 또 입히면 이름표가 겹친다
+  return !lv||(once&&used.has(lv.id))?null:lv};
  let screens=(saved.screens||[]).map(sc=>({blocks:(sc.blocks||[]).map(b=>{
   if(b.type==='text')return {...b,height:b.height||56};
-  const at=String(b.id).search(/[#~]/);   // 자른 것(#) · 복사한 것(~) 은 원본에서 알맹이를 가져온다
-  if(at>0){const lv=find(String(b.id).slice(0,at),b.pid);if(!lv)return null;used.add(lv.id);
-   const id=lv.id+String(b.id).slice(at);   // 번호가 바뀌었으면 새 번호로
-   if(lv.type==='slice'){const rs=b.ranges&&b.ranges.length?b.ranges:lv.ranges;
-    return {...lv,id,ranges:rs,height:stgRH(rs,lv.scale),x:b.x,y:b.y,w:b.w,h:b.h,hidden:!!b.hidden}}
-   return {...lv,id,x:b.x,y:b.y,w:b.w,h:b.h,hidden:!!b.hidden,compact:!!b.compact}}
-  const lv=find(b.id,b.pid);if(!lv)return null;used.add(lv.id);
-  return {...lv,x:b.x,y:b.y,w:b.w,h:b.h,hidden:!!b.hidden,compact:!!b.compact};
+  const sid=String(b.id),at=sid.search(/[#~]/);   // 자른 것(#) · 복사한 것(~) 은 원본에서 알맹이를 가져온다
+  const suf=at>0?sid.slice(at):'';
+  const lv=b.iid!=null?byKey.get(ipKey(b)):find(at>0?sid.slice(0,at):sid,b.pid,!suf);   // 곡 id 가 없으면 예전 저장본
+  if(!lv||lv.type!==b.type)return null;
+  const pos={x:b.x,y:b.y,w:b.w,h:b.h,hidden:!!b.hidden};
+  if(lv.type==='slice'){
+   // 저장한 범위가 있으면 그대로 (예전 저장본은 자른·복사한 블록에만 있다). 없으면 지금 자동 조판의 범위
+   const fixed=!!(b.ranges&&b.ranges.length);
+   const rs=fixed?stgClipR(b.ranges,lv.pc):lv.ranges;if(!rs.length)return null;
+   if(!fixed)used.add(lv.id);
+   // 이름표의 곡·조각 번호는 지금 순서로 (시작 줄·자른 자리 표시는 그대로)
+   const id=fixed?`s${lv.idx}.${lv.pi}.`+stgRoot(sid).split('.').slice(2).join('.')+suf:lv.id+suf;
+   return {...lv,...pos,id,ranges:rs,height:stgRH(rs,lv.scale),fixed}}
+  used.add(lv.id);
+  return {...lv,...pos,id:lv.id+suf,compact:!!b.compact};
  }).filter(Boolean)}));
+ // 조각마다 악보 줄이 빠지거나 두 번 나오지 않게 맞춘다. 자른 블록은 저장한 범위를 입고 나오는데
+ // 이어지는 블록의 번호(시작 줄)는 캔버스 크기·바 켜기에 따라 바뀌어, 줄이 사라지거나 두 번 나왔다.
+ // 저장한 범위가 먼저고, 아무 블록에도 없는 줄만 자동 조판 자리에 새 블록으로 붙인다.
+ // 복사한 블록(~)은 일부러 하나 더 둔 것이라 셈에서 뺀다
+ const all=[].concat(...screens.map(sc=>sc.blocks));
+ pieces.forEach((autos,k)=>{
+  const mine=all.filter(b=>b.type==='slice'&&!/~/.test(String(b.id))&&ipKey(b)===k);
+  const fx=[].concat(...mine.filter(b=>b.fixed).map(b=>b.ranges));
+  mine.forEach(b=>{if(b.fixed)return;const h0=b.height;
+   b.ranges=stgSubR(b.ranges,fx);b.height=stgRH(b.ranges,b.scale);if(b.h&&h0)b.h*=b.height/h0});
+  const cov=[].concat(...mine.map(b=>b.ranges));
+  autos.forEach(({b:ab,si})=>{const rs=stgSubR(ab.ranges,cov);if(!rs.length)return;
+   const px=ab.height?ab.h/ab.height:0,h=stgRH(rs,ab.scale);
+   const pre=stgRH(stgSubR(ab.ranges,[[rs[0][0],Infinity]]),ab.scale);   // 이 틀에서 남은 줄 위에 있던 높이
+   while(screens.length<=si)screens.push({blocks:[]});
+   screens[si].blocks.push({...ab,id:`s${ab.idx}.${ab.pi}.${Math.round(rs[0][0])}`,ranges:rs,height:h,y:ab.y+pre*px,h:h*px})})});
+ screens.forEach(sc=>{sc.blocks=sc.blocks.filter(b=>b.type!=='slice'||b.ranges.length)});
  autoL.screens.forEach((sc,i)=>sc.blocks.forEach(b=>{
-  if(used.has(b.id))return;
+  if(b.type==='slice'||used.has(b.id))return;
   while(screens.length<=i)screens.push({blocks:[]});
   screens[i].blocks.push(b)}));
+ // 이름표는 조판 안에서 하나뿐이어야 한다 — 고르기·끌기·숨기기가 이름표로 블록을 찾는다
+ const seen=new Set();
+ screens.forEach(sc=>sc.blocks.forEach(b=>{let id=String(b.id);
+  if(seen.has(id)){let n=2;while(seen.has(id+'_'+n))n++;id+='_'+n;b.id=id}seen.add(id)}));
  // 빈 화면은 남겨 둔다 — 사람이 일부러 더한 것일 수 있다. 화면 띠에서 지운다
  return screens.some(sc=>sc.blocks.length)?{screens}:null}
+// 악보 범위 [[시작,끝],…] 계산. 조각 그림 밖은 자르고, 다른 범위에 든 줄은 뺀다 (2px 안 되는 부스러기는 버린다)
+function stgClipR(rs,pc){const H0=pc&&pc.im?pc.im.h:Infinity;
+ return (rs||[]).map(r=>[Math.max(0,+r[0]||0),Math.min(H0,+r[1]||0)]).filter(r=>r[1]-r[0]>=1)}
+function stgSubR(rs,cut){let out=(rs||[]).map(r=>[r[0],r[1]]);
+ (cut||[]).forEach(([c0,c1])=>{const nx=[];
+  out.forEach(([a,b])=>{if(c1<=a||c0>=b){nx.push([a,b]);return}if(c0>a)nx.push([a,c0]);if(c1<b)nx.push([c1,b])});out=nx});
+ return out.filter(r=>r[1]-r[0]>=2)}
 // 고친 조판에서는 블록마다 폭이 다르다. 폭이 바뀐 만큼 악보도 같이 커진다
 function stgBlockAt(b,lay,W,H){
  const nat=stgNatW(b,lay.cw);
@@ -6726,8 +6769,9 @@ function stgLayoutSave(){
 // 저장할 때는 그릴 때 쓰는 큰 값(이미지·메모)을 빼고 자리만 남긴다
 function stgLayoutSlim(L){
  const slim=b=>({
-  id:b.id,pid:b.pid||undefined,type:b.type,hidden:b.hidden||undefined,compact:b.compact||undefined,text:b.type==='text'?b.text:undefined,
-  ranges:(b.type==='slice'&&/[#~]/.test(String(b.id)))?b.ranges:undefined,
+  id:b.id,pid:b.pid||undefined,iid:b.iid||undefined,type:b.type,hidden:b.hidden||undefined,compact:b.compact||undefined,text:b.type==='text'?b.text:undefined,
+  // 악보 블록은 모두 범위를 남긴다 — 번호만 남기면 캔버스 크기가 바뀔 때 알맹이가 바뀌어 자른 블록과 어긋났다
+  ranges:b.type==='slice'?b.ranges:undefined,
   x:+(b.x||0).toFixed(4),y:+(b.y||0).toFixed(4),w:+(b.w||0).toFixed(4),h:+(b.h||0).toFixed(4)});
  return {v:2,screens:(L.screens||[]).map(sc=>({blocks:(sc.blocks||[]).map(slim)})),
   off:L.off&&L.off.length?L.off.map(o=>({s:o.s,b:slim(o.b)})):undefined}}   // 송폼 모드가 잠시 뺀 송폼 블록 (stageRender)
@@ -6905,13 +6949,17 @@ const stgSelBlocks=()=>{const L=STG.layout&&STG.layout.screens[STG.screen];if(!L
 function stgCopy(){const bs=stgSelBlocks();if(!bs.length)return;
  STG.clip=bs.map(b=>({id:b.id,x:b.x,y:b.y,w:b.w,h:b.h,ranges:b.ranges,compact:b.compact,type:b.type,text:b.text}));
  toast(bs.length+'개 복사했어요')}
+// 이름표는 조판 전체에서 하나뿐이어야 한다. STG.seq 는 새로 열 때마다 0 부터라, 새로고침 뒤 붙인 블록이
+// 저장본의 '~c1' 과 같은 이름표를 받아 끌면 옛 블록이 움직이고 숨기기·지우기도 엉뚱한 블록에 갔다
+const stgHasId=id=>!!STG.layout&&STG.layout.screens.some(sc=>sc.blocks.some(b=>b.id===id));
+function stgFreeId(base){let id=base,n=2;while(stgHasId(id))id=base+'_'+n++;return id}
 function stgPaste(){const L=STG.layout&&STG.layout.screens[STG.screen];if(!L||!STG.clip||!STG.clip.length)return;
  const live=new Map();(STG.lay?stgToLayout(STG.lay,stgCanvasW(),stgCanvasH()).screens:[]).forEach(sc=>sc.blocks.forEach(b=>live.set(b.id,b)));
  const made=[];
  STG.clip.forEach(c=>{
   const src=L.blocks.find(b=>b.id===c.id)||live.get(stgRoot(c.id));
   if(!src&&c.type!=='text')return;
-  const id=stgRoot(c.id)+'~c'+(++STG.seq);
+  let id;do{id=stgRoot(c.id)+'~c'+(++STG.seq)}while(stgHasId(id));
   const nb=Object.assign({},src||{},c,{id,x:(c.x||0)+0.02,y:(c.y||0)+0.02,hidden:false});
   L.blocks.push(nb);made.push(id)});
  if(!made.length)return;
@@ -6961,10 +7009,11 @@ function stgCut(bid){
  // 크기를 바꾼 블록은 그릴 때 폭 비율만큼 악보도 커진다 (stgBlockAt). 나눈 두 조각의 자리·높이도
  // 그 비율로 재야 한다 — 원래 크기로 재서 줄인 블록은 사이가 벌어지고, 키운 블록은 겹쳐 도로 붙었다
  const k=stgBlockAt(b,STG.lay,stgCanvasW(),H),r=k.nat?k.w/k.nat:1;
+ // 원본과 그 복사본을 같은 자리에서 자르면 이름표가 같아진다 — 빈 이름표를 쓴다
+ L.blocks=L.blocks.filter(x=>x!==b);
  const mk=(rs,y)=>{const h=stgRH(rs,b.scale);
-  return {...b,id:stgRoot(b.id)+'#'+Math.round(rs[0][0]),ranges:rs,height:h,y,h:h*r/H}};
- const b1=mk(r1,b.y), b2=mk(r2,Math.min(1-0.05,b.y+stgRH(r1,b.scale)*r/H+0.01));
- L.blocks=L.blocks.filter(x=>x!==b).concat([b1,b2]);
+  L.blocks.push({...b,id:stgFreeId(stgRoot(b.id)+'#'+Math.round(rs[0][0])),ranges:rs,height:h,y,h:h*r/H})};
+ mk(r1,b.y);mk(r2,Math.min(1-0.05,b.y+stgRH(r1,b.scale)*r/H+0.01));
  STG.menu=null;stgLayoutSave();stageRender()}
 // 나뉜 두 블록을 겹쳐 놓으면 도로 하나가 된다
 function stgTryMerge(L,b){
@@ -6981,9 +7030,9 @@ function stgTryMerge(L,b){
   const rr=[];rs.forEach(r=>{const l=rr[rr.length-1];if(l&&Math.abs(l[1]-r[0])<0.6)l[1]=r[1];else rr.push([r[0],r[1]])});
   const h=stgRH(rr,b.scale), H=stgCanvasH();
   const k=stgBlockAt(b,STG.lay,stgCanvasW(),H),r=k.nat?k.w/k.nat:1;   // 키운·줄인 만큼 (stgCut 과 같이)
-  const nb={...b,id:stgRoot(b.id)+'#'+Math.round(rr[0][0]),ranges:rr,height:h,
-   y:Math.min(b.y,o.y),h:h*r/H};
-  L.blocks=L.blocks.filter(x=>x!==b&&x!==o).concat([nb]);
+  L.blocks=L.blocks.filter(x=>x!==b&&x!==o);
+  L.blocks.push({...b,id:stgFreeId(stgRoot(b.id)+'#'+Math.round(rr[0][0])),ranges:rr,height:h,
+   y:Math.min(b.y,o.y),h:h*r/H});
   return true}
  return false}
 
