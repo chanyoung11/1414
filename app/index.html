@@ -2771,9 +2771,10 @@ function selectMedia(i){
  const svc=PL.svc;const pub=pubOrDraft(svc);const it=pub.items[PL.idx];if(!it)return;PL.mi=i;P.stop();
  $$('[data-act="msel"]').forEach(b=>b.classList.toggle('on',+b.dataset.i===i));
  const box=$('#mediaBox');const md=(PL.ml||[])[i];if(!md){box.innerHTML='';return}
- if(md.type==='youtube'){const id=ytId(md.url);const st=ytStart(md.url);const st0=md.start!=null?md.start:st;const en=md.end||0;P.start=st0;P.end=en;box.innerHTML=`<div class="vid"><iframe id="yt" src="${esc(ytEmbedSrc(id,st0,en))}" referrerpolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe></div><div class="row" style="margin-top:8px;justify-content:space-between"><span class="hint" id="ytHint">재생하며 "여기에 메모" — 메모를 탭하면 그 시각으로 이동</span><a class="btn sm" id="ytfb" href="https://youtu.be/${id}?t=${esc(st0)}" target="_blank" rel="noopener">${ic('open')}유튜브에서 열기</a></div>`;P.t=st0;
+ if(md.type==='youtube'){const id=ytId(md.url);const st=ytStart(md.url);const st0=md.start!=null?md.start:st;const en=md.end||0;P.start=st0;P.end=en;box.innerHTML=`<div class="vid"><iframe id="yt" src="${esc(ytEmbedSrc(id,st0,en))}" referrerpolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe></div><div class="row" style="margin-top:8px;justify-content:space-between"><span class="hint" id="ytHint">${YT_HINT}</span><a class="btn sm" id="ytfb" href="https://youtu.be/${id}?t=${esc(st0)}" target="_blank" rel="noopener">${ic('open')}유튜브에서 열기</a></div>`;P.t=st0;
   P.yt=$('#yt');P.yt.onload=()=>{try{P.yt.contentWindow.postMessage(JSON.stringify({event:'listening',id:1,channel:'widget'}),'*')}catch(e){}};P.timer=setInterval(()=>{if(P.yt)ytCmd('getCurrentTime')},700);
-  setTimeout(()=>{if(!P.ytReady){const h=$('#ytHint');if(h)h.textContent='이 영상은 여기서 바로 재생할 수 없어요(영상 주인이 임베드를 막았을 때). 메모를 탭하면 유튜브 앱이 그 시각에서 열리고, "여기에 메모"는 시각을 직접 적어요.'}},2500);
+  // 앱은 중계 페이지(yt.html)를 한 번 더 거쳐서 늦게 준비된다(서버가 쉬다 깨면 더) → 더 기다린다. 늦게라도 준비되면 안내를 되돌린다
+  setTimeout(()=>{if(!P.ytReady){const h=$('#ytHint');if(h)h.textContent='이 영상은 여기서 바로 재생할 수 없어요(영상 주인이 임베드를 막았을 때). 메모를 탭하면 유튜브 앱이 그 시각에서 열리고, "여기에 메모"는 시각을 직접 적어요.'}},YT.relay?8000:2500);
  }else{blobURL(md.blob).then(u=>{const bars=Array.from({length:34},(_,k)=>`<i style="height:${6+((k*7)%15)}px"></i>`).join('');box.innerHTML=`<div class="now"><span class="art">${ic('mic')}</span><div class="grow"><div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(md.name||'녹음')}</div><div class="wave">${bars}</div></div></div>`;const a=new Audio(u);a.preload='metadata';P.audio=a;a.ontimeupdate=()=>{P.t=a.currentTime;updateTL()};a.onloadedmetadata=()=>{P.dur=a.duration;updateTL()};a.onplay=()=>{P.playing=true;updateTL()};a.onpause=()=>{P.playing=false;updateTL()};a.onended=()=>{P.playing=false;updateTL()}})}
  updateTL();
 }
@@ -5606,8 +5607,8 @@ let VF={session:null,draft:false};
 /* ---------- PRACTICE / STAGE ---------- */
 // iOS: 우리 미디어를 틀 때만 오디오 세션을 잡는다 (앱만 켰을 때 듣던 음악이 끊기지 않게)
 function audioFocus(on){if(!NATIVE)return;try{const Pr=CapPlug().Printer;if(Pr&&Pr.audioFocus)Pr.audioFocus({on:!!on}).catch(()=>{})}catch(e){}}
-const P={audio:null,yt:null,ytReady:false,t:0,dur:0,start:0,end:0,playing:false,started:false,pausedByComposer:false,timer:null,
- stop(){audioFocus(false);if(P.audio){P.audio.pause();P.audio=null}P.yt=null;P.ytReady=false;P.playing=false;P.started=false;P.t=0;P.dur=0;P.start=0;P.end=0;clearInterval(P.timer);P.timer=null},
+const P={audio:null,yt:null,ytReady:false,ytErr:false,t:0,dur:0,start:0,end:0,playing:false,started:false,pausedByComposer:false,timer:null,
+ stop(){audioFocus(false);if(P.audio){P.audio.pause();P.audio=null}P.yt=null;P.ytReady=false;P.ytErr=false;P.playing=false;P.started=false;P.t=0;P.dur=0;P.start=0;P.end=0;clearInterval(P.timer);P.timer=null},
  range(){const s0=P.start||0;const s1=P.end||P.dur||0;return [s0,Math.max(s1,s0+1)]},
  resumeIfPaused(){if(P.pausedByComposer){P.pausedByComposer=false;P.play()}},
  pauseForComposer(){if(P.playing){P.pause();P.pausedByComposer=true}},
@@ -5626,14 +5627,16 @@ function ytOriginParam(){const o=location.origin||'';
 // Referer 로 아예 안 나간다. origin 을 빼는 것만으로는 안 된다 → lets1414.com/yt.html 을 넣고
 // 그 페이지가 유튜브를 넣는다(유튜브가 보는 곳은 lets1414.com). 메시지는 그 페이지가 양쪽으로 넘긴다
 const YT={relay:NATIVE?SITE+'yt.html':''};
+const YT_HINT='재생하며 "여기에 메모" — 메모를 탭하면 그 시각으로 이동';
 function ytEmbedSrc(id,st,en){const q=`start=${st||0}${en?'&end='+en:''}`;
  if(YT.relay)return `${YT.relay}?v=${encodeURIComponent(id)}&${q}`;
  return `https://www.youtube.com/embed/${id}?enablejsapi=1&playsinline=1&${q}&rel=0${ytOriginParam()}`}
 function ytCmd(func,args){if(!P.yt)return;try{P.yt.contentWindow.postMessage(JSON.stringify({event:'command',func,args:args||[],id:1,channel:'widget'}),'*')}catch(e){}}
 window.addEventListener('message',e=>{if(!P.yt||e.source!==P.yt.contentWindow)return;let d;try{d=typeof e.data==='string'?JSON.parse(e.data):e.data}catch{return}
- if(d.event==='onReady'||d.event==='initialDelivery'){P.ytReady=true}
+ // 기다리다 '재생할 수 없어요'로 바꿔 둔 뒤에 준비가 오면 원래 안내로 되돌린다 (영상은 잘 나오는데 유튜브 앱을 열라고 했다)
+ if(d.event==='onReady'||d.event==='initialDelivery'){if(!P.ytReady){const h=$('#ytHint');if(h&&!P.ytErr)h.textContent=YT_HINT}P.ytReady=true}
  // 막힌 영상(101·150 임베드 금지, 153 등)도 onReady 는 먼저 온다 → 오류가 오면 준비 안 된 것으로 돌리고 유튜브 앱으로 넘긴다
- if(d.event==='onError'){P.ytReady=false;const h=$('#ytHint');if(h)h.textContent=`이 영상은 여기서 바로 재생할 수 없어요(오류 ${d.info}). 메모를 탭하면 유튜브 앱이 그 시각에서 열리고, "여기에 메모"는 시각을 직접 적어요.`;return}
+ if(d.event==='onError'){P.ytReady=false;P.ytErr=true;const h=$('#ytHint');if(h)h.textContent=`이 영상은 여기서 바로 재생할 수 없어요(오류 ${d.info}). 메모를 탭하면 유튜브 앱이 그 시각에서 열리고, "여기에 메모"는 시각을 직접 적어요.`;return}
  if(d.event==='infoDelivery'&&d.info){if(d.info.currentTime!=null){P.t=d.info.currentTime}if(d.info.duration)P.dur=d.info.duration;if(d.info.playerState!=null)P.playing=d.info.playerState===1;updateTL()}});
 let PL={svc:null,idx:0,mi:0,stage:false,chart:!!lsGet('conti-chart'),zoom:+(lsGet('conti-zoom')||1)||1,f:{leader:true,session:true,mine:true,chords:true},session:null};
 // 인쇄: A4 세로, 곡마다 한 장 — 번호·제목·키·송폼 헤더 + 악보(메모 띠·전조 코드 포함)
