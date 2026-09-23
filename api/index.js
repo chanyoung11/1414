@@ -2650,7 +2650,7 @@ on('POST', '/ocr', async ({ uid, body }) => {
 
 /* ---------- 결제 · 프로모션 코드 ---------- */
 // RevenueCat 웹훅. 결제·갱신·환불이 일어나면 여기로 온다.
-// 사용자 id 로 그 사람이 만든 팀을 찾아 플랜을 바꾼다 (한 계정당 팀 하나)
+// 사용자 id 로 그 사람이 결제 담당인 팀을 찾아 플랜을 바꾼다
 on('POST', '/iap/webhook', async ({ req, body }) => {
   if (!rcConfigured()) throw new HttpError(503, 'no_iap', '결제가 아직 연결되지 않았어요');
   if (!rcAuthOk(req)) throw new HttpError(401, 'bad_sig', '인증 실패');
@@ -2660,23 +2660,35 @@ on('POST', '/iap/webhook', async ({ req, body }) => {
   // appUserID 는 앱이 우리 사용자 id 로 정한다
   const u = await one('select id from users where id=$1', [act.appUserId]).catch(() => null);
   if (!u) return { ok: true, skipped: '모르는 사용자' };
-  const t = await one('select id from teams where created_by=$1 and deleted_at is null order by created_at limit 1', [u.id]);
-  if (!t) return { ok: true, skipped: '이 사용자가 만든 팀이 없음' };
+  // 산 사람 = 결제 담당. 인도자를 넘기면 created_by 는 새 인도자로 가지만 결제 담당은 남는다 (B.6.1).
+  // created_by 로 찾으면 넘긴 뒤의 갱신이 팀을 못 찾아 유료 팀이 무료로 떨어진다.
+  // 결제 담당인 팀이 여럿이면 이미 결제로 유료인 팀을 먼저 (갱신·만료는 그 팀 것이다)
+  const t = await one(`select id from teams where coalesce(billing_user_id, created_by)=$1 and deleted_at is null
+                       order by (plan_source = 'iap') desc nulls last, created_at limit 1`, [u.id]);
+  if (!t) return { ok: true, skipped: '이 사용자가 결제 담당인 팀이 없음' };
 
   if (act.kind === 'grant') {
     await q('update teams set plan=$2, plan_until=$3, plan_source=$4 where id=$1', [t.id, act.plan, act.until, 'iap']);
     await audit(t.id, u.id, 'iap.grant', act.product, { plan: act.plan, until: act.until });
   } else if (act.kind === 'revoke') {
-    // 프로모션으로 받은 기간이 남아 있으면 그건 살려 둔다
+    // 결제로 받은 플랜만 끊는다. 프로모션으로 받은 기간이나 손으로 준 플랜은 결제 만료로 지우지 않는다
     const cur = await one('select plan_source, plan_until from teams where id=$1', [t.id]);
     if (cur && cur.plan_source === 'promo' && cur.plan_until && new Date(cur.plan_until) > new Date())
       return { ok: true, skipped: '프로모션 기간이 남아 있음' };
-    await q(`update teams set plan='free', plan_until=null, plan_source=null where id=$1`, [t.id]);
+    if (!cur || cur.plan_source !== 'iap') return { ok: true, skipped: '결제로 받은 플랜이 아님' };
+    await q(`update teams set plan='free', plan_until=null, plan_source=null where id=$1 and plan_source='iap'`, [t.id]);
     await audit(t.id, u.id, 'iap.revoke', act.product, {});
   } else if (act.kind === 'credits') {
-    await q(`insert into credit_balance(team_id, omr) values($1,$2)
-             on conflict (team_id) do update set omr = credit_balance.omr + excluded.omr, updated_at=now()`, [t.id, act.omr]);
-    await audit(t.id, u.id, 'iap.credits', act.product, { omr: act.omr });
+    // RevenueCat 은 응답이 늦거나 실패하면 같은 사건을 다시 보낸다. 더하기는 두 번 하면 안 되니
+    // 사건 id 를 남기는 것과 더하는 것을 한 문장으로 한다 (이미 있으면 더하지 않는다)
+    const got = act.eventId
+      ? await q(`with e as (insert into iap_events(id, team_id, kind) values($3, $1::uuid, 'credits') on conflict (id) do nothing returning id)
+                 insert into credit_balance(team_id, omr) select $1::uuid, $2::int from e
+                 on conflict (team_id) do update set omr = credit_balance.omr + excluded.omr, updated_at=now() returning omr`, [t.id, act.omr, act.eventId])
+      : await q(`insert into credit_balance(team_id, omr) values($1,$2)
+                 on conflict (team_id) do update set omr = credit_balance.omr + excluded.omr, updated_at=now() returning omr`, [t.id, act.omr]);
+    if (!got.length) return { ok: true, skipped: '이미 처리한 사건' };
+    await audit(t.id, u.id, 'iap.credits', act.product, { omr: act.omr, event: act.eventId || null });
   }
   return { ok: true, kind: act.kind };
 });

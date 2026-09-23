@@ -502,6 +502,15 @@ create table if not exists credit_balance (
   updated_at timestamptz not null default now()
 );
 
+-- 결제 웹훅 사건 id. RevenueCat 은 응답이 늦거나 실패하면 같은 사건을 다시 보낸다.
+-- 크레딧 팩처럼 더하는 사건을 두 번 더하지 않게 여기 남긴다
+create table if not exists iap_events (
+  id         text primary key,
+  team_id    uuid references teams(id) on delete cascade,
+  kind       text not null,
+  created_at timestamptz not null default now()
+);
+
 -- 라이브러리 폴더. 곡 하나는 폴더 하나에만 들어간다 (태그는 여러 개 가능, 성격 표시용)
 alter table songs add column if not exists folder text not null default '';
 create index if not exists songs_folder_idx on songs(team_id, folder);
