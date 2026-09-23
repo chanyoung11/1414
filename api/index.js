@@ -1402,8 +1402,19 @@ on('PUT', '/services/:id/stage-layout', async ({ uid, params, body }) => {
          coalesce(doc->'stageLayouts','{}'::jsonb) || jsonb_build_object($3::text, $4::jsonb)) where team_id=$1 and id=$2`
     : `update services set doc = doc || jsonb_build_object('stageLayouts',
          coalesce(doc->'stageLayouts','{}'::jsonb) - $3::text) where team_id=$1 and id=$2`;
-  await q(sql, val ? [teamId, params.id, dev, JSON.stringify(val)] : [teamId, params.id, dev]);
+  // 발행본이 없으면(초안뿐) 바뀐 줄이 없다. 전에는 그래도 ok 를 돌려줘 '저장했어요'가 떴다
+  const done = await q(sql + ' returning id', val ? [teamId, params.id, dev, JSON.stringify(val)] : [teamId, params.id, dev]);
+  if (!done.length) throw notFound('발행한 콘티에만 추천 조판을 저장할 수 있어요');
   return { ok: true };
+});
+// 추천 조판만 가볍게 (무대를 열 때). 발행 뒤에 붙는 일이 많아 버전 비교로는 안 내려간다
+on('GET', '/services/:id/stage-layout', async ({ uid, url, params }) => {
+  if (!uid) throw noAuth();
+  const teamId = str(url.searchParams.get('team'), 64);
+  await requireMember(uid, teamId);
+  const row = await one(`select doc->'stageLayouts' as "stageLayouts" from services where team_id=$1 and id=$2`, [teamId, params.id]);
+  if (!row) throw notFound('발행된 콘티가 없어요');
+  return { stageLayouts: row.stageLayouts || null };
 });
 
 on('GET', '/services/:id/draft', async ({ uid, url, params }) => {

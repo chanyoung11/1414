@@ -2239,18 +2239,21 @@ function noteMenu(svc,it,nid){
 }
 function publishModal(svc){
  if(!svc.items.length){toast('곡이 없어요');return}
- const nextV=(svc.published?svc.published.version:0)+1;svc.version=nextV;
- const txt=kakaoText(svc);
+ // 버전은 실제로 발행할 때 올린다. 창을 열기만 해도 올려 두면 고친 게 없어도 '발행 뒤 고친 초안'으로 보여
+ // 다른 기기의 새 발행본을 받지 않았다
+ const nextV=(svc.published?svc.published.version:0)+1;
+ const txt=kakaoText({...svc,version:nextV});
  modal(`<div class="row sb"><b style="font-size:17px">발행 — v${nextV}</b><span class="pill">${svc.items.length}곡</span></div>
   <div class="lbl">카톡에 붙여넣을 텍스트</div><textarea class="field mono" id="kk" rows="${Math.min(14,txt.split('\n').length+1)}">${esc(txt)}</textarea>
   <div class="hint" style="margin-top:8px">${online()?'발행하면 팀원 앱에 자동으로 내려갑니다. 카톡에는 위 텍스트(링크 포함)만 보내면 돼요.':S.team.id?'지금은 서버에 연결되지 않았어요. 발행해 두면 다시 연결될 때 팀에 올라가요.':'발행하면 이 버전이 멤버가 보는 콘티가 됩니다. 멤버에게는 내보내기 파일을 카톡으로 보내세요 (서버 연동 전).'}</div>
   <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" id="kkCopy">텍스트 복사</button>${online()?`<button class="btn pri" id="pubOnly">${ic('send')}발행하고 팀에 공유</button>`:`<button class="btn" id="pubOnly">${ic('check')}발행만</button><button class="btn pri" id="pubOk">${ic('send')}발행 + 파일 내보내기</button>`}</div>`);
  $('#modal').onclick=async e=>{
   if(e.target.closest('#kkCopy')){try{await navigator.clipboard.writeText($('#kk').value);toast('복사됨')}catch{$('#kk').select();document.execCommand('copy');toast('복사됨')}}
-  const only=e.target.closest('#pubOnly'),withFile=e.target.closest('#pubOk');if(only||withFile){if(WORD_DIRTY){clearTimeout(WORD_T);await saveWord(svc)}if(!(svc.name||'').trim()){svc.name=svcName(svc);const ti=$('.titlein');if(ti)ti.value=svc.name}const prevPub=svc.published,prevVer=svc.version,prevRev=svc.messageRev;const msg=(svc.message||'').trim();const prevMsg=svc.published?(svc.published.message||''):'';const wk=w=>w?[w.passage,w.title,w.line,w.memo,w.memoPublic?1:0].map(x=>String(x==null?'':x)).join(''):'';if(msg!==prevMsg||wk(svc.word)!==wk(svc.published&&svc.published.word))svc.messageRev=(svc.messageRev||0)+1;
+  const only=e.target.closest('#pubOnly'),withFile=e.target.closest('#pubOk');if(only||withFile){if(WORD_DIRTY){clearTimeout(WORD_T);await saveWord(svc)}if(!(svc.name||'').trim()){svc.name=svcName(svc);const ti=$('.titlein');if(ti)ti.value=svc.name}const prevPub=svc.published,prevVer=svc.version,prevRev=svc.messageRev;svc.version=nextV;const msg=(svc.message||'').trim();const prevMsg=svc.published?(svc.published.message||''):'';const wk=w=>w?[w.passage,w.title,w.line,w.memo,w.memoPublic?1:0].map(x=>String(x==null?'':x)).join(''):'';if(msg!==prevMsg||wk(svc.word)!==wk(svc.published&&svc.published.word))svc.messageRev=(svc.messageRev||0)+1;
    // 발행본에는 개인·세션 메모를 담지 않는다(메모는 서버에서 권한대로 따로 내려감). 말씀 메모도 뺀다
    const pubWord=svc.word?{...clone(svc.word),memo:svc.word.memoPublic?(svc.word.memo||''):''}:null;
-   svc.published={version:nextV,at:Date.now(),name:svc.name,date:svc.date,folder:svc.folder||'',notice:svc.notice,message:msg,messageRev:svc.messageRev||0,word:pubWord,author:me().name||'인도자',items:clone(svc.items).map(it=>({...it,notes:undefined,fixedNotes:frozenFixed(it),media:(it.media||[]).map(m=>({...m,notes:undefined}))}))};
+   svc.published={version:nextV,at:Date.now(),name:svc.name,date:svc.date,folder:svc.folder||'',notice:svc.notice,message:msg,messageRev:svc.messageRev||0,word:pubWord,author:me().name||'인도자',items:clone(svc.items).map(it=>({...it,notes:undefined,fixedNotes:frozenFixed(it),media:(it.media||[]).map(m=>({...m,notes:undefined}))})),
+    stageLayouts:(prevPub&&prevPub.stageLayouts)||null};   // 서버도 다시 발행할 때 추천 조판을 이어 둔다 — 여기서만 잃으면 이 기기 무대가 자동 조판으로 돌아간다
    svc.published.changes=diffPub(prevPub,svc.published);   // 팀원에게 무엇이 바뀌었는지 보여 주려고
    // 팀이 있으면 올리기 전에 '아직 서버에 없음'을 먼저 적어 둔다. 오프라인이거나 올리다 앱이 닫혀도 다음에 켤 때·
    // 다시 연결될 때 SYNC.pushPending 이 올린다 (전에는 오프라인 발행이 영영 안 올라갔고, 새 콘티면 다시 연결될 때 지워졌다)
@@ -3033,8 +3036,14 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),
   if(!cur){cur={id,name:doc.name,date:doc.date,folder:doc.folder||'',notice:doc.notice||'',version:0,items:[],published:null};S.services.push(cur);if(d.word!==undefined)cur.word=d.word||null;
    if(S.noteShadow)delete S.noteShadow[id]}   // 처음 받아오는 콘티는 메모 그림자를 새로 세운다(옛 그림자가 남아 있으면 서버 메모를 지운다)
   const old=new Map(cur.items.map(it=>[it.id,it]));
-  cur.published={version:doc.version,at:new Date(d.updatedAt).getTime()||Date.now(),name:doc.name,date:doc.date,folder:doc.folder||'',notice:doc.notice||'',message:doc.message||'',messageRev:doc.messageRev||0,word:doc.word||null,author:doc.author||'',items:clone(doc.items),changes:doc.changes||[]};
-  if(!isLeader()||cur.version<=doc.version){ // 인도자 기기의 더 새로운 초안은 건드리지 않음
+  // 인도자 기기에서 발행 뒤 고친 것이 있는가. touch() 가 버전을 발행본+1 로 올려 두므로, 전에는 다른 기기가 같은 번호로
+  // 발행하면 '버전이 같다'며 고친 곡·키를 덮어썼다 (409 뒤 다시 받을 때도). 고친 게 없을 때만 받은 것으로 바꾼다.
+  // 한 번도 발행 안 한 초안은 아직 서버에 못 올린 수정이 있을 때만 지킨다 (받아만 둔 초안은 발행본으로 바꾼다)
+  const prevPub=cur.published;
+  const edited=isLeader()&&(prevPub?cur.version>prevPub.version:!!(cur.editedAt&&cur.draftPushedAt!==cur.editedAt));
+  cur.published={version:doc.version,at:new Date(d.updatedAt).getTime()||Date.now(),name:doc.name,date:doc.date,folder:doc.folder||'',notice:doc.notice||'',message:doc.message||'',messageRev:doc.messageRev||0,word:doc.word||null,author:doc.author||'',items:clone(doc.items),changes:doc.changes||[],stageLayouts:doc.stageLayouts||null}; // 인도자 추천 조판도 같이 (없으면 멤버 무대가 늘 자동 조판으로 열렸다)
+  if(edited&&cur.version<=doc.version)cur.version=doc.version+1;   // 고친 초안은 받은 발행본보다 한 단계 위 — '수정 중'으로 보이고 다음 발행이 v+1 이 된다
+  if(!isLeader()||(!edited&&cur.version<=doc.version)){ // 인도자 기기의 더 새로운 초안은 건드리지 않음
    cur.name=doc.name;cur.date=doc.date;cur.folder=doc.folder||'';cur.notice=doc.notice||'';cur.message=doc.message||'';cur.messageRev=doc.messageRev||0;cur.version=doc.version;
    cur.items=clone(doc.items).map(it=>{const o=old.get(it.id);it.notes=o?(o.notes||[]):[];it.media=(it.media||[]).map(m=>{const om=o&&(o.media||[]).find(x=>x.id===m.id);return {...m,notes:om?(om.notes||[]):[]}});return it})}
   save();return cur},
@@ -6449,6 +6458,8 @@ function stgLayoutLoad(){
 async function stgRecommend(){
  if(!STG.layout)return toast('먼저 조판을 고쳐 주세요');
  if(!online())return toast('인터넷이 있어야 해요');
+ // 추천은 발행본에 붙는다. 초안뿐이면 서버가 받을 자리가 없는데도 '저장했어요'라고 했었다
+ if(!STG.svc.published)return toast('발행한 뒤에 추천 조판으로 저장할 수 있어요');
  try{
   await api('/services/'+encodeURIComponent(STG.svc.id)+'/stage-layout',
    {method:'PUT',body:{teamId:S.team.id,device:deviceClass(),layout:stgLayoutSlim(STG.layout)}});
@@ -6708,6 +6719,10 @@ async function stageOpen(svc,idx){
  el=document.createElement('div');el.id='stageWrap';el.className='stgw';
  document.body.appendChild(el);document.body.classList.add('stgon');
  stageRender();keepAwake(true);if(NATIVE)adsHide();
+ // 추천 조판은 발행 뒤에 붙는 일이 많아 버전이 그대로다 → 목록 동기화로는 안 내려온다. 열 때 가볍게 다시 받는다
+ if(online()&&svc.published&&!svc.practice&&deviceClass()!=='phone')api('/services/'+encodeURIComponent(svc.id)+'/stage-layout?team='+S.team.id).then(r=>{
+  if(!r||!svc.published)return;svc.published.stageLayouts=r.stageLayouts||null;save();
+  if(STG.svc===svc&&$('#stageWrap')&&!STG.layout&&!STG.edit){const L=stgLayoutLoad();if(L){STG.layout=L;stageRender()}}}).catch(()=>{});
  if(NATIVE&&window.Capacitor.getPlatform&&window.Capacitor.getPlatform()==='android'){try{CapPlug().StatusBar&&CapPlug().StatusBar.hide()}catch(e){}document.documentElement.style.setProperty('--sat','0px')}
  el.onclick=stageClick;
  window.addEventListener('keydown',stageKey);
