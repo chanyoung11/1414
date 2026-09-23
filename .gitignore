@@ -38,3 +38,6 @@ android/keystore.properties
 
 # wrangler 빌드 찌꺼기
 .wrangler/
+
+# Claude Code 가 병렬 작업에 쓰는 worktree
+.claude/worktrees/
