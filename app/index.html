@@ -6901,9 +6901,12 @@ function stgCut(bid){
  b.ranges.forEach(([x,y])=>{if(y<=at)r1.push([x,y]);else if(x>=at)r2.push([x,y]);else{r1.push([x,at]);r2.push([at,y])}});
  if(!r1.length||!r2.length)return toast('나눌 여백이 없어요');
  const H=stgCanvasH();
+ // 크기를 바꾼 블록은 그릴 때 폭 비율만큼 악보도 커진다 (stgBlockAt). 나눈 두 조각의 자리·높이도
+ // 그 비율로 재야 한다 — 원래 크기로 재서 줄인 블록은 사이가 벌어지고, 키운 블록은 겹쳐 도로 붙었다
+ const k=stgBlockAt(b,STG.lay,stgCanvasW(),H),r=k.nat?k.w/k.nat:1;
  const mk=(rs,y)=>{const h=stgRH(rs,b.scale);
-  return {...b,id:stgRoot(b.id)+'#'+Math.round(rs[0][0]),ranges:rs,height:h,y,h:h/H}};
- const b1=mk(r1,b.y), b2=mk(r2,Math.min(1-0.05,b.y+stgRH(r1,b.scale)/H+0.01));
+  return {...b,id:stgRoot(b.id)+'#'+Math.round(rs[0][0]),ranges:rs,height:h,y,h:h*r/H}};
+ const b1=mk(r1,b.y), b2=mk(r2,Math.min(1-0.05,b.y+stgRH(r1,b.scale)*r/H+0.01));
  L.blocks=L.blocks.filter(x=>x!==b).concat([b1,b2]);
  STG.menu=null;stgLayoutSave();stageRender()}
 // 나뉜 두 블록을 겹쳐 놓으면 도로 하나가 된다
@@ -6920,8 +6923,9 @@ function stgTryMerge(L,b){
   if(!rs)continue;
   const rr=[];rs.forEach(r=>{const l=rr[rr.length-1];if(l&&Math.abs(l[1]-r[0])<0.6)l[1]=r[1];else rr.push([r[0],r[1]])});
   const h=stgRH(rr,b.scale), H=stgCanvasH();
+  const k=stgBlockAt(b,STG.lay,stgCanvasW(),H),r=k.nat?k.w/k.nat:1;   // 키운·줄인 만큼 (stgCut 과 같이)
   const nb={...b,id:stgRoot(b.id)+'#'+Math.round(rr[0][0]),ranges:rr,height:h,
-   y:Math.min(b.y,o.y),h:h/H};
+   y:Math.min(b.y,o.y),h:h*r/H};
   L.blocks=L.blocks.filter(x=>x!==b&&x!==o).concat([nb]);
   return true}
  return false}
