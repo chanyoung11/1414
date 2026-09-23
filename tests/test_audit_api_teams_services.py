@@ -220,6 +220,14 @@ def f42(p):
   if not act: fail('F42 다시 들어오기가 안 됨')
   n = sql("select count(*)::int n from notifications where team_id=$1 and user_id=$2 and type='member.join'", [team, L.id])[0]['n']
   if not n: fail('F42 다시 들어온 것을 인도자가 모름')
+  # 다시 들어오기를 두 번 눌러도 둘 다 성공하고 한 번만 되살린다 (알림·기록도 한 번)
+  M.ok('DELETE', '/teams/%s/members/%s' % (team, M.id), None, '다시 나가기')
+  rejoins = lambda: sql("select count(*)::int n from team_audit where team_id=$1 and action='member.rejoin'", [team])[0]['n']
+  n0 = rejoins()
+  r = par(lambda: M.call('POST', '/invite/%s/join' % code, {'name': M.name}),
+          lambda: M.call('POST', '/invite/%s/join' % code, {'name': M.name}))
+  if [s for s, _ in r] != [200, 200]: fail('F42 다시 들어오기 두 번: %s' % r)
+  if rejoins() - n0 != 1: fail('F42 다시 들어오기 두 번에 되살리기 %d번' % (rejoins() - n0))
   print('F42 ok — 링크로 다시 들어오기 · 인도자 알림')
 
 def f117():

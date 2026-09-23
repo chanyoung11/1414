@@ -1161,12 +1161,14 @@ on('POST', '/invite/:token/join', async ({ uid, params, body }) => {
   if (already) {
     if (already.active === false) {
       const back = await seated(t.id, t, `update members set name=$4, active=true, deactivated_at=null where team_id=$1 and user_id=$3
-          and (active or ${seatOk('role')}) returning 1`, [uid, name]);
-      if (!back.length) throw await full(already.role);
-      await audit(t.id, uid, 'member.rejoin', uid, {});
-      const l = await leaderOf();
-      if (l && l.user_id !== uid) await notify(t.id, [l.user_id], 'member.join', uid,
-        { title: `${josa(name, '이', '가')} 팀에 다시 들어왔어요`, link: '#/team' });
+          and not active and ${seatOk('role')} returning 1`, [uid, name]);
+      if (back.length) {
+        await audit(t.id, uid, 'member.rejoin', uid, {});
+        const l = await leaderOf();
+        if (l && l.user_id !== uid) await notify(t.id, [l.user_id], 'member.join', uid,
+          { title: `${josa(name, '이', '가')} 팀에 다시 들어왔어요`, link: '#/team' });
+      } else if (!(await one('select 1 from members where team_id=$1 and user_id=$2 and active', [t.id, uid]))) throw await full(already.role);
+      // (두 번 눌러 먼저 간 요청이 이미 되살렸으면 그대로 성공)
     } else await q('update members set name=$3 where team_id=$1 and user_id=$2', [t.id, uid, name]);
     await q('update users set display_name=$2 where id=$1', [uid, name]);
     return viewOf(await membership(uid, t.id));
