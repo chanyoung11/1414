@@ -6577,7 +6577,23 @@ async function nativeSetup(){
   if(isActive&&online()&&NET.user){refreshNoti&&refreshNoti();
    if(S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()}).catch(()=>{})}
   else if(isActive&&!online())recheckServer()})}catch(e){}
+ // 앱 링크: 초대·콘티·말씀 링크(lets1414.com/#/…)를 누르면 앱이 열린다. 그 주소의 # 뒤로 간다
+ // (안 읽으면 앱이 홈으로만 열려 초대 코드·콘티가 조용히 사라졌다).
+ // 꺼져 있던 앱이 링크로 켜질 때도 이 이벤트로 온다 — 듣는 쪽이 붙을 때까지 네이티브가 들고 있다.
+ // getLaunchUrl 은 안 쓴다: 앱 안에서 새로고침해도 옛 링크를 또 돌려줘 그 화면으로 다시 끌려간다.
+ // 로그인 전이면 로그인 화면이 주소를 들고 있다가 로그인 뒤 이어 간다 (웹에서 초대 링크를 연 것과 같다)
+ try{P.App&&P.App.addListener('appUrlOpen',e=>{
+  const h=appLinkRoute(e&&e.url);
+  if(!h||h===location.hash.replace(/^#\/?/,''))return;   // 첫 화면 주소면 앱만 연다
+  if(/^join\//.test(h))GATE.preview=null;   // 다른 팀 초대면 먼저 본 초대 미리보기를 버린다
+  go(h)})}catch(e){}
  try{P.SplashScreen&&P.SplashScreen.hide()}catch(e){}}
+// 앱 링크 주소 → 앱 안 주소(# 뒤). 우리 도메인의 첫 화면 주소만 받는다 —
+// yt.html·api 같은 다른 경로는 앱 화면이 아니라서 모른 척한다 (앱은 그대로 열리기만 한다)
+function appLinkRoute(u){
+ try{const x=new URL(String(u||''));
+  if(x.protocol!=='https:'||!/^(www\.)?lets1414\.com$/i.test(x.hostname)||!/^\/(index\.html)?$/.test(x.pathname))return null;
+  return x.hash.replace(/^#\/?/,'')}catch(e){return null}}
 // 무대 모드에서는 화면이 꺼지면 안 된다 (예배 중)
 /* ---------- 광고 (무료 플랜만) ---------- */
 // 애드몹 앱·광고 단위 id. 애드몹에서 만든 값으로 바꾼다.
