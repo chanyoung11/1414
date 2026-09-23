@@ -501,12 +501,16 @@ html.dark .pill.role-pastor{color:#B4A7F5}
 /* ---------- 반응형 (§7) ---------- */
 /* 1024+ : 사이드바 224 고정 · 하단 탭 없음 (아래 기존 규칙) */
 /* 768–1023 : 아이콘 레일 64 · 본문 전폭 */
+/* 레일에는 로고 글자까지 들어갈 폭(77px)이 없다 → 심볼만 따로 그려 두고 레일에서만 바꿔 낀다
+   (로고는 한 장짜리 svg 라 글자만 숨길 수가 없다) */
+.side .head .logo.rail{display:none}
 @media (min-width:768px) and (max-width:1023px){
  .side{display:block;width:64px}
  .bnav{display:none}
  .shell{padding:16px 16px 24px;gap:12px}
  .side .box{padding:10px 8px;align-items:center}
- .side .head .pill,.side .head .lockup .wm{display:none}
+ .side .head .pill,.side .head .lockup{display:none}
+ .side .head .logo.rail{display:block}
  .side .sect{display:none}
  .navi{justify-content:center;padding:10px 0;gap:0;font-size:0}
  .navi svg.ic{width:19px;height:19px;font-size:0}
@@ -1287,7 +1291,7 @@ function sidebarHTML(active){
  const groups=navItems().map(([label,items])=>`<div class="sect">${label}</div>`+items.map(it=>
   `<button class="navi ${it.k===active?'on':''}" data-act="${it.act}">${ic(it.ic)}${esc(it.t)}${it.cnt!==''&&it.cnt!=null?`<span class="cnt">${esc(String(it.cnt))}</span>`:''}</button>`).join('')).join('');
  return `<aside class="side"><div class="box">
-  <div class="head">${logoLockup(26)}<span class="pill">${on?esc(S.team.name||'팀'):'기기 전용'}</span></div>
+  <div class="head">${logoLockup(26)}${logoSymbol(30,'rail')}<span class="pill">${on?esc(S.team.name||'팀'):'기기 전용'}</span></div>
   <nav>${groups}</nav>
   <button class="prof ${active==='settings'?'on':''}" data-act="settings" title="설정">
    <span class="av">${esc((m.name||'?').slice(0,1))}</span>
