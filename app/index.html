@@ -5045,14 +5045,16 @@ function modsFor(str){const toks=parseForm(str),map={};let pending=[];for(const 
 
 /* ---------- image import + gap detection ---------- */
 function loadImg(src){return new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=rej;im.src=src})}
-async function importImage(file){
+// keep: 사람이 고른 틀 그대로 (조각 자르기). 기울기·여백을 또 손대면 틀이 움직여
+// 크기 비율만 보고 옮기는 마커·코드·하이라이트가 엉뚱한 박자로 간다 (F92)
+async function importImage(file,keep){
  const src=URL.createObjectURL(file);const im=await loadImg(src);
  const maxW=1400,s=Math.min(1,maxW/im.naturalWidth);let w=Math.round(im.naturalWidth*s),h=Math.round(im.naturalHeight*s);
  let c=document.createElement('canvas');c.width=w;c.height=h;let ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);ctx.drawImage(im,0,0,w,h);
- const info=analyze(c);
+ const info=analyze(c);if(keep)info.angle=0;
  if(info.photo){c=flatten(c,info)}                       // 명암 정리 (그림자·회색 배경 → 흰 배경)
  if(Math.abs(info.angle)>=0.3){c=rotateCanvas(c,-info.angle)} // 기울기 보정
- const box=inkBox(c);if(box){c=cropCanvas(c,box)}         // 여백 잘라내기
+ const box=keep?null:inkBox(c);if(box){c=cropCanvas(c,box)}         // 여백 잘라내기
  w=c.width;h=c.height;
  const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',0.86));
  const gaps=detectGaps(c);URL.revokeObjectURL(src);
@@ -5989,9 +5991,9 @@ async function cropPieceModal(svc,it,p){
    cv.getContext('2d').drawImage(im,sx,sy,sw,sh,0,0,sw,sh);
    const out=await new Promise(res=>cv.toBlob(res,'image/jpeg',0.92));
    URL.revokeObjectURL(src);closeModal();toast('자르는 중…');
-   const rr=await importImage(new File([out],'crop.jpg',{type:'image/jpeg'}));
+   const rr=await importImage(new File([out],'crop.jpg',{type:'image/jpeg'}),true);
    const id2=uid();await IDB.put('blobs',id2,rr.blob);
-   // 자른 만큼 마커·하이라이트 좌표를 옮긴다. 밖으로 나간 것은 뺀다
+   // 자른 만큼 마커·하이라이트 좌표를 옮긴다. 밖으로 나간 것은 뺀다 (고른 틀 그대로라 크기 비율만 보면 된다)
    const kx=rr.w/sw,ky=rr.h/sh;
    const inside=(x,y)=>x>=sx-2&&x<=sx+sw+2&&y>=sy-2&&y<=sy+sh+2;
    const gone=new Set();
