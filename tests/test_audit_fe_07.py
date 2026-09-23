@@ -407,7 +407,47 @@ def t_ai_switch(b, errs):
     print('F90 팀을 안 바꾸면 예전처럼 ok')
     c.close()
 
-TESTS = [('F25', t_push_off), ('SCORE', t_score), ('CHORD', t_chords), ('F90', t_ai_switch)]
+# ---------------------------------------------------------------- F91 곡 넘기기가 서버를 기다리던 것
+def t_nav(b, errs):
+    c, pg = new_page(b, errs, 'nav')
+    signup(pg, 'nv' + tag); make_team(pg, '넘김팀')
+    pg.click('[data-act="new-svc"]'); pg.wait_for_selector('[data-f="svc.name"]'); pg.fill('[data-f="svc.name"]', '넘김 예배')
+    for t in ['첫곡', '둘째곡', '셋째곡']:
+        pg.click('[data-act="add-item"]'); pg.wait_for_selector('[data-f="item.title"]'); pg.fill('[data-f="item.title"]', t); pg.wait_for_timeout(300)
+    svc = pg.evaluate('CONTI.S.services[0].id')
+    pg.goto(URL + '#/play/%s/0' % svc); pg.wait_for_function('CONTI.pl().idx===0&&!!document.querySelector(".songnav")', timeout=10000)
+    pg.wait_for_timeout(800)
+    # 이제부터 메모·말씀 응답을 붙잡는다 (느린 망)
+    held = []; gate = {'open': False}
+    def hold(route):
+        if gate['open']: route.continue_()
+        else: held.append(route)
+    pg.route('**/api/notes?**', hold); pg.route('**/api/services/*/word?**', hold)
+    t0 = time.time(); pg.click('.songnav [data-act="pn"][data-d="1"]')
+    pg.wait_for_function('CONTI.pl().idx===1', timeout=12000); dt = time.time() - t0
+    if dt > 1.5: fail('F91 다음 곡으로 넘기는 데 %.1f초 (서버를 기다림)' % dt)
+    t0 = time.time(); pg.click('.songnav [data-act="pn"][data-d="1"]')
+    pg.wait_for_function('CONTI.pl().idx===2', timeout=12000); dt2 = time.time() - t0
+    if dt2 > 1.5: fail('F91 셋째 곡으로 넘기는 데 %.1f초' % dt2)
+    print('F91 곡 넘기기 즉시 ok (%.2fs, %.2fs)' % (dt, dt2))
+    # 콘티에 새로 들어올 때도 응답이 안 오면 오래 멈추지 않는다 (가진 것으로 먼저 그림)
+    pg.goto(URL + '#/'); pg.wait_for_timeout(800)
+    t0 = time.time(); pg.goto(URL + '#/view/%s' % svc)
+    pg.wait_for_function("location.hash.indexOf('view/')>=0&&!!document.querySelector('#app .top')&&document.body.innerText.indexOf('첫곡')>=0", timeout=15000)
+    dt3 = time.time() - t0
+    if dt3 > 4: fail('F91 콘티를 여는 데 %.1f초 (응답 없는 서버를 끝까지 기다림)' % dt3)
+    print('F91 느린 서버여도 콘티를 먼저 엶 ok (%.1fs)' % dt3)
+    # 늦게 온 메모는 보기 화면에 다시 그려진다
+    pg.evaluate("""fetch('/api/notes',{method:'POST',headers:{'content-type':'application/json','x-conti':'1'},
+      body:JSON.stringify({teamId:CONTI.S.team.id,serviceId:%s,notes:[{id:'late-note-1',itemId:CONTI.S.services[0].items[0].id,layer:'leader',text:'늦게 온 메모',at:Date.now()}]})})""" % json.dumps(svc))
+    gate['open'] = True
+    for rt in list(held): rt.continue_()
+    pg.wait_for_function("CONTI.S.services[0].items[0].notes.some(n=>n.text==='늦게 온 메모')", timeout=10000)
+    pg.wait_for_function("document.body.innerText.indexOf('늦게 온 메모')>=0", timeout=5000)
+    print('F91 늦게 온 메모도 화면에 ok')
+    c.close()
+
+TESTS = [('F25', t_push_off), ('SCORE', t_score), ('CHORD', t_chords), ('F90', t_ai_switch), ('F91', t_nav)]
 
 def run():
     only = set(sys.argv[1:])

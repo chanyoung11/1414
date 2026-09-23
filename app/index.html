@@ -5728,12 +5728,20 @@ let SEL={};// editor selection: {sid:{item,tool}}
 const SCROLL={};function keepScroll(){SCROLL.sheet=($('#sheetwrap')||{}).scrollTop||0;SCROLL.bodies=$$('.pbody').map(b=>b.scrollTop)}
 function restoreScroll(){const sw=$('#sheetwrap');if(sw&&SCROLL.sheet)sw.scrollTop=SCROLL.sheet;$$('.pbody').forEach((b,i)=>{if(SCROLL.bodies&&SCROLL.bodies[i])b.scrollTop=SCROLL.bodies[i]})}
 let lastRoute='';
+// 서버를 기다리되 오래 걸리면 가진 것으로 먼저 그린다 (online() 은 켤 때 한 번 정해져 약한 망에서도 참이다).
+// 늦게 끝나면 같은 화면일 때 한 번 다시 그린다 — 보기 화면만. 연습·편집은 다시 그리면 재생·입력이 끊긴다
+function netCap(p,ms){let late=false;const h=location.hash;
+ p.then(()=>{if(late&&location.hash===h&&route().name==='view')render()}).catch(()=>{});
+ return Promise.race([p.catch(()=>{}),new Promise(res=>setTimeout(()=>{late=true;res()},ms||2500))])}
+const NOTES_Q={};   // 늦게 끝나는 메모 받기를 기다리지 않고 넘어간 사이 같은 콘티를 또 받지 않게
+function pullNotesOnce(svc){return NOTES_Q[svc.id]||(NOTES_Q[svc.id]=SYNC.pullNotes(svc).finally(()=>{delete NOTES_Q[svc.id]}))}
 // 화면 그리기는 중간에 서버를 기다린다. 그 사이 다른 화면으로 옮겨갔으면 늦게 끝난 쪽이 덮어쓰지 않도록 표를 확인한다
 let RENDER_SEQ=0;
 async function render(){
  const my=++RENDER_SEQ;const stale=()=>my!==RENDER_SEQ;
  const r=route();const app=$('#app');app.classList.remove('stage');
  if(NATIVE)setTimeout(adsSync,0);else setTimeout(webAdsRender,0);   // 화면이 바뀔 때마다 광고를 켜고 끈다 (예배 화면에서는 내린다)
+ const prevHash=lastRoute;
  if(r.name!=='lineup')document.body.classList.remove('lnopen');const same=lastRoute===location.hash;lastRoute=location.hash;if(same)keepScroll();else{SCROLL.sheet=0;SCROLL.bodies=null}
  // §4.6 목회자 링크: 로그인 없이 여는 페이지
  // 약관·방침은 로그인 없이 볼 수 있다
@@ -5750,11 +5758,14 @@ async function render(){
   if(!svc&&online()){app.innerHTML=`<div class="empty" style="margin:40px auto;max-width:420px"><b>콘티를 받는 중…</b>팀 서버에서 발행본을 내려받고 있어요.</div>`;try{svc=await SYNC.pullService(r.a)}catch(e){toast(e.message)}}
   if(stale())return;
   if(!svc)return go('home');
-  if(online()&&(!same||!SYNC.pulledAt[svc.id]))await SYNC.pullNotes(svc);
-  if(stale())return;
-  if(online()&&!same){try{const wd=await api('/services/'+svc.id+'/word?team='+S.team.id);
+  // 같은 콘티 안에서 곡만 넘기거나(연습 화면 다음·이전) 보기·연습·편집을 오갈 때는 서버를 다시 기다리지 않는다 — 들어올 때 받았다.
+  // 예전에는 곡을 넘길 때마다 메모·말씀을 받은 뒤에야 그려, 느린 망에서는 탭마다 몇 초씩 옛 곡에 멈춰 있었다
+  const pr=prevHash.replace(/^#\/?/,'').split('/');const enter=!same&&!(pr[1]===r.a&&/^(edit|view|play)$/.test(pr[0]));
+  const notesP=online()&&(enter||!SYNC.pulledAt[svc.id])?pullNotesOnce(svc):null;
+  const wordP=online()&&enter?(async()=>{try{const wd=await api('/services/'+svc.id+'/word?team='+S.team.id);
    if(!WORD_DIRTY)svc.word=wd.word||null;   // 편집 중이면 덮어쓰지 않는다
-   if(wd.readRev){S.readRev=S.readRev||{};S.readRev[svc.id]=Math.max(S.readRev[svc.id]||0,wd.readRev)}}catch(e){}}
+   if(wd.readRev){S.readRev=S.readRev||{};S.readRev[svc.id]=Math.max(S.readRev[svc.id]||0,wd.readRev)}}catch(e){}})():null;
+  if(notesP||wordP)await netCap(Promise.all([notesP,wordP]));   // 둘은 서로 기다릴 까닭이 없다
   if(stale())return;
   if(online()&&r.name==='view'&&!REH.at[svc.id])await pullRehearsals(svc.id);
   else if(online()&&r.name==='view'&&!same)pullRehearsals(svc.id).then(ch=>{if(ch&&route().name==='view')render()});
