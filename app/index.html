@@ -2851,7 +2851,10 @@ async function switchScope(next){if(next===CUR_SCOPE)return;
  if(typeof WORDS!=='undefined'){WORDS.list=[];WORDS.role='';WORDS.at=0}
  if(typeof REH!=='undefined'){REH.bySvc={};REH.urls={};REH.at={}}
  if(typeof LIB!=='undefined'){LIB.at=0;LIB.q='';LIB.key='';LIB.tempo='';LIB.tag='';LIB.folder='';LIB.last='';LIB.archived=false;LIB.season=false;LIB.sel=[];LIB.pick=null;LIB.detail=null;LIB.dups=null}
- if(typeof TM!=='undefined'){TM.data=null;TM.invites=null;TM.at=0}}
+ if(typeof TM!=='undefined'){TM.data=null;TM.invites=null;TM.at=0}
+ // 개인 설정(무대 조판 포함)과 무대 복사 버퍼도 앞 사람 것이다 — 30초 캐시로 다음 사람에게 넘어갔다
+ if(typeof PREFS!=='undefined'){PREFS.data=null;PREFS.at=0}
+ if(typeof STG!=='undefined')STG.clip=null}
 const me=()=>S.team.me;
 const isLeader=()=>me().role==='leader';
 let PRACTICE=null;   // 라이브러리에서 곡 하나만 연습할 때 쓰는 임시 콘티 (저장·동기화하지 않는다)
@@ -6708,11 +6711,15 @@ const stgSnapX=x=>Math.round(x*1e4)/1e4, stgSnapY=y=>Math.round(y*1e4)/1e4;
 // 고친 조판은 예배 × 사람 × 기기 종류로 저장한다. 같은 사람의 다른 아이패드에서도
 // 같은 조판이 나오고, 다른 멤버 화면은 건드리지 않는다
 function stgLaySlot(){return `lay:${STG.svc?STG.svc.id:'-'}~${deviceClass()}`}
+// 기기에 남기는 사본은 사람마다 따로 둔다. 예전에는 예배·기기만으로 저장해, 교회 컴퓨터처럼 여럿이 쓰는
+// 기기에서 다음 사람이 앞 사람의 조판과 글 블록을 받고 고치면 앞 사람 것을 덮었다.
+// 오프라인이라 NET.user 가 없어도 지금 저장소(state:<사용자>:<팀>)의 사용자로 찾는다
+function stgLocKey(slot){return 'conti-'+slot+'@'+((NET.user&&NET.user.id)||String(CUR_SCOPE).split(':')[1]||'local')}
 function stgLayoutSave(){
  const slot=stgLaySlot();
  PREFS.data=PREFS.data||{};PREFS.data.stage=PREFS.data.stage||{};
  PREFS.data.stage[slot]=STG.layout?stgLayoutSlim(STG.layout):null;
- try{localStorage.setItem('conti-'+slot,JSON.stringify(PREFS.data.stage[slot]))}catch(e){}
+ try{localStorage.setItem(stgLocKey(slot),JSON.stringify(PREFS.data.stage[slot]))}catch(e){}
  if(!online()||!NET.user)return;
  clearTimeout(stgLayoutSave.t);stgLayoutSave.t=setTimeout(()=>{
   api('/me/prefs/stage/'+encodeURIComponent(slot),{method:'PUT',body:{value:PREFS.data.stage[slot]}}).catch(()=>{})},600)}
@@ -6726,9 +6733,11 @@ function stgLayoutSlim(L){
   off:L.off&&L.off.length?L.off.map(o=>({s:o.s,b:slim(o.b)})):undefined}}   // 송폼 모드가 잠시 뺀 송폼 블록 (stageRender)
 function stgLayoutLoad(){
  const slot=stgLaySlot();
+ // 누구 것인지 모르는 예전 사본(conti-lay:… 에 사용자가 없는 것)은 읽지 않고 치운다
+ try{Object.keys(localStorage).forEach(k=>{if(k.indexOf('conti-lay:')===0&&k.indexOf('@')<0)localStorage.removeItem(k)})}catch(e){}
  const srv=((PREFS.data||{}).stage||{})[slot];
  if(srv&&srv.screens)return srv;
- try{const v=JSON.parse(localStorage.getItem('conti-'+slot)||'null');if(v&&v.screens)return v}catch(e){}
+ try{const v=JSON.parse(localStorage.getItem(stgLocKey(slot))||'null');if(v&&v.screens)return v}catch(e){}
  // 내 조판이 없으면 인도자가 추천한 조판으로 시작한다
  const rec=((pubOrDraft(STG.svc||{}).stageLayouts)||{})[deviceClass()];
  return rec&&rec.screens?rec:null}
