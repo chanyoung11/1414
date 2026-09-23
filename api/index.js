@@ -2469,8 +2469,9 @@ on('GET', '/notes', async ({ uid, url }) => {
   if (!uid) throw noAuth();
   const teamId = str(url.searchParams.get('team'), 64), svcId = str(url.searchParams.get('service'), 64);
   const m = await requireMember(uid, teamId);
+  // 겸임이면 내 세션 전부의 공유 메모를 받는다 (쓸 때도 그중 하나를 고른다 — POST /notes)
   const rows = await q(`select id, item_id as "itemId", marker_id as "markerId", media_id as "mediaId", t, layer, session, text, author_id as "authorId", author_name as "authorName", created_at as "createdAt"
-                        from notes where team_id=$1 and service_id=$2 and (layer='leader' or (layer='session' and session=$4) or author_id=$3) order by created_at asc`, [teamId, svcId, uid, m.session]);
+                        from notes where team_id=$1 and service_id=$2 and (layer='leader' or (layer='session' and session = any($4::text[])) or author_id=$3) order by created_at asc`, [teamId, svcId, uid, mySessions(m)]);
   return { notes: rows, me: uid };
 });
 
@@ -2480,13 +2481,15 @@ on('POST', '/notes', async ({ uid, body }) => {
   const m = await requireMember(uid, teamId);
   const list = Array.isArray(body.notes) ? body.notes.slice(0, 200) : [];
   const pastorOk = m.role !== 'pastor' || (await teamSettings(teamId)).pastorCanMemo;
-  let n = 0;
+  // 받지 않은 메모는 id 와 까닭을 돌려준다. 전에는 조용히 건너뛰고 200 을 줘서, 클라이언트가
+  // 올린 것으로 알고 있다가 다음 동기화 때 메모가 사라졌다 (목회자 메모가 꺼진 팀에서 '메모 저장' 뒤 증발)
+  let n = 0; const refused = [];
   for (const x of list) {
-    const id = str(x.id, 40), itemId = str(x.itemId, 40), layer = str(x.layer, 10), text = str(x.text, 200);
-    if (!/^[A-Za-z0-9_-]{4,40}$/.test(id) || !itemId || !text) continue;
-    if (!['leader', 'session', 'mine'].includes(layer)) continue;
-    if (layer === 'leader' && m.role !== 'leader') continue;
-    if (m.role === 'pastor' && !pastorOk) continue;
+    const id = str(x && x.id, 40), itemId = str(x && x.itemId, 40), layer = str(x && x.layer, 10), text = str(x && x.text, 200);
+    const why = !/^[A-Za-z0-9_-]{4,40}$/.test(id) || !itemId || !text || !['leader', 'session', 'mine'].includes(layer) ? 'bad'
+      : m.role === 'pastor' && !pastorOk ? 'pastor'
+      : layer === 'leader' && m.role !== 'leader' ? 'leader' : '';
+    if (why) { if (id) refused.push({ id, why }); continue; }
     // 겸임이면 고른 세션을 그대로 쓴다 (내 세션 목록 안일 때만)
     const want = str(x.session, 40);
     const session = layer === 'session' ? (mySessions(m).includes(want) ? want : m.session)
@@ -2496,7 +2499,10 @@ on('POST', '/notes', async ({ uid, body }) => {
       [id, teamId, svcId, itemId, str(x.markerId, 40) || null, str(x.mediaId, 40) || null, x.t == null ? null : +x.t, layer, session, text, uid, layer === 'leader' ? '인도자' : m.mname, x.at ? new Date(+x.at) : new Date()]);
     n++;
   }
-  return { ok: true, saved: n };
+  // 이미 서버에 있는 메모는 거절로 치지 않는다. 그림자를 잃은 기기는 받아 둔 남의 메모(인도자 메모 등)까지
+  // 다시 올리는데, 그건 서버에 그대로 있으니 클라이언트가 지우면 안 된다
+  const there = refused.length ? new Set((await q('select id from notes where team_id=$1 and id = any($2::text[])', [teamId, refused.map((r) => r.id)])).map((r) => r.id)) : new Set();
+  return { ok: true, saved: n, rejected: refused.filter((r) => !there.has(r.id)) };
 });
 
 on('DELETE', '/notes', async ({ uid, body }) => {

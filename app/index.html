@@ -1536,7 +1536,7 @@ function markerMenu(svc,it,mid){
 }
 function openComposer(svc,it,o){ // o: {marker, leader, t, mediaId}
  // 목회자 메모는 팀 설정에서 켜야 서버가 받는다. 꺼져 있으면 써도 저장에서 조용히 버려지므로 창을 열지 않는다
- if(!o.leader&&isPastor()&&!(S.team.settings||{}).pastorCanMemo){toast('목회자 메모는 팀 설정에서 켜야 해요');P.resumeIfPaused();return}
+ if(!canMemo()){toast('목회자 메모는 팀 설정에서 켜야 해요');P.resumeIfPaused();return}
  const m=o.marker?markerOf(it,o.marker):null;const mods=modsFor(it.form);
  const sessions=S.team.sessions;const my=me();
  // 세션에 공유: 내 세션이 있어야 한다(목회자는 없다). "이 곡에 항상"과 함께면 서버가 세션 리더에게만 허락한다
@@ -2072,7 +2072,7 @@ async function rehPlayer(svc,r,at){
   const bar=e.target.closest('#rhProgBar');if(bar){const rect=bar.getBoundingClientRect();a.currentTime=(e.clientX-rect.left)/rect.width*(a.duration||0);draw();return}
   const tl=e.target.closest('[data-rt]');if(tl){a.currentTime=+tl.dataset.rt;play();return}
   if(e.target.closest('#rhNote')){const t=a.currentTime,was=!a.paused;a.pause();rehNoteSheet(svc,r,t,()=>rehPlayer(svc,r,{t,play:was}));return}}}
-function rehNoteSheet(svc,r,t,done){const lead=isLeader();const items=pubOrDraft(svc).items;
+function rehNoteSheet(svc,r,t,done){if(!canMemo()){toast('목회자 메모는 팀 설정에서 켜야 해요');return}const lead=isLeader();const items=pubOrDraft(svc).items;
  modal(`<b style="font-size:17px">${fmtDur(t)} 메모</b>
   <div class="lbl">내용</div><input class="field" id="rnText" maxlength="60" placeholder="3번 B 들어갈 때 반박 빠름">
   ${S.team.phrases.length?`<div style="margin-top:8px">${S.team.phrases.map(p=>`<button class="q sm" data-phr="${esc(p)}">${esc(p)}</button>`).join('')}</div>`:''}
@@ -3182,6 +3182,8 @@ function scheduleReprobe(){clearTimeout(REPROBE.t);if(NET.server!==null){REPROBE
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&NET.server!==true){REPROBE.n=0;recheckServer().then(scheduleReprobe)}});
 const RL={leader:'인도자',session_lead:'세션리더',member:'멤버',pastor:'목회자'};
 const isPastor=()=>me().role==='pastor';   // 목회자: 세션 없음, 편성·라이브러리 편집 없음, 말씀을 쓴다 (§0)
+// 목회자 메모는 팀 설정(pastorCanMemo)으로 켠다. 꺼져 있으면 서버가 받지 않으니 쓰는 창부터 열지 않는다
+const canMemo=()=>!isPastor()||!!((S.team&&S.team.settings)||{}).pastorCanMemo;
 const roleLabel=r=>RL[r]||'멤버';
 const whoStr=m=>[m.name||'이름 없음',m.session,roleLabel(m.role)].filter((x,i,a)=>x&&a.indexOf(x)===i).map(esc).join(' · ');
 // 네이티브 앱은 화면이 https://localhost 라 서버 주소를 붙여 부른다.
@@ -3470,15 +3472,22 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),getting:new Map(),notePut:{},no
   const del=sh.filter(x=>!localIds.has(x.id)&&(!x.itemId||inDraft.has(x.itemId))&&!shielded(x)).map(x=>x.id);
   const drop=new Set(sh.filter(x=>!localIds.has(x.id)&&x.itemId&&!inDraft.has(x.itemId)&&!shielded(x)).map(x=>x.id));
   if(!add.length&&!del.length){if(drop.size)S.noteShadow[svc.id]=sh.filter(x=>!drop.has(x.id));return true}
-  try{if(add.length)await api('/notes',{method:'POST',keepalive:!!keep,body:{teamId:S.team.id,serviceId:svc.id,notes:add.map(n=>({id:n.id,itemId:n.itemId,markerId:n.markerId,mediaId:n.mediaId,t:n.t,layer:n.layer,session:n.session,text:n.text,at:n.at}))}});
+  try{let rej=[];if(add.length){const r=await api('/notes',{method:'POST',keepalive:!!keep,body:{teamId:S.team.id,serviceId:svc.id,notes:add.map(n=>({id:n.id,itemId:n.itemId,markerId:n.markerId,mediaId:n.mediaId,t:n.t,layer:n.layer,session:n.session,text:n.text,at:n.at}))}});rej=(r&&Array.isArray(r.rejected))?r.rejected:[]}
    if(del.length)await api('/notes',{method:'DELETE',keepalive:!!keep,body:{teamId:S.team.id,ids:del}});
    if(scope!==CUR_SCOPE)return true;   // 보내는 사이 팀을 바꿨으면 새 팀의 그림자를 건드리지 않는다
+   // 서버가 받지 않은 메모(권한 없음 등)는 그림자에 넣지 않고 이 기기에서도 지운 뒤 알린다.
+   // 그림자에 넣으면 올린 줄 알다가 다음 동기화 때 말없이 사라진다
+   const no=new Set(rej.map(x=>x.id));
+   if(no.size){svc.items.forEach(it=>{it.notes=(it.notes||[]).filter(n=>!no.has(n.id));(it.media||[]).forEach(m=>{m.notes=(m.notes||[]).filter(n=>!no.has(n.id))})});
+    const why=rej[0].why;toast((why==='pastor'?'목회자 메모는 팀 설정에서 켜야 해요':why==='leader'?'전체 메모는 인도자만 남길 수 있어요':'형식이 맞지 않아요')+` — 메모 ${no.size}개를 저장하지 못했어요`);
+    setTimeout(()=>{const rn=route().name;if(rn==='play')redrawPlay();else if(rn==='view')render()},0)}
    // 보내는 사이 pullNotes 가 그림자를 새로 세웠을 수 있다. 시작할 때 본 목록으로 통째로 덮으면
    // 그 사이 받은 것·지운 것이 어긋나 다음 전송 때 멀쩡한 메모를 지웠다 → 이번에 보낸 만큼만 고친다
    const gone=new Set(del);drop.forEach(id=>gone.add(id));
    const next=SYNC.shadow(svc.id).filter(x=>!gone.has(x.id));const have=new Set(next.map(x=>x.id));
-   add.forEach(n=>{if(!have.has(n.id))next.push({id:n.id,itemId:n.itemId,mediaId:n.mediaId||null})});
-   const now=Date.now();add.forEach(n=>{SYNC.notePut[n.id]=now});del.forEach(id=>SYNC.noteGone.add(id));   // pullNotes 가 늦게 온 목록과 견줄 때 쓴다
+   const sent=add.filter(n=>!no.has(n.id));
+   sent.forEach(n=>{if(!have.has(n.id))next.push({id:n.id,itemId:n.itemId,mediaId:n.mediaId||null})});
+   const now=Date.now();sent.forEach(n=>{SYNC.notePut[n.id]=now});del.forEach(id=>SYNC.noteGone.add(id));   // pullNotes 가 늦게 온 목록과 견줄 때 쓴다
    S.noteShadow[svc.id]=next;save();return true}
   catch(e){console.warn('notes push',e.message);return false}},
  async pullNotes(svc){if(!online()||!svc||!S.team.id)return;
