@@ -4855,22 +4855,24 @@ function afterTeam(){
   const done=()=>{if(!row)return;row.classList.remove('dragging');row=null;if(moved)toast('순서를 바꿨어요 · "세션 저장"을 눌러야 반영돼요')};
   list.addEventListener('pointerup',done);list.addEventListener('pointercancel',done)}
  // 설정 값이 바뀌면 바로 저장 (누르는 버튼을 줄인다)
+ // 바뀐 값은 바뀐 그 순간에 잡아 두고 바뀐 것만 보낸다. 0.7초 뒤에 화면을 읽으면 그새 다른 화면으로 간 경우
+ // 체크박스가 없어 false 로 나가 말씀 요청·목회자 메모가 꺼지고 바꾼 값은 빠졌다 (F87). 서버는 항목·세션별로 합친다
+ const ST_ID={stRule:'nameRule',stWeeks:'serviceAutoCreateWeeks',stPractice:'defaultPractice',stReh:'defaultRehearsal',stRem:'reminderDay',
+  stAhead:'reminderMonthsAhead',stWord:'wordRequestDay',stWordOn:'wordRequestOn',stRec:'rehearsalUploadRole',stPastorMemo:'pastorCanMemo'};
+ const pend={};
+ const grab=el=>{
+  if(el.dataset.slot!=null){(pend.slots=pend.slots||{})[el.dataset.slot]=Math.max(0,Math.min(9,+el.value||0));return}
+  if(el.dataset.def!=null){const s=el.dataset.def,arr=[];$$('[data-def]',box).forEach(x=>{if(x.dataset.def===s)arr[+x.dataset.i]=x.value||''});
+   (pend.defaultLineup=pend.defaultLineup||{})[s]=arr.filter(Boolean);return}
+  const k=ST_ID[el.id];if(k)pend[k]=el.type==='checkbox'?el.checked:el.value};
  const saveSt=debounce(async()=>{if(!isLeader())return;
-  const slots={};$$('[data-slot]').forEach(i=>slots[i.dataset.slot]=Math.max(0,Math.min(9,+i.value||0)));
-  const defaultLineup={};$$('[data-def]').forEach(sel=>{const s=sel.dataset.def;(defaultLineup[s]=defaultLineup[s]||[])[+sel.dataset.i]=sel.value||''});
-  Object.keys(defaultLineup).forEach(k=>defaultLineup[k]=defaultLineup[k].filter(Boolean));
-  const body={slots,defaultLineup,
-   nameRule:($('#stRule')||{}).value,serviceAutoCreateWeeks:($('#stWeeks')||{}).value,
-   defaultPractice:($('#stPractice')||{}).value,defaultRehearsal:($('#stReh')||{}).value,
-   reminderDay:($('#stRem')||{}).value,reminderMonthsAhead:($('#stAhead')||{}).value,
-   wordRequestDay:($('#stWord')||{}).value,wordRequestOn:!!($('#stWordOn')||{}).checked,
-   rehearsalUploadRole:($('#stRec')||{}).value,pastorCanMemo:!!($('#stPastorMemo')||{}).checked};
-  Object.keys(body).forEach(k=>{if(body[k]===undefined)delete body[k]});
+  const body={...pend};Object.keys(pend).forEach(k=>delete pend[k]);if(!Object.keys(body).length)return;
   try{const r=await api('/teams/'+S.team.id+'/settings',{method:'PATCH',body});
    if(TM.data)TM.data.settings=r.settings;if(r.settings)S.team.settings=r.settings;save();toast('저장했어요')}
-  catch(e){toast(e.message)}},700);
- box.addEventListener('change',e=>{if(e.target.closest('[data-slot],[data-def],#stRem,#stAhead,#stWord,#stWordOn,#stRec,#stPastorMemo,#stWeeks'))saveSt()});
- box.addEventListener('input',e=>{if(e.target.closest('#stRule,#stPractice,#stReh'))saveSt()});
+  // 못 보낸 것은 다음 저장 때 같이 간다 (그 사이 새로 바뀐 값이 이긴다)
+  catch(e){for(const k in body)pend[k]=typeof body[k]==='object'?{...body[k],...(pend[k]||{})}:(k in pend?pend[k]:body[k]);toast(e.message)}},700);
+ box.addEventListener('change',e=>{const el=e.target.closest('[data-slot],[data-def],#stRem,#stAhead,#stWord,#stWordOn,#stRec,#stPastorMemo,#stWeeks');if(el){grab(el);saveSt()}});
+ box.addEventListener('input',e=>{const el=e.target.closest('#stRule,#stPractice,#stReh');if(el){grab(el);saveSt()}});
 }
 const debounce=(fn,ms)=>{let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms)}};
 // 멤버 고치기 (인도자)
