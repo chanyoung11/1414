@@ -1303,14 +1303,19 @@ on('PUT', '/services/:id', async ({ uid, params, body }) => {
   const have = missing.length ? (await q('select id from blobs where team_id=$1 and id = any($2::text[])', [teamId, missing])).map((r) => r.id) : [];
   const notUploaded = missing.filter((id) => !have.includes(id));
   if (notUploaded.length) throw bad('아직 올라가지 않은 파일이 있어요: ' + notUploaded.length + '개');
-  const cur = await one('select version, doc from services where team_id=$1 and id=$2', [teamId, params.id]);
+  const docJson = JSON.stringify(doc);
+  const cur = await one(`select version, doc, (doc - 'stageLayouts') = ($3::jsonb - 'stageLayouts') as same from services where team_id=$1 and id=$2`,
+    [teamId, params.id, docJson]);
+  // 같은 판을 다시 보낸 것(서버엔 들어갔는데 응답을 못 받아 앱이 다시 올림)은 이미 된 것으로 받는다. 알림도 다시 안 보낸다.
+  // 전에는 409 로 막혀 '서버에 못 올림'이 영영 남았다
+  if (cur && cur.version === (+doc.version || 0) && cur.same) return { ok: true, version: cur.version, same: true };
   if (cur && cur.version >= (+doc.version || 0)) throw new HttpError(409, 'version_conflict', `다른 기기에서 v${cur.version}이 이미 발행됐어요. 새로고침으로 받은 뒤 다시 발행하세요`);
   await q(`insert into services(team_id, id, doc, version, name, date, updated_by, updated_at) values($1,$2,$3,$4,$5,$6,$7,now())
            on conflict (team_id, id) do update set
              doc = excluded.doc || jsonb_build_object('stageLayouts',
                      coalesce(services.doc->'stageLayouts','{}'::jsonb) || coalesce(excluded.doc->'stageLayouts','{}'::jsonb)),
              version=excluded.version, name=excluded.name, date=excluded.date, updated_by=excluded.updated_by, updated_at=now()`,
-    [teamId, params.id, JSON.stringify(doc), +doc.version || 0, str(doc.name, 120), str(doc.date, 20), uid]);
+    [teamId, params.id, docJson, +doc.version || 0, str(doc.name, 120), str(doc.date, 20), uid]);
   // §1 알림: publish(팀 전원, 발행자 제외) · note.updated(인도자의 글이 이전 발행과 다를 때)
   try {
     const version = +doc.version || 0, md = mdOf(doc.date), name = str(doc.name, 60) || '예배';

@@ -2225,7 +2225,7 @@ function publishModal(svc){
  const txt=kakaoText(svc);
  modal(`<div class="row sb"><b style="font-size:17px">발행 — v${nextV}</b><span class="pill">${svc.items.length}곡</span></div>
   <div class="lbl">카톡에 붙여넣을 텍스트</div><textarea class="field mono" id="kk" rows="${Math.min(14,txt.split('\n').length+1)}">${esc(txt)}</textarea>
-  <div class="hint" style="margin-top:8px">${online()?'발행하면 팀원 앱에 자동으로 내려갑니다. 카톡에는 위 텍스트(링크 포함)만 보내면 돼요.':'발행하면 이 버전이 멤버가 보는 콘티가 됩니다. 멤버에게는 내보내기 파일을 카톡으로 보내세요 (서버 연동 전).'}</div>
+  <div class="hint" style="margin-top:8px">${online()?'발행하면 팀원 앱에 자동으로 내려갑니다. 카톡에는 위 텍스트(링크 포함)만 보내면 돼요.':S.team.id?'지금은 서버에 연결되지 않았어요. 발행해 두면 다시 연결될 때 팀에 올라가요.':'발행하면 이 버전이 멤버가 보는 콘티가 됩니다. 멤버에게는 내보내기 파일을 카톡으로 보내세요 (서버 연동 전).'}</div>
   <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" id="kkCopy">텍스트 복사</button>${online()?`<button class="btn pri" id="pubOnly">${ic('send')}발행하고 팀에 공유</button>`:`<button class="btn" id="pubOnly">${ic('check')}발행만</button><button class="btn pri" id="pubOk">${ic('send')}발행 + 파일 내보내기</button>`}</div>`);
  $('#modal').onclick=async e=>{
   if(e.target.closest('#kkCopy')){try{await navigator.clipboard.writeText($('#kk').value);toast('복사됨')}catch{$('#kk').select();document.execCommand('copy');toast('복사됨')}}
@@ -2234,8 +2234,13 @@ function publishModal(svc){
    const pubWord=svc.word?{...clone(svc.word),memo:svc.word.memoPublic?(svc.word.memo||''):''}:null;
    svc.published={version:nextV,at:Date.now(),name:svc.name,date:svc.date,folder:svc.folder||'',notice:svc.notice,message:msg,messageRev:svc.messageRev||0,word:pubWord,author:me().name||'인도자',items:clone(svc.items).map(it=>({...it,notes:undefined,fixedNotes:frozenFixed(it),media:(it.media||[]).map(m=>({...m,notes:undefined}))}))};
    svc.published.changes=diffPub(prevPub,svc.published);   // 팀원에게 무엇이 바뀌었는지 보여 주려고
-   S.readRev=S.readRev||{};S.readRev[svc.id]=svc.messageRev||0;save();closeModal();
-   if(online()){toast('팀 서버에 올리는 중…');try{await SYNC.pushPublish(svc);toast('v'+nextV+' 발행 · 팀에 공유됐어요')}catch(err){if(err.code==='version_conflict'){svc.published=prevPub;svc.version=prevVer;svc.messageRev=prevRev;save();alert(err.message);try{await SYNC.pullService(svc.id)}catch(e2){}}else{svc.pubPending=true;save();toast('서버에 못 올렸어요. 홈에서 "서버에 다시 올리기"로 다시 시도하세요')}}}else toast('v'+nextV+' 발행');
+   // 팀이 있으면 올리기 전에 '아직 서버에 없음'을 먼저 적어 둔다. 오프라인이거나 올리다 앱이 닫혀도 다음에 켤 때·
+   // 다시 연결될 때 SYNC.pushPending 이 올린다 (전에는 오프라인 발행이 영영 안 올라갔고, 새 콘티면 다시 연결될 때 지워졌다)
+   if(S.team.id)svc.pubPending=true;
+   S.readRev=S.readRev||{};S.readRev[svc.id]=svc.messageRev||0;save();flushSave();closeModal();
+   const myPub=svc.published;
+   if(online()){toast('팀 서버에 올리는 중…');try{await SYNC.pushPublish(svc);if(svc.published===myPub)delete svc.pubPending;save();toast('v'+nextV+' 발행 · 팀에 공유됐어요')}catch(err){if(err.code==='version_conflict'){delete svc.pubPending;svc.published=prevPub;svc.version=prevVer;svc.messageRev=prevRev;save();alert(err.message);try{await SYNC.pullService(svc.id)}catch(e2){}}else{save();toast('서버에 못 올렸어요. 다시 연결되면 올리고, 홈의 "서버에 다시 올리기"로 바로 올릴 수도 있어요')}}}
+   else toast(S.team.id?'v'+nextV+' 발행 · 서버에 연결되면 팀에 올려요':'v'+nextV+' 발행');
    if(withFile)await exportJSON(svc.id);render()}
  };
 }
@@ -2893,16 +2898,25 @@ function josaRo(v){const t=String(v||'').trim();if(!t)return t;
  return t+(hasBat(t)?'으로':'로')}
 const online=()=>NET.server===true;
 // 오프라인으로 켜면 NET.server 가 null 로 굳어, 다시 연결돼도 발행이 서버로 안 갔다
-let RECONNECT_T=null;
-async function recheckServer(){
+let RECONNECT_T=null,RECHECK=null;
+// 여러 곳(online 이벤트·다시 묻기 타이머·화면 복귀)에서 겹쳐 불려도 한 번만 돈다. 겹치면 콘티를 두 번 받아 같은 콘티가 둘 생길 수 있다
+function recheckServer(){return RECHECK||(RECHECK=(async()=>{
  if(NET.server===true)return;
  const was=NET.server;NET.server=await probeServer();
  if(NET.server===true&&was!==true){
   try{await takeMe(await api('/me'))}catch(e){if(e.status===401)NET.user=null}
   toast('서버에 다시 연결됐어요');
-  if(S.team.id){SYNC.pullServices().then(ch=>{if(ch)render()});pullSongs('fresh').catch(()=>{})}
-  SYNC.schedulePush();render()}}
+  // 못 올린 발행을 먼저 올리고 나서 목록을 받는다 (거꾸로면 방금 올린 것을 '서버에서 지워진 것'으로 볼 수 있다)
+  if(S.team.id){SYNC.pushPending().catch(()=>0).then(()=>SYNC.pullServices()).then(ch=>{if(ch)render()});pullSongs('fresh').catch(()=>{})}
+  SYNC.schedulePush();render()}})().finally(()=>{RECHECK=null}))}
 window.addEventListener('online',()=>{clearTimeout(RECONNECT_T);RECONNECT_T=setTimeout(recheckServer,800)});
+// 켤 때 건강검진이 한 번 실패하면(503·잠깐 끊김·와이파이 로그인 화면) 앱을 끌 때까지 '이 기기 전용'이었다.
+// 서버를 못 찾는 동안(null)은 간격을 늘려 가며(5초→1분) 다시 묻고, 화면이 다시 보일 때도 바로 묻는다.
+// false(여기엔 서버가 없다 · 정적 호스팅의 404)는 타이머로 두드리지 않는다
+const REPROBE={t:null,n:0};
+function scheduleReprobe(){clearTimeout(REPROBE.t);if(NET.server!==null){REPROBE.n=0;return}
+ REPROBE.t=setTimeout(async()=>{if(!document.hidden)await recheckServer();scheduleReprobe()},Math.min(60000,5000*2**Math.min(REPROBE.n++,4)))}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&NET.server!==true){REPROBE.n=0;recheckServer().then(scheduleReprobe)}});
 const RL={leader:'인도자',session_lead:'세션리더',member:'멤버',pastor:'목회자'};
 const isPastor=()=>me().role==='pastor';   // 목회자: 세션 없음, 편성·라이브러리 편집 없음, 말씀을 쓴다 (§0)
 const roleLabel=r=>RL[r]||'멤버';
@@ -2925,7 +2939,8 @@ async function api(path,o){const opt={method:(o&&o.method)||'GET',headers:{'x-co
  // 말씀 링크 만들기 응답의 token(링크 값)이 로그인 토큰을 덮어 iOS 앱이 다음 실행 때 로그아웃됐다
  const tk=j&&(j.appToken||(/^\/auth\//.test(path)&&j.token));if(tk)setAppToken(tk);
  if(!r.ok){const err=new Error((j&&j.message)||('오류 '+r.status));err.status=r.status;err.code=j&&j.error;throw err}return j}
-async function probeServer(){try{const r=await fetch(API_BASE+'/api/health',{cache:'no-store',credentials:NATIVE?'include':'same-origin',headers:NATIVE?{'x-conti-app':'1'}:{}});if(!r.ok)return false;const j=await r.json();
+// false 는 '여기엔 서버가 없다'(정적 호스팅의 404)일 때만. 503·429 같은 일시 오류는 null(모름) — 다시 묻는다
+async function probeServer(){try{const r=await fetch(API_BASE+'/api/health',{cache:'no-store',credentials:NATIVE?'include':'same-origin',headers:NATIVE?{'x-conti-app':'1'}:{}});if(!r.ok)return r.status===404?false:null;const j=await r.json();
  if(j&&j.app==='conti')NET.enforcePlan=!!j.enforcePlan;
  return !!(j&&j.app==='conti')}catch(e){return null}}
 // 채보 엔진 연결 여부 (인도자 편집기의 '채보' 버튼 표시용)
@@ -2951,7 +2966,10 @@ function scrubVer(d){if(d&&typeof d==='object'){d.version=+d.version||0;if(d.pub
 const SYNC={t:null,pulledAt:{},missing:new Set(),
  blobIds(items){const ids=[];(items||[]).forEach(it=>{(it.pieces||[]).forEach(p=>p.blob&&ids.push(p.blob));(it.media||[]).forEach(m=>m.type==='audio'&&m.blob&&ids.push(m.blob))});return [...new Set(ids)]},
  // 팀의 발행본 목록을 받아 새 것·새 버전만 내려받음. 바뀐 게 있으면 true
- async pullServices(){if(!online()||!S.team.id)return false;let list,drafts=[];try{const r=await api('/services?team='+S.team.id);list=r.services;drafts=r.drafts||[]}catch(e){return false}
+ async pullServices(){if(!online()||!S.team.id)return false;
+  // 목록을 받는 사이에 올라간 발행(대기 중이던 것·방금 발행한 것)은 목록에 없어도 '서버에서 지워진 것'이 아니다
+  const t0=Date.now(),pend0=new Set(S.services.filter(x=>x.pubPending).map(x=>x.id));
+  let list,drafts=[];try{const r=await api('/services?team='+S.team.id);list=r.services;drafts=r.drafts||[]}catch(e){return false}
   let changed=false;
   if(isLeader())for(const d of drafts){if(svcById(d.id)||(S.dropped||[]).includes(d.id))continue;try{const dd=await api('/services/'+d.id+'?team='+S.team.id+'&draft=1');if(dd&&dd.doc){
     if(dd.doc.auto&&!(dd.doc.items||[]).length&&S.services.some(x=>x.date===dd.doc.date)){S.dropped=(S.dropped||[]).concat(d.id);continue} // 자동 생성 초안인데 그 날짜 콘티가 이미 있으면 받지 않음
@@ -2968,7 +2986,7 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),
   const onServer=new Set(list.map(r=>r.id).concat(drafts.map(d=>d.id)));
   const sig=x=>(x.date||'')+'|'+(x.items||[]).map(it=>(it.title||'').trim()).join('|');
   const serverSigs=new Set(S.services.filter(x=>onServer.has(x.id)).map(sig));
-  const gone=S.services.filter(x=>!onServer.has(x.id)&&((x.published&&!x.pubPending)||
+  const gone=S.services.filter(x=>!onServer.has(x.id)&&((x.published&&!x.pubPending&&!pend0.has(x.id)&&!(x.published.at>=t0))||
    // 서버에 없는 초안인데 서버 것과 날짜·곡이 똑같다 → 예전 동기화가 남긴 복사본
    (!x.published&&serverSigs.has(sig(x)))));
   if(gone.length){
@@ -3059,6 +3077,15 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),
  // 발행(인도자): 새 파일 업로드 → 스냅샷 저장
  async pushPublish(svc){if(!online()||!isLeader())return false;const pub=svc.published;await SYNC.ensureBlobs(pub.items);
   await api('/services/'+svc.id,{method:'PUT',body:{teamId:S.team.id,doc:{id:svc.id,name:pub.name,date:pub.date,folder:pub.folder||'',notice:pub.notice,message:pub.message||'',messageRev:pub.messageRev||0,word:pub.word||null,author:pub.author||'',version:pub.version,items:pub.items,changes:pub.changes||[]}}});return true},
+ // 발행 대기(pubPending)를 서버에 올린다 — 오프라인 발행, 올리다 끊긴 발행. 켤 때·다시 연결될 때·'서버에 다시 올리기'.
+ // 응답만 못 받고 서버에는 들어간 경우도 서버가 같은 판이면 받아 준다. 다른 기기가 같은·더 새 버전을 냈으면 서버 것을 받는다
+ async pushPending(only){if(!online()||!isLeader()||!S.team.id)return 0;let n=0;
+  for(const svc of S.services.filter(x=>x.pubPending&&x.published&&(!only||x.id===only))){
+   // 올리는 사이에 또 발행했으면(새 판) 대기 표시는 그 판 몫이다 — 지우지 않는다
+   const pub=svc.published;try{if(!await SYNC.pushPublish(svc))continue;if(svc.published===pub)delete svc.pubPending;n++}
+   catch(e){if(e.code==='version_conflict'){delete svc.pubPending;save();toast(e.message);try{await SYNC.pullService(svc.id)}catch(e2){}}
+    else{console.warn('pub retry',svc.id,e.message);if(only)throw e}}}
+  if(n)save();return n},
  async deleteService(id){if(!online()||!isLeader())return false;try{await api('/services/'+id+'?team='+S.team.id,{method:'DELETE'});return true}catch(e){toast(e.message);return false}},
  // 메모: 로컬 ↔ 서버 차이만 올림 (실패하면 다음 저장 때 다시)
  localNotes(svc){const out=[];svc.items.forEach(it=>{(it.notes||[]).forEach(n=>out.push({...n,itemId:it.id,markerId:n.marker||null,mediaId:null}));(it.media||[]).forEach(m=>(m.notes||[]).forEach(n=>out.push({...n,itemId:it.id,markerId:n.marker||null,mediaId:m.id})))});return out},
@@ -5939,7 +5966,8 @@ async function nativeSetup(){
  // 앱이 다시 앞으로 오면 알림·콘티를 새로 받는다
  try{P.App&&P.App.addListener('appStateChange',({isActive})=>{
   if(isActive&&online()&&NET.user){refreshNoti&&refreshNoti();
-   if(S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()}).catch(()=>{})}})}catch(e){}
+   if(S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()}).catch(()=>{})}
+  else if(isActive&&!online())recheckServer()})}catch(e){}
  try{P.SplashScreen&&P.SplashScreen.hide()}catch(e){}}
 // 무대 모드에서는 화면이 꺼지면 안 된다 (예배 중)
 /* ---------- 광고 (무료 플랜만) ---------- */
@@ -7286,7 +7314,7 @@ document.addEventListener('click',async e=>{
   case 'noti-open':await openNoti(el.dataset.id);break;
   case 'more-menu':moreMenu();break;
   case 'repub':{if(!svc||!svc.published)break;toast('다시 올리는 중…');
-   try{await SYNC.pushPublish(svc);delete svc.pubPending;save();render();toast('팀에 공유됐어요')}
+   try{if(await SYNC.pushPending(svc.id))toast('팀에 공유됐어요');render()}
    catch(e){toast(e.message)}break}
   case 'chart-tab':{PL.chart=!PL.chart;try{localStorage.setItem('conti-chart',PL.chart?'1':'')}catch(e2){}render();break}
   case 'chart-del':{const s2=svcById(route().a);const it2=s2&&curItem(s2);if(!it2||!it2.chart)break;
@@ -7510,7 +7538,9 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
   if(online()&&NET.user&&pushTeam!==S.team.id){try{await applyMembership(await api('/teams/'+encodeURIComponent(pushTeam)))}catch(e){console.warn('push team',e&&e.message)}
    if(location.hash!==h)try{history.replaceState(null,'',location.pathname+h)}catch(e){}}}   // 팀을 바꾸면 홈으로 보내는 것을 되돌린다
  if(!online()&&!me().name){location.hash='#/settings';render()}else render();
- if(online()&&S.team.id){SYNC.pullServices().then(ch=>{if(ch)render()});SYNC.pullLibrary();pullSongs('fresh').then(ch=>{if(ch&&/^(edit|view|play|library)$/.test(route().name))render()}).catch(()=>{})}
+ // 못 올린 발행(오프라인 발행·올리다 닫힌 앱)을 먼저 올리고 목록을 받는다
+ if(online()&&S.team.id){SYNC.pushPending().then(n=>{if(n)render()}).catch(()=>0).then(()=>SYNC.pullServices()).then(ch=>{if(ch)render()});SYNC.pullLibrary();pullSongs('fresh').then(ch=>{if(ch&&/^(edit|view|play|library)$/.test(route().name))render()}).catch(()=>{})}
+ if(!online())scheduleReprobe();
  probeOmr();startNotiPoll();nativeSetup();
  window.CONTI={ADS,WEBADS,AD_HOSTS,setZoom,P,pl:()=>PL,STG,stageOpen,stageExit,adsAllowed,webAdsAllowed,MET,PIANO,metOpen,metStart,metStop,metSet,pianoOpen,HOME,PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go,PLANQ,planCls,ytOriginParam,ytEmbedSrc,YT};
 })();
