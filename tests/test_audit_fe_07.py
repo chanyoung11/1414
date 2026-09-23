@@ -447,7 +447,49 @@ def t_nav(b, errs):
     print('F91 늦게 온 메모도 화면에 ok')
     c.close()
 
-TESTS = [('F25', t_push_off), ('SCORE', t_score), ('CHORD', t_chords), ('F90', t_ai_switch), ('F91', t_nav)]
+# ---------------------------------------------------------------- G20 스스로 나간 사람
+def t_leave(b, errs):
+    cl, L = new_page(b, errs, 'leader')
+    signup(L, 'lv' + tag, '인도'); make_team(L, '떠날팀')
+    team = L.evaluate('CONTI.S.team.id'); code = L.evaluate('CONTI.S.team.invite')
+    cm, M = new_page(b, errs, 'member', viewport={'width': 430, 'height': 900})
+    signup(M, 'lm' + tag, '지우'); M.wait_for_selector('#gtTeam', timeout=10000)
+    M.goto(URL + '#/join/' + code); M.wait_for_selector('#jnName', timeout=10000)
+    M.click('[data-act="team-join"]'); M.wait_for_selector('.shell[data-page]', timeout=10000)
+    muid = M.evaluate('CONTI.NET.user.id')
+
+    # 스스로 나간다 → 팀 없는 화면 (팀 만들기가 있다), '인도자에게 문의' 가 아니다
+    M.goto(URL + '#/team'); M.wait_for_selector('[data-sopen="team"]', timeout=10000)
+    if not M.locator('.tsec[data-sect="team"].on').count(): M.click('[data-sopen="team"]'); M.wait_for_timeout(250)
+    M.click('[data-act="tm-leave"]')
+    M.wait_for_selector('#gtTeam', timeout=10000)
+    body = M.locator('#app').inner_text()
+    if '인도자에게 문의' in body: fail('G20 스스로 나갔는데 인도자가 막은 화면이 나옴')
+    if not M.locator('[data-act="team-create"]').count(): fail('G20 나간 뒤 팀 만들기가 없음')
+    M.reload(); M.wait_for_selector('#gtTeam', timeout=10000)
+    if '인도자에게 문의' in M.locator('#app').inner_text(): fail('G20 다시 열었더니 막힌 화면')
+    me = cm.request.get(URL + 'api/me', headers=H).json()
+    if me.get('blocked'): fail('G20 서버가 스스로 나간 사람을 blocked 로 줌: %s' % me.get('blocked'))
+    print('G20 스스로 나가면 팀 없는 화면 ok')
+
+    # 같은 팀 초대 링크로 다시 들어올 수 있다 ('이미 ○○ 팀에 있어요'로 돌려보내지 않는다)
+    M.goto(URL + '#/join/' + code); M.wait_for_selector('#jnName', timeout=10000)
+    M.click('[data-act="team-join"]'); M.wait_for_selector('.shell[data-page]', timeout=10000)
+    if M.evaluate('CONTI.S.team.id') != team: fail('G20 초대 링크로 다시 들어오지 못함')
+    print('G20 초대 링크로 다시 들어오기 ok')
+
+    # 인도자가 비활성으로 두면 예전처럼 막힌 화면 — 다만 내 팀은 만들 수 있다
+    r = cl.request.patch(URL + 'api/teams/%s/members/%s' % (team, muid), headers=H, data={'active': False})
+    if r.status != 200: fail('G20 준비: 비활성으로 못 둠 %s %s' % (r.status, r.text()))
+    M.reload(); M.wait_for_selector('.auth-card', timeout=10000); M.wait_for_timeout(500)
+    body = M.locator('#app').inner_text()
+    if '인도자에게 문의' not in body: fail('G20 인도자가 비활성으로 뒀는데 막힌 화면이 아님:\n' + body[:200])
+    if not M.locator('[data-act="team-create"]').count(): fail('G20 막힌 화면에 팀 만들기가 없음')
+    M.fill('#gtTeam', '내새팀'); M.click('[data-act="team-create"]'); M.wait_for_selector('.shell[data-page]', timeout=10000)
+    print('G20 비활성 화면에서도 팀 만들기 ok')
+    cl.close(); cm.close()
+
+TESTS = [('F25', t_push_off), ('SCORE', t_score), ('CHORD', t_chords), ('F90', t_ai_switch), ('F91', t_nav), ('G20', t_leave)]
 
 def run():
     only = set(sys.argv[1:])

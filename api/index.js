@@ -173,7 +173,16 @@ async function meView(uid) {
   // 비활성인 팀은 목록에 넣지 않는다. 다만 그 팀뿐이면 왜 안 보이는지 알려 준다 (B.4.3)
   const live = rows.filter((r) => r.active !== false);
   const out = { user: { id: u.id, username: u.username, name: u.display_name, agreedVer: u.agreed_ver || '', legalVer: LEGAL_VERSION }, team: live[0] ? viewOf(live[0]) : null, teams: live.map(viewOf) };
-  if (!live.length && rows.length) out.blocked = { teamName: rows[0].name };
+  if (!live.length && rows.length) {
+    // 스스로 나간 팀만 남았으면 막힌 게 아니다 — 팀이 없는 사람처럼 새 팀을 만들거나 초대로 들어간다.
+    // 나가기도 비활성(active=false)으로 남기므로 기록(team_audit)의 마지막 동작으로 가른다. 기록이 없으면 예전처럼 막힘으로 본다
+    const acts = await q(`select distinct on (team_id) team_id, action from team_audit
+                          where target=$1 and team_id = any($2::uuid[]) and action in ('member.leave','member.deactivate','member.activate','member.rejoin')
+                          order by team_id, at desc`, [uid, rows.map((r) => r.id)]).catch(() => []);
+    const left = new Set(acts.filter((a) => a.action === 'member.leave').map((a) => a.team_id));
+    const by = rows.find((r) => !left.has(r.id));
+    if (by) out.blocked = { teamName: by.name };
+  }
   return out;
 }
 function pickSession(team, s) {
@@ -1134,7 +1143,8 @@ on('GET', '/invite/:token', async ({ uid, params }) => {
   if (r.err) throw notFound(r.err);
   const n = await one('select count(*)::int as n from members where team_id=$1 and active', [r.team.id]);
   const mine = await membership(uid, r.team.id);
-  // 나갔거나 비활성인 사람은 '이미 팀에 있어요'가 아니다. 가입 화면을 보여 다시 들어오게 한다 (F42)
+  // 나갔거나 비활성인(인도자가 뺀) 사람은 '이미 팀에 있어요'가 아니다. 가입 화면을 보여 다시 들어오게 한다 (F42 · G20).
+  // 예전에는 '이미 ○○ 팀에 있어요'로 돌려보내 다시 들어올 길이 없었다 — 가입하면 원래 역할로 되살린다 (POST join)
   return { teamName: r.team.name, sessions: r.team.sessions, count: n.n, role: r.invite.role,
            alreadyMember: !!mine && mine.active !== false, rejoin: !!mine && mine.active === false };
 });

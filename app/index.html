@@ -3542,18 +3542,21 @@ function loginHTML(){const m=GATE.mode;if(m==='recover')return recoverHTML();ret
  <div class="legalfoot"><button data-act="legal" data-k="terms">이용약관</button><button data-act="legal" data-k="privacy">개인정보처리방침</button></div></div>`)}
 function gateHTML(){const u=NET.user||{};return authShell(`<div class="auth-card"><div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div><h1>${esc(u.name||u.username)}님, 반가워요</h1><p class="sub">아직 팀이 없어요. 초대 링크로 들어가거나 새 팀을 만드세요.</p>
  <div class="lbl">초대 링크로 가입</div><div class="row"><input class="field" id="gtLink" placeholder="인도자가 보낸 링크 또는 코드"><button class="btn" data-act="join-go">열기</button></div><div class="err" id="gtErr"></div></div>
- <div class="auth-card"><h2>팀 만들기</h2><p class="sub">인도자가 팀을 만들고 초대 링크를 카톡에 붙여요.</p>
+ ${teamCreateCard(u)}`)}
+// 팀 만들기 칸. 팀이 없는 사람과 비활성으로 막힌 사람 둘 다 쓴다 — 한 팀에서 빠졌다고 내 팀을 못 만들 까닭은 없다
+const teamCreateCard=u=>`<div class="auth-card"><h2>팀 만들기</h2><p class="sub">인도자가 팀을 만들고 초대 링크를 카톡에 붙여요.</p>
  <div class="lbl">팀 이름</div><input class="field" id="gtTeam" placeholder="LIKE 찬양팀">
  <div class="lbl">내 이름</div><input class="field" id="gtName" value="${esc(u.name||'')}">
  <div class="lbl">내 세션</div><div id="gtSess">${DEF_SESS.map(x=>`<button class="q ${x===(GATE.sess||'인도자')?'on':''}" data-s="${esc(x)}">${esc(x)}</button>`).join('')}</div>
  <div class="err" id="gtErr2"></div><button class="btn pri wide" data-act="team-create">${ic('plus')}팀 만들고 인도자로 시작</button>
- <div class="foot"><span class="hint">${esc(u.username||'')}</span><button class="btn sm ghost" data-act="logout">${ic('logout')}로그아웃</button></div></div>`)}
-// 인도자가 비활성으로 둔 사람. 자료는 남아 있고 다시 활성으로 바꾸면 그대로 돌아온다
+ <div class="foot"><span class="hint">${esc(u.username||'')}</span><button class="btn sm ghost" data-act="logout">${ic('logout')}로그아웃</button></div></div>`;
+// 인도자가 비활성으로 둔 사람. 자료는 남아 있고 다시 활성으로 바꾸면 그대로 돌아온다.
+// 스스로 나간 사람은 여기 오지 않는다 (서버가 blocked 를 주지 않아 팀 없는 화면으로 간다)
 function blockedHTML(){const u=NET.user||{};const b=NET.blocked||{};
  return authShell(`<div class="auth-card"><div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div>
   <h1>지금은 들어갈 수 없어요</h1><p class="sub">${esc(b.teamName||'이 팀')}에서 비활성 상태예요. 인도자에게 문의해 주세요.<br>쓰신 메모와 지난 편성은 그대로 남아 있어요.</p>
-  <div class="lbl">초대 링크로 다시 들어가기</div><div class="row"><input class="field" id="gtLink" placeholder="인도자가 보낸 링크 또는 코드"><button class="btn" data-act="join-go">열기</button></div><div class="err" id="gtErr"></div>
-  <div class="foot"><span class="hint">${esc(u.username||'')}</span><button class="btn sm ghost" data-act="logout">${ic('logout')}로그아웃</button></div></div>`)}
+  <div class="lbl">초대 링크로 다시 들어가기</div><div class="row"><input class="field" id="gtLink" placeholder="인도자가 보낸 링크 또는 코드"><button class="btn" data-act="join-go">열기</button></div><div class="err" id="gtErr"></div></div>
+ ${teamCreateCard(u)}`)}
 function joinHTML(tok){const p=GATE.preview,u=NET.user||{};return authShell(`<div class="auth-card"><div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div>
  ${!p?`<h1>초대 확인 중…</h1><p class="sub">잠시만요.</p>`:p.error?`<h1>초대를 열 수 없어요</h1><p class="sub">${esc(p.error)}</p><button class="btn wide" style="margin-top:18px" data-act="go-home">처음으로</button>`:
  `<p class="kicker">${p.rejoin?'다시 들어가기':'팀 초대'+(p.role&&p.role!=='member'?' · '+RL[p.role]:'')}</p><h1 style="margin-top:6px">${esc(p.teamName)}</h1><p class="sub">${p.rejoin?'예전에 있던 팀이에요. 역할과 세션은 그대로 돌아가요.':`멤버 ${p.count}명 · ${p.role==='pastor'?'이름만 적으면':'이름과 세션만 고르면'} 바로 들어가요.`}</p>
