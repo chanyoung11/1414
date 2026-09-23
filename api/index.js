@@ -2379,31 +2379,50 @@ on('GET', '/rehearsals', async ({ uid, url }) => {
 // '나만' 메모는 인도자에게도 보이지 않는다 (§5.3 범위: 전체 / 세션 / 나만)
 const rehNoteVisible = (n, m) => n.authorId === m.user_id || n.layer === 'leader'
   || (n.layer === 'session' && mySessions(m).includes(n.session));
+// 메모는 녹음 한 줄의 jsonb 배열이다. 읽어서 JS 로 고쳐 통째로 쓰면, 업로드 알림을 받고 여럿이 한꺼번에
+// 메모를 달 때 나중 쓴 사람이 앞사람 것을 덮어 지운다 (20개 중 4개만 남았다).
+// 그래서 배열 고치기를 update 한 문장 안에서 한다 — 같은 줄의 update 는 서로 기다렸다가 새 값 위에 다시 계산된다
+const REH_NOTES = `(case when jsonb_typeof(notes) = 'array' then notes else '[]'::jsonb end)`;
 on('POST', '/rehearsals/:id/notes', async ({ uid, params, body }) => {
   if (!uid) throw noAuth();
   const teamId = str(body.teamId, 64);
   const m = await requireMember(uid, teamId);
-  const r = await one('select notes from rehearsals where id=$1 and team_id=$2', [params.id, teamId]);
-  if (!r) throw notFound('녹음이 없어요');
   const b = body.note || {};
   const layer = ['leader', 'session', 'mine'].includes(str(b.layer, 10)) ? str(b.layer, 10) : 'mine';
   if (layer === 'leader' && m.role !== 'leader') throw forbidden('전체 메모는 인도자만 쓸 수 있어요');
-  const n = { id: str(b.id, 40) || randomToken(8), t: Math.max(0, Math.round(+b.t || 0)), text: str(b.text, 60), layer,
-    session: layer === 'session' ? str(b.session, 40) : null, itemId: str(b.itemId, 64) || null,
+  if (m.role === 'pastor' && !(await teamSettings(teamId)).pastorCanMemo) throw forbidden('목회자 메모는 팀 설정에서 켜야 해요');
+  // 세션 메모는 내 세션(겸임이면 그중 하나)에만. 콘티 메모(POST /notes)와 같은 규칙
+  const want = str(b.session, 40);
+  const n = { id: /^[A-Za-z0-9_-]{4,40}$/.test(str(b.id, 40)) ? str(b.id, 40) : randomToken(8), t: Math.max(0, Math.round(+b.t || 0)), text: str(b.text, 60), layer,
+    session: layer === 'session' ? (mySessions(m).includes(want) ? want : (m.session || null)) : null, itemId: str(b.itemId, 64) || null,
     authorId: uid, author: m.mname, createdAt: new Date().toISOString() };
   if (!n.text) throw bad('내용을 적어 주세요');
-  const list = [...(Array.isArray(r.notes) ? r.notes : []).filter((x) => x.id !== n.id), n].slice(-300);
-  await q('update rehearsals set notes=$2 where id=$1', [params.id, JSON.stringify(list)]);
+  // id 는 클라이언트가 정한다 (지울 때 그 id 로 찾는다). 같은 id 로 다시 보내면 내 메모만 바꿔 쓴다 —
+  // 남의 메모 id 로 보내 인도자 메모를 지우고 내 것으로 바꿔치는 일이 없게
+  const rows = await q(`update rehearsals set notes = (
+      select coalesce(jsonb_agg(e order by i), '[]'::jsonb) from (
+        select e, i, count(*) over () as cnt from jsonb_array_elements(
+          coalesce((select jsonb_agg(x order by k) from jsonb_array_elements(${REH_NOTES}) with ordinality o(x, k) where x->>'id' is distinct from $3), '[]'::jsonb)
+          || $4::jsonb) with ordinality a(e, i)) s
+      where i > cnt - 300)
+    where id=$1 and team_id=$2
+      and not exists (select 1 from jsonb_array_elements(${REH_NOTES}) x where x->>'id' = $3 and x->>'authorId' is distinct from $5)
+    returning id`, [params.id, teamId, n.id, JSON.stringify([n]), uid]);
+  if (!rows.length) {
+    if (!(await one('select 1 from rehearsals where id=$1 and team_id=$2', [params.id, teamId]))) throw notFound('녹음이 없어요');
+    throw new HttpError(409, 'note_taken', '다른 사람의 메모와 id 가 겹쳐요. 다시 저장해 주세요');
+  }
   return { ok: true, note: n };
 });
 on('DELETE', '/rehearsals/:id/notes/:noteId', async ({ uid, params, url }) => {
   if (!uid) throw noAuth();
   const teamId = str(url.searchParams.get('team'), 64);
   const m = await requireMember(uid, teamId);
-  const r = await one('select notes from rehearsals where id=$1 and team_id=$2', [params.id, teamId]);
-  if (!r) throw notFound('녹음이 없어요');
-  const list = (Array.isArray(r.notes) ? r.notes : []).filter((x) => !(x.id === params.noteId && (m.role === 'leader' || x.authorId === uid)));
-  await q('update rehearsals set notes=$2 where id=$1', [params.id, JSON.stringify(list)]);
+  const rows = await q(`update rehearsals set notes = (
+      select coalesce(jsonb_agg(x order by k), '[]'::jsonb) from jsonb_array_elements(${REH_NOTES}) with ordinality o(x, k)
+      where not (x->>'id' = $3 and ($4::boolean or x->>'authorId' = $5)))
+    where id=$1 and team_id=$2 returning id`, [params.id, teamId, params.noteId, m.role === 'leader', uid]);
+  if (!rows.length) throw notFound('녹음이 없어요');
   return { ok: true };
 });
 
