@@ -1,11 +1,13 @@
 package com.lets1414.app;
 
 import android.content.Context;
+import android.net.Uri;
 import android.print.PrintAttributes;
 import android.print.PrintDocumentAdapter;
 import android.print.PrintManager;
 import android.webkit.WebView;
 
+import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
@@ -15,6 +17,29 @@ import com.getcapacitor.annotation.CapacitorPlugin;
  *  웹의 window.print() 는 WebView 에서 아무 일도 하지 않는다. */
 @CapacitorPlugin(name = "Printer")
 public class PrinterPlugin extends Plugin {
+
+  // 파일 내보내기(콘티 파일·MusicXML). 웹뷰의 <a download> 는 아무 일도 하지 않아서, 웹이 만든 글을
+  // 캐시 폴더(exports/)에 써 두고 file:// 주소를 돌려준다 → 웹이 공유 시트(@capacitor/share)로 넘긴다.
+  // 캐시 폴더는 file_paths.xml 의 cache-path 라 FileProvider 로 다른 앱에 건넬 수 있다.
+  // 큰 파일은 여러 번에 나눠 온다 (append). 이름은 마지막 조각만 써서 폴더 밖으로 못 나가게 한다
+  @PluginMethod
+  public void saveFile(final PluginCall call) {
+    String name = new java.io.File(call.getString("name", "1414.txt")).getName().replace(':', '_');
+    if (name.isEmpty() || name.equals(".") || name.equals("..")) { call.reject("파일 이름이 이상해요"); return; }
+    try {
+      java.io.File dir = new java.io.File(getContext().getCacheDir(), "exports");
+      if (!dir.isDirectory() && !dir.mkdirs()) { call.reject("임시 폴더를 만들지 못했어요"); return; }
+      java.io.File f = new java.io.File(dir, name);
+      try (java.io.OutputStream os = new java.io.FileOutputStream(f, Boolean.TRUE.equals(call.getBoolean("append", false)))) {
+        os.write(call.getString("data", "").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+      }
+      JSObject r = new JSObject();
+      r.put("uri", Uri.fromFile(f).toString());
+      call.resolve(r);
+    } catch (Exception e) {
+      call.reject(e.getMessage() == null ? "파일을 쓰지 못했어요" : e.getMessage());
+    }
+  }
 
   // 상태바 뒤 띠 = 창 배경. 안드로이드 15 부터 상태바 색 지정이 무시돼서 창 배경을 테마 색으로 칠한다
   @PluginMethod

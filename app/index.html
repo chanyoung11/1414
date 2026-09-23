@@ -5216,9 +5216,7 @@ function scoreMenuModal(svc,it){const sc=it.score;
  $('#modal').onclick=e=>{
   if(e.target.closest('[data-close]')){closeModal();return}
   if(e.target.closest('#smXml')){const xml=scoreToMusicXML(transposeScore(sc,SC.semi-(+me().capo||0)));
-   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([xml],{type:'application/vnd.recordare.musicxml+xml'}));
-   a.download=((it.title||sc.title||'악보').replace(/[\\/:*?"<>|]/g,'_'))+'.musicxml';a.click();
-   setTimeout(()=>URL.revokeObjectURL(a.href),4000);closeModal();return}
+   saveFile((it.title||sc.title||'악보')+'.musicxml',xml,'application/vnd.recordare.musicxml+xml').catch(e2=>toast(e2.message||'파일을 저장하지 못했어요'));closeModal();return}
   if(e.target.closest('#smZoomIn')){SC.zoom=Math.min(2,SC.zoom+0.15);closeModal();drawScore();return}
   if(e.target.closest('#smZoomOut')){SC.zoom=Math.max(0.5,SC.zoom-0.15);closeModal();drawScore();return}
   const oc=e.target.closest('#smOctUp')?1:e.target.closest('#smOctDown')?-1:0;
@@ -7556,8 +7554,32 @@ async function exportJSON(onlySvcId){
  const name=(onlySvcId?(svcs[0].name||'예배'):'콘티_전체')+'_v'+(svcs[0]&&svcs[0].version||0)+'.conti.json';
  const json=JSON.stringify(data);
  try{if(window.claude&&window.claude.use){const dl=await window.claude.use('downloads');if(dl){await dl.save({filename:name,data:json});toast('저장됨');return}}}catch(e){console.warn(e)}
- const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([json],{type:'application/json'}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},2000);toast('파일 저장 ('+Math.round(total/1024/1024*10)/10+'MB)');
+ let ok=false;try{ok=await saveFile(name,json,'application/json')}catch(e){toast(e.message||'파일을 저장하지 못했어요');return}
+ if(ok)toast((NATIVE?'파일 보냄':'파일 저장')+' ('+Math.round(total/1024/1024*10)/10+'MB)');
 }
+// 파일 건네기. 웹은 <a download>. 앱(웹뷰)에서는 그게 아무 일도 하지 않는다 — iOS 는 blob: 주소를 열려다 그만두고,
+// 안드로이드 웹뷰에는 받을 곳이 없다. 그래서 앱은 공유 시트로 넘긴다 (카톡·파일 앱·드라이브).
+// 공유를 끝까지 했을 때만 true — 그때만 '저장' 이라고 알린다
+async function saveFile(name,text,type){
+ name=String(name||'1414').replace(/[\\/:*?"<>|\x00-\x1f]/g,'_');
+ if(!NATIVE){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},4000);return true}
+ // iOS 웹뷰는 웹 공유(navigator.share)로 파일을 넘길 수 있다. 앞에서 오래 준비했으면(악보 파일 읽기) 누른 손길이 만료돼
+ // 거절되므로(NotAllowedError) 한 번 더 눌러 받는다
+ const f=typeof File!=='undefined'?new File([text],name,{type}):null;
+ if(f&&navigator.canShare&&navigator.canShare({files:[f]})){
+  const go=()=>navigator.share({files:[f],title:name}).then(()=>true,e=>{if(e&&e.name==='AbortError')return false;throw e});
+  try{return await go()}catch(e){if(!e||e.name!=='NotAllowedError')throw e}
+  return await new Promise((res,rej)=>{modal(`<b style="font-size:17px">파일이 준비됐어요</b><div class="hint" style="margin-top:6px">${esc(name)}</div><div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" data-close="1">닫기</button><button class="btn pri" id="sfGo">${ic('export')}보내기</button></div>`,{center:true});
+   $('#modal').onclick=e=>{if(e.target.closest('#sfGo')){closeModal();go().then(res,rej);return}if(e.target.closest('[data-close]')||e.target.classList.contains('ov')){closeModal();res(false)}}})}
+ // 안드로이드 웹뷰에는 웹 공유가 없다 → 앱이 임시 폴더에 써 두고(Printer.saveFile) 공유 시트(@capacitor/share)로 넘긴다
+ const Pr=CapPlug().Printer,Sh=CapPlug().Share;
+ if(!Pr||!Pr.saveFile||!Sh||!Sh.share)throw new Error('이 앱 버전에서는 파일을 건넬 수 없어요. 앱을 업데이트해 주세요');
+ // 큰 파일(악보·녹음이 든 내보내기)은 한 번에 넘기면 브리지가 버거워 나눠 쓴다. 이모지 반쪽에서 자르지 않는다
+ const CH=512*1024;let uri='',i=0;
+ do{let j=Math.min(text.length,i+CH);const c=text.charCodeAt(j-1);if(j<text.length&&c>=0xd800&&c<=0xdbff)j--;
+  uri=(await Pr.saveFile({name,data:text.slice(i,j),append:i>0})).uri;i=j}while(i<text.length);
+ try{await Sh.share({title:name,files:[uri],dialogTitle:name})}catch(e){if(/cancel/i.test(String(e&&e.message)))return false;throw e}
+ return true}
 function toB64(blob){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(blob)})}
 function b64Blob(b64,type){const bin=atob(b64);const u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return new Blob([u],{type})}
 // 가져오는 파일은 누가 만든 것인지 모른다(카톡으로 돈다). id 만 고쳐서는(scrubIds) 모자라, 앱이 쓰는 모양·타입으로 맞춘다.
