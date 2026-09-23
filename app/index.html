@@ -2821,7 +2821,7 @@ const DEF_TEAM=()=>({sessions:DEF_SESS.slice(),phrases:DEF_PHR.slice(),settings:
 async function switchScope(next){if(next===CUR_SCOPE)return;
  if(CUR_SCOPE==='legacy'){CUR_SCOPE=next;await flushSave();try{await IDB.del('kv','state')}catch(e){}return} // 예전 단일 저장소는 첫 스코프가 그대로 물려받음
  await flushSave();CUR_SCOPE=next;let s=null;try{const raw=await IDB.get('kv',next);if(raw)s=JSON.parse(raw)}catch(e){console.warn('scope',e)}
- S.services=(s&&s.services)||[];S.library=(s&&s.library)||[];S.songs=(s&&s.songs)||[];S.songsAt=(s&&s.songsAt)||'';S.seenVer=(s&&s.seenVer)||{};S.noteShadow=(s&&s.noteShadow)||{};S.seedAt=(s&&s.seedAt)||0;S.dropped=(s&&s.dropped)||[];S.libAt=(s&&s.libAt)||'';S.libDeleted=(s&&s.libDeleted)||[];S.team=Object.assign(DEF_TEAM(),(s&&s.team)||{});
+ S.services=uniqSvcs(s&&s.services);S.library=(s&&s.library)||[];S.songs=(s&&s.songs)||[];S.songsAt=(s&&s.songsAt)||'';S.seenVer=(s&&s.seenVer)||{};S.noteShadow=(s&&s.noteShadow)||{};S.seedAt=(s&&s.seedAt)||0;S.dropped=(s&&s.dropped)||[];S.libAt=(s&&s.libAt)||'';S.libDeleted=(s&&s.libDeleted)||[];S.team=Object.assign(DEF_TEAM(),(s&&s.team)||{});
  if(typeof SYNC!=='undefined')Object.keys(SYNC.pulledAt).forEach(k=>delete SYNC.pulledAt[k]);
  // 팀·계정이 바뀌면 화면 캐시도 모두 비운다 (이전 팀 일정·말씀·녹음이 남지 않게)
  if(typeof NOTI!=='undefined'){NOTI.list=[];NOTI.unread=0;NOTI.at=0;NOTI.sig=''}
@@ -2834,6 +2834,8 @@ const me=()=>S.team.me;
 const isLeader=()=>me().role==='leader';
 let PRACTICE=null;   // 라이브러리에서 곡 하나만 연습할 때 쓰는 임시 콘티 (저장·동기화하지 않는다)
 const svcById=id=>S.services.find(s=>s.id===id)||(PRACTICE&&PRACTICE.id===id?PRACTICE:null);
+// 예전에 동기화가 겹쳐 돌며 같은 id 의 콘티가 두 번 저장된 기기가 있다. 앞의 것(화면이 고치던 것)만 남긴다
+function uniqSvcs(a){const seen=new Set();return (a||[]).filter(x=>x&&!seen.has(x.id)&&seen.add(x.id))}
 function practiceArr(song,a){
  if(!a||!a.id){toast('편곡이 없어요');return}
  const it=newItem();
@@ -3000,36 +3002,54 @@ function scrubVer(d){if(d&&typeof d==='object'){d.version=+d.version||0;if(d.pub
 const SYNC={t:null,pulledAt:{},missing:new Set(),
  blobIds(items){const ids=[];(items||[]).forEach(it=>{(it.pieces||[]).forEach(p=>p.blob&&ids.push(p.blob));(it.media||[]).forEach(m=>m.type==='audio'&&m.blob&&ids.push(m.blob))});return [...new Set(ids)]},
  // 팀의 발행본 목록을 받아 새 것·새 버전만 내려받음. 바뀐 게 있으면 true
- async pullServices(){if(!online()||!S.team.id)return false;
+ // 켤 때·홈·팀 전환·로그인이 겹쳐 부르면 하나만 돈다. 둘이 같이 돌면 같은 초안이 두 번 들어가
+ // 목록에 두 번 보였고, '남는 쪽'을 지우면 진짜 콘티가 서버에서 지워졌다
+ pullServices(){if(SYNC.pulling&&SYNC.pulling.scope===CUR_SCOPE)return SYNC.pulling.p;
+  const p=SYNC.pullServicesOnce(CUR_SCOPE).finally(()=>{if(SYNC.pulling&&SYNC.pulling.p===p)SYNC.pulling=null});
+  SYNC.pulling={scope:CUR_SCOPE,p};return p},
+ async pullServicesOnce(scope){if(!online()||!S.team.id)return false;const tid=S.team.id;
+  // 받는 사이 팀·계정을 바꾸면 S.services 가 새 팀 것으로 바뀐다. 거기에 옛 팀 콘티를 넣거나 '서버에 없다'며 지우지 않게 멈춘다
+  const moved=()=>scope!==CUR_SCOPE||tid!==S.team.id;
   // 목록을 받는 사이에 올라간 발행(대기 중이던 것·방금 발행한 것)은 목록에 없어도 '서버에서 지워진 것'이 아니다
   const t0=Date.now(),pend0=new Set(S.services.filter(x=>x.pubPending).map(x=>x.id));
-  let list,drafts=[];try{const r=await api('/services?team='+S.team.id);list=r.services;drafts=r.drafts||[]}catch(e){return false}
+  let list,drafts=[];try{const r=await api('/services?team='+tid);list=r.services;drafts=r.drafts||[]}catch(e){return false}
+  if(moved())return false;
   let changed=false;
-  if(isLeader())for(const d of drafts){if(svcById(d.id)||(S.dropped||[]).includes(d.id))continue;try{const dd=await api('/services/'+d.id+'?team='+S.team.id+'&draft=1');if(dd&&dd.doc){
+  // 새 기기·새 멤버는 받을 콘티가 수백 개일 수 있다. 다 받을 때까지 홈이 비어 있지 않게 받는 대로 목록만 다시 그린다
+  // (목록은 최근 날짜부터 온다. render() 를 부르면 알림 등록·사용량 조회까지 매번 다시 돈다)
+  let shownAt=0;const show=()=>{if(!changed||Date.now()-shownAt<1500||route().name!=='home'||!NET.user||!S.team.id)return;
+   const a=$('#app');if(a){shownAt=Date.now();a.innerHTML=homeHTML()}};
+  if(isLeader())for(const d of drafts){if(svcById(d.id)||(S.dropped||[]).includes(d.id))continue;try{const dd=await api('/services/'+d.id+'?team='+tid+'&draft=1');if(moved())return false;if(dd&&dd.doc){
     if(dd.doc.auto&&!(dd.doc.items||[]).length&&S.services.some(x=>x.date===dd.doc.date)){S.dropped=(S.dropped||[]).concat(d.id);continue} // 자동 생성 초안인데 그 날짜 콘티가 이미 있으면 받지 않음
-    await SYNC.fetchBlobs(dd.blobs);const cur={id:d.id,name:'',date:today(),notice:'',version:0,items:[],published:null};S.services.push(cur);SYNC.applyDraft(cur,dd.doc);changed=true}}catch(e){console.warn('draft',d.id,e.message)}}
+    await SYNC.fetchBlobs(dd.blobs);if(moved())return false;
+    if(svcById(d.id))continue;   // 받는 사이 다른 길(콘티 열기 등)로 이미 들어왔다
+    const cur={id:d.id,name:'',date:today(),notice:'',version:0,items:[],published:null};S.services.push(cur);SYNC.applyDraft(cur,dd.doc);changed=true;show()}}catch(e){console.warn('draft',d.id,e.message)}}
   for(const r of list){const cur=svcById(r.id);const localV=cur&&cur.published?cur.published.version:0;
    if(cur&&localV>=r.version)continue;
    if(!cur&&(S.dropped||[]).includes(r.id))continue;
    if(!cur){const twin=S.services.find(x=>!x.published&&(r.name||'').trim()&&x.name===r.name&&x.date===r.date); // §9 같은 이름·날짜의 내 초안 → 합칠지 묻기
-    if(twin&&confirm(`"${r.name}" (${r.date}) 발행본이 서버에 있어요. 이 기기의 같은 이름 초안과 합칠까요?\n(취소하면 둘 다 남아요)`)){try{const pulled=await SYNC.pullService(r.id);mergeInto(pulled,twin);S.services=S.services.filter(x=>x.id!==twin.id);S.dropped=(S.dropped||[]).concat(twin.id);changed=true}catch(e){console.warn('merge',e.message)}continue}}
-   try{await SYNC.pullService(r.id);changed=true}catch(e){console.warn('pull',r.id,e.message)}}
+    if(twin&&confirm(`"${r.name}" (${r.date}) 발행본이 서버에 있어요. 이 기기의 같은 이름 초안과 합칠까요?\n(취소하면 둘 다 남아요)`)){try{const pulled=await SYNC.pullService(r.id);if(moved())return false;mergeInto(pulled,twin);S.services=S.services.filter(x=>x.id!==twin.id);S.dropped=(S.dropped||[]).concat(twin.id);changed=true}catch(e){console.warn('merge',e.message)}continue}}
+   try{if(await SYNC.pullService(r.id))changed=true}catch(e){console.warn('pull',r.id,e.message)}
+   if(moved())return false;show()}
   // 서버에서 사라진 콘티는 이 기기에서도 지운다. 안 그러면 다른 기기에서 지워도
   // 여기에는 영원히 남아, 같은 이름이 두 번씩 보이거나 지운 예배가 살아 있는 것처럼 보인다.
   // 아직 서버에 못 올린 내 초안(발행 전·발행 대기)은 건드리지 않는다
   const onServer=new Set(list.map(r=>r.id).concat(drafts.map(d=>d.id)));
   const sig=x=>(x.date||'')+'|'+(x.items||[]).map(it=>(it.title||'').trim()).join('|');
   const serverSigs=new Set(S.services.filter(x=>onServer.has(x.id)).map(sig));
+  // 이 기기에서 만들거나 고치고 아직 서버에 못 올린 초안은 복사본이 아니다 (라이브러리에서 1부와 같은 곡으로 만든 2부 예배가 지워졌다)
+  const unsent=x=>!!(x.editedAt&&x.draftPushedAt!==x.editedAt);
   const gone=S.services.filter(x=>!onServer.has(x.id)&&((x.published&&!x.pubPending&&!pend0.has(x.id)&&!(x.published.at>=t0))||
    // 서버에 없는 초안인데 서버 것과 날짜·곡이 똑같다 → 예전 동기화가 남긴 복사본
-   (!x.published&&serverSigs.has(sig(x)))));
+   (!x.published&&(x.items||[]).length&&!unsent(x)&&serverSigs.has(sig(x)))));
   if(gone.length){
    const ids=new Set(gone.map(x=>x.id));
    S.services=S.services.filter(x=>!ids.has(x.id));
    gone.forEach(x=>{if(S.noteShadow)delete S.noteShadow[x.id];if(S.readRev)delete S.readRev[x.id]});
    changed=true}
   if(changed)save();return changed},
- async pullService(id){const d=await api('/services/'+id+'?team='+S.team.id);const doc=scrubVer(scrubIds(d.doc));await SYNC.fetchBlobs(d.blobs);
+ async pullService(id){const scope=CUR_SCOPE;const d=await api('/services/'+id+'?team='+S.team.id);const doc=scrubVer(scrubIds(d.doc));await SYNC.fetchBlobs(d.blobs);
+  if(scope!==CUR_SCOPE)return null;   // 받는 사이 팀을 바꿨다 — 새 팀 목록에 옛 팀 콘티를 넣지 않는다
   if(d.word!==undefined){const cur0=svcById(id);if(cur0)cur0.word=d.word||null}
   if(d.readRev){S.readRev=S.readRev||{};S.readRev[id]=Math.max(S.readRev[id]||0,d.readRev)}
   let cur=svcById(id);
@@ -3074,9 +3094,11 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),
  // 라이브러리: 팀이 함께 쓰는 곡 보관함. 내려받고(전원) 올린다(인도자)
  libIds(songs){const ids=[];(songs||[]).forEach(s=>{(s.pieces||[]).forEach(p=>p.blob&&ids.push(p.blob));(s.media||[]).forEach(m=>m.blob&&ids.push(m.blob))});return [...new Set(ids)]},
  async pullLibrary(){if(!online()||!S.team.id)return false;
+  const scope=CUR_SCOPE;
   let r;try{r=await api('/library?team='+S.team.id+(S.libAt?'&since='+encodeURIComponent(S.libAt):''))}catch(e){return false}
   let changed=false;
   await SYNC.fetchBlobs(r.blobs);
+  if(scope!==CUR_SCOPE)return false;   // 받는 사이 팀을 바꿨으면 새 팀 라이브러리에 섞지 않는다
   (r.songs||[]).forEach(s=>{scrubIds(s);const cur=S.library.find(x=>x.id===s.id);
    if(!cur){S.library.push(s);changed=true}
    else if(!cur.dirty){Object.assign(cur,s);changed=true}});   // 이 기기에서 아직 안 올린 수정은 지키기
@@ -3521,12 +3543,14 @@ const LIB={at:0,q:'',key:'',tempo:'',tag:'',folder:'',last:'',sort:'recent',arch
 // 전에는 이때도 늘 통째로 받아 800곡 팀이면 한 번에 수 MB 였고, 발행 푸시에 팀원이 한꺼번에 열면 서버가 메모리가 넘쳐 죽었다
 async function pullSongs(force){if(!online()||!S.team.id)return false;
  if(!force&&Date.now()-LIB.at<8000)return false;
- const tid=S.team.id;   // 받는 사이에 팀을 바꿨으면 그 응답은 버린다
+ const tid=S.team.id,scope=CUR_SCOPE;   // 받는 사이에 팀을 바꿨으면 그 응답은 버린다
+ const moved=()=>tid!==S.team.id||scope!==CUR_SCOPE;
  const full=force===true||!S.songsAt;
  let r;try{r=await api('/songs?team='+tid+(full?'':'&since='+encodeURIComponent(S.songsAt)))}catch(e){return false}
- if(tid!==S.team.id)return false;
+ if(moved())return false;
  let changed=false;
  await SYNC.fetchBlobs(r.blobs);
+ if(moved())return false;   // 파일을 받는 동안 바꿨을 수도 있다 (전에는 여기서 옛 팀 곡이 새 팀 라이브러리에 들어갔다)
  // 통째로 다시 받아도(force) 바뀐 곡만 바꾼 것으로 친다. 전에는 라이브러리에 들어갈 때마다 전체 저장·다시 그리기가 돌았다
  (r.songs||[]).forEach(s=>{scrubIds(s);const i=(S.songs||[]).findIndex(x=>x.id===s.id);
   if(i<0){S.songs.push(s);changed=true}
@@ -3573,7 +3597,9 @@ async function saveArr(s,a,fields){if(!isLeader())return;
  catch(e){toast(e.message);if(songRejected(e)){delete s.pendArr[a.id];songClean(s);save();pullSongs(true).then(()=>render()).catch(()=>{})}else SYNC.schedulePush();return false}}
 // 쌓아 둔 것을 다시 민다
 async function pushDirtySongs(){if(!online()||!isLeader()||!S.team.id)return false;let n=0,resync=false;
+ const tid=S.team.id;
  for(const s of (S.songs||[])){
+  if(tid!==S.team.id)break;   // 팀을 바꿨으면 옛 팀 곡을 새 팀으로 보내 404 → 쌓아 둔 수정을 버리는 일이 없게
   if(!s.dirty)continue;
   try{
    if(s.pend){await api('/songs/'+s.id,{method:'PATCH',body:{teamId:S.team.id,...s.pend}});delete s.pend;n++}
@@ -3699,11 +3725,14 @@ async function pushSongs(){
  // 이미 밀고 있으면 그냥 돌아가지 말고 끝난 뒤 한 번 더 부른다 (그 사이 고친 것이 묻히지 않게)
  if(PUSH_SONGS){clearTimeout(pushSongs.retry);pushSongs.retry=setTimeout(pushSongs,1200);return false}
  PUSH_SONGS=true;let changed=false,relink=false;
+ // 미는 사이 팀을 바꾸면 S.team.id 가 새 팀이 된다. 옛 팀 콘티의 곡을 새 팀 라이브러리에 만들지 않게 멈춘다
+ const tid=S.team.id,scope=CUR_SCOPE;const moved=()=>tid!==S.team.id||scope!==CUR_SCOPE;
  try{
   // 손댄 콘티만 본다. 전부 훑으면 콘티가 쌓일수록 저장할 때마다 조각을 통째로 복사하게 된다
   const todo=S.services.filter(sv=>(sv.editedAt||0)!==(sv.songsPushedAt||0)||(sv.items||[]).some(it=>!it.arrId&&(it.title||'').trim()));
   for(const sv of todo){
    for(const it of (sv.items||[])){
+    if(moved())return false;
     if(!(it.title||'').trim())continue;
     const snap=arrSnap(it);
     if(it.arrId){
@@ -7591,7 +7620,7 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
 
 /* ---------- boot ---------- */
 (async function boot(){
- try{await IDB.open();const sc=await IDB.get('kv','scope');if(sc)CUR_SCOPE=sc;const raw=await IDB.get('kv',sc||'state');if(raw){const s=JSON.parse(raw);S=Object.assign(S,s);S.team=Object.assign({sessions:DEF_SESS.slice(),phrases:DEF_PHR.slice(),me:{name:'',session:'건반',role:'leader'}},S.team||{});
+ try{await IDB.open();const sc=await IDB.get('kv','scope');if(sc)CUR_SCOPE=sc;const raw=await IDB.get('kv',sc||'state');if(raw){const s=JSON.parse(raw);S=Object.assign(S,s);S.services=uniqSvcs(S.services);S.team=Object.assign({sessions:DEF_SESS.slice(),phrases:DEF_PHR.slice(),me:{name:'',session:'건반',role:'leader'}},S.team||{});
   const mig=it=>{if(it&&it.keyNow!==undefined){it.mod=(it.keyNow&&it.keyNow!==it.key)?it.keyNow:(it.mod||'');delete it.keyNow}};
   S.services.forEach(s=>{s.items.forEach(mig);if(s.published)s.published.items.forEach(mig)});S.library.forEach(mig)}}catch(e){console.error(e);alert('저장소를 열 수 없어요. 사파리 비공개 모드에서는 동작하지 않습니다.')}
  // seed (embedded data) — used when this page is published with data inside
