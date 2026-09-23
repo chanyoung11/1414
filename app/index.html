@@ -2874,7 +2874,7 @@ async function recheckServer(){
  if(NET.server===true&&was!==true){
   try{await takeMe(await api('/me'))}catch(e){if(e.status===401)NET.user=null}
   toast('서버에 다시 연결됐어요');
-  if(S.team.id){SYNC.pullServices().then(ch=>{if(ch)render()});pullSongs(true).catch(()=>{})}
+  if(S.team.id){SYNC.pullServices().then(ch=>{if(ch)render()});pullSongs('fresh').catch(()=>{})}
   SYNC.schedulePush();render()}}
 window.addEventListener('online',()=>{clearTimeout(RECONNECT_T);RECONNECT_T=setTimeout(recheckServer,800)});
 const RL={leader:'인도자',session_lead:'세션리더',member:'멤버',pastor:'목회자'};
@@ -2905,6 +2905,8 @@ function probeOmr(){if(!online()||!NET.user)return;api('/omr').then(r=>{const on
 async function applyMembership(t){const next=scopeKey(NET.user&&NET.user.id,t.teamId);
  if(next!==CUR_SCOPE){const prev=S.team.id;await switchScope(next);if(prev&&prev!==t.teamId&&route().name!=='home')go('home');
   if(typeof SYNC!=='undefined'&&online())setTimeout(()=>{SYNC.pullLibrary();if(typeof pullSongs!=='undefined')pullSongs(true)},0)}   // 팀이 바뀌면 그 팀 라이브러리를 받아온다
+ // 역할·세션이 바뀌면 받을 수 있는 고정 메모가 달라진다(세션 메모는 그 세션과 인도자만). since 로는 안 오니 곡 목록을 통째로 다시 받게
+ {const pm=S.team.me||{};if(S.songsAt&&S.team.id===t.teamId&&(pm.role!==t.me.role||String(pm.mySessions||[])!==String(t.me.mySessions||[])))S.songsAt=''}
  S.team.id=t.teamId;S.team.name=t.teamName;S.team.plan=t.plan||'free';S.team.planUntil=t.planUntil||null;S.team.invite=t.invite||'';S.team.sessions=t.sessions.slice();S.team.phrases=t.phrases.slice();S.team.settings=t.settings||S.team.settings||{};S.team.me={userId:t.me.userId,name:t.me.name,session:t.me.session,mySessions:t.me.mySessions||[],role:t.me.role,capo:+t.me.capo||0};save()}
 async function takeMe(m){NET.user=m.user;NET.teams=m.teams||[];NET.blocked=m.blocked||null;const cur=NET.teams.find(x=>x.teamId===S.team.id)||m.team;
  if(cur){if(S.team.id&&cur.teamId!==S.team.id)toast((cur.teamName||'다른')+' 팀으로 전환했어요');await applyMembership(cur)}
@@ -3397,10 +3399,14 @@ function relDate(d){if(!d)return '—';const t=new Date(d);if(isNaN(t))return '�
  if(days<365)return Math.floor(days/30)+'달 전';return Math.floor(days/365)+'년 전'}
 
 const LIB={at:0,q:'',key:'',tempo:'',tag:'',folder:'',last:'',sort:'recent',archived:false,season:false,pick:null,sel:[],detail:null,tab:'arr',dups:null};
+// force: true 면 통째로 다시 받는다 (처음·팀을 바꿨을 때·코드로 받기·합치기처럼 크게 바뀐 뒤).
+// 'fresh' 는 8초 제한만 건너뛰고 지난번 뒤로 바뀐 곡만(since) 받는다 — 앱을 열 때·라이브러리에 들어올 때·다시 연결됐을 때.
+// 전에는 이때도 늘 통째로 받아 800곡 팀이면 한 번에 수 MB 였고, 발행 푸시에 팀원이 한꺼번에 열면 서버가 메모리가 넘쳐 죽었다
 async function pullSongs(force){if(!online()||!S.team.id)return false;
  if(!force&&Date.now()-LIB.at<8000)return false;
  const tid=S.team.id;   // 받는 사이에 팀을 바꿨으면 그 응답은 버린다
- let r;try{r=await api('/songs?team='+tid+(S.songsAt&&!force?'&since='+encodeURIComponent(S.songsAt):''))}catch(e){return false}
+ const full=force===true||!S.songsAt;
+ let r;try{r=await api('/songs?team='+tid+(full?'':'&since='+encodeURIComponent(S.songsAt)))}catch(e){return false}
  if(tid!==S.team.id)return false;
  let changed=false;
  await SYNC.fetchBlobs(r.blobs);
@@ -3410,11 +3416,21 @@ async function pullSongs(force){if(!online()||!S.team.id)return false;
  (r.deleted||[]).forEach(id=>{const i=(S.songs||[]).findIndex(x=>x.id===id);if(i>=0){S.songs.splice(i,1);changed=true}});
  S.songsAt=r.now||S.songsAt;LIB.at=Date.now();if(changed){refreshFromArr();save()}
  await songURLs();
+ // since 로 받으면 안 바뀐 곡의 파일 주소는 다시 오지 않는다. 지난번에 못 받은 파일(끊김·인도자가 나중에 다시 올림)은 앱을 켠 뒤 한 번 채운다
+ if(!full&&!pullSongs.filled){pullSongs.filled=true;fillSongBlobs().catch(()=>{})}
  // 인도자 기기: 서버에 파일이 빠진 곡이 있으면 이 기기에 있는 것으로 채워 준다 (세션당 한 번)
  if(isLeader()&&!pullSongs.healed){pullSongs.healed=true;
   const arrs=(S.songs||[]).map(x=>defArr(x)).filter(a=>a&&((a.pieces||[]).length||(a.media||[]).length));
   SYNC.healBlobs(arrs).then(n=>{if(n)console.log('악보 파일 보수',n)}).catch(()=>{})}
  return changed}
+async function fillSongBlobs(){const tid=S.team.id;
+ const ids=SYNC.blobIds((S.songs||[]).flatMap(s=>s.arrangements||[]));const miss=[];
+ for(let i=0;i<ids.length;i+=50){const part=ids.slice(i,i+50);
+  const have=await Promise.all(part.map(id=>IDB.get('blobs',id).catch(()=>null)));part.forEach((id,k)=>{if(!have[k])miss.push(id)})}
+ for(let i=0;i<miss.length&&tid===S.team.id;i+=40){
+  const r=await api('/blobs?team='+tid+'&ids='+miss.slice(i,i+40).join(',')+'&urls=1');
+  await SYNC.fetchBlobs(r.urls||{})}
+ if(miss.length)await songURLs()}
 // 목록 썸네일은 url() 로 그리는데 그건 캐시만 본다. 미리 만들어 둔다
 async function songURLs(){const ids=[];
  (S.songs||[]).forEach(s=>(s.arrangements||[]).forEach(a=>(a.pieces||[]).forEach(p=>p.blob&&ids.push(p.blob))));
@@ -5134,7 +5150,7 @@ async function render(){
  if(/^library$/.test(r.name)){
   if(!online()||!S.team.id)return go('home');
   if(!(S.songs||[]).length&&!S.songsAt){app.innerHTML='<div class="empty" style="margin:40px auto;max-width:420px"><b>라이브러리를 받는 중…</b></div>';await pullSongs(true);if(stale())return}
-  else if(!same)pullSongs(true).then(ch=>{if(ch&&route().name==='library'&&!r.a)render()}).catch(()=>{});
+  else if(!same)pullSongs('fresh').then(ch=>{if(ch&&route().name==='library'&&!r.a)render()}).catch(()=>{});
   if(r.a){   // 곡 상세
    let song=songById(r.a);
    // 화면에 들어올 때만 서버에서 받는다. 탭을 눌러 다시 그릴 때(same)는 이미 받아 둔 것을 쓴다 — 안 그러면 계속 다시 받는다
@@ -7432,7 +7448,7 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
   else if(await probeServer()!==true)NET.server=null;
   else console.warn('me 실패',e&&e.message)}}
  if(!online()&&!me().name){location.hash='#/settings';render()}else render();
- if(online()&&S.team.id){SYNC.pullServices().then(ch=>{if(ch)render()});SYNC.pullLibrary();pullSongs(true).then(ch=>{if(ch&&/^(edit|view|play|library)$/.test(route().name))render()}).catch(()=>{})}
+ if(online()&&S.team.id){SYNC.pullServices().then(ch=>{if(ch)render()});SYNC.pullLibrary();pullSongs('fresh').then(ch=>{if(ch&&/^(edit|view|play|library)$/.test(route().name))render()}).catch(()=>{})}
  probeOmr();startNotiPoll();nativeSetup();
  window.CONTI={ADS,WEBADS,AD_HOSTS,setZoom,P,pl:()=>PL,STG,stageOpen,stageExit,adsAllowed,webAdsAllowed,MET,PIANO,metOpen,metStart,metStop,metSet,pianoOpen,HOME,PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go,PLANQ,planCls,ytOriginParam,ytEmbedSrc,YT};
 })();

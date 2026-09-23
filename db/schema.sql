@@ -321,6 +321,9 @@ create table if not exists songs (
 create index if not exists songs_team_idx on songs(team_id, archived, updated_at desc);
 create index if not exists songs_norm_idx on songs(team_id, title_norm);
 create index if not exists songs_cho_idx  on songs(team_id, title_cho);
+-- 목록에 보이는 것 중 '고친 것'이 아닌 변화(사용 이력이 바뀜, 세션 이름이 바뀌어 메모 대상이 바뀜)의 시각.
+-- updated_at 을 올리면 '최근 고친' 순서가 흐트러지니 따로 둔다. GET /songs?since 가 둘 중 하나라도 새로우면 싣는다
+alter table songs add column if not exists touched_at timestamptz;
 
 create table if not exists arrangements (
   id          uuid primary key default gen_random_uuid(),

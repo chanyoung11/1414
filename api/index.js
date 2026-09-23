@@ -700,6 +700,8 @@ async function renameSessions(teamId, map) {
     await q('update arrangements set media=$2 where id=$1',
       [r.id, JSON.stringify(md.map((m) => (Array.isArray(m && m.sessions) ? { ...m, sessions: m.sessions.map(at) } : m)))]);
   }
+  // 고정 메모·미디어의 세션 이름이 바뀌었으니 기기의 곡 목록도 다시 받게 한다
+  await q('update songs set touched_at=now() where team_id=$1 and deleted_at is null', [teamId]);
 }
 
 // B.7.1 팀 삭제: 30일 유예. 그 사이엔 전원에게 배너가 보이고 인도자가 되돌릴 수 있다
@@ -1320,8 +1322,11 @@ on('PUT', '/services/:id', async ({ uid, params, body }) => {
 });
 
 // 사용 이력은 발행본에서만 만든다 (명세 A.1.3). 다시 발행하면 이 예배 줄을 지우고 새로 쓴다
+// 통계가 바뀐 곡은 touched_at 을 올려 곡 목록 since 로 받아지게 한다 (빠진 곡도, 새로 든 곡도)
+const dropUsages = (teamId, serviceId) => q(`with d as (delete from song_usages where team_id=$1 and service_id=$2 returning song_id)
+  update songs set touched_at=now() where id in (select song_id from d)`, [teamId, serviceId]);
 async function syncUsages(teamId, serviceId, doc, uid) {
-  await q('delete from song_usages where team_id=$1 and service_id=$2', [teamId, serviceId]);
+  await dropUsages(teamId, serviceId);
   const items = doc.items || [];
   const date = /^\d{4}-\d{2}-\d{2}$/.test(String(doc.date || '')) ? doc.date : null;
   const last = items.length - 1;
@@ -1347,6 +1352,7 @@ async function syncUsages(teamId, serviceId, doc, uid) {
                position=excluded.position, is_application=excluded.is_application, key_used=excluded.key_used`,
       [teamId, songId, str(it.arrId, 64) || null, serviceId, date, str(doc.name, 120), i, i === last, str(it.key, 12), !!it.medley, uid]);
   }
+  await q('update songs set touched_at=now() where id in (select song_id from song_usages where team_id=$1 and service_id=$2)', [teamId, serviceId]);
 }
 
 on('PUT', '/services/:id/stage-layout', async ({ uid, params, body }) => {
@@ -1395,7 +1401,7 @@ on('DELETE', '/services/:id', async ({ uid, url, params }) => {
   await q('delete from services where team_id=$1 and id=$2', [teamId, params.id]);
   await q('delete from drafts where team_id=$1 and id=$2', [teamId, params.id]);
   await q('delete from notes where team_id=$1 and service_id=$2', [teamId, params.id]);
-  await q('delete from song_usages where team_id=$1 and service_id=$2', [teamId, params.id]);   // 이력은 발행본에서만 나온다
+  await dropUsages(teamId, params.id);   // 이력은 발행본에서만 나온다
   // 이 콘티 때문에 생긴 날짜는 같이 지운다. 안 그러면 콘티를 지워도 홈의 D-day 카드에 남아
   // '콘티 만들기'를 누르면 되살아난 것처럼 보인다
   await q(`delete from service_dates where team_id=$1 and service_id=$2 and source='service'`, [teamId, params.id]);
@@ -1519,37 +1525,58 @@ async function companionsOf(teamId, songId) {
   return Object.values(acc).filter((x) => x.n >= 2).sort((a, b) => b.n - a.n).slice(0, 8);
 }
 
-// 목록 (전원). 검색은 브라우저가 하고 서버는 팀의 곡을 통째로 준다 — 팀당 곡이 500을 넘지 않는다
+// 곡 목록을 통째로 만드는 일은 무겁다 — 800곡 팀이면 편곡 JSON 수 MB 를 객체로 풀었다가 다시 글자로 만든다(한 번에 수십 MB).
+// Cloud Run 은 한 인스턴스(512MB)에 요청을 80개까지 몰아 주므로, 발행 푸시에 팀원 열 명이 한꺼번에 앱을 열면 힙이 넘쳐
+// 인스턴스가 죽었다 — 그 인스턴스에 있던 다른 팀 요청까지 함께. 무거운 것은 동시에 둘까지만 만들고 나머지는 줄을 선다
+const HEAVY = { busy: 0, max: 2, wait: [] };
+async function heavySlot() {
+  if (HEAVY.busy < HEAVY.max) HEAVY.busy++;
+  else await new Promise((r) => HEAVY.wait.push(r));   // 앞 사람의 자리를 그대로 넘겨받는다 (busy 는 그대로)
+  let done = false;
+  return () => { if (done) return; done = true; const next = HEAVY.wait.shift(); if (next) next(); else HEAVY.busy--; };
+}
+// 목록 (전원). 검색은 브라우저가 하고 서버는 팀의 곡을 준다. since 가 있으면 그 뒤에 바뀐 곡만 —
+// 편곡·고정 메모·파일 주소·사용 통계도 그 곡들 것만 싣는다 (전에는 since 여도 팀 전체를 읽어 매번 통째와 같은 일을 했다).
+// 목록에 보이는 것이 바뀌면 songs.updated_at(고친 것) 이나 songs.touched_at(사용 이력·세션 이름처럼 '최근 고친' 순서는
+// 건드리면 안 되는 것) 을 올려야 since 로 받아진다
 on('GET', '/songs', async ({ uid, url }) => {
   if (!uid) throw noAuth();
   const teamId = str(url.searchParams.get('team'), 64);
-  await requireMember(uid, teamId);
-  const since = str(url.searchParams.get('since'), 40);
-  const now0 = (await one('select now() as t')).t;   // 읽기 전에 잡아야 그 사이 바뀐 것을 다음에 받는다
+  const me0 = await requireMember(uid, teamId);
+  let since = str(url.searchParams.get('since'), 40);
+  if (since && isNaN(Date.parse(since))) since = '';
+  // 읽기 전에 잡아야 그 사이 바뀐 것을 다음에 받는다. 몇 초 앞당겨 둔다 — 지금 막 쓰는 중인(아직 커밋 전) 줄은
+  // updated_at 이 이 시각보다 앞선 채로 나중에 보이게 되어, 딱 지금으로 잡으면 다음 since 에서 영영 빠진다
+  const now0 = (await one(`select now() - interval '5 seconds' as t`)).t;
   const songs = since
-    ? await q('select * from songs where team_id=$1 and updated_at > $2 order by updated_at asc', [teamId, since])
+    ? await q('select * from songs where team_id=$1 and (updated_at > $2 or touched_at > $2) order by updated_at asc', [teamId, since])
     : await q('select * from songs where team_id=$1 order by updated_at asc', [teamId]);
-  const arrs = await q('select * from arrangements where team_id=$1 and deleted_at is null order by is_default desc, created_at asc', [teamId]);
-  const stats = await songStats(teamId);
-  // 남의 '나만' 메모는 내려보내지 않는다. 세션 메모는 그 세션 사람과 인도자만
-  const me0 = await membership(uid, teamId);
-  const fixed = arrs.length ? await q(`select id, arrangement_id as "arrangementId", marker_label as "markerLabel", layer, session,
-      author_id as "authorId", author_name as "authorName", text from arrangement_notes
-      where arrangement_id = any($1::uuid[]) and (layer='all' or (layer='mine' and author_id=$2)
-        or (layer='session' and ($3 or session = any($4::text[]))))`,
-    [arrs.map((a) => a.id), uid, me0.role === 'leader', mySessions(me0)]) : [];
-  const notesBy = {};
-  for (const n of fixed) (notesBy[n.arrangementId] = notesBy[n.arrangementId] || []).push(n);
-  const byId = {};
-  for (const a of arrs) (byId[a.song_id] = byId[a.song_id] || []).push({ ...arrView(a), notes: notesBy[a.id] || [] });
-  const ids = [...new Set(arrs.flatMap(arrBlobIds))];
-  const blobs = ids.length ? await q('select id, url, pathname from blobs where team_id=$1 and id = any($2::text[])', [teamId, ids]) : [];
-  return {
-    songs: songs.filter((s) => !s.deleted_at).map((s) => songView(s, { arrangements: byId[s.id] || [], ...(stats[s.id] || { useCount: 0, lastUsed: null, firstUsed: null, keyStats: {} }) })),
-    deleted: songs.filter((s) => s.deleted_at).map((s) => s.id),
-    now: now0,
-    blobs: await readUrls(blobs),
-  };
+  const release = !since || songs.length > 50 ? await heavySlot() : null;
+  try {
+    const sids = since ? songs.filter((s) => !s.deleted_at).map((s) => s.id) : null;
+    const arrs = !sids ? await q('select * from arrangements where team_id=$1 and deleted_at is null order by is_default desc, created_at asc', [teamId])
+      : sids.length ? await q('select * from arrangements where team_id=$1 and song_id = any($2::uuid[]) and deleted_at is null order by is_default desc, created_at asc', [teamId, sids])
+      : [];
+    const stats = await songStats(teamId, sids);
+    // 남의 '나만' 메모는 내려보내지 않는다. 세션 메모는 그 세션 사람과 인도자만
+    const fixed = arrs.length ? await q(`select id, arrangement_id as "arrangementId", marker_label as "markerLabel", layer, session,
+        author_id as "authorId", author_name as "authorName", text from arrangement_notes
+        where arrangement_id = any($1::uuid[]) and (layer='all' or (layer='mine' and author_id=$2)
+          or (layer='session' and ($3 or session = any($4::text[]))))`,
+      [arrs.map((a) => a.id), uid, me0.role === 'leader', mySessions(me0)]) : [];
+    const notesBy = {};
+    for (const n of fixed) (notesBy[n.arrangementId] = notesBy[n.arrangementId] || []).push(n);
+    const byId = {};
+    for (const a of arrs) (byId[a.song_id] = byId[a.song_id] || []).push({ ...arrView(a), notes: notesBy[a.id] || [] });
+    const ids = [...new Set(arrs.flatMap(arrBlobIds))];
+    const blobs = ids.length ? await q('select id, url, pathname from blobs where team_id=$1 and id = any($2::text[])', [teamId, ids]) : [];
+    return {
+      songs: songs.filter((s) => !s.deleted_at).map((s) => songView(s, { arrangements: byId[s.id] || [], ...(stats[s.id] || { useCount: 0, lastUsed: null, firstUsed: null, keyStats: {} }) })),
+      deleted: songs.filter((s) => s.deleted_at).map((s) => s.id),
+      now: now0,
+      blobs: await readUrls(blobs),
+    };
+  } finally { if (release) release(); }
 });
 
 // 비슷한 곡 짝 (정리 카드)
@@ -1675,6 +1702,7 @@ on('POST', '/songs/:id/arrangements', async ({ uid, params, body }) => {
      str(body.key, 12) || base.key, base.mod, base.form, base.song_note,
      JSON.stringify(base.pieces || []), JSON.stringify(base.media || []),
      base.chart ? JSON.stringify(base.chart) : null, base.score ? JSON.stringify(base.score) : null]);
+  await q('update songs set updated_at=now() where id=$1', [s.id]);   // 다른 기기가 since 로 새 편곡을 받게
   return { arrangement: arrView(a) };
 });
 
