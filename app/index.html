@@ -2247,6 +2247,9 @@ function noteMenu(svc,it,nid){
 }
 function publishModal(svc){
  if(!svc.items.length){toast('곡이 없어요');return}
+ // 제목만 적고 곧장 발행해도 라이브러리 곡에 이어진 채로 발행되게 민다. 제목 칸에 커서가 남아 있으면(폰에서 자판을 안 내리고 누름)
+ // 아직 쓰는 중으로 보고 곡을 안 만들므로 먼저 뗀다
+ if(isLeader()&&online()){const ae=document.activeElement;if(ae&&ae.dataset&&ae.dataset.f==='item.title')ae.blur();pushSongs()}
  // 버전은 실제로 발행할 때 올린다. 창을 열기만 해도 올려 두면 고친 게 없어도 '발행 뒤 고친 초안'으로 보여
  // 다른 기기의 새 발행본을 받지 않았다
  const nextV=(svc.published?svc.published.version:0)+1;
@@ -5693,8 +5696,7 @@ function afterEditor(svc){
    markOverride(it,k);paintOvBar(it);syncLib(it)}
   svc.version=Math.max(svc.version,(svc.published?svc.published.version:0));touch(svc);save()};
  app.onchange=async e=>{
-  // 제목 칸을 떠났다 — 쓰는 동안 미뤄 둔 라이브러리 곡 만들기를 바로 민다 (곧장 발행을 눌러도 곡에 이어진 채로 발행되게)
-  if(e.target.dataset.f==='item.title')setTimeout(pushSongs,0);   // 커서가 칸을 완전히 떠난 뒤에
+  if(e.target.dataset.f==='item.title')SYNC.schedulePush();   // 제목 칸을 떠났다 — 쓰는 동안 미뤄 둔 라이브러리 곡 만들기를 민다
   if(e.target.dataset.md){const it=curItem(svc);const md=it&&it.media.find(x=>x.id===e.target.dataset.id);if(!md)return;const v=e.target.value.trim();md[e.target.dataset.md]=v?parseT(v):0;if(md.end&&md.start&&md.end<=md.start){md.end=0;e.target.value='';toast('끝은 시작보다 뒤여야 해요')}touch(svc);save();syncLib(it);return}
   if(e.target.id==='pieceFile'){await addPieces(svc,curItem(svc),e.target.files);return}
   if(e.target.id==='audFile'){const it=curItem(svc);const f=e.target.files[0];if(!it||!f)return;if(f.size>150*1024*1024){toast('150MB 이하만 올릴 수 있어요');return}const id=uid();await IDB.put('blobs',id,f);it.media.push({id,type:'audio',blob:id,name:f.name,notes:[],sessions:((SEL[svc.id]||{}).mdTarget||[]).slice()});touch(svc);save();render();return}

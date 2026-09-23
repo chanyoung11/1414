@@ -180,15 +180,25 @@ def run():
     L.goto(URL + '#/edit/' + near); L.wait_for_selector('[data-act="add-item"]', timeout=8000)
     L.click('[data-act="add-item"]'); L.wait_for_selector('[data-f="item.title"]', timeout=5000); L.wait_for_timeout(300)
     ti = L.locator('[data-f="item.title"]')
-    ti.click(); ti.press_sequentially('주님' + tag); L.wait_for_timeout(5500)   # 3초 디바운스가 지나도 아직 쓰는 중
+    ti.click(); ti.press_sequentially('주님' + tag); L.wait_for_timeout(8000)   # 밀기 디바운스가 지나도 아직 쓰는 중
     part = [s for s in songs(A, team) if s['title'] == '주님' + tag]
     if part: fail('F84 쓰다 만 제목으로 곡이 만들어짐')
-    ti.press_sequentially('의 은혜'); L.click('[data-f="item.key"]'); L.wait_for_timeout(3000)
+    ti.press_sequentially('의 은혜'); L.click('[data-f="item.key"]'); L.wait_for_timeout(8000)   # 칸을 떠나면 디바운스(초안 올리기 저장이 한 번 더 미룸) 뒤에 만든다
     names = [s['title'] for s in songs(A, team)]
     if ('주님' + tag + '의 은혜') not in names: fail('F84 칸을 떠난 뒤에도 곡이 안 만들어짐: %s' % names)
     if ('주님' + tag) in names: fail('F84 쓰다 만 제목 곡이 있음')
     linked = L.evaluate("(()=>{const s=CONTI.S.services.find(x=>x.id===%r);const it=s.items[s.items.length-1];const sg=CONTI.S.songs.find(x=>x.id===it.songId);return sg&&sg.title})()" % near)
     if linked != '주님' + tag + '의 은혜': fail('F84 콘티가 다른 곡에 이어짐: %r' % linked)
+    # 제목 칸에 커서를 둔 채(폰에서 자판을 안 내리고) 곧장 발행해도 발행본의 곡은 라이브러리 곡에 이어져 있다
+    L.click('[data-act="add-item"]'); L.wait_for_selector('[data-f="item.title"]', timeout=5000); L.wait_for_timeout(300)
+    ti = L.locator('[data-f="item.title"]'); ti.click(); ti.press_sequentially('곧장발행' + tag); L.wait_for_timeout(7000)
+    if ('곧장발행' + tag) in [s['title'] for s in songs(A, team)]: fail('F84 쓰는 중인데 곡이 만들어짐')
+    L.evaluate("document.querySelector('[data-act=\"publish\"]').click()")   # 스크립트 클릭은 커서를 안 옮긴다
+    L.wait_for_selector('#pubOnly', timeout=6000); L.wait_for_timeout(1500)
+    L.click('#pubOnly'); L.wait_for_timeout(3000)
+    pub = L.evaluate("(()=>{const s=CONTI.S.services.find(x=>x.id===%r);const it=s.published.items[s.published.items.length-1];return [it.title,!!it.songId]})()" % near)
+    if pub != ['곧장발행' + tag, True]: fail('F84 곧장 발행한 곡이 라이브러리 곡에 안 이어짐: %s' % pub)
+    if [s['title'] for s in songs(A, team)].count('곧장발행' + tag) != 1: fail('F84 곧장 발행한 곡이 라이브러리에 한 번 안 생김')
     print('F84 no song from a half-typed title ok')
 
     # ================= G16 =================
