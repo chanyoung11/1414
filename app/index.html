@@ -2058,8 +2058,15 @@ const AVNEXT={unset:'ok',ok:'maybe',maybe:'no',no:'unset'};
 const monthKey=d=>String(d||today()).slice(0,7);
 const monthAdd=(k,n)=>{const [y,m]=k.split('-').map(Number);const d=new Date(Date.UTC(y,m-1+n,1));return d.toISOString().slice(0,7)};
 const monthRange=k=>{const [y,m]=k.split('-').map(Number);return [`${k}-01`,new Date(Date.UTC(y,m,0)).toISOString().slice(0,10)]};
-const myAv=(uid,date)=>{const r=SCH.availability.find(a=>a.userId===uid&&a.date===date);return r?r.state:'unset'};
-const avMemo=(uid,date)=>{const r=SCH.availability.find(a=>a.userId===uid&&a.date===date);return r?(r.memo||''):''};
+// 가능 여부는 표를 그릴 때 칸마다(멤버×날짜) 찾는다 → 한 번 색인해 두고 쓴다.
+// 예전에는 매번 전체를 훑어 60명·26일이면 그리기 한 번에 7,800번, 편성 칸 하나 고를 때마다 0.3초씩 멈췄다.
+// availability 는 통째로 바꾸거나(받기·setAv) 끝에 붙이기만 하므로 배열과 길이가 같으면 색인도 그대로다
+const AVI={a:null,n:-1,m:null};
+const avRow=(uid,date)=>{const A=SCH.availability;
+ if(AVI.a!==A||AVI.n!==A.length){AVI.a=A;AVI.n=A.length;AVI.m=new Map();A.forEach(x=>{const k=x.userId+'|'+x.date;if(!AVI.m.has(k))AVI.m.set(k,x)})}
+ return AVI.m.get(uid+'|'+date)};
+const myAv=(uid,date)=>{const r=avRow(uid,date);return r?r.state:'unset'};
+const avMemo=(uid,date)=>{const r=avRow(uid,date);return r?(r.memo||''):''};
 const dateSessionsOf=(d,uid)=>(d.lineup||[]).filter(r=>r.memberId===uid).map(r=>r.session);
 const abbr=s=>String(s||'').slice(0,1);
 const shortLabel=s=>String(s||'').replace(/예배|집회/g,'').trim().slice(0,4)||String(s||'').slice(0,3);
@@ -2140,14 +2147,17 @@ function schedHTML(){const k=SCH.month||monthKey();
  const mine=lead?[]:ds.filter(d=>(d.lineup||[]).some(r=>r.memberId===me().userId)).map(d=>`${fmtDate(d.date).md} ${(d.lineup||[]).filter(r=>r.memberId===me().userId).map(r=>r.session).join('·')}`);
  const rows=S.team.sessions.map(s=>{const list=bySess[s]||[];if(!list.length)return '';
   return `<tr class="sess-hd"><th colspan="${ds.length+1}">${esc(s)}</th></tr>`+list.map(m=>{
-   const unsetN=ds.filter(d=>myAv(m.userId,d.date)==='unset').length;
+   const unsetN=lead?ds.filter(d=>myAv(m.userId,d.date)==='unset').length:0;
+   // 멤버는 서버가 자기 가능 여부만 준다 → 남의 칸은 '미선택'이 아니라 비워 둔다 (편성 테두리만).
+   // 예전에는 다 답한 사람도 멤버 화면에서는 전부 '· 미선택'으로 보였다
+   const kn=lead||m.userId===me().userId;
    return `<tr class="${m.userId===me().userId?'me':''}"><th class="mname">${esc(m.name)}${lead&&unsetN>=3?`<button class="btn sm ghost" data-act="re-ask" data-id="${esc(m.userId)}" title="가능 여부를 다시 물어요">다시 요청</button>`:''}</th>`+
     ds.map(d=>{const st=myAv(m.userId,d.date);const on=(d.lineup||[]).some(r=>r.memberId===m.userId&&r.session===s);const notified=(d.lineup||[]).some(r=>r.memberId===m.userId&&r.notifiedAt);
      const memo=avMemo(m.userId,d.date);
-     return `<td class="${AVN[st].cls} ${on?(notified?'lined':'lined pending'):''}" title="${esc(m.name+' · '+fmtDate(d.date).md+' '+AVN[st].label+(memo?' — '+memo:''))}">${AVN[st].sym}</td>`}).join('')+'</tr>'}).join('')}).join('');
+     return `<td class="${kn?AVN[st].cls:''} ${on?(notified?'lined':'lined pending'):''}" title="${esc(m.name+' · '+fmtDate(d.date).md+(kn?' '+AVN[st].label+(memo?' — '+memo:''):(on?' 편성':'')))}">${kn?AVN[st].sym:''}</td>`}).join('')+'</tr>'}).join('')}).join('');
  const body=`${lead&&maybeSoon?`<div class="todo-card" style="margin-bottom:12px"><span class="icon sm">${ic('marker')}</span><div class="grow"><b>가까운 날짜에 보류 ${maybeSoon}명 — 확인해 보세요</b></div></div>`:''}
    ${!lead&&ds.length?`<div class="todo-card" style="margin-bottom:12px"><span class="icon sm">${ic('stage')}</span><div class="grow"><b>${mine.length?mine.map(esc).join(' · ')+'으로 서요':'아직 편성된 날이 없어요'}</b><div class="hint">편성은 인도자가 정해요</div></div></div>`:''}
-   <div class="cal-leg">${Object.entries(AVN).map(([k2,v])=>`<span class="${v.cls}"><i>${v.sym}</i>${v.label}</span>`).join('')}<span class="hint">${lead?'날짜를 누르면 그날 편성이 열려요 · ':''}칸 테두리는 편성됨(점선은 통보 전)</span></div>
+   <div class="cal-leg">${Object.entries(AVN).map(([k2,v])=>`<span class="${v.cls}"><i>${v.sym}</i>${v.label}</span>`).join('')}<span class="hint">${lead?'날짜를 누르면 그날 편성이 열려요 · ':'다른 사람의 가능 여부는 인도자만 봐요 · '}칸 테두리는 편성됨(점선은 통보 전)</span></div>
    ${ds.length?`<div class="schwrap"><table class="schtab"><thead><tr><th class="corner"></th>${ds.map(d=>`<th class="dcol ${route().name==='lineup'&&route().a===d.id?'on':''}" ${lead?`data-act="lineup" data-id="${esc(d.id)}" title="${esc(d.label)} — 눌러서 이 날 편성"`:''}><span>${esc(fmtDate(d.date).md)}<small>${esc(fmtDate(d.date).w)} · ${esc(shortLabel(d.label))}</small></span></th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>
    ${schListHTML(ds,ms)}`
    :`<div class="empty"><span class="icon">${ic('users')}</span><b>열린 사역 날짜가 없어요</b>팀 설정에서 정기 예배를 등록하거나 날짜를 열어 주세요<div><button class="btn" data-act="team">팀 설정으로</button></div></div>`}`;
@@ -2161,14 +2171,16 @@ function schListHTML(ds,ms){
  return `<div class="schlist">${ds.map(d=>{
   const lineup=d.lineup||[];const filled=lineup.filter(r=>r.memberId).length;
   const notified=lineup.some(r=>r.notifiedAt);
-  const cnt={ok:0,maybe:0,no:0,unset:0};
-  ms.forEach(m=>{cnt[myAv(m.userId,d.date)]=(cnt[myAv(m.userId,d.date)]||0)+1});
+  const cnt={ok:0,maybe:0,no:0,unset:0};const lead=isLeader();
+  if(lead)ms.forEach(m=>{const st=myAv(m.userId,d.date);cnt[st]=(cnt[st]||0)+1});
+  const mySt=myAv(me().userId,d.date);   // 멤버는 남의 답을 모른다 → 개수 대신 내 답만
   const dd=fmtDate(d.date);
   return `<button class="schrow ${route().name==='lineup'&&route().a===d.id?'on':''}" ${isLeader()?`data-act="lineup" data-id="${esc(d.id)}"`:'disabled style="opacity:1"'}>
    <span class="d"><b>${esc(dd.md)}</b><small>${esc(dd.w)}</small></span>
    <span class="grow"><b>${esc(shortLabel(d.label))}</b>
     <small>편성 ${filled}/${total(d)} · ${notified?'통보함':'통보 전'}</small></span>
-   <span class="av"><i class="a-ok">${cnt.ok||0}</i><i class="a-maybe">${cnt.maybe||0}</i><i class="a-no">${cnt.no||0}</i>${cnt.unset?`<i class="a-unset">${cnt.unset}</i>`:''}</span>
+   <span class="av">${lead?`<i class="a-ok">${cnt.ok||0}</i><i class="a-maybe">${cnt.maybe||0}</i><i class="a-no">${cnt.no||0}</i>${cnt.unset?`<i class="a-unset">${cnt.unset}</i>`:''}`
+    :`<i class="${AVN[mySt].cls}" title="내 답">${AVN[mySt].sym} ${AVN[mySt].label}</i>`}</span>
    ${ic('right')}</button>`}).join('')}</div>`}
 // 그날 편성 (§3.4)
 const LN={dateId:null,slots:null,busy:null,again:false};   // 그날만 바꾼 세션 인원 (저장 전 임시) · busy: 저장 중인 날짜
@@ -2192,8 +2204,12 @@ function lineupHTML(dateId){const d=SCH.dates.find(x=>x.id===dateId);
      <button class="icon sm ghost stp" data-act="lslots" data-s="${esc(sess)}" data-d="1" title="이 날만 한 자리 늘리기" ${n>=9?'disabled':''}>+</button>
      <button class="btn sm ghost" data-act="lclear" data-s="${esc(sess)}">비우기</button></span></div>
    ${Array.from({length:n},(_,i)=>{const cur=picked[i]?picked[i].memberId:'';const curSt=cur?myAv(cur,d.date):'unset';
-    return `<div class="lslot"><select data-lsel="${esc(sess)}" data-i="${i}"><option value="">비어 있음</option>${cands.map(m=>{const s2=myAv(m.userId,d.date);const memo=avMemo(m.userId,d.date);
+    // 배정된 사람이 그사이 세션을 바꿨어도(설정·멤버 고치기) 그 자리에 그대로 보여 준다. 후보에 없다고 '비어 있음'으로 그리면
+    // 다른 칸 하나만 골라도 통째로 저장하면서 그 배정이 말없이 지워졌다
+    const out=cur&&!cands.some(m=>m.userId===cur);const outName=out?((SCH.members.find(x=>x.userId===cur)||{}).name||'(팀에 없음)'):'';
+    return `<div class="lslot"><select data-lsel="${esc(sess)}" data-i="${i}"><option value="">비어 있음</option>${out?`<option value="${esc(cur)}" selected>${AVN[curSt].sym} ${esc(outName)} (세션 밖)</option>`:''}${cands.map(m=>{const s2=myAv(m.userId,d.date);const memo=avMemo(m.userId,d.date);
       return `<option value="${esc(m.userId)}" ${cur===m.userId?'selected':''}>${AVN[s2].sym} ${esc(m.name)}${memo?' — '+esc(memo.slice(0,8)):''}${usedElsewhere(m.userId,sess)?' (다른 세션)':''}</option>`}).join('')}</select>
+     ${out?`<div class="lwarn">${josa(esc(outName),'은','는')} 지금 ${esc(sess)} 세션이 아니에요 — 바꾸려면 다른 사람을 고르세요</div>`:''}
      ${cur&&(curSt==='maybe'||curSt==='no')?`<div class="lwarn">${josa(esc(nameOf(cur)),'은','는')} 이 날 ${AVN[curSt].label}이에요${avMemo(cur,d.date)?` — "${esc(avMemo(cur,d.date))}"`:''}</div>`:''}</div>`}).join('')}</div>`}).join('');
  const total=S.team.sessions.reduce((a,s)=>a+(slots[s]!=null?slots[s]:(s==='싱어'?3:1)),0);
  const filled=lineup.filter(r=>r.memberId).length;
@@ -4697,7 +4713,9 @@ function teamHTML(){
  ${lead?sect('lineup','기본 편성','새 예배를 만들면 이대로 채워져요',
   `<div id="tmDef">${sessions.map(s=>{const n=slotOf(s);const cur=defL[s]||[];
     const cands=players.filter(m=>sessOf(m).includes(s));
-    return n?`<div class="mrow"><span class="grow">${esc(s)}</span><span class="row" style="gap:4px;flex-wrap:wrap">${Array.from({length:n},(_,i)=>`<select class="field" data-def="${esc(s)}" data-i="${i}" style="width:auto"><option value="">비어 있음</option>${cands.map(m=>`<option value="${esc(m.userId)}" ${cur[i]===m.userId?'selected':''}>${esc(m.name)}</option>`).join('')}</select>`).join('')}</span></div>`:''}).join('')||'<div class="hint">세션 정원을 먼저 정해 주세요</div>'}</div>
+    // 세션을 바꾼 사람도 기본 편성에 그대로 둔다 — 후보에 없다고 빈칸으로 그리면 팀 설정을 하나만 바꿔도 자동 저장이 지웠다
+    const outOpt=id=>id&&!cands.some(m=>m.userId===id)?`<option value="${esc(id)}" selected>${esc((ms.find(m=>m.userId===id)||{}).name||'(팀에 없음)')} (세션 밖)</option>`:'';
+    return n?`<div class="mrow"><span class="grow">${esc(s)}</span><span class="row" style="gap:4px;flex-wrap:wrap">${Array.from({length:n},(_,i)=>`<select class="field" data-def="${esc(s)}" data-i="${i}" style="width:auto"><option value="">비어 있음</option>${outOpt(cur[i])}${cands.map(m=>`<option value="${esc(m.userId)}" ${cur[i]===m.userId?'selected':''}>${esc(m.name)}</option>`).join('')}</select>`).join('')}</span></div>`:''}).join('')||'<div class="hint">세션 정원을 먼저 정해 주세요</div>'}</div>
    <div class="hint" style="margin-top:6px">그 주만 바꾸면 됩니다. 그날 "안 돼요"라고 답한 사람은 자동으로 비워져요.</div>`):''}
 
  ${lead?sect('service','새 예배 기본값','이름 규칙 · 자동 생성 · 연습 안내',

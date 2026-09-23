@@ -220,11 +220,87 @@ def reh_checks(b):
   if errs: fail('녹음 페이지 오류: %s' % errs[:3])
   cL.close(); cM.close()
 
+# ---------------------------------------------------------------- 편성
+def sched_checks(b):
+  import datetime, json
+  cL, pl = signup(b, '하은', 'sa' + tag)
+  errs = []; pl.on('pageerror', lambda e: errs.append('L:' + str(e)))
+  pl.wait_for_selector('#gtTeam', timeout=8000); pl.fill('#gtTeam', '감사편성'); pl.click('[data-act="team-create"]'); pl.wait_for_selector('.shell[data-page]', timeout=8000)
+  team = pl.evaluate('CONTI.S.team.id'); link = pl.evaluate("location.origin+location.pathname+'#/join/'+CONTI.S.team.invite")
+  def join(name, user, sess):
+    c, pg = signup(b, name, user, link, viewport={'width': 1240, 'height': 900})
+    pg.on('pageerror', lambda e: errs.append(name + ':' + str(e)))
+    pg.wait_for_selector('#jnName', timeout=8000); pg.click('#gtSess .q:has-text("%s")' % sess); pg.click('[data-act="team-join"]'); pg.wait_for_selector('.shell[data-page]', timeout=8000)
+    return c, pg, pg.evaluate('CONTI.NET.user.id')
+  cM, pm, uidM = join('민수', 'sb' + tag, '일렉')
+  cN, pn, uidN = join('세리', 'sc' + tag, '드럼')
+  nm = (datetime.date.today().replace(day=1) + datetime.timedelta(days=32)).replace(day=1)
+  d1 = (nm + datetime.timedelta(days=6)).isoformat()
+  r = cL.request.post(URL + 'api/teams/%s/dates' % team, headers=H, data={'date': d1, 'label': '주일 2부', 'time': '11:00'})
+  if r.status != 200: fail('날짜 열기 실패: ' + r.text()[:120])
+  did = [d for d in cL.request.get(URL + 'api/teams/%s/schedule' % team).json()['dates'] if d['date'] == d1][0]['id']
+  cN.request.put(URL + 'api/teams/%s/availability' % team, headers=H, data={'date': d1, 'state': 'ok'})
+  cL.request.put(URL + 'api/teams/%s/dates/%s/lineup' % (team, did), headers=H, data={'lineup': [{'session': '일렉', 'memberId': uidM}, {'session': '드럼', 'memberId': uidN}]})
+  cL.request.patch(URL + 'api/teams/%s/settings' % team, headers=H, data={'defaultLineup': {'일렉': [uidM], '드럼': [uidN]}})
+  # 민수가 설정에서 자기 세션을 건반으로 바꾼다 (설정 화면이 보내는 것과 같은 요청)
+  r = cM.request.patch(URL + 'api/me', headers=H, data={'teamId': team, 'session': '건반', 'mySessions': ['건반']})
+  if r.status != 200: fail('세션 바꾸기 실패: ' + r.text()[:120])
+
+  # ---- G14: 그날 편성 패널에서 세션 밖이 된 배정이 남고, 다른 칸을 바꿔도 지워지지 않는다 ----
+  pl.goto(URL + '#/sched'); pl.wait_for_selector('.schtab', timeout=15000)
+  pl.evaluate("CONTI.pullSchedule(null,true)"); pl.wait_for_timeout(800)
+  pl.goto(URL + '#/lineup/' + did); pl.wait_for_selector('[data-lsel="일렉"]', timeout=10000)
+  if pl.eval_on_selector('[data-lsel="일렉"]', 'e=>e.value') != uidM: fail('G14 세션을 바꾼 민수가 일렉 칸에서 빠져 보임')
+  if '세션 밖' not in pl.eval_on_selector('[data-lsel="일렉"]', 'e=>e.selectedOptions[0].textContent'): fail('G14 세션 밖 표시가 없음')
+  if '일렉 세션이 아니에요' not in pl.locator('.lnbody').inner_text(): fail('G14 세션이 바뀌었다는 안내가 없음')
+  pl.select_option('[data-lsel="드럼"]', value=''); pl.wait_for_timeout(1500)
+  lu = [d for d in cL.request.get(URL + 'api/teams/%s/schedule' % team).json()['dates'] if d['id'] == did][0]['lineup']
+  if not [x for x in lu if x['session'] == '일렉' and x['memberId'] == uidM]: fail('G14 다른 칸을 바꾸자 민수의 일렉 배정이 지워짐: %s' % lu)
+  if [x for x in lu if x['session'] == '드럼' and x['memberId']]: fail('G14 드럼을 비웠는데 남음: %s' % lu)
+  print('lineup keeps out-of-session ok')
+  # 기본 편성: 팀 설정을 아무거나 바꿔 자동 저장이 돌아도 민수가 남는다
+  pl.goto(URL + '#/team'); pl.wait_for_selector('#tmDef [data-def="일렉"]', state='attached', timeout=15000)
+  if pl.eval_on_selector('[data-def="일렉"]', 'e=>e.value') != uidM: fail('G14 기본 편성 일렉 칸이 비어 보임')
+  pl.evaluate("()=>{const i=document.querySelector('#stWeeks');i.value='5';i.dispatchEvent(new Event('change',{bubbles:true}))}"); pl.wait_for_timeout(1800)
+  st = cL.request.get(URL + 'api/teams/%s' % team).json()['settings']
+  if int(st.get('serviceAutoCreateWeeks') or 0) != 5: fail('테스트 준비: 팀 설정 자동 저장이 안 됨: %s' % st)
+  if uidM not in (st.get('defaultLineup') or {}).get('일렉', []): fail('G14 팀 설정 저장이 기본 편성에서 민수를 지움: %s' % st.get('defaultLineup'))
+  print('default lineup keeps out-of-session ok')
+
+  # ---- G29: 멤버의 편성 표에서 남의 칸은 '미선택'이 아니다 ----
+  pm.goto(URL + '#/sched'); pm.wait_for_selector('.schtab', timeout=15000); pm.evaluate("CONTI.pullSchedule(null,true).then(()=>CONTI.render())"); pm.wait_for_timeout(1000)
+  cells = pm.evaluate("[...document.querySelectorAll('.schtab td')].filter(t=>t.title.startsWith('세리')).map(t=>[t.textContent,t.title])")
+  if not cells: fail('G29 멤버 표에 세리 칸이 없음')
+  if any('미선택' in t or s.strip() == '·' for s, t in cells): fail('G29 멤버에게 세리가 미선택으로 보임: %s' % cells)
+  mine = pm.evaluate("[...document.querySelectorAll('.schtab td')].filter(t=>t.title.startsWith('민수')).map(t=>t.title)")
+  if not mine or '미선택' not in mine[0]: fail('G29 내 칸에는 내 답이 보여야 함: %s' % mine)
+  pm.set_viewport_size({'width': 400, 'height': 800}); pm.wait_for_timeout(300)
+  av = pm.inner_text('.schrow .av')
+  if '미선택' not in av or any(ch.isdigit() for ch in av): fail('G29 폰 목록에 남의 답 개수가 나옴: %r' % av)
+  pl.goto(URL + '#/sched'); pl.wait_for_selector('.schtab', timeout=15000); pl.wait_for_timeout(500)
+  lc = pl.evaluate("[...document.querySelectorAll('.schtab td')].filter(t=>t.title.startsWith('세리')).map(t=>t.title)")
+  if not lc or '가능' not in lc[0]: fail('G29 인도자에게는 세리의 가능이 보여야 함: %s' % lc)
+  print('member sees no fake 미선택 ok')
+
+  # ---- G28: 색인을 써도 방금 누른 답이 바로 보인다 (배열을 새로 받거나 붙일 때 색인을 다시 만든다) ----
+  pn.goto(URL + '#/cal'); pn.wait_for_selector('[data-cal="%s"]' % d1, timeout=15000); pn.wait_for_timeout(500)
+  pn.locator('[data-cal="%s"]' % d1).click(); pn.wait_for_timeout(1000)   # ok → maybe
+  if 'a-maybe' not in (pn.get_attribute('[data-cal="%s"]' % d1, 'class') or ''): fail('G28 누른 답이 달력에 안 보임')
+  pn.locator('[data-cal="%s"]' % d1).click(); pn.wait_for_timeout(1000)   # maybe → no
+  if 'a-no' not in (pn.get_attribute('[data-cal="%s"]' % d1, 'class') or ''): fail('G28 두 번째 답이 달력에 안 보임')
+  pl.evaluate("CONTI.pullSchedule(null,true).then(()=>CONTI.render())"); pl.wait_for_timeout(1000)
+  lc = pl.evaluate("[...document.querySelectorAll('.schtab td')].filter(t=>t.title.startsWith('세리')).map(t=>t.title)")
+  if not lc or '불가능' not in lc[0]: fail('G28 새로 받은 답이 인도자 표에 안 보임: %s' % lc)
+  print('availability index ok')
+  if errs: fail('편성 페이지 오류: %s' % errs[:3])
+  cL.close(); cM.close(); cN.close()
+
 def run(only=os.environ.get('ONLY', '')):
   with sync_playwright() as p:
     b = p.chromium.launch(args=['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'])
     if only in ('', 'score'): score_checks(b)
     if only in ('', 'reh'): reh_checks(b)
+    if only in ('', 'sched'): sched_checks(b)
     b.close()
   print('OK test_audit_fe_02')
 
