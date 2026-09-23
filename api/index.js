@@ -7,7 +7,7 @@ import { hashPasswordAsync, verifyPasswordAsync, USERNAME_RE, PASSWORD_MIN } fro
 import { verifyIdToken, audiencesOf, socialConfigured } from '../lib/social.js';
 import { putBlob, delBlobs, readUrls, presignPut, headBlob, blobExists, BlobDownError, sweepBlobs } from '../lib/blob.js';
 import { ocrBands, visionConfigured } from '../lib/vision.js';
-import { sendPush, pushConfigured, vapidPublicKey } from '../lib/push.js';
+import { sendPush, pushConfigured, vapidPublicKey, pushEndpointOk } from '../lib/push.js';
 import { fcmConfigured } from '../lib/fcm.js';
 import { apnsConfigured } from '../lib/apns.js';
 import { rcAuthOk, rcConfigured, planFromEvent } from '../lib/iap.js';
@@ -576,6 +576,8 @@ on('POST', '/push/subscribe', async ({ uid, body, req }) => {
   const sub = body && body.sub;
   if (!sub || !sub.endpoint || !sub.keys || !sub.keys.p256dh || !sub.keys.auth) throw new HttpError(400, 'bad_sub', '구독 정보가 없습니다');
   const ep = String(sub.endpoint).slice(0, 2000);
+  // 서버가 이 주소로 직접 보낸다 (lib/push.js pushEndpointOk)
+  if (!pushEndpointOk(ep)) throw new HttpError(400, 'bad_sub', '알림 주소가 올바르지 않아요');
   await q(`insert into push_subs(endpoint, user_id, keys, ua) values($1,$2,$3,$4)
            on conflict (endpoint) do update set user_id=excluded.user_id, keys=excluded.keys, ua=excluded.ua, last_ok_at=now()`,
     [ep, uid, JSON.stringify({ p256dh: String(sub.keys.p256dh), auth: String(sub.keys.auth) }),
