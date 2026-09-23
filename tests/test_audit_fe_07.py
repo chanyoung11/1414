@@ -439,7 +439,7 @@ def t_nav(b, errs):
     print('F91 느린 서버여도 콘티를 먼저 엶 ok (%.1fs)' % dt3)
     # 늦게 온 메모는 보기 화면에 다시 그려진다
     pg.evaluate("""fetch('/api/notes',{method:'POST',headers:{'content-type':'application/json','x-conti':'1'},
-      body:JSON.stringify({teamId:CONTI.S.team.id,serviceId:%s,notes:[{id:'late-note-1',itemId:CONTI.S.services[0].items[0].id,layer:'leader',text:'늦게 온 메모',at:Date.now()}]})})""" % json.dumps(svc))
+      body:JSON.stringify({teamId:CONTI.S.team.id,serviceId:%s,notes:[{id:'late-'+Date.now().toString(36)+Math.random().toString(36).slice(2,8),itemId:CONTI.S.services[0].items[0].id,layer:'leader',text:'늦게 온 메모',at:Date.now()}]})})""" % json.dumps(svc))
     gate['open'] = True
     for rt in list(held): rt.continue_()
     pg.wait_for_function("CONTI.S.services[0].items[0].notes.some(n=>n.text==='늦게 온 메모')", timeout=10000)
