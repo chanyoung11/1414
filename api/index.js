@@ -209,6 +209,18 @@ on('POST', '/auth/signup', async ({ req, body }) => {
 // 앱은 appToken 만 세션으로 받는다. 다른 응답에도 token 이 있어서(목사님 말씀 링크) 그 값이 로그인 토큰을
 // 덮어 iOS 앱이 로그아웃됐다. token 은 이미 깔린 앱(아무 token 이나 받는 판)을 위해 같이 둔다
 const withAppToken = (req, data, uid) => { if (!isApp(req)) return data; const t = appSessionToken(uid); return { ...data, token: t, appToken: t }; };
+// 앱이 보낸 동의 시각. 없거나 이상하면 null (전에는 없으면 지금 시각으로 채워 동의한 것으로 남겼다)
+function agreedAtOf(body) {
+  if (!/^\d{4}-\d{2}-\d{2}T/.test(String((body && body.agreedAt) || ''))) return null;
+  const d = new Date(body.agreedAt);
+  return isNaN(d) ? null : d;
+}
+// 비밀번호가 바뀌어 다른 기기의 로그인이 끊기면 그 기기로 가던 알림도 끊는다. keep 은 지금 이 기기(웹푸시 endpoint · 앱 토큰)
+async function dropPushExcept(uid, keep) {
+  const ep = String((keep && keep.endpoint) || '').slice(0, 2000), tok = str(keep && keep.pushToken, 400);
+  await q('delete from push_subs where user_id=$1 and endpoint<>$2', [uid, ep]);
+  await q('delete from push_tokens where user_id=$1 and token<>$2', [uid, tok]);
+}
 
 // X-Forwarded-For 의 맨 앞은 클라이언트가 마음대로 적을 수 있다. Cloud Run 앞단은 받은 값을 지우지 않고
 // 진짜 주소를 맨 뒤에 붙인다 (Vercel 은 통째로 덮어써서 첫 값이 곧 진짜였다) → 맨 뒤 값을 쓴다
@@ -289,8 +301,9 @@ on('POST', '/auth/social', async ({ req, uid, body }) => {
 
   const found = await one('select user_id from identities where provider=$1 and subject=$2', [provider, claim.sub]);
 
-  // 이미 로그인한 상태면 '계정 연결'이다
-  if (uid) {
+  // 이미 로그인한 상태면 '계정 연결'이다. 다만 로그인 화면에서 부른 것(login)은 연결이 아니다 —
+  // 로그아웃이 실패해 남은 옛 세션 쿠키에 다음 사람의 구글·애플 계정이 영영 붙었다
+  if (uid && !body.login) {
     if (found && found.user_id !== uid) throw new HttpError(409, 'taken', `이 ${SOCIAL[provider]} 계정은 다른 계정에 이미 연결돼 있어요`);
     if (!found) {
       try {
@@ -305,9 +318,11 @@ on('POST', '/auth/social', async ({ req, uid, body }) => {
     await q('update users set last_login_at=now() where id=$1', [found.user_id]);
     return { data: withAppToken(req, await meView(found.user_id), found.user_id), headers: { 'Set-Cookie': sessionCookie(req, found.user_id) } };
   }
-  // 가입: 약관 동의 시각을 남긴다 (아이디/비밀번호 가입과 같은 기준)
+  // 가입: 약관 동의 시각을 남긴다 (아이디/비밀번호 가입과 같은 기준).
+  // 동의를 보여 주지 않고 만든 계정에 '동의함'을 남기면 안 된다 → 동의가 없으면 만들지 않고, 앱이 동의 창을 띄운 뒤 다시 부른다
+  const agreedAt = agreedAtOf(body);
+  if (!agreedAt) throw new HttpError(428, 'needs_consent', '처음 오셨네요. 이용약관과 개인정보처리방침에 동의한 뒤 가입할 수 있어요');
   const name = str(body.name, 40) || claim.name || (claim.email ? claim.email.split('@')[0] : SOCIAL[provider] + ' 사용자');
-  const agreedAt = /^\d{4}-\d{2}-\d{2}T/.test(String(body.agreedAt || '')) ? new Date(body.agreedAt) : new Date();
   const username = await freeUsername(claim.email ? claim.email.split('@')[0] : provider);
   const u = await one(`insert into users(username, password_hash, display_name, last_login_at, agreed_at, agreed_ver)
                        values($1,'',$2,now(),$3,$4) returning id`, [username, name, agreedAt, LEGAL_VERSION]);
@@ -334,11 +349,17 @@ on('DELETE', '/auth/social/:provider', async ({ uid, params }) => {
 // 로그아웃: 이 요청에 실린 토큰을 서버에서도 끊는다. 토큰은 서명만 보고 믿어서, 전에는 로그아웃해도
 // 복사해 둔 토큰(앱은 localStorage 에 있다)이 90일 동안 그대로 통했다.
 // all 이면 모든 기기에서 — 비밀번호를 바꿀 때처럼 auth_epoch 를 지금으로 (그 전에 받은 토큰은 모두 무효)
+// 이 기기로 가던 알림도 끊는다. 안 끊으면 교회 공용 아이패드·PC 가 로그아웃한 사람의 콘티·편성 알림을
+// (이름까지) 계속 받았다. endpoint·토큰은 그 기기만 아는 값이라 세션이 이미 끝났어도 지운다
 on('POST', '/auth/logout', async ({ req, uid, body }) => {
   const toks = sessionTokens(req);
   if (toks.length) await q(`insert into revoked_sessions(id, exp) select * from unnest($1::text[], $2::timestamptz[]) on conflict (id) do nothing`,
     [toks.map((t) => t.tid), toks.map((t) => new Date(t.exp * 1000).toISOString())]);
-  if (uid && body && body.all) await q('update users set auth_epoch=to_timestamp($2) where id=$1', [uid, nowSec()]);
+  const ep = String((body && body.endpoint) || '').slice(0, 2000), tok = str(body && body.pushToken, 400);
+  if (ep) await q('delete from push_subs where endpoint=$1', [ep]);
+  if (tok) await q('delete from push_tokens where token=$1', [tok]);
+  // 모든 기기에서 나가면 다른 기기의 알림도 끊는다 (비밀번호를 바꿀 때와 같게)
+  if (uid && body && body.all) { await q('update users set auth_epoch=to_timestamp($2) where id=$1', [uid, nowSec()]); await dropPushExcept(uid, null); }
   return { data: { ok: true }, headers: { 'Set-Cookie': clearSessionCookie(req) } };
 });
 
@@ -418,6 +439,7 @@ on('POST', '/auth/password', async ({ req, uid, body }) => {
   await recheckPassword(uid, u.password_hash, cur, '현재 비밀번호가 맞지 않아요');
   // 다른 기기의 로그인은 끊고, 이 기기는 새 쿠키로 이어간다
   await q('update users set password_hash=$2, auth_epoch=to_timestamp($3) where id=$1', [uid, hashPassword(next), nowSec()]);
+  await dropPushExcept(uid, body);
   return { data: withAppToken(req, { ok: true }, uid), headers: { 'Set-Cookie': sessionCookie(req, uid) } };
 });
 
@@ -572,6 +594,7 @@ on('POST', '/auth/recover', async ({ req, body }) => {
   if (!u || !u.recovery_hash || !verifyPassword(code, u.recovery_hash)) { await noteFailure(keys); throw new HttpError(401, 'bad_recovery', '아이디 또는 복구 코드가 맞지 않아요'); }
   await clearFailures(keys);
   await q('update users set password_hash=$2, recovery_hash=null, last_login_at=now(), auth_epoch=to_timestamp($3) where id=$1', [u.id, hashPassword(next), nowSec()]);
+  await dropPushExcept(u.id, null);   // 이 기기는 홈에 들어가며 다시 등록한다
   return { data: withAppToken(req, await meView(u.id), u.id), headers: { 'Set-Cookie': sessionCookie(req, u.id) } };
 });
 
@@ -983,6 +1006,7 @@ on('POST', '/teams/:id/members/:userId/reset', async ({ uid, params }) => {
   for (let i = 0; i < 8; i++) pw += alphabet[bytes.charCodeAt(i) % alphabet.length];
   // 비밀번호가 바뀌면 그 계정의 기존 로그인은 전부 끊는다 (auth_epoch 이전에 발급된 세션은 무효)
   await q('update users set password_hash=$2, auth_epoch=to_timestamp($3) where id=$1', [params.userId, hashPassword(pw), nowSec()]);
+  await dropPushExcept(params.userId, null);
   return { password: pw };
 });
 

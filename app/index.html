@@ -2720,7 +2720,7 @@ function afterSettings(){
     if(!S.team.sessions.includes(m.session))m.session=S.team.sessions[0]||''}
    save();toast('저장했어요');if(firstRun)go('home');else render();return}
   if(e.target.closest('#sPwOk')){const a=$('#sPw0'),b=$('#sPw1');if(!b.value){$('#sErr2').textContent='새 비밀번호를 적어 주세요';return}
-   try{await api('/auth/password',{method:'POST',body:{current:a?a.value:'',next:b.value}});
+   try{await api('/auth/password',{method:'POST',body:{current:a?a.value:'',next:b.value,...await pushIdent()}});   // 이 기기 알림만 남기고 다른 기기 알림은 서버가 끊는다
     if(a)a.value='';b.value='';$('#sErr2').textContent='';
     if(LINK.hasPassword===false){LINK.hasPassword=true;toast('비밀번호를 정했어요');render()}else toast('비밀번호를 바꿨어요')}
    catch(err){$('#sErr2').textContent=err.message}return}
@@ -3530,14 +3530,23 @@ async function mountSocialNative(box){
 const cancelled=e=>/cancel|closed|사용자가|dismiss/i.test(String((e&&(e.message||e.error))||''));
 const msgOf=e=>String((e&&(e.message||e.error))||'로그인을 시작하지 못했어요').slice(0,120);
 
-async function socialLogin(provider, idToken, name){
+async function socialLogin(provider, idToken, name, agreedAt){
   const err=$('#socErr');
   try{
     if(!idToken)throw new Error('토큰을 받지 못했어요');
     const body={provider, idToken};
     if(name)body.name=name;
-    if(GATE.mode==='signup'||!NET.user)body.agreedAt=new Date().toISOString();
-    const m=await api('/auth/social',{method:'POST',body});
+    if(!NET.user){
+      // 로그인 화면에서 부른 것이다. 로그아웃이 덜 돼 옛 세션 쿠키가 남아 있어도 그 계정에 이 구글·애플 계정을 붙이지 말라고 알린다
+      body.login=true;
+      // 동의는 사용자가 실제로 본 것만 보낸다 — 가입 탭에서 체크했거나, 새 계정이라 띄운 동의 창에서 동의했을 때.
+      // 전에는 로그인 탭에서 눌러도 동의한 것으로 보내 약관·만 14세 안내를 한 번도 안 보고 가입됐다
+      if(agreedAt)body.agreedAt=agreedAt;
+      else if(GATE.mode==='signup'&&$('#lgAgree')&&$('#lgAgree').checked)body.agreedAt=new Date().toISOString();
+    }
+    let m;
+    try{m=await api('/auth/social',{method:'POST',body})}
+    catch(e){if(e.code==='needs_consent'&&!body.agreedAt){socialConsent(provider,idToken,name);return}throw e}
     GATE.err='';GATE.preview=null;GATE.pw='';GATE.name='';await takeMe(m);render();probeOmr();
     if(S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()});
   }catch(e){ if(err)err.textContent=e.message; else toast(e.message); }
@@ -3555,6 +3564,24 @@ async function wipeAccountData(userId){if(!userId)return;
  }catch(e){console.warn('wipe',e)}}
 // 아직 서버에 못 올린 것 (로그아웃하면 사라진다)
 const unsyncedCount=()=>S.services.filter(x=>x.pubPending).length+(S.library||[]).filter(x=>x.dirty).length+(S.songs||[]).filter(x=>x.dirty).length;
+// 구글·애플로 처음 오는 사람: 계정을 만들기 전에 약관·개인정보처리방침과 만 14세 안내를 보여 주고 동의를 받는다
+function socialConsent(provider,idToken,name){
+ modal(`<b style="font-size:17px">처음 오셨네요</b>
+  <div class="hint" style="margin-top:6px">${esc(SOCNAME[provider]||provider)} 계정으로 새로 가입해요. 약관을 확인하고 동의해 주세요.</div>
+  <div class="row" style="margin-top:12px;gap:8px"><button class="btn sm" data-lg="terms">이용약관</button><button class="btn sm" data-lg="privacy">개인정보처리방침</button></div>
+  <label class="agree" style="margin-top:14px"><input type="checkbox" id="scAgree"><span>이용약관과 개인정보처리방침에 동의합니다. <b>(필수)</b><br>만 14세 이상만 가입할 수 있어요.</span></label>
+  <div class="err" id="scErr"></div>
+  <div class="row" style="margin-top:14px;justify-content:flex-end;gap:8px"><button class="btn" data-close="1">취소</button><button class="btn pri" id="scOk">${ic('check')}동의하고 가입</button></div>`,{center:true});
+ $('#modal').onclick=async e=>{
+  if(e.target.closest('[data-close]')){closeModal();return}
+  const lg=e.target.closest('[data-lg]');if(lg){closeModal();go('legal/'+lg.dataset.lg);return}   // 읽고 돌아와 다시 누르면 된다
+  if(e.target.closest('#scOk')){if(!$('#scAgree').checked){$('#scErr').textContent='동의에 체크해 주세요';return}
+   closeModal();await socialLogin(provider,idToken,name,new Date().toISOString())}}}
+// 이 기기의 알림 주소(웹푸시 endpoint · 앱 토큰). 로그아웃·비밀번호 변경 때 서버가 이 기기 것을 가려낸다
+async function pushIdent(){const o={};if(APP_PUSH_TOKEN)o.pushToken=APP_PUSH_TOKEN;
+ try{if(!NATIVE&&pushSupported()){const reg=await Promise.race([navigator.serviceWorker.ready,new Promise(r=>setTimeout(r,1500))]);
+  const sub=reg&&reg.pushManager?await reg.pushManager.getSubscription():null;if(sub)o.endpoint=sub.endpoint}}catch(e){}
+ return o}
 async function doGate(act,el){
  try{
   if(act==='lg-mode'){GATE.mode=el.dataset.m;GATE.err='';GATE.user=($('#lgUser')||{value:''}).value;GATE.pw=($('#lgPass')||{value:''}).value;GATE.agree=!!($('#lgAgree')||{}).checked;render();return}
@@ -3564,7 +3591,14 @@ async function doGate(act,el){
     if(!GATE.agree){GATE.err='이용약관과 개인정보처리방침에 동의해 주세요';render();return}}
    const m=GATE.mode==='login'?await api('/auth/login',{method:'POST',body:{username,password}}):await api('/auth/signup',{method:'POST',body:{username,password,name:$('#lgName').value.trim(),agreedAt:new Date().toISOString()}});
    GATE.err='';GATE.preview=null;GATE.pw='';GATE.name='';await takeMe(m);render();probeOmr();if(S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()});return}
-  if(act==='logout'){const uid0=NET.user&&NET.user.id;try{await api('/auth/logout',{method:'POST'})}catch(e){}setAppToken('');NET.user=null;NET.teams=[];await switchScope(scopeKey('',''));S.team=Object.assign(DEF_TEAM(),{id:'',invite:''});save();await wipeAccountData(uid0);GATE.preview=null;if(route().name!=='home')go('home');render();return}
+  if(act==='logout'){
+   // 세션 쿠키는 HttpOnly 라 서버만 지울 수 있다. 실패했는데 로그아웃된 척하면 다시 열 때 그 사람으로 들어가고,
+   // 로그인 화면에서 누른 다음 사람의 구글 로그인이 그 계정에 붙었다 → 한 번 더 해 보고, 안 되면 알리고 그대로 둔다.
+   // 이 기기의 알림 주소도 같이 보내 서버가 끊게 한다 (공용 아이패드가 로그아웃한 사람의 알림을 계속 받았다)
+   const uid0=NET.user&&NET.user.id;const body=await pushIdent();let out=false;
+   for(let i=0;i<2&&!out;i++){try{await api('/auth/logout',{method:'POST',body});out=true}catch(e){if(i===0)await new Promise(r=>setTimeout(r,800))}}
+   if(!out){toast('로그아웃하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요');return}
+   setAppToken('');NET.user=null;NET.teams=[];await switchScope(scopeKey('',''));S.team=Object.assign(DEF_TEAM(),{id:'',invite:''});save();await wipeAccountData(uid0);GATE.preview=null;if(route().name!=='home')go('home');render();return}
   if(act==='join-go'){const v=$('#gtLink').value.trim();const tok=(v.match(/join\/([A-Za-z0-9_-]+)/)||[])[1]||v;if(!tok){$('#gtErr').textContent='링크나 코드를 붙여넣어 주세요';return}GATE.preview=null;go('join/'+tok);return}
   if(act==='team-create'){const t=await api('/teams',{method:'POST',body:{name:$('#gtTeam').value.trim(),myName:$('#gtName').value.trim(),session:GATE.sess||'인도자'}});await applyMembership(t);NET.teams.push(t);toast('팀을 만들었어요');go('home');render();return}
   if(act==='team-join'){const p=GATE.preview;
