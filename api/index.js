@@ -1691,9 +1691,14 @@ on('PATCH', '/arrangements/:id', async ({ uid, params, body }) => {
   if (body.score !== undefined) put('score', body.score ? JSON.stringify(body.score) : null);
   if (set.length) { set.push('updated_at=now()'); await q(`update arrangements set ${set.join(', ')} where id=$1`, vals); }
   // 기본 편곡 바꾸기는 유일 인덱스 때문에 순서가 있다: 내리고 올린다
-  // 하나씩 하면 중간에 끊겼을 때 기본 편곡이 없는 곡이 남는다. 한 문장으로
+  // 하나씩 하면 중간에 끊겼을 때 기본 편곡이 없는 곡이 남는다. 한 문장으로.
+  // 다만 'is_default = (id = $2)' 한 번으로는 안 된다 — 유일 인덱스는 줄마다 바로 검사해서, 올릴 편곡을
+  // 옛 기본보다 먼저 만나면(옛 기본을 한 번 고치면 뒤로 간다) 충돌로 500 이었다.
+  // 내리는 쪽을 WITH 로 먼저 끝내고(아래 count 가 그 결과를 기다린다) 올린다
   if (body.isDefault === true && !a.is_default)
-    await q(`update arrangements set is_default = (id = $2) where song_id=$1 and deleted_at is null`, [a.song_id, params.id]);
+    await q(`with off as (update arrangements set is_default=false where song_id=$1 and is_default and id<>$2 returning id)
+             update arrangements set is_default=true where id=$2 and deleted_at is null and (select count(*) from off) >= 0`,
+      [a.song_id, params.id]);
   await q('update songs set updated_at=now() where id=$1', [a.song_id]);
   return { ok: true };
 });
