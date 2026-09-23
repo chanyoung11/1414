@@ -3,7 +3,7 @@
 // 로컬: npm run dev (scripts/dev.mjs가 이 핸들러를 /api/* 에 그대로 붙임)
 import { q, one, tx } from '../lib/db.js';
 import { sessionClaims, sessionTokens, sessionCookie, clearSessionCookie, randomToken, isApp, appSessionToken } from '../lib/session.js';
-import { hashPassword, verifyPassword, USERNAME_RE, PASSWORD_MIN } from '../lib/password.js';
+import { hashPasswordAsync, verifyPasswordAsync, USERNAME_RE, PASSWORD_MIN } from '../lib/password.js';
 import { verifyIdToken, audiencesOf, socialConfigured } from '../lib/social.js';
 import { putBlob, delBlobs, readUrls, presignPut, headBlob, blobExists, BlobDownError } from '../lib/blob.js';
 import { ocrBands, visionConfigured } from '../lib/vision.js';
@@ -210,7 +210,7 @@ on('POST', '/auth/signup', async ({ req, body }) => {
   // 가입 시 약관·개인정보처리방침 동의 시각을 남긴다 (나중에 증명이 필요할 수 있다)
   const agreedAt = /^\d{4}-\d{2}-\d{2}T/.test(String(body.agreedAt || '')) ? new Date(body.agreedAt) : new Date();
   const u = await one('insert into users(username, password_hash, display_name, last_login_at, agreed_at, agreed_ver) values($1,$2,$3,now(),$4,$5) returning id',
-    [username, hashPassword(password), name, agreedAt, LEGAL_VERSION]);
+    [username, await hashPasswordAsync(password), name, agreedAt, LEGAL_VERSION]);
   await noteFailure(keys);   // 이름은 '실패'지만 여기서는 가입 수를 센다 (같은 15분 창)
   return { data: withAppToken(req, await meView(u.id), u.id), headers: { 'Set-Cookie': sessionCookie(req, u.id) } };
 });
@@ -256,7 +256,7 @@ on('POST', '/auth/login', async ({ req, body }) => {
   const keys = lockKeys('', username, req);
   await assertNotLocked(keys);
   const u = await one('select id, password_hash from users where username=$1', [username]);
-  if (!u || !verifyPassword(password, u.password_hash)) {
+  if (!u || !(await verifyPasswordAsync(password, u.password_hash))) {
     await noteFailure(keys);
     throw new HttpError(401, 'bad_login', '아이디 또는 비밀번호가 맞지 않아요');
   }
@@ -379,7 +379,7 @@ async function recheckPassword(uid, hash, password, msg) {
   if (!hash) return;
   const keys = [[`reauth:${uid}`, 8]];
   await assertNotLocked(keys);
-  if (!verifyPassword(String(password || ''), hash)) { await noteFailure(keys); throw new HttpError(401, 'bad_login', msg || '비밀번호가 맞지 않아요'); }
+  if (!(await verifyPasswordAsync(String(password || ''), hash))) { await noteFailure(keys); throw new HttpError(401, 'bad_login', msg || '비밀번호가 맞지 않아요'); }
   await clearFailures(keys);
 }
 
@@ -447,7 +447,7 @@ on('POST', '/auth/password', async ({ req, uid, body }) => {
   // 소셜로만 가입한 계정은 현재 비밀번호가 없다. 그때는 확인을 건너뛰고 새로 정하게 한다
   await recheckPassword(uid, u.password_hash, cur, '현재 비밀번호가 맞지 않아요');
   // 다른 기기의 로그인은 끊고, 이 기기는 새 쿠키로 이어간다
-  await q('update users set password_hash=$2, auth_epoch=to_timestamp($3) where id=$1', [uid, hashPassword(next), nowSec()]);
+  await q('update users set password_hash=$2, auth_epoch=to_timestamp($3) where id=$1', [uid, await hashPasswordAsync(next), nowSec()]);
   await dropPushExcept(uid, body);
   return { data: withAppToken(req, { ok: true }, uid), headers: { 'Set-Cookie': sessionCookie(req, uid) } };
 });
@@ -589,7 +589,7 @@ on('POST', '/auth/recovery', async ({ uid, body }) => {
   await recheckPassword(uid, u.password_hash, body && body.password);
   const alphabet = 'abcdefghjkmnpqrstuvwxyz23456789'; const raw = randomToken(18); let code = '';
   for (let i = 0; i < 12; i++) { code += alphabet[raw.charCodeAt(i) % alphabet.length]; if (i === 3 || i === 7) code += '-'; }
-  await q('update users set recovery_hash=$2 where id=$1', [uid, hashPassword(code)]);
+  await q('update users set recovery_hash=$2 where id=$1', [uid, await hashPasswordAsync(code)]);
   return { code };
 });
 // 복구 코드로 비밀번호 재설정 → 로그인. 코드는 폐기
@@ -600,9 +600,9 @@ on('POST', '/auth/recover', async ({ req, body }) => {
   const keys = lockKeys('recover:', username, req);
   await assertNotLocked(keys);
   const u = await one('select id, recovery_hash from users where username=$1', [username]);
-  if (!u || !u.recovery_hash || !verifyPassword(code, u.recovery_hash)) { await noteFailure(keys); throw new HttpError(401, 'bad_recovery', '아이디 또는 복구 코드가 맞지 않아요'); }
+  if (!u || !u.recovery_hash || !(await verifyPasswordAsync(code, u.recovery_hash))) { await noteFailure(keys); throw new HttpError(401, 'bad_recovery', '아이디 또는 복구 코드가 맞지 않아요'); }
   await clearFailures(keys);
-  await q('update users set password_hash=$2, recovery_hash=null, last_login_at=now(), auth_epoch=to_timestamp($3) where id=$1', [u.id, hashPassword(next), nowSec()]);
+  await q('update users set password_hash=$2, recovery_hash=null, last_login_at=now(), auth_epoch=to_timestamp($3) where id=$1', [u.id, await hashPasswordAsync(next), nowSec()]);
   await dropPushExcept(u.id, null);   // 이 기기는 홈에 들어가며 다시 등록한다
   return { data: withAppToken(req, await meView(u.id), u.id), headers: { 'Set-Cookie': sessionCookie(req, u.id) } };
 });
@@ -1072,7 +1072,7 @@ on('POST', '/teams/:id/members/:userId/reset', async ({ uid, params }) => {
   const bytes = randomToken(12); let pw = '';
   for (let i = 0; i < 8; i++) pw += alphabet[bytes.charCodeAt(i) % alphabet.length];
   // 비밀번호가 바뀌면 그 계정의 기존 로그인은 전부 끊는다 (auth_epoch 이전에 발급된 세션은 무효)
-  await q('update users set password_hash=$2, auth_epoch=to_timestamp($3) where id=$1', [params.userId, hashPassword(pw), nowSec()]);
+  await q('update users set password_hash=$2, auth_epoch=to_timestamp($3) where id=$1', [params.userId, await hashPasswordAsync(pw), nowSec()]);
   await dropPushExcept(params.userId, null);
   return { password: pw };
 });
