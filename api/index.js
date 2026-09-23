@@ -1105,7 +1105,7 @@ on('GET', '/services', async ({ uid, url }) => {
 on('GET', '/services/:id', async ({ uid, url, params }) => {
   if (!uid) throw noAuth();
   const teamId = str(url.searchParams.get('team'), 64);
-  await requireMember(uid, teamId);
+  const m0 = await requireMember(uid, teamId);
   const wantDraft = url.searchParams.get('draft') === '1';
   if (wantDraft && (await membership(uid, teamId)).role !== 'leader') throw forbidden('초안은 인도자만 볼 수 있어요');
   const row = wantDraft
@@ -1115,12 +1115,20 @@ on('GET', '/services/:id', async ({ uid, url, params }) => {
   safeDoc(row.doc);   // 숫자 칸에 글자가 든 문서가 팀원 화면에 그대로 끼워지지 않게 (lib/docsafe.js)
   // 발행본 안에 들어 있는 말씀은 스냅샷이라 메모까지 담겨 있을 수 있다 → 보는 사람 권한으로 다시 거른다
   if (row.doc && row.doc.word) row.doc = { ...row.doc, word: wordView(row.doc.word, await membership(uid, teamId)) };
+  // 발행 때 굳힌 곡 고정 메모도 GET /songs 와 같은 규칙으로 거른다. 예전 발행본에는 인도자의 '나만' 메모와
+  // 모든 세션 메모가 그대로 들어 있어 멤버 누구나 받아 갔다
+  if (row.doc && Array.isArray(row.doc.items)) row.doc = fixedView(row.doc, m0, uid);
   const ids = blobIdsOf(row.doc);
   const blobs = ids.length ? await q('select id, url, pathname from blobs where team_id=$1 and id = any($2::text[])', [teamId, ids]) : [];
   const w = await one('select word, updated_at as "updatedAt" from service_words where team_id=$1 and service_id=$2', [teamId, params.id]);
   const rd = await one('select rev from service_reads where team_id=$1 and service_id=$2 and user_id=$3', [teamId, params.id, uid]);
   return { doc: row.doc, version: row.version, updatedAt: row.updatedAt, blobs: await readUrls(blobs), word: wordView(w && w.word, await membership(uid, teamId)), readRev: rd ? rd.rev : 0 };
 });
+function fixedView(doc, m, uid) {
+  const lead = !!(m && m.role === 'leader'), mine = new Set(m ? mySessions(m) : []);
+  const ok = (n) => n && (n.layer === 'all' || (n.layer === 'mine' && n.authorId === uid) || (n.layer === 'session' && (lead || mine.has(n.session))));
+  return { ...doc, items: doc.items.map((it) => (it && Array.isArray(it.fixedNotes) ? { ...it, fixedNotes: it.fixedNotes.filter(ok) } : it)) };
+}
 // 말씀 (§4.1): 본문·제목·한 줄은 항상 전체 공개, 목회자 메모는 memoPublic 이 아니면 인도자에게만
 function wordView(w, m) {
   if (!w || !(w.passage || w.title || w.line)) return null;

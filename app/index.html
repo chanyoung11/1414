@@ -5065,8 +5065,9 @@ function ytStart(u){const m=(u||'').match(/[?&#]t=(\d+)/);return m?+m[1]:0}
 
 /* ---------- notes ---------- */
 function notesOfMarker(item,mid){return (item.notes||[]).filter(n=>n.marker===mid)}
-// 발행할 때 그 시점의 고정 메모를 굳혀 둔다
-function frozenFixed(it){const a=arrOfItem(it);return a?clone(a.notes||[]):[]}
+// 발행할 때 그 시점의 고정 메모를 굳혀 둔다. '나만' 메모는 넣지 않는다 — 발행본은 팀 전원에게 내려가서
+// 인도자의 개인 메모가 멤버 기기에 저장됐다 (세션 메모는 서버가 보는 사람 세션대로 걸러 내려준다)
+function frozenFixed(it){const a=arrOfItem(it);return a?clone((a.notes||[]).filter(n=>n.layer!=='mine')):[]}
 // 편곡에 붙은 고정 메모 중 이 마커와 라벨이 같은 것. 라벨은 정확히 일치해야 한다 (A≠A1)
 // 예전 서버는 라벨을 8자로 잘라 저장했다('Pre-Chorus'→'Pre-Chor'). 그렇게 잘린 8자 라벨은 앞부분이 같은 긴 라벨에 붙여 준다
 const fixedLabelHit=(nl,ml)=>nl===ml||(!!nl&&nl.length===8&&!!ml&&ml.length>8&&ml.startsWith(nl));
@@ -5075,6 +5076,8 @@ const fixedLabelHit=(nl,ml)=>nl===ml||(!!nl&&nl.length===8&&!!ml&&ml.length>8&&m
 // 발행 뒤 연습·무대에서 "이 곡에 항상"으로 남긴 메모도 없다. 그래서 편곡에 지금 있는 것 중
 // 굳은 목록에 없는 것을 더한다 — 안 그러면 저장했다는 메모가 다음 발행 때까지(나만 메모는 영영) 안 보인다
 function fixedNotesOf(item,mid,ctx){
+ // 발행본의 굳은 메모 + 곡에 지금 있는 것 중 굳은 목록에 없는 것. '나만' 메모는 발행본에 안 담으니 여기서 곡의 것을 본다
+ // (곡 목록은 서버가 보는 사람 것만 '나만' 메모를 내려준다)
  const live=arrOfItem(item);const liveN=(live&&live.notes)||[];
  let list=item.fixedNotes!==undefined?(item.fixedNotes||[]):liveN;
  if(item.fixedNotes!==undefined&&liveN.length){const have=new Set(list.map(n=>n.id));list=list.concat(liveN.filter(n=>!have.has(n.id)))}
