@@ -107,7 +107,7 @@ def run():
             print('capo ok')
 
         # ---- 복구 코드 ----
-        A.goto(URL + '#/home'); A.wait_for_selector('.hd'); A.goto(URL + '#/settings'); A.wait_for_selector('.setpane', timeout=8000); A.click('[data-act="set-tab"][data-t="account"]'); A.wait_for_selector('#sRc'); A.click('#sRc'); A.wait_for_selector('.linkbox')
+        A.goto(URL + '#/home'); A.wait_for_selector('.hd'); A.goto(URL + '#/settings'); A.wait_for_selector('.setpane', timeout=8000); A.click('[data-act="set-tab"][data-t="account"]'); A.wait_for_selector('#sRc'); A.click('#sRc'); A.wait_for_selector('#rcPw'); A.fill('#rcPw', LEADER[1]); A.click('#rcGo'); A.wait_for_selector('.linkbox')
         code = A.locator('.linkbox').inner_text().strip(); A.click('#rcClose')
         A.evaluate("fetch('/api/auth/logout',{method:'POST',headers:{'x-conti':'1'}})"); A.wait_for_timeout(500); A.reload(); A.wait_for_selector('#lgUser', timeout=8000)
         A.click('[data-act="lg-mode"][data-m="recover"]'); A.wait_for_selector('#rcCode'); A.fill('#lgUser', LEADER[0]); A.fill('#rcCode', code); A.fill('#lgPass', 'newpass1'); A.click('[data-act="rc-submit"]')

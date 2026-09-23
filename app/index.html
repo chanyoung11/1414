@@ -2663,10 +2663,7 @@ function afterSettings(){
    if(!confirm(`${SOCNAME[pv]||pv} 계정 연결을 해제할까요?`))return;
    try{await api('/auth/social/'+pv,{method:'DELETE'});toast('연결을 해제했어요');await loadLinks()}
    catch(err){toast(err.message)}return}
-  if(e.target.closest('#sRc')){try{const r=await api('/auth/recovery',{method:'POST'});if(NET.user)NET.user.hasRecovery=true;
-    modal(`<b style="font-size:17px">복구 코드</b><div class="hint" style="margin-top:4px">이 화면을 닫으면 다시 볼 수 없어요. 메모장이나 비밀번호 앱에 저장해 두세요. 비밀번호를 잊으면 로그인 화면의 "비밀번호를 잊었어요"에서 씁니다.</div><div class="linkbox" style="margin-top:12px;font-size:20px;letter-spacing:.08em;text-align:center">${esc(r.code)}</div><div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" id="rcCopy">복사</button><button class="btn pri" id="rcClose">저장했어요</button></div>`,{center:true});
-    $('#modal').onclick=async ev=>{if(ev.target.closest('#rcCopy')){await copyText(r.code);toast('복사했어요')}if(ev.target.closest('#rcClose')){closeModal();render()}}}
-   catch(err){toast(err.message)}return}
+  if(e.target.closest('#sRc')){recoveryCodeModal();return}
   if(e.target.closest('#sDel')){deleteAccountModal();return}
   if(e.target.closest('#sRefetch')){const btn=e.target.closest('#sRefetch');btn.disabled=true;btn.textContent='불러오는 중…';
    try{const n=await SYNC.refetchBlobs();toast(n?`악보 ${n}개를 다시 받았어요`:'다시 받을 악보가 없어요');render()}
@@ -2815,6 +2812,22 @@ function setNotiOn(t,on){const p=notiPrefs();if(on)delete p[t];else p[t]=false;t
 async function knowHasPassword(){
  try{const r=await api('/auth/social');LINK.linked=r.linked||[];LINK.hasPassword=!!r.hasPassword;LINK.available=r.available||{}}catch(e){}
  return LINK.hasPassword!==false}
+// 복구 코드: 비밀번호가 있으면 현재 비밀번호를 다시 묻는다 (서버도 확인한다). 코드가 있으면 비밀번호를 새로 정할 수 있어서다
+async function recoveryCodeModal(){
+ const again=!!(NET.user&&NET.user.hasRecovery);
+ const show=code=>{if(NET.user)NET.user.hasRecovery=true;
+  modal(`<b style="font-size:17px">복구 코드</b><div class="hint" style="margin-top:4px">이 화면을 닫으면 다시 볼 수 없어요. 메모장이나 비밀번호 앱에 저장해 두세요. 비밀번호를 잊으면 로그인 화면의 "비밀번호를 잊었어요"에서 씁니다.</div><div class="linkbox" style="margin-top:12px;font-size:20px;letter-spacing:.08em;text-align:center">${esc(code)}</div><div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" id="rcCopy">복사</button><button class="btn pri" id="rcClose">저장했어요</button></div>`,{center:true});
+  $('#modal').onclick=async ev=>{if(ev.target.closest('#rcCopy')){await copyText(code);toast('복사했어요')}if(ev.target.closest('#rcClose')){closeModal();render()}}};
+ if(!await knowHasPassword()){try{show((await api('/auth/recovery',{method:'POST',body:{}})).code)}catch(err){toast(err.message)}return}
+ modal(`<b style="font-size:17px">복구 코드</b><div class="hint" style="margin-top:6px">본인인지 확인할게요. 현재 비밀번호를 적어 주세요.${again?'<br>새로 받으면 전에 받은 코드는 더 못 써요.':''}</div>
+  <div class="lbl">현재 비밀번호</div><input class="field" id="rcPw" type="password" autocomplete="current-password">
+  <div class="err" id="rcErr"></div>
+  <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" data-close="1">취소</button><button class="btn pri" id="rcGo">${again?'새로 발급':'발급'}</button></div>`,{center:true});
+ const go=async()=>{const err=$('#rcErr');if(!err)return;err.textContent='';
+  if(!$('#rcPw').value){err.textContent='비밀번호를 적어 주세요';return}
+  try{show((await api('/auth/recovery',{method:'POST',body:{password:$('#rcPw').value}})).code)}catch(e2){if($('#rcErr'))$('#rcErr').textContent=e2.message}};
+ $('#modal').onclick=e=>{if(e.target.closest('[data-close]')){closeModal();return}if(e.target.closest('#rcGo'))go()};
+ const pw=$('#rcPw');pw.onkeydown=e=>{if(e.key==='Enter')go()};pw.focus()}
 async function deleteAccountModal(){
  const needPw=await knowHasPassword();   // 소셜로만 가입한 계정은 아이디 확인만 (서버도 같은 기준)
  modal(`<b style="font-size:17px">계정 삭제</b><div class="hint" style="margin-top:6px">이 계정과 내가 쓴 메모가 지워져요. 되돌릴 수 없습니다.<br>내가 인도자인 팀은 <b>먼저 다른 사람을 인도자로 지정</b>하거나 팀을 지워야 해요.</div>

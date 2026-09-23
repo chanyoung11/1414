@@ -356,7 +356,7 @@ on('POST', '/auth/password', async ({ req, uid, body }) => {
   if (next.length < PASSWORD_MIN) throw bad(`비밀번호는 ${PASSWORD_MIN}자 이상이에요`);
   const u = await one('select password_hash from users where id=$1', [uid]);
   // 소셜로만 가입한 계정은 현재 비밀번호가 없다. 그때는 확인을 건너뛰고 새로 정하게 한다
-  if (u.password_hash && !verifyPassword(cur, u.password_hash)) throw new HttpError(401, 'bad_login', '현재 비밀번호가 맞지 않아요');
+  await recheckPassword(uid, u.password_hash, cur, '현재 비밀번호가 맞지 않아요');
   // 다른 기기의 로그인은 끊고, 이 기기는 새 쿠키로 이어간다
   await q('update users set password_hash=$2, auth_epoch=to_timestamp($3) where id=$1', [uid, hashPassword(next), nowSec()]);
   return { data: withAppToken(req, { ok: true }, uid), headers: { 'Set-Cookie': sessionCookie(req, uid) } };
@@ -447,9 +447,14 @@ on('POST', '/push/test', async ({ uid }) => {
   return { sent: n };
 });
 
-// 복구 코드 발급 (로그인 상태). 코드는 한 번만 보여주고 해시만 저장
-on('POST', '/auth/recovery', async ({ uid }) => {
+// 복구 코드 발급 (로그인 상태). 코드는 한 번만 보여주고 해시만 저장.
+// 코드가 있으면 비밀번호를 새로 정할 수 있으니 현재 비밀번호를 다시 묻는다 — 전에는 세션만으로 발급돼서
+// 공용 PC 에 로그인이 남아 있으면 누구든 코드를 받아 두었다가 비밀번호를 바꿔 주인을 내쫓을 수 있었다
+on('POST', '/auth/recovery', async ({ uid, body }) => {
   if (!uid) throw noAuth();
+  const u = await one('select password_hash from users where id=$1', [uid]);
+  if (!u) throw noAuth();
+  await recheckPassword(uid, u.password_hash, body && body.password);
   const alphabet = 'abcdefghjkmnpqrstuvwxyz23456789'; const raw = randomToken(18); let code = '';
   for (let i = 0; i < 12; i++) { code += alphabet[raw.charCodeAt(i) % alphabet.length]; if (i === 3 || i === 7) code += '-'; }
   await q('update users set recovery_hash=$2 where id=$1', [uid, hashPassword(code)]);
