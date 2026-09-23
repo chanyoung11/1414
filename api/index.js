@@ -813,6 +813,17 @@ async function aiRefund(teamId, kind, quota) {
   return true;
 }
 
+// 엔진이 실패해 아무것도 못 돌려줬을 때, 이 요청이 방금 뺀 것만 되돌린다.
+// 위의 환불(인식이 덜 됐다)과 달리 사용자가 골라 쓸 수 있는 게 아니라서 달마다 횟수를 세지 않는다
+// quota 는 aiSongGuard 가 돌려준 것 (곡 키 · 이번에 뺐는지). 크레딧으로 낸 곡이면 크레딧을 되돌린다
+async function aiUndo(teamId, kind, quota) {
+  if (!quota || !quota.charged || !quota.key) return false;
+  const gone = await q('delete from ai_songs where team_id=$1 and month=$2 and kind=$3 and song_key=$4 returning source', [teamId, aiMonth(), kind, quota.key]);
+  if (!gone.length) return false;
+  if (gone[0].source === 'credit') await q('update credit_balance set omr = omr + 1, updated_at=now() where team_id=$1', [teamId]);
+  return true;
+}
+
 async function aiSongGuard(teamId, kind, songKey) {
   if (!ENFORCE_PLAN) return { charged: false, used: 0, cap: null };
   // 곡을 모르면(곡 키를 안 보내는 예전 앱) 부를 때마다 한 곡으로 센다. 전에는 아예 안 세서
@@ -2595,7 +2606,10 @@ on('POST', '/ocr', async ({ uid, body }) => {
   // Gemini 는 장마다 한 번씩 부른다. Vision 처럼 16장을 받으면 한도 1회로 16번을 쓰게 되므로
   // 엔진에 따라 받는 장수를 다르게 한다 (클라이언트는 이제 통째로 한 장만 보낸다)
   const maxImages = useGemini ? 2 : 16;
-  const images = (Array.isArray(body.images) ? body.images : []).slice(0, maxImages).map((im) => ({ b64: String(im.b64 || ''), mime: str(im.mime, 40), w: +im.w || 0, h: +im.h || 0, kind: str(im.kind, 10) })).filter((im) => im.b64.length > 100);
+  // 형식은 그림만 받는다 (/omr·/score 와 같이). 받은 값을 그대로 Gemini 에 넘기면 PDF·영상을 '그림'이라고
+  // 보내 한 번에 토큰을 수십만 개 쓰게 할 수 있다 — 한도는 호출 수로만 센다
+  const images = (Array.isArray(body.images) ? body.images : []).slice(0, maxImages).filter((im) => im && typeof im === 'object')
+    .map((im) => ({ b64: String(im.b64 || ''), mime: /^image\/(jpeg|png|webp)$/.test(str(im.mime, 40)) ? str(im.mime, 40) : 'image/jpeg', w: +im.w || 0, h: +im.h || 0, kind: str(im.kind, 10) })).filter((im) => im.b64.length > 100);
   if (!images.length) throw bad('이미지가 없어요');
   if (images.reduce((n, im) => n + im.b64.length, 0) > 12 * 1024 * 1024) throw new HttpError(413, 'too_large', '이미지가 너무 커요');
   // Gemini 는 장마다 한 번씩(제목 띠는 안 부른다), Vision 은 한 번에 보내도 장마다 과금된다 → 그만큼 자리를 잡는다
@@ -2609,7 +2623,7 @@ on('POST', '/ocr', async ({ uid, body }) => {
     try { g = await ocrChordsGemini(images, { thinking: 'LOW' }); }
     catch (e) {
       if (!visionConfigured()) {
-        await aiRefund(teamId, 'ocr', quota);   // 실패했으니 돌려준다
+        await aiUndo(teamId, 'ocr', quota);   // 실패했으니 방금 뺀 곡을 돌려준다 (달마다 세는 환불과 따로)
         if (e.status) await aiRelease(teamId, 'ocr', uid, calls);
         throw new HttpError(502, 'ocr_failed', '코드 인식 실패: ' + (e.message || ''));
       }

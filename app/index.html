@@ -5543,8 +5543,11 @@ async function recognizeChords(svc,it,piece){if(!online()||!isLeader()||!piece)r
  catch(e){res={e}}
  const L=await aiLand(tok,svc,it,piece);if(!L)return;({svc,it,piece}=L);
  try{if(res.e)throw res.e;const r=res.r,kx=res.kx;
+  const r0=(r.results||[])[0]||{tokens:[]};
+  // 엔진이 이 장을 못 읽었으면(err) 실패로 다룬다. '못 찾음'으로 받으면 있던 자동 코드를 다 지운다
+  if(r0.err&&!(r0.tokens||[]).length)throw new Error(r0.err);
   const found=[];
-  (((r.results||[])[0]||{}).tokens||[]).forEach(t=>{const text=normAcc(t.text);if(!isChordText(text))return;
+  (r0.tokens||[]).forEach(t=>{const text=normAcc(t.text);if(!isChordText(text))return;
    found.push({id:uid(),text,x:Math.round(t.x*kx),y:Math.round(t.y*kx),w:Math.round(t.w*kx),h:Math.round(t.h*kx),conf:t.conf||90,fixed:false})});
   // 같은 자리에 두 번 잡힌 것 제거
   const uniq=[];found.sort((a,b)=>a.y-b.y||a.x-b.x).forEach(c=>{if(!uniq.some(u=>u.text===c.text&&Math.abs(u.x-c.x)<c.h&&Math.abs(u.y-c.y)<c.h))uniq.push(c)});
