@@ -2717,7 +2717,7 @@ function selectMedia(i){
  const svc=PL.svc;const pub=pubOrDraft(svc);const it=pub.items[PL.idx];if(!it)return;PL.mi=i;P.stop();
  $$('[data-act="msel"]').forEach(b=>b.classList.toggle('on',+b.dataset.i===i));
  const box=$('#mediaBox');const md=(PL.ml||[])[i];if(!md){box.innerHTML='';return}
- if(md.type==='youtube'){const id=ytId(md.url);const st=ytStart(md.url);const st0=md.start!=null?md.start:st;const en=md.end||0;P.start=st0;P.end=en;const org=ytOriginParam();box.innerHTML=`<div class="vid"><iframe id="yt" src="https://www.youtube.com/embed/${id}?enablejsapi=1&playsinline=1&start=${st0}${en?'&end='+en:''}&rel=0${org}" referrerpolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div><div class="row" style="margin-top:8px;justify-content:space-between"><span class="hint" id="ytHint">재생하며 "여기에 메모" — 메모를 탭하면 그 시각으로 이동</span><a class="btn sm" id="ytfb" href="https://youtu.be/${id}?t=${st0}" target="_blank" rel="noopener">${ic('open')}유튜브에서 열기</a></div>`;P.t=st0;
+ if(md.type==='youtube'){const id=ytId(md.url);const st=ytStart(md.url);const st0=md.start!=null?md.start:st;const en=md.end||0;P.start=st0;P.end=en;box.innerHTML=`<div class="vid"><iframe id="yt" src="${esc(ytEmbedSrc(id,st0,en))}" referrerpolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe></div><div class="row" style="margin-top:8px;justify-content:space-between"><span class="hint" id="ytHint">재생하며 "여기에 메모" — 메모를 탭하면 그 시각으로 이동</span><a class="btn sm" id="ytfb" href="https://youtu.be/${id}?t=${st0}" target="_blank" rel="noopener">${ic('open')}유튜브에서 열기</a></div>`;P.t=st0;
   P.yt=$('#yt');P.yt.onload=()=>{try{P.yt.contentWindow.postMessage(JSON.stringify({event:'listening',id:1,channel:'widget'}),'*')}catch(e){}};P.timer=setInterval(()=>{if(P.yt)ytCmd('getCurrentTime')},700);
   setTimeout(()=>{if(!P.ytReady){const h=$('#ytHint');if(h)h.textContent='이 영상은 여기서 바로 재생할 수 없어요(영상 주인이 임베드를 막았을 때). 메모를 탭하면 유튜브 앱이 그 시각에서 열리고, "여기에 메모"는 시각을 직접 적어요.'}},2500);
  }else{blobURL(md.blob).then(u=>{const bars=Array.from({length:34},(_,k)=>`<i style="height:${6+((k*7)%15)}px"></i>`).join('');box.innerHTML=`<div class="now"><span class="art">${ic('mic')}</span><div class="grow"><div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(md.name||'녹음')}</div><div class="wave">${bars}</div></div></div>`;const a=new Audio(u);a.preload='metadata';P.audio=a;a.ontimeupdate=()=>{P.t=a.currentTime;updateTL()};a.onloadedmetadata=()=>{P.dur=a.duration;updateTL()};a.onplay=()=>{P.playing=true;updateTL()};a.onpause=()=>{P.playing=false;updateTL()};a.onended=()=>{P.playing=false;updateTL()}})}
@@ -5456,15 +5456,24 @@ const P={audio:null,yt:null,ytReady:false,t:0,dur:0,start:0,end:0,playing:false,
  seek(t){P.t=t;if(P.audio)P.audio.currentTime=t;else ytCmd('seekTo',[t,true]);updateTL()},
  toggle(){P.playing?P.pause():P.play()}
 };
-// 앱 웹뷰의 주소는 https://localhost 다. 이 값을 origin 으로 넘기면 유튜브가
-// 플레이어를 아예 안 띄운다("동영상 플레이어 구성 오류"). 진짜 도메인일 때만 넘긴다.
+// 웹: 진짜 도메인일 때만 origin 을 넘긴다 (localhost·사설 IP 는 빼야 플레이어가 뜬다).
 function ytOriginParam(){const o=location.origin||'';
  if(!/^https?:\/\//.test(o))return '';
  if(/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(o))return '';
  return '&origin='+encodeURIComponent(o)}
+// 앱: 웹뷰 주소가 진짜 사이트가 아니라(iOS capacitor://localhost, 안드로이드 https://localhost)
+// 유튜브가 Referer 를 못 받아 오류 153("동영상 플레이어 구성 오류")으로 막는다. capacitor:// 는
+// Referer 로 아예 안 나간다. origin 을 빼는 것만으로는 안 된다 → lets1414.com/yt.html 을 넣고
+// 그 페이지가 유튜브를 넣는다(유튜브가 보는 곳은 lets1414.com). 메시지는 그 페이지가 양쪽으로 넘긴다
+const YT={relay:NATIVE?SITE+'yt.html':''};
+function ytEmbedSrc(id,st,en){const q=`start=${st||0}${en?'&end='+en:''}`;
+ if(YT.relay)return `${YT.relay}?v=${encodeURIComponent(id)}&${q}`;
+ return `https://www.youtube.com/embed/${id}?enablejsapi=1&playsinline=1&${q}&rel=0${ytOriginParam()}`}
 function ytCmd(func,args){if(!P.yt)return;try{P.yt.contentWindow.postMessage(JSON.stringify({event:'command',func,args:args||[],id:1,channel:'widget'}),'*')}catch(e){}}
 window.addEventListener('message',e=>{if(!P.yt||e.source!==P.yt.contentWindow)return;let d;try{d=typeof e.data==='string'?JSON.parse(e.data):e.data}catch{return}
  if(d.event==='onReady'||d.event==='initialDelivery'){P.ytReady=true}
+ // 막힌 영상(101·150 임베드 금지, 153 등)도 onReady 는 먼저 온다 → 오류가 오면 준비 안 된 것으로 돌리고 유튜브 앱으로 넘긴다
+ if(d.event==='onError'){P.ytReady=false;const h=$('#ytHint');if(h)h.textContent=`이 영상은 여기서 바로 재생할 수 없어요(오류 ${d.info}). 메모를 탭하면 유튜브 앱이 그 시각에서 열리고, "여기에 메모"는 시각을 직접 적어요.`;return}
  if(d.event==='infoDelivery'&&d.info){if(d.info.currentTime!=null){P.t=d.info.currentTime}if(d.info.duration)P.dur=d.info.duration;if(d.info.playerState!=null)P.playing=d.info.playerState===1;updateTL()}});
 let PL={svc:null,idx:0,mi:0,stage:false,chart:!!lsGet('conti-chart'),zoom:+(lsGet('conti-zoom')||1)||1,f:{leader:true,session:true,mine:true,chords:true},session:null};
 // 인쇄: A4 세로, 곡마다 한 장 — 번호·제목·키·송폼 헤더 + 악보(메모 띠·전조 코드 포함)
@@ -7393,7 +7402,7 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
  if(!online()&&!me().name){location.hash='#/settings';render()}else render();
  if(online()&&S.team.id){SYNC.pullServices().then(ch=>{if(ch)render()});SYNC.pullLibrary();pullSongs(true).then(ch=>{if(ch&&/^(edit|view|play|library)$/.test(route().name))render()}).catch(()=>{})}
  probeOmr();startNotiPoll();nativeSetup();
- window.CONTI={ADS,WEBADS,AD_HOSTS,setZoom,P,pl:()=>PL,STG,stageOpen,stageExit,adsAllowed,webAdsAllowed,MET,PIANO,metOpen,metStart,metStop,metSet,pianoOpen,HOME,PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go,PLANQ,planCls,ytOriginParam};
+ window.CONTI={ADS,WEBADS,AD_HOSTS,setZoom,P,pl:()=>PL,STG,stageOpen,stageExit,adsAllowed,webAdsAllowed,MET,PIANO,metOpen,metStart,metStop,metSet,pianoOpen,HOME,PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go,PLANQ,planCls,ytOriginParam,ytEmbedSrc,YT};
 })();
 })();
 </script>

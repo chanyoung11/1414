@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="robots" content="noindex">
+<title>1414 영상</title>
+<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}iframe{display:block;border:0;width:100%;height:100%}</style>
+</head><body>
+<script>
+/* 앱 전용 유튜브 중계 페이지.
+   앱 화면의 주소는 진짜 사이트가 아니다 (iOS capacitor://localhost, 안드로이드 https://localhost).
+   거기서 유튜브를 바로 넣으면 유튜브가 '어디서 튼 영상인지'(Referer)를 못 받아 오류 153
+   ("동영상 플레이어 구성 오류")로 막는다. capacitor:// 주소는 브라우저가 Referer 로 아예 보내지 않는다.
+   그래서 앱은 이 페이지(https://lets1414.com/yt.html)를 넣고, 이 페이지가 유튜브를 넣는다 —
+   유튜브가 보는 곳은 lets1414.com 이다. 재생·멈춤·시각 같은 메시지는 양쪽으로 그대로 넘겨 준다. */
+(function(){
+ var q=new URLSearchParams(location.search);
+ var id=(q.get('v')||'').replace(/[^\w-]/g,'').slice(0,20);
+ var n=function(k){var v=parseInt(q.get(k),10);return v>0?v:0};
+ var st=n('start'),en=n('end');
+ if(!id)return;
+ var f=document.createElement('iframe');
+ f.src='https://www.youtube.com/embed/'+id+'?enablejsapi=1&playsinline=1&rel=0&start='+st+(en?'&end='+en:'')
+  +'&origin='+encodeURIComponent(location.origin)+'&widget_referrer='+encodeURIComponent(location.origin+'/');
+ f.referrerPolicy='strict-origin-when-cross-origin';
+ f.allow='autoplay; encrypted-media; picture-in-picture; fullscreen';
+ f.allowFullscreen=true;
+ document.body.appendChild(f);
+ // 앱이 보낸 'listening' 은 유튜브가 뜨기 전에 올 수 있다 → 유튜브가 뜨면 이쪽에서 한 번 더 보낸다
+ f.onload=function(){try{f.contentWindow.postMessage(JSON.stringify({event:'listening',id:1,channel:'widget'}),'*')}catch(e){}};
+ window.addEventListener('message',function(e){
+  if(e.source===f.contentWindow){if(parent!==window)parent.postMessage(e.data,'*');return}   // 유튜브 → 앱
+  if(e.source===parent&&parent!==window){try{f.contentWindow.postMessage(e.data,'*')}catch(err){}}   // 앱 → 유튜브
+ });
+})();
+</script>
+</body></html>
