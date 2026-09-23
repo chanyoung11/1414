@@ -1897,33 +1897,60 @@ function rehAddModal(svc){
    <button class="btn sm" id="rhRec">${ic('mic')}지금 녹음</button><span class="hint" id="rhPick">고른 파일 없음</span></div>
   <div class="hint" id="rhProg" style="margin-top:8px"></div>
   <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" data-close="1">닫기</button><button class="btn pri" id="rhOk" disabled>${ic('send')}올리기</button></div>`,{center:true});
- let file=null,dur=0,rec=null,chunks=[];
- const setPick=(name,d)=>{$('#rhPick').textContent=name+(d?` · ${fmtDur(d)}`:'');$('#rhOk').disabled=!file};
+ const root=$('#modal').firstChild;
+ let file=null,dur=0,rec=null,chunks=[],stream=null,gone=false,noPerm=false;
+ const setPick=(name,d)=>{const p=$('#rhPick'),ok=$('#rhOk');if(gone||!p)return;p.textContent=name+(d?` · ${fmtDur(d)}`:'');if(ok)ok.disabled=!file||noPerm};
+ // 올리지 못한 녹음은 창을 닫아도 남겨 둔다 — 다시 열면 그대로 올릴 수 있다 (새로고침하면 사라진다)
+ const d0=REH.draft&&REH.draft.svcId===svc.id?REH.draft:null;
+ if(d0){file=d0.file;dur=d0.dur;setPick('올리지 않은 녹음',dur)}
+ // 올릴 권한이 없어졌으면 녹음을 기기에 저장하게 한다 (다시 시도해도 계속 403 이다)
+ const denied=()=>{noPerm=true;const p=$('#rhProg'),ok=$('#rhOk');if(gone||!p)return;if(ok)ok.disabled=true;
+  p.innerHTML=`<span style="color:var(--destructive)">녹음을 올릴 권한이 없어요 (인도자가 바꿨어요)</span>${file?` <button class="btn sm" id="rhSave">${ic('import')}기기에 저장</button>`:''}`};
+ // 바깥 누르기·Esc·안드로이드 뒤로가기로 닫혀도 마이크를 끈다. 예전에는 [닫기] 단추만 녹음을 멈춰서
+ // 창이 사라진 뒤에도 몰래 계속 녹음했다 (마이크 표시가 켜진 채 메모리에 쌓임)
+ const mo=new MutationObserver(()=>{if(root&&root.parentNode===$('#modal'))return;mo.disconnect();gone=true;
+  if(rec&&rec.state==='recording'){rec.stop();toast('녹음을 멈췄어요 · "녹음 올리기"를 다시 열면 올릴 수 있어요')}
+  else if(stream)stream.getTracks().forEach(t=>t.stop())});
+ mo.observe($('#modal'),{childList:true});
+ // 올리기 권한은 부팅 때 받은 팀 설정으로 본다 → 그사이 인도자가 '인도자만'으로 바꿨을 수 있어 열 때 새로 받는다
+ // (예전에는 몇 시간 녹음한 뒤 올리기를 눌러서야 403 이 났다)
+ if(online()&&!isLeader())pullTeam(true).then(()=>{if(gone||canUploadReh())return;
+  if(!file&&!(rec&&rec.state==='recording')){closeModal();render();toast('녹음을 올릴 권한이 없어요 (인도자가 바꿨어요)');return}
+  denied()}).catch(()=>{});
  const measure=b=>new Promise(res=>{const a=new Audio(URL.createObjectURL(b));a.onloadedmetadata=()=>{res(isFinite(a.duration)?a.duration:0);URL.revokeObjectURL(a.src)};a.onerror=()=>res(0);setTimeout(()=>res(0),4000)});
  $('#modal').onchange=async e=>{if(e.target.id!=='rhFile')return;const f=e.target.files[0];if(!f)return;
   if(f.size>150*1024*1024){toast('150MB 이하만 올릴 수 있어요');return}
   file=f;dur=await measure(f);setPick(f.name,dur)};
  $('#modal').onclick=async e=>{
-  if(e.target.closest('[data-close]')){if(rec&&rec.state==='recording')rec.stop();closeModal();return}
+  if(e.target.closest('[data-close]')){closeModal();return}   // 녹음 중이면 위의 감시가 멈추고 남겨 둔다
+  if(e.target.closest('#rhSave')){if(!file)return;const a=document.createElement('a');a.href=URL.createObjectURL(file);
+   const ext=/mp4|m4a|aac/.test(file.type)?'m4a':/webm/.test(file.type)?'webm':/ogg/.test(file.type)?'ogg':((file.name.match(/\.(\w+)$/)||[])[1]||'m4a');
+   a.download=(($('#rhLabel').value.trim()||fmtDate($('#rhDate').value||today()).md+' 연습').replace(/[\\/:*?"<>|]/g,'_'))+'.'+ext;
+   document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},4000);toast('기기에 저장했어요');return}
   if(e.target.closest('#rhRec')){const btn=$('#rhRec');
    if(rec&&rec.state==='recording'){rec.stop();return}
-   try{const stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:false,noiseSuppression:false}});
+   try{stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:false,noiseSuppression:false}});
+    if(gone){stream.getTracks().forEach(t=>t.stop());return}   // 마이크 허락을 묻는 사이에 창이 닫혔다
     const mime=['audio/mp4','audio/webm;codecs=opus','audio/webm'].find(t=>window.MediaRecorder&&MediaRecorder.isTypeSupported(t))||'';
-    rec=new MediaRecorder(stream,mime?{mimeType:mime,audioBitsPerSecond:64000}:{});chunks=[];const t0=Date.now();
-    rec.ondataavailable=ev=>{if(ev.data&&ev.data.size)chunks.push(ev.data)};
-    rec.onstop=async()=>{stream.getTracks().forEach(t=>t.stop());const b=new Blob(chunks,{type:rec.mimeType||'audio/webm'});
-     file=new File([b],'연습녹음',{type:b.type});dur=Math.round((Date.now()-t0)/1000);btn.textContent='다시 녹음';setPick('방금 녹음',dur)};
-    rec.start(1000);btn.innerHTML='■ 녹음 멈추기';$('#rhPick').textContent='녹음 중…'}
+    const st=stream,r0=rec=new MediaRecorder(st,mime?{mimeType:mime,audioBitsPerSecond:64000}:{});chunks=[];const t0=Date.now();
+    r0.ondataavailable=ev=>{if(ev.data&&ev.data.size)chunks.push(ev.data)};
+    r0.onstop=()=>{st.getTracks().forEach(t=>t.stop());const b=new Blob(chunks,{type:r0.mimeType||'audio/webm'});
+     file=new File([b],'연습녹음',{type:b.type});dur=Math.round((Date.now()-t0)/1000);REH.draft={svcId:svc.id,file,dur};
+     if(gone)return;btn.textContent='다시 녹음';setPick('방금 녹음',dur);if(noPerm)denied()};
+    r0.start(1000);btn.innerHTML='■ 녹음 멈추기';$('#rhPick').textContent='녹음 중…'}
    catch(err){toast('마이크를 쓸 수 없어요')}return}
-  if(e.target.closest('#rhOk')){if(!file)return;const btn=$('#rhOk');btn.disabled=true;const prog=$('#rhProg');
+  if(e.target.closest('#rhOk')){if(!file||noPerm)return;const btn=$('#rhOk');btn.disabled=true;const prog=$('#rhProg');
    try{prog.textContent='올릴 자리 준비 중…';
     const u=await api('/rehearsals/upload-url',{method:'POST',body:{teamId:S.team.id,size:file.size,mime:file.type||'audio/mp4'}});
     await putDirect(u.uploadUrl,file,p=>{prog.textContent=`올리는 중… ${p}%`});
     prog.textContent='마무리 중…';
     const r=await api('/rehearsals',{method:'POST',body:{teamId:S.team.id,serviceId:svc.id,blobId:u.blobId,pathname:u.pathname,date:$('#rhDate').value,label:$('#rhLabel').value.trim(),duration:Math.round(dur)}});
+    if(REH.draft&&REH.draft.file===file)REH.draft=null;
     (REH.bySvc[svc.id]=REH.bySvc[svc.id]||[]).unshift(r.rehearsal);await pullRehearsals(svc.id,true);
     closeModal();render();toast('녹음을 올렸어요')}
-   catch(err){prog.innerHTML=`<span style="color:var(--destructive)">${esc(err.message)}</span> <button class="btn sm" id="rhOk">다시 시도</button>`;btn.disabled=false;toast(err.message)}return}}}
+   catch(err){toast(err.message);
+    if(err.status===403){denied();pullTeam(true).then(()=>render()).catch(()=>{});return}   // 뒤 화면의 '녹음 올리기'도 치운다
+    prog.innerHTML=`<span style="color:var(--destructive)">${esc(err.message)}</span> <button class="btn sm" id="rhOk">다시 시도</button> <button class="btn sm" id="rhSave">${ic('import')}기기에 저장</button>`;btn.disabled=false}return}}}
 // 파일 하나 올리기. 서버리스 본문 한도(4.5MB)를 넘으면 Blob 스토어로 바로 올린 뒤 등록한다
 const DIRECT_OVER=3.5*1024*1024;
 // 같은 파일을 겹쳐 올리지 않는다. 초안·라이브러리·곡 자동 저장이 저마다 올리기를 시작해서
@@ -1950,7 +1977,11 @@ function putDirect(url,file,onProgress){return new Promise((res,rej)=>{const x=n
  x.onload=()=>x.status>=200&&x.status<300?res():rej(new Error('업로드 실패 ('+x.status+')'));
  x.onerror=()=>rej(new Error('네트워크 오류로 업로드하지 못했어요'));x.send(file)})}
 // 녹음 플레이어: 재생 · ±5초 · 진행바 · 여기에 메모 (연습 화면과 같은 조작)
-function rehPlayer(svc,r){const src=REH.urls[r.blobId];
+// at: {t:시작 초, play:바로 재생} — 메모를 적고 돌아오면 보던 자리에서 다시 연다 (예전에는 0:00 으로 돌아갔다)
+async function rehPlayer(svc,r,at){
+ // 재생 주소는 서명한 지 1시간이면 끊긴다 → 받은 지 50분이 넘었으면 새로 받는다 (예전에는 화면을 오래 켜 두면 말없이 0:00 에 멈춰 있었다)
+ if(online()&&(!REH.urls[r.blobId]||Date.now()-(REH.at[svc.id]||0)>50*60e3))await pullRehearsals(svc.id,true);
+ const src=REH.urls[r.blobId];
  if(!src){toast('재생 주소를 받지 못했어요');return}
  const notes=()=>(r.notes||[]).slice().sort((a,b)=>a.t-b.t);
  const draw=()=>{const a=$('#rhAudio');if(!a)return;const d=a.duration||r.duration||0;
@@ -1964,16 +1995,29 @@ function rehPlayer(svc,r){const src=REH.urls[r.blobId];
   <div class="row sb" style="margin-top:8px"><span class="hint mono" id="rhT">0:00 / ${fmtDur(r.duration)}</span>
    <span class="row" style="gap:6px"><button class="btn sm" id="rhB5">-5초</button><button class="btn sm pri" id="rhPlay">${ic('play')}재생</button><button class="btn sm" id="rhF5">+5초</button><button class="btn sm" id="rhNote">${ic('note')}여기에 메모</button></span></div>
   <div id="rhNotes" style="margin-top:10px;max-height:230px;overflow:auto"></div>`,{center:true});
- const a=$('#rhAudio');a.ontimeupdate=draw;a.onloadedmetadata=draw;a.onplay=()=>{$('#rhPlay').innerHTML=ic('pause')+'멈춤'};a.onpause=()=>{$('#rhPlay').innerHTML=ic('play')+'재생'};
- draw();
+ const a=$('#rhAudio');const mine=()=>$('#rhAudio')===a;   // 창이 닫히거나 메모 창으로 바뀌면 이 플레이어는 끝
+ const btnTo=h=>{const b=$('#rhPlay');if(b&&mine())b.innerHTML=h};
+ a.ontimeupdate=draw;a.onplay=()=>btnTo(ic('pause')+'멈춤');a.onpause=()=>btnTo(ic('play')+'재생');
+ let intend=!!(at&&at.play),want=at&&at.t>0?+at.t:0,lastT=want,retried=false;
+ const play=()=>{intend=true;const p=a.play();if(p&&p.catch)p.catch(()=>{})};   // 실패는 onerror 가 알린다
+ // 길이를 알기 전에는 자리를 옮기지 못하는 브라우저가 있어 메타데이터를 받은 뒤에 한 번 더 맞춘다
+ const seek=()=>{if(want>0){try{a.currentTime=want}catch(e){}}};
+ a.onloadedmetadata=()=>{seek();want=0;draw()};
+ a.addEventListener('timeupdate',()=>{if(a.currentTime>0)lastT=a.currentTime});
+ // 주소가 끊겼으면(만료 403 등) 한 번 새로 받아 이어서 튼다. 그래도 안 되면 말해 준다 (예전에는 0:00 에 말없이 멈춰 있었다)
+ a.onerror=async()=>{if(!mine())return;
+  if(!retried&&online()){retried=true;await pullRehearsals(svc.id,true);const u=REH.urls[r.blobId];
+   if(u&&mine()){want=lastT;a.src=u;if(intend)play();return}}
+  if(mine())toast('녹음을 재생하지 못했어요 · 인터넷 연결을 확인해 주세요')};
+ seek();draw();if(intend)play();
  $('#modal').onclick=async e=>{
   if(e.target.closest('[data-close]')||e.target.classList.contains('ov')){a.pause();closeModal();return}
-  if(e.target.closest('#rhPlay')){a.paused?a.play():a.pause();return}
+  if(e.target.closest('#rhPlay')){if(a.paused)play();else{intend=false;a.pause()}return}
   if(e.target.closest('#rhB5')){a.currentTime=Math.max(0,a.currentTime-5);return}
   if(e.target.closest('#rhF5')){a.currentTime=Math.min(a.duration||1e9,a.currentTime+5);return}
   const bar=e.target.closest('#rhProgBar');if(bar){const rect=bar.getBoundingClientRect();a.currentTime=(e.clientX-rect.left)/rect.width*(a.duration||0);draw();return}
-  const tl=e.target.closest('[data-rt]');if(tl){a.currentTime=+tl.dataset.rt;a.play();return}
-  if(e.target.closest('#rhNote')){const t=a.currentTime;a.pause();rehNoteSheet(svc,r,t,()=>{draw();rehPlayer(svc,r)});return}}}
+  const tl=e.target.closest('[data-rt]');if(tl){a.currentTime=+tl.dataset.rt;play();return}
+  if(e.target.closest('#rhNote')){const t=a.currentTime,was=!a.paused;a.pause();rehNoteSheet(svc,r,t,()=>rehPlayer(svc,r,{t,play:was}));return}}}
 function rehNoteSheet(svc,r,t,done){const lead=isLeader();const items=pubOrDraft(svc).items;
  modal(`<b style="font-size:17px">${fmtDur(t)} 메모</b>
   <div class="lbl">내용</div><input class="field" id="rnText" maxlength="60" placeholder="3번 B 들어갈 때 반박 빠름">
@@ -7926,7 +7970,7 @@ document.addEventListener('click',async e=>{
   case 'reh-add':{const s2=svcById(route().a);if(s2)rehAddModal(s2);break}
   case 'reh-menu':{const s2=svcById(route().a);const r2=(REH.bySvc[s2&&s2.id]||[]).find(x=>x.id===el.dataset.id);if(s2&&r2)rehMenu(s2,r2);break}
   case 'reh-play':{const s2=svcById(route().a);const r2=(REH.bySvc[s2&&s2.id]||[]).find(x=>x.id===el.dataset.id);
-   if(s2&&r2){rehPlayer(s2,r2);const at=+el.dataset.t;if(at>0)setTimeout(()=>{const a=$('#rhAudio');if(a){a.currentTime=at;a.play().catch(()=>{})}},250)}break}
+   if(s2&&r2){const at=+el.dataset.t;rehPlayer(s2,r2,at>0?{t:at,play:true}:null)}break}
   case 'word':go('word');break;
   case 'word-save':{const id=el.dataset.id;const st=$('#wpState');if(st)st.textContent='저장 중…';
    try{const r2=await api('/services/'+id+'/word',{method:'PUT',body:{teamId:S.team.id,word:{passage:$('#wpPassage').value.trim(),title:$('#wpTitle').value.trim(),line:$('#wpLine').value.trim(),memo:$('#wpMemo').value.trim(),memoPublic:!!($('#wpPub')&&$('#wpPub').checked)}}});
