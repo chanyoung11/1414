@@ -45,6 +45,9 @@ http.createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Headers', '*');
     if (req.method === 'OPTIONS') { res.statusCode = 204; return res.end(); }
     if (req.method === 'PUT') {
+      // 운영(R2)의 서명 URL 은 크기를 묶어 둔다. 로컬도 같이 막아야 크기가 다른 업로드를 테스트에서 알아챈다
+      const len = url.searchParams.get('len');
+      if (len != null && String(req.headers['content-length']) !== len) { req.resume(); res.statusCode = 403; return res.end('size mismatch'); }
       fs.mkdirSync(path.dirname(f), { recursive: true });
       const chunks = []; req.on('data', (c) => chunks.push(c));
       return req.on('end', () => {

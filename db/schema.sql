@@ -98,6 +98,15 @@ create table if not exists drafts (
 );
 -- 비공개 Blob: 서명 URL 발급용 경로
 alter table blobs add column if not exists pathname text;
+-- 저장소에서 치울 파일 (lib/blob.js). 지우다 실패한 것과, 직접 업로드 URL 을 받고 등록하지 않은 것.
+-- due_at 이 지나면 크론이 지운다 — 그때 blobs 가 가리키고 있으면(같은 이름으로 다시 올려 등록) 지우지 않고 목록에서만 뺀다
+create table if not exists blob_trash (
+  url        text primary key,
+  due_at     timestamptz not null default now(),
+  tries      int not null default 0,
+  created_at timestamptz not null default now()
+);
+create index if not exists blob_trash_due_idx on blob_trash(due_at);
 
 -- ---------- §2 정기 예배 · 사역 날짜 ----------
 -- 팀 설정 확장 (없으면 추가)

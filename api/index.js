@@ -5,7 +5,7 @@ import { q, one, tx } from '../lib/db.js';
 import { sessionClaims, sessionTokens, sessionCookie, clearSessionCookie, randomToken, isApp, appSessionToken } from '../lib/session.js';
 import { hashPasswordAsync, verifyPasswordAsync, USERNAME_RE, PASSWORD_MIN } from '../lib/password.js';
 import { verifyIdToken, audiencesOf, socialConfigured } from '../lib/social.js';
-import { putBlob, delBlobs, readUrls, presignPut, headBlob, blobExists, BlobDownError } from '../lib/blob.js';
+import { putBlob, delBlobs, readUrls, presignPut, headBlob, blobExists, BlobDownError, sweepBlobs } from '../lib/blob.js';
 import { ocrBands, visionConfigured } from '../lib/vision.js';
 import { sendPush, pushConfigured, vapidPublicKey } from '../lib/push.js';
 import { fcmConfigured } from '../lib/fcm.js';
@@ -2267,10 +2267,11 @@ on('POST', '/blobs/:id/upload-url', async ({ uid, params, body }) => {
   if (!/^[A-Za-z0-9_-]{4,40}$/.test(params.id)) throw bad('파일 id가 이상해요');
   const size = Math.max(0, Math.round(+body.size || 0));
   if (size > 200 * 1024 * 1024) throw new HttpError(413, 'too_large', '파일이 너무 커요 (200MB 이하)');
+  if (!size) throw bad('파일 크기를 알 수 없어요');   // 서명 URL 이 이 크기만 받는다
   const type = str(body.mime, 100) || 'application/octet-stream';
   const ext = type.includes('jpeg') ? '.jpg' : type.includes('png') ? '.png' : type.includes('webp') ? '.webp' : type.startsWith('audio/') ? '.audio' : '';
   const pathname = `teams/${teamId}/${params.id}${ext}`;
-  const p = await presignPut(pathname, type, 30);
+  const p = await presignPut(pathname, type, 10, size);
   return { uploadUrl: p.url, pathname, mime: type };
 });
 // 직접 올린 파일을 DB 에 등록 (실제로 있는지 확인)
@@ -2314,11 +2315,12 @@ on('POST', '/rehearsals/upload-url', async ({ uid, body }) => {
   if (!canUploadRehearsal(m, st)) throw forbidden('녹음을 올릴 권한이 없어요');
   const size = Math.max(0, Math.round(+body.size || 0));
   if (size > REHEARSAL_MAX) throw new HttpError(413, 'too_large', '녹음은 150MB 이하만 올릴 수 있어요');
+  if (!size) throw bad('파일 크기를 알 수 없어요');
   const mime = /^audio\//.test(str(body.mime, 60)) ? str(body.mime, 60) : 'audio/mp4';
   const blobId = 'r' + randomToken(12).replace(/[^A-Za-z0-9]/g, '').slice(0, 16).toLowerCase();
   const ext = mime.includes('mp4') || mime.includes('m4a') ? '.m4a' : mime.includes('webm') ? '.webm' : mime.includes('mpeg') ? '.mp3' : '.audio';
   const pathname = `teams/${teamId}/rehearsals/${blobId}${ext}`;
-  const p = await presignPut(pathname, mime, 30);
+  const p = await presignPut(pathname, mime, 10, size);
   return { blobId, pathname, uploadUrl: p.url, mime };
 });
 
@@ -3298,6 +3300,9 @@ on('GET', '/cron/dates', async ({ req }) => {
     await q('delete from teams where id=$1', [t.id]);   // 나머지는 on delete cascade
     teamsDropped++;
   }, 2);
+  // 지우다 실패한 파일, 직접 업로드 URL 만 받고 등록하지 않은 파일을 저장소에서 치운다 (lib/blob.js). 이것도 정리라 팀별 작업보다 먼저
+  let blobsSwept = null;
+  try { blobsSwept = await sweepBlobs(); } catch (e) { console.error('blob sweep', e); }
   // 팀마다: 정기 예배 13주 앞 유지 → D-N주 콘티 자동 생성
   const recs = await q(`select r.* from recurring r join teams t on t.id=r.team_id where r.active=true and t.deleted_at is null`);
   const byTeam = new Map();
@@ -3307,7 +3312,7 @@ on('GET', '/cron/dates', async ({ req }) => {
     for (const rec of byTeam.get(t.id) || []) { await fillDates(t.id, rec); n++; }
     created += await autoCreateServices(t.id);
   });
-  return { ok: true, recurring: n, created, purged, warned, dropped, teamsDropped };
+  return { ok: true, recurring: n, created, purged, warned, dropped, teamsDropped, blobsSwept };
 });
 
 // 알림 배치 (KST 10:00): 월간 스케줄 요청 · 보류 D-14 · 주간 말씀 요청 (§1.2 시각)
