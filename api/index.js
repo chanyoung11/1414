@@ -15,6 +15,7 @@ import { transcribeSheet, transcribeScore, geminiConfigured, geminiModel, estima
 import { norm as normSong, cho as choSong } from '../lib/song.js';
 import { safeDoc, safeItem } from '../lib/docsafe.js';
 import { randomBytes } from 'node:crypto';
+import { gzip } from 'node:zlib';
 
 class HttpError extends Error { constructor(status, code, message) { super(message || code); this.status = status; this.code = code; } }
 const bad = (m) => new HttpError(400, 'bad_request', m);
@@ -45,14 +46,29 @@ async function readRaw(req, max = 80 * 1024 * 1024) {
     req.on('error', rej);
   });
 }
-function send(res, status, data, headers) {
+async function send(res, status, data, headers) {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
   for (const k in headers || {}) res.setHeader(k, headers[k]);
   // 애플 로그인 콜백처럼 HTML 을 그대로 내보내는 자리가 있다
   const ct = String(res.getHeader ? (res.getHeader('Content-Type') || '') : '');
-  res.end(/json/i.test(ct) ? JSON.stringify(data) : String(data));
+  const body = /json/i.test(ct) ? JSON.stringify(data) : String(data);
+  // Cloud Run 은 응답을 압축해 주지 않는다 (Vercel 은 앞단이 해 줬다). 곡 목록 같은 큰 JSON 이 폰으로 열 배 크게 가던 것을
+  // 여기서 gzip 한다. 요청을 모르는 자리(Workers 의 흉내 res 에는 req 가 없다)는 전처럼 그대로 보낸다
+  const req = res.req;
+  if (req && req.headers && body.length > 1024) {
+    const v = res.getHeader('Vary');
+    res.setHeader('Vary', v ? `${v}, Accept-Encoding` : 'Accept-Encoding');
+    if (/\bgzip\b/.test(String(req.headers['accept-encoding'] || ''))) {
+      try {
+        const gz = await new Promise((ok, no) => gzip(body, (e, b) => (e ? no(e) : ok(b))));
+        res.setHeader('Content-Encoding', 'gzip');
+        return res.end(gz);
+      } catch (e) { console.error('gzip', e.message); }
+    }
+  }
+  res.end(body);
 }
 const str = (v, max = 200) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 const nowSec = () => Math.floor(Date.now() / 1000);
@@ -3355,8 +3371,9 @@ export default async function handler(req, res) {
       if (ep && !ep.out && (ep.e == null || (claims.iat && claims.iat >= Number(ep.e)))) uid = claims.uid;
     }
     const out = await route.fn({ req, uid, params, body, url });
-    if (out && out.headers && 'data' in out) return send(res, 200, out.data, out.headers);
-    return send(res, 200, out);
+    // await 해야 응답을 만들다 던진 것(JSON 으로 못 바꾸는 값 등)도 아래 catch 가 받아 500 으로 끝낸다
+    if (out && out.headers && 'data' in out) return await send(res, 200, out.data, out.headers);
+    return await send(res, 200, out);
   } catch (e) {
     if (e instanceof HttpError) return send(res, e.status, { error: e.code, message: e.message });
     // 악보 저장소가 멎었을 때는 '서버 오류'가 아니라 무엇이 멈췄는지 알려 준다
