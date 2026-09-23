@@ -5118,6 +5118,22 @@ function detectSystems(canvas){const W=Math.min(1600,canvas.width);const H=Math.
  found.forEach(f=>{const o=out.find(o=>o.siEnd===f.si-1&&Math.abs(o.top-f.top)<=Math.max(o.sp,f.sp)*1.2+2&&Math.abs(o.bottom-f.bottom)<=Math.max(o.sp,f.sp)*1.2+2);
   if(o){o.top=Math.min(o.top,f.top);o.bottom=Math.max(o.bottom,f.bottom);o.x1=f.x1;o.siEnd=f.si;o.sp=Math.max(o.sp,f.sp)}else out.push({top:f.top,bottom:f.bottom,x0:f.x0,x1:f.x1,sp:f.sp,siEnd:f.si})});
  const k=canvas.height/H;return out.filter(o=>o.x1-o.x0>=sw*2).sort((a,b)=>a.top-b.top||a.x0-b.x0).map(o=>({top:Math.round(o.top*k),bottom:Math.round(o.bottom*k),x0:Math.round(Math.max(0,o.x0-sw)*k),x1:Math.round(Math.min(W,o.x1+sw)*k)}))}
+/* ---------- AI 결과를 제자리에 넣기 ---------- */
+// 코드 인식·악보 만들기·채보는 10초~몇 분 걸린다. 그 사이 팀을 바꾸면 S 가 통째로 다른 팀 것이 된다.
+// 처음 잡아 둔 svc·it 에 결과를 쓰고 지금 S 에 save·syncLib 하면 그 곡이 다른 팀 라이브러리로 복사됐고,
+// 원래 팀에는 '인식 중'으로 굳었고, 남은 호출은 다른 팀 몫으로 셌다.
+// 그래서 시작할 때 스코프·팀을 기억해 두고(팀은 호출에 그대로 쓴다), 끝났을 때 그 스코프의 콘티를 id 로 다시 찾아 넣는다
+const aiTok=()=>({scope:CUR_SCOPE,team:S.team.id});
+async function aiLand(tok,svc0,it0,piece0){
+ const find=list=>{const svc=(list||[]).find(x=>x&&x.id===svc0.id);const it=svc&&(svc.items||[]).find(x=>x.id===it0.id);
+  const piece=it&&piece0?(it.pieces||[]).find(x=>x.id===piece0.id):null;return it&&(!piece0||piece)?{svc,it,piece}:null};
+ if(CUR_SCOPE===tok.scope){const f=find([svcById(svc0.id)]);   // 팀을 바꿨다 돌아왔으면 저장본에서 새로 읽은 객체다
+  return f&&{...f,here:true,async done(){touch(f.svc);syncLib(f.it);save()}}}
+ let st=null;try{st=JSON.parse(await IDB.get('kv',tok.scope)||'null')}catch(e){}
+ const f=st&&find(st.services);if(!f)return null;
+ return {...f,here:false,async done(){touch(f.svc);syncLib(f.it,st.library=st.library||[]);
+  try{await IDB.put('kv',tok.scope,JSON.stringify(st))}catch(e){console.warn('aiLand',e)}}}}
+const AI_ELSEWHERE='팀을 바꾸는 사이 끝나서 원래 팀 콘티에 넣어 뒀어요';
 /* ---------- 채보(OMR): 악보 한 장 → 코드 차트. 서버의 /omr(Gemini) 호출, 결과를 보여주고 곡 정보에 채움 ---------- */
 let OMR_BUSY=false;
 async function transcribePiece(svc,it,piece){if(!online()||!isLeader()||!piece)return;
@@ -5125,20 +5141,20 @@ async function transcribePiece(svc,it,piece){if(!online()||!isLeader()||!piece)r
  const blob=await IDB.get('blobs',piece.blob);if(!blob){toast('이 기기에 악보 파일이 없어요');return}
  OMR_BUSY=true;$$('[data-act="omr"]').forEach(b=>b.disabled=true);
  try{return await transcribeRun(svc,it,piece,blob)}finally{OMR_BUSY=false;$$('[data-act="omr"]').forEach(b=>b.disabled=false)}}
-async function transcribeRun(svc,it,piece,blob){
+async function transcribeRun(svc,it,piece,blob){const tok=aiTok();
  toast('채보 중… 10초쯤 걸려요');let b64,mime='image/jpeg';
  try{
   if(blob.size>2.5*1024*1024){const img=await loadImg(URL.createObjectURL(blob));const sc=Math.min(1,1800/img.naturalWidth);const c=document.createElement('canvas');c.width=Math.round(img.naturalWidth*sc);c.height=Math.round(img.naturalHeight*sc);c.getContext('2d').drawImage(img,0,0,c.width,c.height);b64=c.toDataURL('image/jpeg',0.85).split(',')[1]}
   else{b64=await toB64(blob);mime=/^image\/(png|webp)$/.test(blob.type)?blob.type:'image/jpeg'}
  }catch(e){toast('이미지를 준비하지 못했어요');return}
  // 곡 키를 같이 보내야 월 한도를 곡 단위로 센다 (같은 곡을 다시 채보하면 더 빠지지 않는다)
- let r;try{r=await api('/omr',{method:'POST',body:{teamId:S.team.id,songKey:it&&it.id,b64,mime}})}catch(e){toast(e.message);return}
- takeQuota('omr',r.quota);
+ let r;try{r=await api('/omr',{method:'POST',body:{teamId:tok.team,songKey:it&&it.id,b64,mime}})}catch(e){toast(e.message);return}
+ if(tok.scope===CUR_SCOPE)takeQuota('omr',r.quota);   // 팀을 바꿨으면 지금 팀의 남은 횟수가 아니다
  const songs=r.songs||[];if(!songs.length){toast('악보를 읽지 못했어요. 더 선명한 사진으로 다시 해 보세요');return}
- omrModal(svc,it,songs,r);
+ omrModal(svc,it,songs,r,tok);
 }
 function chartText(s){return s.sections.map(sec=>`[${sec.name}${sec.repeat?' x'+sec.repeat:''}] `+sec.bars.map(b=>'| '+(b.chords.join(' ')||'·')).join(' ')+' |'+(sec.bars.some(b=>b.lyric)?'\n   '+sec.bars.map(b=>b.lyric).filter(Boolean).join(' / '):'')).join('\n')}
-function omrModal(svc,it,songs,r){
+function omrModal(svc,it,songs,r,tok){
  const one=(s,i)=>`<div style="padding:10px 0;border-top:1px solid var(--line2)"><div class="row" style="gap:8px;align-items:baseline"><b style="font-size:15px">${esc(s.title||'(제목 없음)')}</b>${s.subtitle?`<span class="hint">${esc(s.subtitle)}</span>`:''}<span class="grow"></span><span class="hint">키 ${esc(s.key||'?')} · ${esc(s.timeSignature||'?')}${s.tempo?' · '+s.tempo+'bpm':''} · 확신 ${Math.round((s.confidence||0)*100)}%</span></div>
   <div class="mono" style="margin:6px 0;font-size:12.5px">${esc(s.form||'')}</div>
   ${s.sections.map(sec=>`<div style="margin:6px 0;font-size:12.5px"><b>[${esc(sec.name)}${sec.repeat?' x'+sec.repeat:''}]</b> <span class="mono">${esc(sec.bars.map(b=>'| '+(b.chords.join(' ')||'·')).join(' ')+' |')}</span>${sec.bars.some(b=>b.lyric)?`<div class="hint">${esc(sec.bars.map(b=>b.lyric).filter(Boolean).join(' / '))}</div>`:''}</div>`).join('')}
@@ -5150,10 +5166,11 @@ function omrModal(svc,it,songs,r){
   if(e.target.closest('#omrClose')){closeModal();return}
   const cp=e.target.closest('[data-copy]');if(cp){await copyText(chartText(songs[+cp.dataset.copy]));toast('차트를 복사했어요');return}
   const ap=e.target.closest('[data-apply]');if(ap){const s=songs[+ap.dataset.apply];
+   const L=await aiLand(tok||aiTok(),svc,it,null);if(!L){closeModal();toast('채보 결과를 넣을 곡이 없어졌어요');return}({svc,it}=L);
    if(s.title&&!it.title)it.title=s.title;if(s.key&&!it.key)it.key=s.key;
    if(s.form&&(!it.form||confirm('송폼을 채보 결과로 바꿀까요?\n'+s.form)))it.form=s.form;
    it.chart={at:Date.now(),model:r.model||'',title:s.title,key:s.key,timeSignature:s.timeSignature,tempo:s.tempo,form:s.form,sections:s.sections,notes:s.notes||null};
-   touch(svc);syncLib(it);save();closeModal();render();toast('곡 정보에 넣었어요 · 아래에서 코드를 고칠 수 있어요');return}
+   await L.done();closeModal();render();toast(L.here?'곡 정보에 넣었어요 · 아래에서 코드를 고칠 수 있어요':AI_ELSEWHERE);return}
  };
 }
 /* ---------- 악보 재구성: 사진 → 오선 한 줄씩 채보 → 새로 그린 디지털 악보 ---------- */
@@ -5225,7 +5242,7 @@ async function rebuildScore(svc,it,piece){
  try{await rebuildRun(svc,it,piece,blob,append)}
  catch(e){toast(e.message||'악보를 만들지 못했어요')}
  finally{SCORE_BUSY=false;$$('[data-act="score-make"]').forEach(b=>b.disabled=false)}}
-async function rebuildRun(svc,it,piece,blob,append){
+async function rebuildRun(svc,it,piece,blob,append){const tok=aiTok();
  const img=await loadImg(URL.createObjectURL(blob));
  const cv=document.createElement('canvas');cv.width=img.naturalWidth;cv.height=img.naturalHeight;cv.getContext('2d').drawImage(img,0,0);
  let sys=[];try{sys=detectSystems(cv)}catch(e){console.warn('detectSystems',e)}
@@ -5237,7 +5254,7 @@ async function rebuildRun(svc,it,piece,blob,append){
  const LANE=3;   // 한꺼번에 다 보내면 서버 쪽에서 막히니 3줄씩
  let next=0;
  const worker=async()=>{while(next<imgs.length){const i=next++;
-  try{const r=await api('/score',{method:'POST',body:{teamId:S.team.id,b64:imgs[i].b64,mime:imgs[i].mime}});
+  try{const r=await api('/score',{method:'POST',body:{teamId:tok.team,b64:imgs[i].b64,mime:imgs[i].mime}});
    parts[i]=(r.songs||[])[0]||null;model=r.model||model;cost+=+r.costKRW||0;
    if(r.usage){usage.input+=r.usage.input||0;usage.output+=r.usage.output||0;usage.thinking+=r.usage.thinking||0}}
   catch(e){fail++;console.warn('score line',i,e.message)}
@@ -5245,6 +5262,7 @@ async function rebuildRun(svc,it,piece,blob,append){
  await Promise.all(Array.from({length:Math.min(LANE,imgs.length)},worker));
  let sc=mergeScoreParts(parts);
  if(!sc){toast('악보를 읽지 못했어요. 더 선명한 사진으로 다시 해 보세요');return}
+ const L=await aiLand(tok,svc,it,null);if(!L){toast('악보를 넣을 곡이 없어졌어요');return}({svc,it}=L);
  sc.at=Date.now();sc.model=model;sc.cost=Math.round(cost);sc.lines=imgs.length;sc.failed=fail;
  if(!sc.title&&it.title)sc.title=it.title;
  // 이미 악보가 있으면 (조각이 여러 장인 곡) 뒤에 이어 붙일지 묻는다
@@ -5257,7 +5275,8 @@ async function rebuildRun(svc,it,piece,blob,append){
  } else it.score=sc;
  if(!it.key&&sc.key)it.key=sc.key;
  if(!it.title&&sc.title)it.title=sc.title;
- touch(svc);syncLib(it);save();
+ await L.done();
+ if(!L.here){toast(AI_ELSEWHERE);return}
  const bad=badMeasuresOf(sc);
  toast(`악보 ${sc.measures.length}마디 완성${bad.length?` · 박자 확인 필요 ${bad.length}마디`:''}${fail?` · ${fail}줄 실패`:''}`);
  go(`score/${svc.id}/${it.id}`);
@@ -5499,6 +5518,7 @@ function askOcr(svc,it,piece){
   closeModal();recognizeChords(svc,it,piece)};
 }
 async function recognizeChords(svc,it,piece){if(!online()||!isLeader()||!piece)return;piece.ocr='pending';piece.ocrErr='';save();if(route().name==='edit')drawEditorSheet(svc);
+ const tok=aiTok();let res;
  try{const blob=await IDB.get('blobs',piece.blob);if(!blob)throw new Error('이 기기에 악보 파일이 없어요');const img=await loadImg(URL.createObjectURL(blob));
   // 예전에는 오선 위 '코드 띠'를 12~13장으로 잘라 일반 OCR 에 보냈다. 위첨자(Bm⁷, A⁹)와
   // sus4 를 못 읽어 절반 넘게 틀렸다. 이제는 악보 한 장을 통째로 한 번 보낸다 —
@@ -5507,10 +5527,12 @@ async function recognizeChords(svc,it,piece){if(!online()||!isLeader()||!piece)r
   const cv=document.createElement('canvas');cv.width=Math.round(img.naturalWidth*sc);cv.height=Math.round(img.naturalHeight*sc);
   cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
   const b64=cv.toDataURL('image/jpeg',0.9).split(',')[1];
-  const r=await api('/ocr',{method:'POST',body:{teamId:S.team.id,songKey:it&&it.id,images:[{b64,mime:'image/jpeg',w:cv.width,h:cv.height}]}});
-  const res=(r.results||[])[0]||{tokens:[]};
-  const kx=piece.w/cv.width;const found=[];
-  (res.tokens||[]).forEach(t=>{const text=normAcc(t.text);if(!isChordText(text))return;
+  res={r:await api('/ocr',{method:'POST',body:{teamId:tok.team,songKey:it&&it.id,images:[{b64,mime:'image/jpeg',w:cv.width,h:cv.height}]}}),kx:piece.w/cv.width}}
+ catch(e){res={e}}
+ const L=await aiLand(tok,svc,it,piece);if(!L)return;({svc,it,piece}=L);
+ try{if(res.e)throw res.e;const r=res.r,kx=res.kx;
+  const found=[];
+  (((r.results||[])[0]||{}).tokens||[]).forEach(t=>{const text=normAcc(t.text);if(!isChordText(text))return;
    found.push({id:uid(),text,x:Math.round(t.x*kx),y:Math.round(t.y*kx),w:Math.round(t.w*kx),h:Math.round(t.h*kx),conf:t.conf||90,fixed:false})});
   // 같은 자리에 두 번 잡힌 것 제거
   const uniq=[];found.sort((a,b)=>a.y-b.y||a.x-b.x).forEach(c=>{if(!uniq.some(u=>u.text===c.text&&Math.abs(u.x-c.x)<c.h&&Math.abs(u.y-c.y)<c.h))uniq.push(c)});
@@ -5522,14 +5544,15 @@ async function recognizeChords(svc,it,piece){if(!online()||!isLeader()||!piece)r
   if(title&&!(it.title||'').trim()){it.title=title;filled.push('제목')}
   if(piece.sheetKey&&!(it.key||'').trim()){it.key=piece.sheetKey;filled.push('키 '+piece.sheetKey)}
   // 무료 플랜이면 이번 달 남은 곡 수를 함께 알려 준다
-  takeQuota('ocr',r.quota);
+  if(L.here)takeQuota('ocr',r.quota);   // 팀을 바꿨으면 지금 팀의 남은 횟수가 아니다
   const qa=r.quota&&r.quota.cap!=null?` · 이번 달 ${r.quota.used}/${r.quota.cap}곡`:'';
   toast((uniq.length?`코드 ${uniq.length}개 인식 · 악보 키 ${piece.sheetKey||'?'}`:'코드를 찾지 못했어요')+(filled.length?` · ${filled.join('·')} 채움`:'')+qa);
  }catch(e){
   // 한도 초과는 실패가 아니라 안내다. 다시 누를 수 있게 상태를 되돌린다
   if(e.code==='ai_limit'){piece.ocr='';piece.ocrErr='';toast(e.message)}
   else{piece.ocr=e.code==='no_ocr'?'none':'error';piece.ocrErr=e.message||'';if(piece.ocr==='error')toast('코드 인식 실패: '+piece.ocrErr)}}
- touch(svc);save();syncLib(it);
+ await L.done();
+ if(!L.here){toast(AI_ELSEWHERE);return}
  // 인식은 10초 넘게 걸린다. 다 되었다고 편집기를 통째로 다시 그리면 그 사이 하던 일
  // (조각 끌기, 글 쓰던 칸)이 날아간다. 악보만 다시 그리고 채워진 칸만 손본다
  if(route().name==='edit'&&curItem(svc)===it){
@@ -6076,7 +6099,7 @@ function afterEditor(svc){
 }
 let SHEET_RO=null;
 function touch(svc){if(svc.published&&svc.version<=svc.published.version)svc.version=svc.published.version+1;svc.editedAt=Date.now()}
-function syncLib(it){if(!it.title)return;let s=S.library.find(x=>x.id===it.libId)||(!it.libId&&normTitle(it.title)?S.library.find(x=>normTitle(x.title)===normTitle(it.title)):null);const snap={id:s?s.id:(it.libId||uid()),dirty:true,chart:it.chart?clone(it.chart):undefined,score:it.score?clone(it.score):undefined,title:it.title,key:it.key,mod:it.mod||'',form:it.form,pieces:clone(it.pieces),media:clone(it.media).map(m=>({...m,notes:[]})),songNote:it.songNote};it.libId=snap.id;if(s)Object.assign(s,snap);else S.library.push(snap)}
+function syncLib(it,lib){lib=lib||S.library;if(!it.title)return;let s=lib.find(x=>x.id===it.libId)||(!it.libId&&normTitle(it.title)?lib.find(x=>normTitle(x.title)===normTitle(it.title)):null);const snap={id:s?s.id:(it.libId||uid()),dirty:true,chart:it.chart?clone(it.chart):undefined,score:it.score?clone(it.score):undefined,title:it.title,key:it.key,mod:it.mod||'',form:it.form,pieces:clone(it.pieces),media:clone(it.media).map(m=>({...m,notes:[]})),songNote:it.songNote};it.libId=snap.id;if(s)Object.assign(s,snap);else lib.push(snap)}
 /* ---------- composer ---------- */
 /* ---------- publish ---------- */
 function kakaoText(svc){

@@ -277,7 +277,137 @@ def t_chords(b, errs):
     print('G34 코드 칸 대소문자 ok')
     c.close()
 
-TESTS = [('F25', t_push_off), ('SCORE', t_score), ('CHORD', t_chords)]
+# ---------------------------------------------------------------- F90 AI 중 팀 전환
+def t_ai_switch(b, errs):
+    c, pg = new_page(b, errs, 'ai')
+    signup(pg, 'ai' + tag); make_team(pg, 'X팀')
+    X = pg.evaluate('CONTI.S.team.id'); uid = pg.evaluate('CONTI.NET.user.id')
+    r = c.request.post(URL + 'api/teams', headers=H, data={'name': 'Y팀', 'myName': '하은', 'session': '인도자'})
+    if r.status != 200: fail('F90 준비: 두 번째 팀을 못 만듦 %s' % r.text())
+    Y = r.json()['teamId']
+    pg.reload(); pg.wait_for_selector('.shell[data-page]', timeout=10000)
+    if pg.evaluate('CONTI.S.team.id') != X: fail('F90 준비: 다시 열었더니 X팀이 아님')
+    pg.click('[data-act="new-svc"]'); pg.wait_for_selector('[data-f="svc.name"]'); pg.fill('[data-f="svc.name"]', 'X 예배')
+    pg.click('[data-act="add-item"]'); pg.wait_for_selector('[data-f="item.title"]')
+    pg.fill('[data-f="item.title"]', 'X팀전용곡'); pg.wait_for_timeout(400); pg.fill('[data-f="item.key"]', 'A'); pg.wait_for_timeout(400)
+    pg.evaluate("(()=>{const it=CONTI.S.services[0].items[0];it.title='X팀전용곡';it.key='A';CONTI.save()})()")
+    pg.set_input_files('#pieceFile', [SHEET])
+    pg.wait_for_function("(()=>{const it=CONTI.S.services[0].items[0];return it&&(it.pieces||[]).length>0})()", timeout=30000)
+    svc = pg.evaluate('CONTI.S.services[0].id')
+
+    # 코드 인식 응답을 붙잡아 두고, 그 사이 Y팀으로 바꾼다
+    held = []; bodies = []; gate = {'open': False}
+    def hold(route):
+        bodies.append(route.request.post_data_json)
+        if gate['open']: route.continue_()
+        else: held.append(route)
+    pg.route('**/api/ocr', hold)
+    pg.wait_for_selector('.chordbar [data-act="ocr"]', timeout=20000)
+    pg.locator('.chordbar [data-act="ocr"]').first.click(); pg.wait_for_timeout(500)
+    if pg.locator('#ocrGo').count(): pg.click('#ocrGo')
+    for _ in range(60):
+        if held: break
+        pg.wait_for_timeout(250)
+    if not held: fail('F90 준비: 코드 인식 요청이 안 나감')
+    pg.goto(URL + '#/team'); pg.wait_for_selector('[data-act="team-switch"]', timeout=10000)
+    pg.click('[data-act="team-switch"]'); pg.wait_for_selector('[data-switch="%s"]' % Y)
+    pg.click('[data-switch="%s"]' % Y); pg.wait_for_function('CONTI.S.team.id===%s' % json.dumps(Y), timeout=10000)
+    pg.wait_for_timeout(800)
+    held[0].continue_(); pg.unroute('**/api/ocr')
+    pg.wait_for_timeout(2500)
+    if (bodies[0] or {}).get('teamId') != X: fail('F90 코드 인식이 X팀 몫으로 안 나감: %s' % (bodies[0] or {}).get('teamId'))
+
+    # Y 에는 X 곡이 없어야 한다 (이 기기·서버 모두)
+    ylib = pg.evaluate("CONTI.S.library.map(s=>s.title)")
+    if 'X팀전용곡' in ylib: fail('F90 X팀 곡이 Y팀 라이브러리로 복사됨 (이 기기): %s' % ylib)
+    if pg.evaluate("CONTI.S.services.some(s=>s.id===%s)" % json.dumps(svc)): fail('F90 X팀 콘티가 Y팀에 보임')
+    pg.wait_for_timeout(3500)   # 라이브러리 올리기(3초 뒤)까지 기다린다
+    srv = c.request.get(URL + 'api/library?team=' + Y, headers=H).json()
+    if any(s.get('title') == 'X팀전용곡' for s in srv.get('songs', [])): fail('F90 X팀 곡이 Y팀 서버 라이브러리에 올라감')
+    # X 저장본에는 결과가 들어가 있다 (인식 중으로 굳지 않는다)
+    st = pg.evaluate("""(async()=>{const raw=await CONTI.IDB.get('kv','state:%s:%s');const s=JSON.parse(raw);
+      const p=s.services.find(x=>x.id===%s).items[0].pieces[0];return {ocr:p.ocr,n:(p.chords||[]).length,lib:(s.library||[]).map(x=>x.title)}})()""" % (uid, X, json.dumps(svc)))
+    if st['ocr'] != 'done' or st['n'] < 1: fail('F90 X팀 저장본에 인식 결과가 없음: %s' % st)
+    if 'X팀전용곡' not in st['lib']: fail('F90 X팀 라이브러리에 곡이 안 들어감: %s' % st)
+    print('F90 인식 중 팀을 바꿔도 결과는 X팀에, Y팀은 깨끗 ok:', st)
+
+    # X 로 돌아오면 그대로 보인다
+    pg.goto(URL + '#/team'); pg.wait_for_selector('[data-act="team-switch"]', timeout=10000)
+    pg.click('[data-act="team-switch"]'); pg.wait_for_selector('[data-switch="%s"]' % X)
+    pg.click('[data-switch="%s"]' % X); pg.wait_for_function('CONTI.S.team.id===%s' % json.dumps(X), timeout=10000)
+    pg.wait_for_timeout(800)
+    back = pg.evaluate("(()=>{const s=CONTI.S.services.find(x=>x.id===%s);const p=s&&s.items[0].pieces[0];return p&&{ocr:p.ocr,n:(p.chords||[]).length}})()" % json.dumps(svc))
+    if not back or back['ocr'] != 'done' or back['n'] < 1: fail('F90 X팀으로 돌아왔는데 인식 결과가 없음: %s' % back)
+    print('F90 X팀으로 돌아오면 결과가 그대로 ok')
+
+    # 악보 만들기: 오선 줄마다 /score 를 부른다. 중간에 팀을 바꿔도 남은 줄은 X팀 몫, 결과도 X팀에
+    if not pg.evaluate('!!CONTI.NET.omr'):
+        print('F90 악보 만들기: 이 서버는 채보가 꺼져 있어 건너뜀'); c.close(); return
+    pg.goto(URL + '#/edit/' + svc); pg.wait_for_selector('[data-act="score-make"]', timeout=15000)
+    held.clear(); bodies.clear(); gate['open'] = False
+    pg.route('**/api/score', hold)
+    pg.click('[data-act="score-make"]')
+    for _ in range(60):
+        if held: break
+        pg.wait_for_timeout(250)
+    if not held: fail('F90 준비: 악보 만들기 요청이 안 나감')
+    pg.goto(URL + '#/team'); pg.wait_for_selector('[data-act="team-switch"]', timeout=10000)
+    pg.click('[data-act="team-switch"]'); pg.wait_for_selector('[data-switch="%s"]' % Y)
+    pg.click('[data-switch="%s"]' % Y); pg.wait_for_function('CONTI.S.team.id===%s' % json.dumps(Y), timeout=10000)
+    pg.wait_for_timeout(500)
+    gate['open'] = True   # 붙잡은 줄을 풀고, 이어서 나가는 줄은 그대로 보낸다 (팀 id 만 적어 둔다)
+    for rt in list(held): rt.continue_()
+    for _ in range(120):   # IDB 는 비동기라 wait_for_function 으로는 못 기다린다
+        if pg.evaluate("(async()=>{const s=JSON.parse(await CONTI.IDB.get('kv','state:%s:%s'));const it=s.services.find(x=>x.id===%s).items[0];return !!(it.score&&it.score.measures&&it.score.measures.length)})()" % (uid, X, json.dumps(svc))): break
+        pg.wait_for_timeout(500)
+    else: fail('F90 악보 만들기 결과가 X팀 저장본에 안 들어감')
+    info = pg.evaluate("(async()=>{const s=JSON.parse(await CONTI.IDB.get('kv','state:%s:%s'));const sc=s.services.find(x=>x.id===%s).items[0].score;return {lines:sc.lines,failed:sc.failed,n:sc.measures.length}})()" % (uid, X, json.dumps(svc)))
+    print('  악보:', info, '요청', len(bodies))
+    teams = set((x or {}).get('teamId') for x in bodies)
+    if teams != {X}: fail('F90 악보 만들기 호출이 다른 팀 몫으로 나감: %s' % teams)
+    if pg.evaluate('CONTI.S.team.id') != Y or pg.evaluate("CONTI.S.services.some(s=>s.id===%s)" % json.dumps(svc)): fail('F90 악보 만들기 뒤 Y팀 화면이 X 콘티로 넘어감')
+    if 'X팀전용곡' in pg.evaluate("CONTI.S.library.map(s=>s.title)"): fail('F90 악보 만들기 뒤 X 곡이 Y 라이브러리로 복사됨')
+    print('F90 악보 만들기 중 팀을 바꿔도 X팀 몫·X팀 저장 ok (%d줄 붙잡음)' % len(bodies))
+
+    # 채보: 결과 창이 Y팀 화면에서 떠도 '곡 정보에 적용'은 X팀 곡에
+    pg.goto(URL + '#/team'); pg.wait_for_selector('[data-act="team-switch"]', timeout=10000)
+    pg.click('[data-act="team-switch"]'); pg.wait_for_selector('[data-switch="%s"]' % X)
+    pg.click('[data-switch="%s"]' % X); pg.wait_for_function('CONTI.S.team.id===%s' % json.dumps(X), timeout=10000)
+    pg.goto(URL + '#/edit/' + svc); pg.wait_for_selector('[data-act="omr"]', timeout=15000)
+    held.clear(); bodies.clear(); gate['open'] = False
+    pg.route('**/api/omr', hold)
+    pg.click('[data-act="omr"]')
+    for _ in range(60):
+        if held: break
+        pg.wait_for_timeout(250)
+    if not held: fail('F90 준비: 채보 요청이 안 나감')
+    pg.goto(URL + '#/team'); pg.wait_for_selector('[data-act="team-switch"]', timeout=10000)
+    pg.click('[data-act="team-switch"]'); pg.wait_for_selector('[data-switch="%s"]' % Y)
+    pg.click('[data-switch="%s"]' % Y); pg.wait_for_function('CONTI.S.team.id===%s' % json.dumps(Y), timeout=10000)
+    pg.wait_for_timeout(500)
+    gate['open'] = True; held[0].continue_()
+    pg.wait_for_selector('[data-apply="0"]', timeout=30000); pg.click('[data-apply="0"]'); pg.wait_for_timeout(1500)
+    if (bodies[0] or {}).get('teamId') != X: fail('F90 채보가 X팀 몫으로 안 나감')
+    if 'X팀전용곡' in pg.evaluate("CONTI.S.library.map(s=>s.title)"): fail('F90 채보 적용 뒤 X 곡이 Y 라이브러리로 복사됨')
+    ch = pg.evaluate("(async()=>{const s=JSON.parse(await CONTI.IDB.get('kv','state:%s:%s'));const it=s.services.find(x=>x.id===%s).items[0];return !!(it.chart&&it.chart.sections&&it.chart.sections.length)})()" % (uid, X, json.dumps(svc)))
+    if not ch: fail('F90 채보 적용이 X팀 곡에 안 들어감')
+    print('F90 채보 적용도 X팀 곡에 ok')
+
+    # 팀을 안 바꾸면 예전처럼: 악보를 만들고 악보 화면으로 간다
+    pg.goto(URL + '#/team'); pg.wait_for_selector('[data-act="team-switch"]', timeout=10000)
+    pg.click('[data-act="team-switch"]'); pg.wait_for_selector('[data-switch="%s"]' % X)
+    pg.click('[data-switch="%s"]' % X); pg.wait_for_function('CONTI.S.team.id===%s' % json.dumps(X), timeout=10000)
+    pg.evaluate("(()=>{const s=CONTI.S.services.find(x=>x.id===%s);delete s.items[0].score;CONTI.save()})()" % json.dumps(svc))
+    pg.goto(URL + '#/edit/' + svc); pg.wait_for_selector('[data-act="score-make"]', timeout=15000)
+    pg.click('[data-act="score-make"]')
+    pg.wait_for_function("location.hash.startsWith('#score/')||location.hash.startsWith('#/score/')", timeout=60000)
+    if not pg.evaluate("(()=>{const s=CONTI.S.services.find(x=>x.id===%s);return !!(s.items[0].score&&s.items[0].score.measures.length)})()" % json.dumps(svc)):
+        fail('F90 같은 팀에서 악보 만들기가 안 들어감')
+    if 'X팀전용곡' not in pg.evaluate("CONTI.S.library.map(s=>s.title)"): fail('F90 같은 팀 라이브러리에 곡이 없음')
+    print('F90 팀을 안 바꾸면 예전처럼 ok')
+    c.close()
+
+TESTS = [('F25', t_push_off), ('SCORE', t_score), ('CHORD', t_chords), ('F90', t_ai_switch)]
 
 def run():
     only = set(sys.argv[1:])
