@@ -704,19 +704,24 @@ ins.adsbygoogle[data-ad-status="unfilled"]{display:none!important}
 /* 광고 배너가 뜨면 그만큼 아래를 비운다 — 하단 탭이 가려지면 안 된다 */
 body.hasad #app{padding-bottom:calc(var(--sab) + var(--adh,50px))}   /* 연습 화면 아래 배너 자리 */
 /* 건반·메트로놈은 왼쪽에서 나온다 — 악보를 가리지 않아야 쳐 보면서 볼 수 있다.
+   body 에 바로 붙는 판이라 #app 의 안전 영역 여백을 못 받는다 → 상태바·노치·홈 인디케이터를 직접 피한다.
    창(.ov 50)·알림보다는 아래 — 위에 있으면 패널이 떠 있는 동안 연 창을 누를 수 없었다 */
 .sidetool{position:fixed;left:0;top:0;bottom:0;width:min(420px,44vw);z-index:45;
  background:var(--panel);border-right:1px solid var(--line);box-shadow:8px 0 28px rgba(0,0,0,.28);
- padding:14px;overflow:auto;transform:translateX(-100%);transition:transform .18s ease}
+ padding:calc(14px + var(--sat)) 14px calc(14px + var(--sab)) calc(14px + var(--sal));overflow:auto;transform:translateX(-100%);transition:transform .18s ease}
 .sidetool.on{transform:none}
 .sidetool .sthd{display:flex;align-items:center;gap:8px;margin-bottom:10px}
 .sidetool .sthd b{font-size:17px}
 @media(max-width:640px){
  /* 폰은 가로가 좁아 왼쪽에 둘 자리가 없다. 아래에서 올라오되 악보가 위에 남게 낮게 둔다 */
  .sidetool{left:0;right:0;top:auto;width:auto;max-height:52vh;border-right:0;border-top:1px solid var(--line);
-  border-radius:var(--r-lg) var(--r-lg) 0 0;box-shadow:0 -8px 28px rgba(0,0,0,.28);transform:translateY(100%)}
+  border-radius:var(--r-lg) var(--r-lg) 0 0;box-shadow:0 -8px 28px rgba(0,0,0,.28);transform:translateY(100%);
+  padding:14px calc(14px + var(--sar)) calc(14px + var(--sab)) calc(14px + var(--sal))}
  .sidetool.on{transform:none}
 }
+/* 연습 화면 아래 광고 배너(네이티브 뷰라 웹 위에 뜬다)가 떠 있으면 판을 그 위에서 끝낸다.
+   가려지면 박자 버튼을 못 누르고, 건반을 치면 광고가 눌린다 */
+body.hasad .sidetool{bottom:calc(var(--sab) + var(--adh,50px));padding-bottom:14px}
 /* 건반 한 옥타브 */
 .pkeys{position:relative;display:flex;height:150px;margin-top:12px;user-select:none;touch-action:none;
  border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;background:#fff}
