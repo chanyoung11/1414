@@ -24,10 +24,14 @@ const notFound = (m) => new HttpError(404, 'not_found', m || '없어요');
 /* ---------- 요청/응답 도우미 ---------- */
 async function readBody(req, max = 1e6) {
   if (req.body !== undefined && req.body !== null) return typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body;
+  // 한도를 넘으면 더 모으지 않고 버린다. 전에는 거절한 뒤에도 끝까지 이어 붙여서
+  // 로그인 없이 큰 요청 몇십 개로 인스턴스 메모리를 다 쓸 수 있었다 (Cloud Run 은 요청끼리 메모리를 나눠 쓴다)
+  const tooBig = () => new HttpError(413, 'too_large', '요청이 너무 커요');
+  if (+req.headers['content-length'] > max) { req.resume(); throw tooBig(); }
   return new Promise((res, rej) => {
-    let s = ''; req.setEncoding('utf8');
-    req.on('data', (c) => { s += c; if (s.length > max) rej(bad('요청이 너무 커요')); });
-    req.on('end', () => { try { res(s ? JSON.parse(s) : {}); } catch { rej(bad('JSON이 아니에요')); } });
+    let s = '', over = false; req.setEncoding('utf8');
+    req.on('data', (c) => { if (over) return; s += c; if (s.length > max) { over = true; s = ''; req.resume(); rej(tooBig()); } });
+    req.on('end', () => { if (over) return; try { res(s ? JSON.parse(s) : {}); } catch { rej(bad('JSON이 아니에요')); } });
     req.on('error', rej);
   });
 }
@@ -163,20 +167,36 @@ on('POST', '/auth/signup', async ({ req, body }) => {
 
 const withAppToken = (req, data, uid) => (isApp(req) ? { ...data, token: appSessionToken(uid) } : data);
 
-const clientIp = (req) => String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim().slice(0, 45) || '-';
+// X-Forwarded-For 의 맨 앞은 클라이언트가 마음대로 적을 수 있다. Cloud Run 앞단은 받은 값을 지우지 않고
+// 진짜 주소를 맨 뒤에 붙인다 (Vercel 은 통째로 덮어써서 첫 값이 곧 진짜였다) → 맨 뒤 값을 쓴다
+const clientIp = (req) => String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',').pop().trim().slice(0, 45) || '-';
+// 로그인·복구 시도 제한. '아이디|주소' 로 8번, 주소를 바꿔 가며 두드리는 것까지 막으려고 '아이디|*' 로 30번
+const LOCK_MS = 15 * 60 * 1000;
+const lockKeys = (kind, username, req) => [[`${kind}${username}|${clientIp(req)}`, 8], [`${kind}${username}|*`, 30]];
+async function assertNotLocked(keys) {
+  try {
+    for (const [k, lim] of keys) {
+      const la = await one('select n, last from login_attempts where username=$1', [k]);
+      if (la && la.n >= lim && Date.now() - new Date(la.last).getTime() < LOCK_MS) throw new HttpError(429, 'locked', '시도가 너무 많아요. 15분 뒤에 다시 해 주세요');
+    }
+  } catch (e) { if (e instanceof HttpError) throw e; }
+}
+async function noteFailure(keys) {
+  for (const [k] of keys) {
+    try { await q(`insert into login_attempts(username, n, last) values($1, 1, now()) on conflict (username) do update set n = case when login_attempts.last < now() - interval '15 minutes' then 1 else login_attempts.n + 1 end, last = now()`, [k]); } catch (e) {}
+  }
+}
+async function clearFailures(keys) { try { await q('delete from login_attempts where username = any($1::text[])', [keys.map(([k]) => k)]); } catch (e) {} }
 on('POST', '/auth/login', async ({ req, body }) => {
   const username = str(body.username, 40).toLowerCase(), password = String(body.password || '');
-  const lockKey = username + '|' + clientIp(req);
-  try {
-    const la = await one('select n, last from login_attempts where username=$1', [lockKey]);
-    if (la && la.n >= 8 && Date.now() - new Date(la.last).getTime() < 15 * 60 * 1000) throw new HttpError(429, 'locked', '로그인 시도가 너무 많아요. 15분 뒤에 다시 해 주세요');
-  } catch (e) { if (e instanceof HttpError) throw e; }
+  const keys = lockKeys('', username, req);
+  await assertNotLocked(keys);
   const u = await one('select id, password_hash from users where username=$1', [username]);
   if (!u || !verifyPassword(password, u.password_hash)) {
-    try { await q(`insert into login_attempts(username, n, last) values($1, 1, now()) on conflict (username) do update set n = case when login_attempts.last < now() - interval '15 minutes' then 1 else login_attempts.n + 1 end, last = now()`, [lockKey]); } catch (e) {}
+    await noteFailure(keys);
     throw new HttpError(401, 'bad_login', '아이디 또는 비밀번호가 맞지 않아요');
   }
-  try { await q('delete from login_attempts where username=$1', [lockKey]); } catch (e) {}
+  await clearFailures(keys);
   await q('update users set last_login_at=now() where id=$1', [u.id]);
   return { data: withAppToken(req, await meView(u.id), u.id), headers: { 'Set-Cookie': sessionCookie(req, u.id) } };
 });
@@ -413,8 +433,12 @@ on('POST', '/auth/recovery', async ({ uid }) => {
 on('POST', '/auth/recover', async ({ req, body }) => {
   const username = str(body.username, 40).toLowerCase(), code = str(body.code, 20).toLowerCase().replace(/\s/g, ''), next = String(body.next || '');
   if (next.length < PASSWORD_MIN) throw bad(`비밀번호는 ${PASSWORD_MIN}자 이상이에요`);
+  // 복구 코드도 로그인과 같이 시도 횟수를 센다 (전에는 제한이 없었다)
+  const keys = lockKeys('recover:', username, req);
+  await assertNotLocked(keys);
   const u = await one('select id, recovery_hash from users where username=$1', [username]);
-  if (!u || !u.recovery_hash || !verifyPassword(code, u.recovery_hash)) throw new HttpError(401, 'bad_recovery', '아이디 또는 복구 코드가 맞지 않아요');
+  if (!u || !u.recovery_hash || !verifyPassword(code, u.recovery_hash)) { await noteFailure(keys); throw new HttpError(401, 'bad_recovery', '아이디 또는 복구 코드가 맞지 않아요'); }
+  await clearFailures(keys);
   await q('update users set password_hash=$2, recovery_hash=null, last_login_at=now(), auth_epoch=to_timestamp($3) where id=$1', [u.id, hashPassword(next), nowSec()]);
   return { data: withAppToken(req, await meView(u.id), u.id), headers: { 'Set-Cookie': sessionCookie(req, u.id) } };
 });
@@ -2778,7 +2802,10 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') { res.statusCode = cors ? 204 : 403; return res.end(); }
   try {
     const url = new URL(req.url, 'http://local');
-    const raw = url.searchParams.has('p') ? '/' + url.searchParams.get('p') : url.pathname.replace(/^\/api/, '');
+    // Vercel 은 rewrite(?p=)가 경로를 풀어서 넘겼다. Cloud Run 에서는 pathname 이 퍼센트 인코딩 그대로라
+    // 직접 푼다 (안 풀면 'lay%3Aabc' 같은 키가 형식 검사에 걸려 무대 배치 저장이 전부 400 이었다)
+    let raw = url.searchParams.has('p') ? '/' + url.searchParams.get('p') : url.pathname.replace(/^\/api/, '');
+    if (!url.searchParams.has('p')) { try { raw = decodeURIComponent(raw); } catch { throw bad('주소가 이상해요'); } }
     const path = raw.replace(/\/+$/, '').replace(/^\/*/, '/') || '/';
     const method = req.method.toUpperCase();
     const route = routes.find((r) => r.method === method && r.re.test(path));
