@@ -99,9 +99,10 @@ def run():
     publish(pg)
     sid = pg.evaluate("(si)=>CONTI.S.services[si].id", si)
     pg.goto(URL + '#/view/' + sid); pg.wait_for_selector('[data-act="play"][data-stage="1"]', timeout=15000); pg.wait_for_timeout(1500)
-    # 메모는 콘티 쪽(svc.items)에만 산다 — 발행본에는 없다
+    # 메모는 콘티 쪽(svc.items)에만 산다 — 발행본에는 없다.
+    # id 는 서버가 받는 꼴(4자 이상)로 — 'n1' 처럼 짧으면 서버가 거절하고, 앱은 거절된 메모를 이 기기에서도 뺀다 (F50)
     pg.evaluate("""(si)=>{const it=CONTI.S.services[si].items[0];
-      it.notes=[{id:'n1',marker:'m1',layer:'leader',text:'여기부터 천천히'}];CONTI.save()}""", si)
+      it.notes=[{id:'nt10a',marker:'m1',layer:'leader',text:'여기부터 천천히'}];CONTI.save()}""", si)
     if pg.evaluate("(si)=>(CONTI.S.services[si].published.items[0].notes||[]).length", si): fail('준비: 발행본에 메모가 들어 있음')
     open_stage(pg, sid)
 
