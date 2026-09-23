@@ -2932,6 +2932,8 @@ on('GET', '/notifications', async ({ uid, url }) => {
                         from notifications where team_id=$1 and user_id=$2 and updated_at > now() - interval '90 days' order by updated_at desc limit 100`, [teamId, uid]);
   return { notifications: rows, unread: rows.filter((r) => !r.readAt).length };
 });
+// 사역일(열린 날짜)에 한 답만 센다. 사역일이 아닌 날의 답까지 세면 아직 안 고른 날이 가려졌다
+const answeredOpen = `exists (select 1 from service_dates sd where sd.team_id=a.team_id and sd.date=a.date and sd.open)`;
 // §3.3 "다시 요청": 미선택이 많은 멤버에게 가능 여부를 다시 묻는다 (24시간 1회)
 on('POST', '/notifications/ask', async ({ uid, body }) => {
   if (!uid) throw noAuth();
@@ -2944,8 +2946,9 @@ on('POST', '/notifications/ask', async ({ uid, body }) => {
   if (recent) throw bad('이미 24시간 안에 요청했어요');
   const [y, mo] = month.split('-').map(Number);
   const from = `${month}-01`, to = new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10);
-  const dates = await q('select date::text as date from service_dates where team_id=$1 and open and date between $2 and $3', [teamId, from, to]);
-  const answered = await one('select count(*)::int as n from availability where team_id=$1 and user_id=$2 and date between $3 and $4', [teamId, target, from, to]);
+  // 가능 여부는 날짜마다 하나다 → 1부·2부 줄이 아니라 날짜로 세고, 답도 사역일에 한 것만 센다
+  const dates = await q('select distinct date::text as date from service_dates where team_id=$1 and open and date between $2 and $3', [teamId, from, to]);
+  const answered = await one(`select count(*)::int as n from availability a where a.team_id=$1 and a.user_id=$2 and a.date between $3 and $4 and ${answeredOpen}`, [teamId, target, from, to]);
   await notify(teamId, [target], 'avail.request', month, { title: `${mo}월 스케줄 알려주세요`, body: `사역일 ${dates.length}일 · 아직 미선택 ${Math.max(0, dates.length - (answered ? answered.n : 0))}일`, link: '#/cal/' + month, actionable: true, expiresAt: new Date(to + 'T23:59:59+09:00') });
   return { ok: true };
 });
@@ -2981,20 +2984,23 @@ async function scheduleReminders(teamId, st) {
     const ahead = Math.max(1, Math.min(3, +st.reminderMonthsAhead || 3));
     const from = new Date(Date.UTC(y, mo + 1, 1)).toISOString().slice(0, 10);
     const to = new Date(Date.UTC(y, mo + 1 + ahead, 0)).toISOString().slice(0, 10);
-    const dates = await q('select date::text as date from service_dates where team_id=$1 and open and date between $2 and $3', [teamId, from, to]);
+    // 날짜로 센다 (1부·2부가 있는 날도 하루). 다 답한 사람에게 '미선택 1일'이 가던 것
+    const dates = await q('select distinct date::text as date from service_dates where team_id=$1 and open and date between $2 and $3', [teamId, from, to]);
     if (dates.length) {
       const members = (await q(`select user_id from members where team_id=$1 and role<>'pastor' and active`, [teamId])).map((r) => r.user_id);
-      const answered = await q('select user_id, count(*)::int as n from availability where team_id=$1 and date between $2 and $3 group by user_id', [teamId, from, to]);
+      const answered = await q(`select a.user_id, count(*)::int as n from availability a where a.team_id=$1 and a.date between $2 and $3 and ${answeredOpen} group by a.user_id`, [teamId, from, to]);
       const cnt = Object.fromEntries(answered.map((r) => [r.user_id, r.n]));
       const m1 = new Date(from + 'T00:00:00Z').getUTCMonth() + 1;
       const m2 = new Date(to + 'T00:00:00Z').getUTCMonth() + 1;
       const label = m1 === m2 ? `${m1}월` : `${m1}~${m2}월`;
+      // 문구가 같은 사람끼리 묶어 한 번에 보낸다 (사람마다 따로 보내면 푸시 연결도 사람 수만큼 열려 크론이 느렸다)
+      const byLeft = new Map();
       for (const mid of members) {
         const left = dates.length - (cnt[mid] || 0);
-        if (left <= 0) continue;
-        await notify(teamId, [mid], 'avail.request', from.slice(0, 7), { title: `${label} 스케줄 알려주세요`, body: `사역일 ${dates.length}일 · 아직 미선택 ${left}일`, link: '#/cal/' + from.slice(0, 7), actionable: true, expiresAt: new Date(to + 'T23:59:59+09:00') });
-        asked++;
+        if (left > 0) byLeft.set(left, (byLeft.get(left) || []).concat(mid));
       }
+      for (const [left, ids] of byLeft)
+        asked += await notify(teamId, ids, 'avail.request', from.slice(0, 7), { title: `${label} 스케줄 알려주세요`, body: `사역일 ${dates.length}일 · 아직 미선택 ${left}일`, link: '#/cal/' + from.slice(0, 7), actionable: true, expiresAt: new Date(to + 'T23:59:59+09:00') });
     }
   }
   // 보류(maybe)인 날짜가 2주 앞으로 다가오면 그 사람에게만
@@ -3019,43 +3025,53 @@ async function scheduleReminders(teamId, st) {
   return { asked, maybes };
 }
 
+// 팀·항목마다 하는 일을 몇 개씩 동시에 돌린다. 한 줄로 차례대로 돌면 팀이 늘수록 크론 제한 시간(300초·재시도 없음)을
+// 넘겨, 뒤쪽 팀과 맨 끝의 정리 작업이 조용히 빠졌다. 한 팀이 실패해도 나머지는 계속한다
+async function eachLimit(list, fn, n = 8) {
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.min(n, list.length) }, async () => {
+    while (i < list.length) { const x = list[i++]; try { await fn(x); } catch (e) { console.error('cron', x && (x.id || x.team_id), e); } }
+  }));
+}
+
 on('GET', '/cron/dates', async ({ req }) => {
   // Vercel 크론은 CRON_SECRET 이 설정돼 있으면 Authorization: Bearer <secret> 를 붙여 부른다. 미설정이면 아예 막는다 (위조 가능한 헤더로는 통과 불가)
   if (!process.env.CRON_SECRET || req.headers['authorization'] !== `Bearer ${process.env.CRON_SECRET}`) throw forbidden('크론 전용');
-  // B.7.1 삭제 예약한 지 30일이 지난 팀은 여기서 실제로 지운다 (파일까지)
-  let teamsDropped = 0;
-  for (const t of await q(`select id from teams where deleted_at is not null and deleted_at < now() - interval '30 days'`)) {
-    try {
-      const urls = (await q('select url from blobs where team_id=$1', [t.id])).map((b) => b.url);
-      if (urls.length) await delBlobs(urls);
-      await q('delete from teams where id=$1', [t.id]);   // 나머지는 on delete cascade
-      teamsDropped++;
-    } catch (e) { console.error('team drop', t.id, e); }
-  }
-  const recs = await q(`select r.* from recurring r join teams t on t.id=r.team_id where r.active=true and t.deleted_at is null`);
-  let n = 0;
-  for (const rec of recs) { await fillDates(rec.team_id, rec); n++; }
-  // D-N주 콘티 자동 생성 (모든 팀) + 90일 지난 알림 정리 + 녹음 보관
-  let created = 0;
-  for (const t of await q('select id from teams where deleted_at is null')) {
-    try { created += await autoCreateServices(t.id); } catch (e) { console.error('autoCreate', t.id, e); }
-  }
+  // 정리 작업을 먼저 한다 (가볍고, 팀별 작업이 오래 걸려 시간이 끊겨도 빠지지 않게)
+  // 90일 지난 알림 정리
   const purged = (await q(`delete from notifications where updated_at < now() - interval '90 days' returning id`)).length;
   await q('delete from revoked_sessions where exp < now()').catch((e) => console.error('revoked purge', e.message));   // 만료된 토큰은 어차피 안 통한다
   // §5.4 녹음 보관: 만료 7일 전 인도자에게 알림함 항목, 지난 것은 파일까지 삭제
   let warned = 0, dropped = 0;
-  for (const r of await q(`select id, team_id, service_id, label, date::text as date, expires_at from rehearsals
-                           where keep=false and warned_at is null and expires_at is not null and expires_at < now() + interval '7 days'`)) {
+  await eachLimit(await q(`select id, team_id, service_id, label, date::text as date, expires_at from rehearsals
+                           where keep=false and warned_at is null and expires_at is not null and expires_at < now() + interval '7 days'`), async (r) => {
     const leaders = (await q(`select user_id from members where team_id=$1 and role='leader'`, [r.team_id])).map((x) => x.user_id);
     await notify(r.team_id, leaders, 'rehearsal.expiring', r.id, { title: `${r.label} 녹음이 7일 뒤 삭제돼요`, body: '보관하려면 잠금', link: '#/view/' + r.service_id });
     await q('update rehearsals set warned_at=now() where id=$1', [r.id]);
     warned++;
-  }
-  for (const r of await q(`select id, team_id, blob_id from rehearsals where keep=false and expires_at is not null and expires_at < now()`)) {
+  });
+  await eachLimit(await q(`select id, team_id, blob_id from rehearsals where keep=false and expires_at is not null and expires_at < now()`), async (r) => {
     await q('delete from rehearsals where id=$1', [r.id]);
     await dropBlobs(r.team_id, [r.blob_id]);
     dropped++;
-  }
+  });
+  // B.7.1 삭제 예약한 지 30일이 지난 팀은 여기서 실제로 지운다 (파일까지)
+  let teamsDropped = 0;
+  await eachLimit(await q(`select id from teams where deleted_at is not null and deleted_at < now() - interval '30 days'`), async (t) => {
+    const urls = (await q('select url from blobs where team_id=$1', [t.id])).map((b) => b.url);
+    if (urls.length) await delBlobs(urls);
+    await q('delete from teams where id=$1', [t.id]);   // 나머지는 on delete cascade
+    teamsDropped++;
+  }, 2);
+  // 팀마다: 정기 예배 13주 앞 유지 → D-N주 콘티 자동 생성
+  const recs = await q(`select r.* from recurring r join teams t on t.id=r.team_id where r.active=true and t.deleted_at is null`);
+  const byTeam = new Map();
+  for (const r of recs) byTeam.set(r.team_id, (byTeam.get(r.team_id) || []).concat(r));
+  let n = 0, created = 0;
+  await eachLimit(await q('select id from teams where deleted_at is null'), async (t) => {
+    for (const rec of byTeam.get(t.id) || []) { await fillDates(t.id, rec); n++; }
+    created += await autoCreateServices(t.id);
+  });
   return { ok: true, recurring: n, created, purged, warned, dropped, teamsDropped };
 });
 
@@ -3063,9 +3079,9 @@ on('GET', '/cron/dates', async ({ req }) => {
 on('GET', '/cron/remind', async ({ req }) => {
   if (!process.env.CRON_SECRET || req.headers['authorization'] !== `Bearer ${process.env.CRON_SECRET}`) throw forbidden('크론 전용');
   let asked = 0, maybes = 0;
-  for (const t of await q('select id, settings from teams')) {
-    try { const r = await scheduleReminders(t.id, { ...DEF_SETTINGS, ...(t.settings || {}) }); asked += r.asked; maybes += r.maybes; } catch (e) { console.error('reminders', t.id, e); }
-  }
+  await eachLimit(await q('select id, settings from teams where deleted_at is null'), async (t) => {
+    const r = await scheduleReminders(t.id, { ...DEF_SETTINGS, ...(t.settings || {}) }); asked += r.asked; maybes += r.maybes;
+  });
   return { ok: true, asked, maybes };
 });
 
