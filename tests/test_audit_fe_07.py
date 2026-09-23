@@ -202,7 +202,82 @@ def t_score(b, errs):
     print('F89 폰 폭 문서 스크롤 유지 ok (%d)' % d0)
     c.close()
 
-TESTS = [('F25', t_push_off), ('SCORE', t_score)]
+# ---------------------------------------------------------------- G19 · G34 코드 적기
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SHEET = os.path.join(ROOT, 'docs', 'sample_sheet.jpg')
+
+def red_chords(pg):
+    return pg.evaluate("[...document.querySelectorAll('#sheet .chd')].map(e=>e.textContent)")
+
+def t_chords(b, errs):
+    c, pg = new_page(b, errs, 'chord')
+    signup(pg, 'ck' + tag); make_team(pg, '코드팀')
+    pg.click('[data-act="new-svc"]'); pg.wait_for_selector('[data-f="svc.name"]'); pg.fill('[data-f="svc.name"]', '코드 예배')
+    pg.click('[data-act="add-item"]'); pg.wait_for_selector('[data-f="item.title"]')
+    pg.fill('[data-f="item.title"]', '전조곡'); pg.fill('[data-f="item.key"]', 'G'); pg.wait_for_timeout(300)
+    pg.set_input_files('#pieceFile', [SHEET])
+    pg.wait_for_function("(()=>{const it=CONTI.S.services[0].items[0];return it&&(it.pieces||[]).length>0})()", timeout=30000)
+    svc = pg.evaluate('CONTI.S.services[0].id')
+    # 악보 G · 연주 G. 코드를 직접 넣고, 맨 위에 '+1 전조' 표시
+    pg.evaluate("""(()=>{const it=CONTI.S.services[0].items[0];const p=it.pieces[0];
+      p.sheetKey='G';p.keyConfirmed=true;p.ocr='done';
+      p.chords=['G','C','D/F#','Am7'].map((t,i)=>({id:'c'+i,text:t,x:100+i*120,y:300,w:40,h:30,conf:100,fixed:true}));
+      p.markers=(p.markers||[]).concat([{id:'mk1',label:'후렴',x:20,y:10,keyShift:1}]);
+      CONTI.save();CONTI.render()})()""")
+    pg.wait_for_timeout(800)
+    got = red_chords(pg)
+    if got != ['Ab', 'Db', 'Eb/G', 'Bbm7']: fail('G19 +1 전조(G→Ab) 코드 이름이 틀림: %s' % got)
+    print('G19 여기부터 전조 G→Ab ok:', got)
+
+    # 카포: 연주 키 F, 카포 3 → D 모양 (예전: Gbm · D/Gb · A/Db)
+    pg.evaluate("""(()=>{const it=CONTI.S.services[0].items[0];const p=it.pieces[0];it.key='F';p.sheetKey='F';
+      p.markers=p.markers.filter(m=>m.id!=='mk1');p.chords=['Am','F/A','C/E','Gm'].map((t,i)=>({id:'d'+i,text:t,x:100+i*120,y:300,w:40,h:30,conf:100,fixed:true}));
+      it.chart={key:'F',sections:[{name:'V',bars:[{chords:['Am','F/A']},{chords:['C/E','Gm']}]}]};
+      CONTI.S.team.me.capo=3;CONTI.save()})()""")
+    pg.goto(URL + '#/play/%s/0' % svc); pg.wait_for_selector('#sheet .chd', timeout=10000); pg.wait_for_timeout(500)
+    got = red_chords(pg)
+    if got != ['F#m', 'D/F#', 'A/C#', 'Em']: fail('G19 카포 3(F→D 모양) 코드 이름이 틀림: %s' % got)
+    pg.goto(URL + '#/view/%s' % svc); pg.wait_for_selector('.chart .cc', state='attached', timeout=10000)
+    ch = pg.evaluate("[...document.querySelectorAll('.chart .cc')].map(e=>e.textContent)")
+    if ch != ['F#m', 'D/F#', 'A/C#', 'Em']: fail('G19 차트 카포 모양 코드 이름이 틀림: %s' % ch)
+    print('G19 카포 모양 ok:', got)
+    # D 악보를 C 로: bVII 은 Bb (예전: A#)
+    pg.evaluate("""(()=>{const it=CONTI.S.services[0].items[0];const p=it.pieces[0];it.key='C';p.sheetKey='D';
+      p.chords=['D','C','G/B','D/C'].map((t,i)=>({id:'e'+i,text:t,x:100+i*120,y:300,w:40,h:30,conf:100,fixed:true}));
+      CONTI.S.team.me.capo=0;CONTI.save()})()""")
+    pg.goto(URL + '#/edit/%s' % svc); pg.wait_for_selector('#sheet .chd', timeout=10000); pg.wait_for_timeout(500)
+    got = red_chords(pg)
+    if got != ['C', 'Bb', 'F/A', 'C/Bb']: fail('G19 D→C 에서 bVII 이름이 틀림: %s' % got)
+    print('G19 빌려 온 코드 b ok:', got)
+
+    # ---- G34: 코드 칸이 대문자 고정이 아니고, 친 대소문자를 바로잡는다 ----
+    pg.click('[data-act="tool"][data-t="chord"]'); pg.wait_for_selector('#sheet .chdbox')
+    pg.locator('#sheet .chdbox').first.click(); pg.wait_for_selector('#chText')
+    ac = pg.get_attribute('#chText', 'autocapitalize')
+    if ac == 'characters': fail('G34 코드 칸이 아직 대문자 고정')
+    pg.fill('#chText', 'ASUS4'); pg.click('#chOk'); pg.wait_for_timeout(400)
+    t0 = pg.evaluate("CONTI.S.services[0].items[0].pieces[0].chords.find(c=>c.id==='e0').text")
+    if t0 != 'Asus4': fail('G34 ASUS4 가 Asus4 로 안 바뀜: %r' % t0)
+    pg.locator('#sheet .chdbox').first.click(); pg.wait_for_selector('#chText')
+    pg.fill('#chText', 'f#m7/c#'); pg.click('#chOk'); pg.wait_for_timeout(400)
+    t0 = pg.evaluate("CONTI.S.services[0].items[0].pieces[0].chords.find(c=>c.id==='e0').text")
+    if t0 != 'F#m7/C#': fail('G34 소문자로 친 코드가 안 바로잡힘: %r' % t0)
+    pg.click('[data-act="tool"][data-t="marker"]')
+    # 악보 마디 창
+    pg.evaluate("(sc)=>{const it=CONTI.S.services[0].items[0];it.score=sc;it.key='G';CONTI.save()}", long_score(4))
+    item = pg.evaluate('CONTI.S.services[0].items[0].id')
+    pg.goto(URL + '#/score/%s/%s' % (svc, item)); wait_draw(pg)
+    seq = pg.evaluate('CONTI.SC.seq'); pg.click('[data-act="score-edit"]'); wait_draw(pg, seq)
+    measure_click(pg, 1); pg.wait_for_selector('[data-ct="0"]', timeout=6000)
+    if pg.get_attribute('[data-ct="0"]', 'autocapitalize') == 'characters': fail('G34 마디 창 코드 칸이 대문자 고정')
+    pg.fill('[data-ct="0"]', 'bm7'); pg.wait_for_timeout(200)
+    pg.click('[data-close="1"]'); pg.wait_for_timeout(800)
+    got = pg.evaluate("CONTI.S.services[0].items[0].score.measures[1].c[0].t")
+    if got != 'Bm7': fail('G34 마디 창에 친 bm7 이 Bm7 로 안 들어감: %r' % got)
+    print('G34 코드 칸 대소문자 ok')
+    c.close()
+
+TESTS = [('F25', t_push_off), ('SCORE', t_score), ('CHORD', t_chords)]
 
 def run():
     only = set(sys.argv[1:])

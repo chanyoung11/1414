@@ -1834,7 +1834,8 @@ function chartOffset(item,forPlay){const a=keySemi(item.key),b=keySemi(item.char
 const chartBars=sec=>(sec&&sec.bars)||[];
 function chartHTML(item,opts){const ch=item.chart;if(!ch||!ch.sections||!ch.sections.length)return '';
  const o=opts||{};const off=chartOffset(item,o.play);const showKey=item.key||ch.key||'';
- const tr=c=>off?transposeChord(c,off,showKey):c;
+ const spellKey=keyShiftName(keySemi(ch.key)!=null?ch.key:showKey,off);   // 카포 모양이면 그 모양의 키로 적는다
+ const tr=c=>off?transposeChord(c,off,spellKey):c;
  const secs=ch.sections.map((sec,si)=>{const bars=chartBars(sec);
   return `<div class="csec"><div class="cshd"><b>${esc(sec.name||'?')}</b>${sec.repeat?`<span class="pill">x${esc(String(sec.repeat))}</span>`:''}</div>
    <div class="cbars">${bars.map((b,bi)=>`<div class="cbar"><div class="cch">${(b.chords||[]).length?(b.chords||[]).map((c,ci)=>`<span class="cc" ${o.edit?`data-cc="${si}.${bi}.${ci}"`:''}>${esc(tr(c))}</span>`).join(' '):`<span class="cc dim" ${o.edit?`data-cc="${si}.${bi}.0"`:''}>·</span>`}</div>${b.lyric?`<div class="clr">${esc(b.lyric)}</div>`:''}</div>`).join('')}</div></div>`}).join('');
@@ -5077,14 +5078,26 @@ const SHARP_NAMES=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'],FLAT_NA
 const FLAT_KEYS=['F','Bb','Eb','Ab','Db','Gb','Cb','Dm','Gm','Cm','Fm','Bbm','Ebm','Abm'];
 const KEYS12=['C','Db','D','Eb','E','F','F#','G','Ab','A','Bb','B'];
 const normAcc=t=>String(t||'').replace(/♯/g,'#').replace(/♭/g,'b').replace(/[，,．.:;]+$/,'').trim();
+// 폰 키보드로 친 코드의 대소문자를 바로잡는다: 근음·베이스는 대문자, sus·dim·add·aug·maj·min 은 소문자.
+// m(단조)과 M(장7)은 뜻이 달라 건드리지 않는다 — 그래서 코드 칸을 대문자 고정으로 두면 Bm7 이 BM7(장7)로 들어갔다
+const chordCase=t=>normAcc(t).replace(/^([a-gA-G][#b]?)(.*)$/,(_,r,rest)=>r[0].toUpperCase()+r.slice(1)+
+ rest.replace(/sus|dim|add|aug|maj|min/gi,w=>w.toLowerCase()).replace(/\/([a-g])(?=[#b]?$)/,(_2,x)=>'/'+x.toUpperCase()));
 // 변화 코드(b5, #9, #11)와 6/9 까지 받는다. 접미사 안의 #·b 는 음이름이 아니므로 전조에서 건드리지 않는다
 const CHORD_RE=/^([A-G])(#|b)?((?:maj|min|dim|aug|sus|add|m|M|\+|°|º|o|ø|-|#|b|\/|\d|\(|\))*)(?:\/([A-G])(#|b)?)?$/;
 function parseChord(t){const m=normAcc(t).match(CHORD_RE);if(!m)return null;return {root:m[1]+(m[2]||''),suffix:m[3]||'',bass:m[4]?m[4]+(m[5]||''):null}}
 const isChordText=t=>{t=normAcc(t);const c=parseChord(t);return !!c&&!/^[A-G]\d{2,}$/.test(t)&&t.length<=12};
 function keySemi(k){const m=normAcc(k).match(/^([A-G])(#|b)?/);if(!m)return null;const v=NOTE_SEMI[m[1]+(m[2]||'')];return v==null?null:v}
 function spell(semi,key){const k=normAcc(key).replace(/\s/g,'');const flat=FLAT_KEYS.includes(k)||FLAT_KEYS.includes(k.replace(/m(in)?$/,''))||/^[A-G]b/.test(k);return (flat?FLAT_NAMES:SHARP_NAMES)[((semi%12)+12)%12]}
-function transposeChord(text,semis,key){const c=parseChord(text);if(!c)return text;const r=NOTE_SEMI[c.root];if(r==null)return text;let out=spell(r+semis,key)+c.suffix;if(c.bass){const b=NOTE_SEMI[c.bass];out+='/'+(b==null?c.bass:spell(b+semis,key))}return out}
+// 장조에서 빌려 오는 bIII·bVI·bVII 코드(C 키의 Eb·Ab·Bb)는 조표가 #이어도 b 로 적는다 — C 에서 A# 은 틀린 이름이다.
+// 베이스는 bVII(C/Bb)만. E/G#·B/D# 처럼 부속화음의 3음은 올림이 맞다. 감화음(G#dim → Am 경과)도 올림으로 둔다
+function spellIn(semi,key,degs){const k=normAcc(key).replace(/\s/g,''),t=keySemi(k);
+ if(t!=null&&!/m$/.test(k)&&degs.includes((((semi-t)%12)+12)%12))return FLAT_NAMES[((semi%12)+12)%12];
+ return spell(semi,key)}
+function transposeChord(text,semis,key){const c=parseChord(text);if(!c)return text;const r=NOTE_SEMI[c.root];if(r==null)return text;let out=spellIn(r+semis,key,/^(dim|°|º|o)/.test(c.suffix)?[]:[3,8,10])+c.suffix;if(c.bass){const b=NOTE_SEMI[c.bass];out+='/'+(b==null?c.bass:spellIn(b+semis,key,[10]))}return out}
 function shiftAt(item,pi,y){let best=null;(item.pieces||[]).forEach((p,i)=>{if(i>pi)return;(p.markers||[]).forEach(m=>{if(m.keyShift==null)return;if(i<pi||m.y<=y){if(!best||i>best.i||(i===best.i&&m.y>best.y))best={i,y:m.y,v:m.keyShift}}})});return best?best.v:0}
+// 조각의 코드를 off 만큼 옮겼을 때 그 코드가 속한 키 — 카포·'여기부터 전조'까지 반영한 실제로 치는 키다.
+// 원래 연주 키의 #·b 로 적으면 G 에서 +1 전조한 Ab 에 G#·C#·D# 이, F 카포 3(D 모양)에 Gbm·D/Gb 가 나왔다
+function chordKeyAt(item,piece,off){if(keySemi(piece&&piece.sheetKey)!=null)return keyShiftName(piece.sheetKey,off);return keyShiftName(item.key||'',off-chordOffset(item,piece))}
 function chordOffset(item,piece){if(!piece)return 0;if(piece.offset!=null)return piece.offset;const a=keySemi(item.key),b=keySemi(piece.sheetKey);if(a==null||b==null)return 0;let d=a-b;while(d>6)d-=12;while(d<-6)d+=12;return d}
 function estimateKey(chords){const roots=(chords||[]).map(c=>parseChord(c.text)).filter(Boolean).map(c=>c.root);if(!roots.length)return '';const cnt={};roots.forEach(r=>cnt[r]=(cnt[r]||0)+1);const top=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a]);const last=roots[roots.length-1];return top.slice(0,2).includes(last)?last:top[0]}
 // 오선 위치: 폭의 40% 이상 이어지는 어두운 행 → 선 → 4줄 이상 묶음이 시스템
@@ -5342,7 +5355,7 @@ function measureModal(svc,it,mi){const sc=it.score;const m=sc.measures[mi];if(!m
    <span class="hint">${(+c.b||0)+1}박</span>
    <button class="icon sm ghost" data-cb="${i}" data-d="-1" title="앞 박으로">${ic('left')}</button>
    <button class="icon sm ghost" data-cb="${i}" data-d="1" title="뒤 박으로">${ic('right')}</button>
-   <input class="field mono grow" data-ct="${i}" value="${esc(c.t||'')}" placeholder="Bm7" autocapitalize="characters" style="max-width:140px">
+   <input class="field mono grow" data-ct="${i}" value="${esc(c.t||'')}" placeholder="Bm7" autocapitalize="off" autocorrect="off" spellcheck="false" style="max-width:140px">
    <button class="icon sm ghost" data-cdel="${i}" title="코드 지우기">${ic('x')}</button></div>`;
  modal(`<b style="font-size:17px">${mi+1}마디</b> <span class="hint">${esc(sc.time)} · 지금 ${beatsOf(got)}박${got===want?'':` <span style="color:var(--destructive)">(${beatsOf(want)}박이어야 해요)</span>`}</span>
   <div class="lbl">코드</div>
@@ -5370,7 +5383,7 @@ function measureModal(svc,it,mi){const sc=it.score;const m=sc.measures[mi];if(!m
  const soon=()=>{clearTimeout(measureModal.t);measureModal.t=setTimeout(()=>{touch(svc);syncLib(it);save();drawScore()},600)};   // 바깥을 눌러 닫아도 놓치지 않게
  const box=$('#modal');
  box.oninput=e=>{const t=e.target;
-  if(t.dataset.ct!=null){m.c[+t.dataset.ct].t=normAcc(t.value.trim());soon();return}
+  if(t.dataset.ct!=null){m.c[+t.dataset.ct].t=chordCase(t.value.trim());soon();return}
   // 음이름은 'Bb4' 꼴만 그려진다. 소문자·♭ 은 고쳐 받고, 못 읽는 것('Bb'·'H4')은 빨갛게 — 그대로 두면 쉼표로 보인다
   if(t.dataset.np!=null){const v=t.value.trim().replace(/♯/g,'#').replace(/♭/g,'b').replace(/^[a-g]/,c=>c.toUpperCase());
    m.n[+t.dataset.np].p=v||null;t.classList.toggle('bad',!!v&&midiOfP(v)==null);soon();return}
@@ -5537,13 +5550,13 @@ function keyPickerModal(cur,cb){modal(`<b style="font-size:17px">악보에 인�
  $('#modal').onclick=e=>{const b=e.target.closest('[data-k]');if(!b)return;closeModal();cb(b.dataset.k)}}
 function chordEditModal(svc,it,p,cid,pos){const c=cid?(p.chords||[]).find(x=>x.id===cid):null;
  modal(`<b style="font-size:17px">${c?'코드 고치기':'코드 추가'}</b><div class="hint" style="margin-top:4px">악보에 인쇄된 그대로 적어요 (예: A/C#, Bm7, D(sus4))</div>
-  <input class="field mono" id="chText" value="${esc(c?c.text:'')}" placeholder="G/B" style="margin-top:12px;font-size:16px" autocapitalize="characters">
+  <input class="field mono" id="chText" value="${esc(c?c.text:'')}" placeholder="G/B" style="margin-top:12px;font-size:16px" autocapitalize="off" autocorrect="off" spellcheck="false">
   <div class="row" style="margin-top:16px;justify-content:space-between">${c?`<button class="btn danger" id="chDel">${ic('trash')}삭제</button>`:'<span></span>'}<span class="row"><button class="btn" data-close="1">취소</button><button class="btn pri" id="chOk">${ic('check')}저장</button></span></div>`,{center:true});
  const inp=$('#chText');setTimeout(()=>inp.focus(),50);
  const finish=()=>{touch(svc);save();syncLib(it);closeModal();drawEditorSheet(svc)};
  $('#modal').onclick=e=>{if(e.target.closest('[data-close]')){closeModal();return}
   if(e.target.closest('#chDel')){p.chords=p.chords.filter(x=>x.id!==cid);finish();return}
-  if(e.target.closest('#chOk')){const t=normAcc(inp.value);if(!isChordText(t)){toast('코드로 읽히지 않아요');inp.focus();return}
+  if(e.target.closest('#chOk')){const t=chordCase(inp.value);if(!isChordText(t)){toast('코드로 읽히지 않아요');inp.focus();return}
    if(c){c.text=t;c.fixed=true}else{const h=Math.round(p.w*0.018);p.chords=p.chords||[];p.chords.push({id:uid(),text:t,x:Math.round(pos.x),y:Math.round(pos.y-h/2),w:Math.round(h*0.62*t.length),h,conf:100,fixed:true})}finish()}}}
 
 /* ---------- 1414 로고 (design_handoff_1414_logo 지오메트리, 색은 currentColor) ---------- */
@@ -5663,7 +5676,7 @@ function sheetHTML(item,W,ctx){
     // 오른쪽에 붙일 자리가 다음 코드에 닿으면 코드 바로 위에 놓는다 — 라벨끼리 겹쳐 읽히지 않게
     if(chordTool)html+=`<span class="chdbox" data-chord="${c.id}" style="left:${c.x*s-2}px;top:${(c.y-a)*s-2}px;width:${c.w*s+4}px;height:${c.h*s+4}px"></span>`;
     const offC=off+shiftAt(item,pi,c.y);if(!(offC!==0&&(ctx.f?ctx.f.chords!==false:true))&&!chordTool)return;
-    const txt=offC?transposeChord(c.text,offC,item.key):c.text;
+    const txt=offC?transposeChord(c.text,offC,chordKeyAt(item,p,offC)):c.text;
     const nx=chs[ci+1];const lw=txt.length*fs*0.62;
     const sameLine=nx&&Math.abs(nx.y-c.y)<c.h;
     const up=sameLine&&((c.x+c.w)*s+4+lw>nx.x*s-2);
