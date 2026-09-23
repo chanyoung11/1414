@@ -2,7 +2,7 @@
 // vercel.json 의 rewrite 가 /api/* 를 /api?p=<경로> 로 보내고, 여기서 p(또는 원래 pathname)로 라우팅합니다.
 // 로컬: npm run dev (scripts/dev.mjs가 이 핸들러를 /api/* 에 그대로 붙임)
 import { q, one, tx } from '../lib/db.js';
-import { sessionClaims, sessionCookie, clearSessionCookie, randomToken, isApp, appSessionToken } from '../lib/session.js';
+import { sessionClaims, sessionTokens, sessionCookie, clearSessionCookie, randomToken, isApp, appSessionToken } from '../lib/session.js';
 import { hashPassword, verifyPassword, USERNAME_RE, PASSWORD_MIN } from '../lib/password.js';
 import { verifyIdToken, audiencesOf, socialConfigured } from '../lib/social.js';
 import { putBlob, delBlobs, readUrls, presignPut, headBlob, blobExists, BlobDownError } from '../lib/blob.js';
@@ -328,7 +328,16 @@ on('DELETE', '/auth/social/:provider', async ({ uid, params }) => {
   return { ok: true };
 });
 
-on('POST', '/auth/logout', async ({ req }) => ({ data: { ok: true }, headers: { 'Set-Cookie': clearSessionCookie(req) } }));
+// 로그아웃: 이 요청에 실린 토큰을 서버에서도 끊는다. 토큰은 서명만 보고 믿어서, 전에는 로그아웃해도
+// 복사해 둔 토큰(앱은 localStorage 에 있다)이 90일 동안 그대로 통했다.
+// all 이면 모든 기기에서 — 비밀번호를 바꿀 때처럼 auth_epoch 를 지금으로 (그 전에 받은 토큰은 모두 무효)
+on('POST', '/auth/logout', async ({ req, uid, body }) => {
+  const toks = sessionTokens(req);
+  if (toks.length) await q(`insert into revoked_sessions(id, exp) select * from unnest($1::text[], $2::timestamptz[]) on conflict (id) do nothing`,
+    [toks.map((t) => t.tid), toks.map((t) => new Date(t.exp * 1000).toISOString())]);
+  if (uid && body && body.all) await q('update users set auth_epoch=to_timestamp($2) where id=$1', [uid, nowSec()]);
+  return { data: { ok: true }, headers: { 'Set-Cookie': clearSessionCookie(req) } };
+});
 
 // 로그인한 채로 하는 되돌릴 수 없는 일(계정 삭제·복구 코드·비밀번호 바꾸기)은 현재 비밀번호를 다시 묻는다.
 // 소셜로만 가입한 계정은 비밀번호가 없다 → 로그인만으로 (비밀번호 만들기와 같은 기준).
@@ -2882,6 +2891,7 @@ on('GET', '/cron/dates', async ({ req }) => {
     try { created += await autoCreateServices(t.id); } catch (e) { console.error('autoCreate', t.id, e); }
   }
   const purged = (await q(`delete from notifications where updated_at < now() - interval '90 days' returning id`)).length;
+  await q('delete from revoked_sessions where exp < now()').catch((e) => console.error('revoked purge', e.message));   // 만료된 토큰은 어차피 안 통한다
   // §5.4 녹음 보관: 만료 7일 전 인도자에게 알림함 항목, 지난 것은 파일까지 삭제
   let warned = 0, dropped = 0;
   for (const r of await q(`select id, team_id, service_id, label, date::text as date, expires_at from rehearsals
@@ -2946,11 +2956,11 @@ export default async function handler(req, res) {
     // 파일 그 자체가 본문인 경로(POST /blobs/:id)만 JSON 파싱을 건너뛴다. 이미지 base64 를 싣는 경로는 크게
     const rawBody = method === 'POST' && /^\/blobs\/[^/]+$/.test(path);
     const body = (method === 'GET' || rawBody) ? {} : await readBody(req, /^\/(ocr|omr|score)$/.test(path) ? 12e6 : 1e6);
-    // 세션: 서명·만료 검사 후, 비밀번호 변경(auth_epoch) 이전에 발급된 토큰은 무효 처리
+    // 세션: 서명·만료 검사 후, 비밀번호 변경(auth_epoch) 이전에 발급된 토큰과 로그아웃한 토큰은 무효 처리
     let uid = null; const claims = sessionClaims(req);
     if (claims) {
-      const ep = await one('select extract(epoch from auth_epoch)::bigint as e from users where id=$1', [claims.uid]);
-      if (ep && (ep.e == null || (claims.iat && claims.iat >= Number(ep.e)))) uid = claims.uid;
+      const ep = await one('select extract(epoch from auth_epoch)::bigint as e, exists (select 1 from revoked_sessions where id=$2) as out from users where id=$1', [claims.uid, claims.tid]);
+      if (ep && !ep.out && (ep.e == null || (claims.iat && claims.iat >= Number(ep.e)))) uid = claims.uid;
     }
     const out = await route.fn({ req, uid, params, body, url });
     if (out && out.headers && 'data' in out) return send(res, 200, out.data, out.headers);

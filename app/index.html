@@ -2583,6 +2583,8 @@ function settingsHTML(){
   <div class="card"><b>복구 코드</b>
    <div class="hint" style="margin-top:2px">비밀번호를 잊었을 때 쓰는 12자. 한 번만 보여주니 안전한 곳에 적어 두세요</div>
    <div class="row" style="margin-top:10px"><span class="hint grow" id="sRcState">${NET.user&&NET.user.hasRecovery?'발급됨':'아직 없음'}</span><button class="btn sm" id="sRc">${NET.user&&NET.user.hasRecovery?'새로 발급':'발급'}</button></div></div>
+  ${on?`<div class="card"><b>로그인한 기기</b>
+   <div class="row" style="margin-top:8px"><span class="hint grow">휴대폰을 잃어버렸거나 교회 컴퓨터에서 로그아웃을 잊었을 때. 이 기기도 로그아웃돼요</span><button class="btn" id="sLogoutAll">${ic('logout')}모든 기기에서 로그아웃</button></div></div>`:''}
   <div class="card"><b>계정 삭제</b>
    <div class="row" style="margin-top:8px"><span class="hint grow">지우면 되돌릴 수 없어요</span><button class="btn ghost danger" id="sDel">계정 삭제</button></div></div>`;
  else pane=`<div class="card"><b>테마</b>
@@ -2670,6 +2672,11 @@ function afterSettings(){
    catch(err){toast(err.message);btn.disabled=false}return}
   if(e.target.closest('#sLogout')){
    if(!confirm('로그아웃할까요?\n이 기기에 받아 둔 콘티·악보도 함께 지워져요. 다시 로그인하면 서버에서 다시 받습니다.'))return;
+   doGate('logout');return}
+  // 다른 기기의 로그인까지 서버에서 끊는다 (비밀번호를 바꿀 때와 같은 방식)
+  if(e.target.closest('#sLogoutAll')){
+   if(!confirm('모든 기기에서 로그아웃할까요?\n이 기기를 포함해 로그인한 모든 곳에서 다시 로그인해야 해요. 이 기기에 받아 둔 콘티·악보도 지워져요.'))return;
+   try{await api('/auth/logout',{method:'POST',body:{all:true}})}catch(err){toast(err.message);return}
    doGate('logout');return}
   if(e.target.closest('#sReset')){if(confirm(on?'이 기기에 저장된 콘티·악보·메모를 지웁니다. 계정은 그대로예요. 계속할까요?':'모든 데이터를 지웁니다. 계속할까요?')){indexedDB.deleteDatabase('conti-v1');location.reload()}return}
  }}

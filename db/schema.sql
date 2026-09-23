@@ -578,3 +578,10 @@ create table if not exists ai_usage_all (
   calls int  not null default 0,
   primary key (day, kind)
 );
+
+-- 로그아웃한 세션 토큰. 토큰은 서명만 보고 믿는 방식이라 로그아웃해도 90일 동안 살아 있었다.
+-- 토큰 대신 sha256 만 적고, 만료가 지나면 크론(/cron/dates)이 지운다
+create table if not exists revoked_sessions (
+  id  text primary key,
+  exp timestamptz not null
+);
