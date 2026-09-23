@@ -962,6 +962,7 @@ body.nprint #printArea svg{max-width:100%;height:auto}
 .osmd.editing svg:hover{background:rgba(0,0,0,.02)}
 .nrow{display:flex;gap:5px;align-items:center;padding:4px 0;border-bottom:1px solid var(--line2);flex-wrap:wrap}
 .nrow .field{padding:4px 6px;font-size:13px}
+.nrow .nptc.bad{border-color:var(--destructive);color:var(--destructive)}
 .nrow .q.sm{padding:2px 8px;font-size:12px;min-width:0}
 .m.fixed{box-shadow:0 0 0 1px var(--card),0 0 0 2px currentColor;opacity:.95}
 @media(pointer:coarse){
@@ -1608,38 +1609,118 @@ const SHARP_N=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'],FLAT_N=['C'
 const STEPV={C:0,D:2,E:4,F:5,G:7,A:9,B:11};
 const midiOfP=p=>{const m=String(p||'').match(/^([A-G])(#{1,2}|b{1,2}|)(-?\d)$/);if(!m)return null;
  const al=m[2].startsWith('#')?m[2].length:m[2].startsWith('b')?-m[2].length:0;return (+m[3]+1)*12+STEPV[m[1]]+al};
-const wantFlat=k=>/b/.test(String(k||''))||['F','Dm','Gm','Cm','Fm'].includes(String(k||''));
 function keyShiftName(key,semis){const m=String(key||'C').match(/^([A-G])(#|b)?(m)?$/);if(!m)return key;
  const r=STEPV[m[1]]+(m[2]==='#'?1:m[2]==='b'?-1:0);const to=((r+semis)%12+12)%12;
- const F={C:0,G:1,D:2,A:3,E:4,B:5,'F#':6,'C#':7,F:-1,Bb:-2,Eb:-3,Ab:-4,Db:-5,Gb:-6,Cb:-7};
+ // 단조는 단조 조표 수로 고른다. 장조 표로 고르면 C#m 이 Dbm(표에 없는 이름 → 조표 0개), G#m 이 Abm(7개)이 됐다
+ const T=m[3]?XMIN:XFIF;const w=x=>T[x]==null?9:Math.abs(T[x]);
+ // 조표 수가 같으면(F#·Gb, D#m·Ebm) 원래 조가 있던 쪽(#·b)을 따른다 — Ab 로 바뀌는 곡을 내리면 F# 이 아니라 Gb
+ const src=xFifths(key);const pf=src<0||(src===0&&!!m[3]);
  const cand=[...new Set([SHARP_N[to],FLAT_N[to]])];
- return cand.sort((a,b)=>Math.abs(F[a]==null?9:F[a])-Math.abs(F[b]==null?9:F[b]))[0]+(m[3]||'')}
+ return cand.sort((a,b)=>w(a)-w(b)||(pf?(T[b]<0)-(T[a]<0):0))[0]+(m[3]||'')}
+// 조표대로 음이름을 붙인다: Gb장조의 시는 Cb, F#장조의 파는 E#. 조에 없는 음은 조가 있는 쪽(#·b)으로.
+// 예전에는 # 이름표·b 이름표 둘 중 하나로만 적어 7개짜리 조에서 조표와 다른 이름(제자리표 B·E)이 나왔다
+function keySpeller(k){const f=xFifths(k);const alt={};
+ 'FCGDAEB'.slice(0,Math.max(0,f)).split('').forEach(l=>alt[l]=1);'BEADGCF'.slice(0,Math.max(0,-f)).split('').forEach(l=>alt[l]=-1);
+ const by={};Object.keys(STEPV).forEach(l=>{const a=alt[l]||0;by[((STEPV[l]+a)%12+12)%12]=l+(a>0?'#':a<0?'b':'')});
+ // 단조의 이끎음은 7음을 올려 적는다 (Dm 의 C#, C#m 의 B#). 겹올림(G#m 의 F##)이 되면 그냥 둔다
+ const mm=String(k||'').match(/^([A-G])(?:#|b)?m$/);
+ if(mm){const L='CDEFGAB',l=L[(L.indexOf(mm[1])+6)%7],a=(alt[l]||0)+1,pc=((STEPV[l]+a)%12+12)%12;if(a<=1&&!by[pc])by[pc]=l+(a>0?'#':'')}
+ const side=f<0?FLAT_N:SHARP_N;
+ return semi=>{const pc=((semi%12)+12)%12;return by[pc]||side[pc]}}
+// 이름 + 옥타브. B#·Cb 는 옥타브 숫자가 소리와 한 칸 어긋난다 (B#3 = C4, Cb4 = B3)
+const pitchName=(nm,mid)=>{const n=nm(mid);const a=n[1]==='#'?1:n[1]==='b'?-1:0;return n+(Math.floor((mid-a-STEPV[n[0]])/12)-1)};
+// 악보 코드 전조: 음표와 같은 이름표(그 마디의 조)로 근음·베이스를 적는다. 못 읽는 코드는 그대로 둔다
+const scoreChord=(t,semis,nm)=>{const c=parseChord(t);if(!c)return t;const r=NOTE_SEMI[c.root];if(r==null)return t;
+ const b=c.bass?NOTE_SEMI[c.bass]:null;return nm(r+semis)+c.suffix+(c.bass?'/'+(b==null?c.bass:nm(b+semis)):'')};
 // 악보 전체를 반음 옮긴다 (음표·코드·조표 함께)
+// 중간에 조가 바뀌면(m.key) 그 마디부터는 바뀐 조로 이름을 붙인다 — 예전에는 첫 조로만 적어 Bb 조표 아래 A#·D# 이 나왔다.
+// 음이름을 못 읽는 음표('Bb'·'c5')는 건드리지 않는다: 원래 키에서 쉼표로 보이던 것이 옮기면 옥타브 -1 음표가 됐다
 function transposeScore(sc,semis){if(!semis)return sc;
- const key2=keyShiftName(sc.key,semis);const flat=wantFlat(key2);
- const spell=mid=>(flat?FLAT_N:SHARP_N)[((mid%12)+12)%12]+(Math.floor(mid/12)-1);
- return {...sc,key:key2,measures:(sc.measures||[]).map(m=>({...m,
-  key:m.key?keyShiftName(m.key,semis):m.key,
-  c:(m.c||[]).map(c=>({...c,t:transposeChord(c.t,semis,key2)})),
-  n:(m.n||[]).map(n=>n.p?{...n,p:spell(midiOfP(n.p)+semis)}:n)}))}}
+ const key2=keyShiftName(sc.key,semis);let cur=key2;
+ return {...sc,key:key2,measures:(sc.measures||[]).map((m,i)=>{
+  if(m.key&&i>0)cur=keyShiftName(m.key,semis);const nm=keySpeller(cur);
+  return {...m,key:m.key?keyShiftName(m.key,semis):m.key,
+   c:(m.c||[]).map(c=>({...c,t:scoreChord(c.t,semis,nm)})),
+   n:(m.n||[]).map(n=>{const mid=n.p?midiOfP(n.p):null;return mid==null?n:{...n,p:pitchName(nm,mid+semis)}})}})}}
 // 악보 데이터 → MusicXML (OSMD 가 읽는 표준)
 const xesc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const XTYPE={1:'whole',2:'half',4:'quarter',8:'eighth',16:'16th',32:'32nd'};
 const XFIF={C:0,G:1,D:2,A:3,E:4,B:5,'F#':6,'C#':7,F:-1,Bb:-2,Eb:-3,Ab:-4,Db:-5,Gb:-6,Cb:-7};
 // 단조는 나란한장조의 조표를 쓴다 (Am 은 0개, A장조의 3개가 아니다)
 const XMIN={A:0,E:1,B:2,'F#':3,'C#':4,'G#':5,'D#':6,'A#':7,D:-1,G:-2,C:-3,F:-4,Bb:-5,Eb:-6,Ab:-7};
-const xFifths=k=>{const t=String(k||'C').trim();const m=/m$/.test(t);const r=t.replace(/m$/,'');
- const v=m?XMIN[r]:XFIF[r];return v==null?0:v};
-const XKIND=[[/^maj7|^M7/,'major-seventh'],[/^m7b5|^ø/,'half-diminished'],[/^m(?:in)?7/,'minor-seventh'],[/^m(?:in)?9/,'minor-ninth'],
- [/^m(?:in)?6/,'minor-sixth'],[/^dim|^°|^o\b/,'diminished'],[/^aug|^\+/,'augmented'],[/^\(?sus2/,'suspended-second'],
- [/^\(?sus4/,'suspended-fourth'],[/^m(?!aj)/,'minor'],[/^9/,'dominant-ninth'],[/^11/,'dominant-11th'],[/^13/,'dominant-13th'],
- [/^7/,'dominant'],[/^6/,'major-sixth'],[/^$/,'major']];
-function harmXML(t){const m=String(t||'').match(/^([A-G])(#|b)?([^/]*)(?:\/([A-G])(#|b)?)?$/);if(!m)return '';
- const suf=(m[3]||'').trim();const kind=(XKIND.find(([re])=>re.test(suf))||[null,'other'])[1];
- const al=a=>a==='#'?'<root-alter>1</root-alter>':a==='b'?'<root-alter>-1</root-alter>':'';
- const bal=a=>a==='#'?'<bass-alter>1</bass-alter>':a==='b'?'<bass-alter>-1</bass-alter>':'';
- return `<harmony print-frame="no"><root><root-step>${m[1]}</root-step>${al(m[2])}</root><kind text="${xesc(suf)}">${kind}</kind>`+
-  (m[4]?`<bass><bass-step>${m[4]}</bass-step>${bal(m[5])}</bass>`:'')+`</harmony>`}
+// 표에 없는 이름(Dbm·Fb·A#)은 같은 소리의 다른 이름으로 찾는다. 예전에는 0(조표 없음)이 돼 음표마다 임시표가 붙었다
+const xFifths=k=>{const t=String(k||'C').trim();const m=/m$/.test(t);const r=t.replace(/m$/,'');const T=m?XMIN:XFIF;
+ if(T[r]!=null)return T[r];const pc=NOTE_SEMI[r];if(pc==null)return 0;
+ const same=Object.keys(T).filter(x=>NOTE_SEMI[x]===pc).sort((a,b)=>Math.abs(T[a])-Math.abs(T[b]));return same.length?T[same[0]]:0};
+// 코드 접미사 → MusicXML kind + degree. OSMD 는 kind 의 text 를 읽지 않고 kind·degree 로 글자를 새로 만든다.
+// 예전에는 대표 kind 몇 개 말고는 'other'(OSMD 에 없는 값)여서 근음만 그려졌다: C-7 → C, Am7(b5) → Am7, E7sus4 → E7, Cadd9 → C.
+// 모르는 접미사면 null (그 코드는 글자 그대로 적는다)
+function chordKind(suf){let s=String(suf||'').replace(/\s/g,'').replace(/[()]/g,',');const deg=[];
+ const take=re=>{const m=s.match(re);if(!m)return null;s=s.slice(m[0].length);return m};const sep=()=>take(/^,+/);
+ let q='maj',M=false,ext=0,sus=0;sep();
+ if(take(/^ø7?/)){q='hdim';ext=7}
+ else if(take(/^(?:dim|°|º|o)/))q='dim';
+ else if(take(/^(?:aug|\+)/))q='aug';
+ else if(take(/^(?:min|m(?!aj)|-)/))q='min';
+ sep();if(take(/^(?:maj|M)/))M=true;sep();
+ const e=take(/^(?:6\/9|69|13|11|9|7|6|5|4|2)/);
+ if(e){const v=e[0];
+  if(v==='6/9'||v==='69'){ext=6;deg.push([9,0,'add'])}
+  else if(v==='5'&&q==='maj'&&!M)q='pow';
+  else if(v==='4')sus=4;                             // C4 = Csus4
+  else if(v==='2'||v==='5')deg.push([+v,0,'add']);   // G2: 찬양 악보에서 흔한 add2
+  else ext=Math.max(ext,+v)}
+ else if(M&&q==='min')ext=7;                         // m(maj) · mM 은 7 이 빠진 것
+ while(sep(),s){let m;
+  if((m=take(/^sus([24])?/))){sus=+(m[1]||4);continue}
+  if((m=take(/^add(#|b)?(\d{1,2})/))){deg.push([+m[2],m[1]==='#'?1:m[1]==='b'?-1:0,'add']);continue}
+  if((m=take(/^(#|b|\+|-)(\d{1,2})/))){const v=+m[2];deg.push([v,m[1]==='#'||m[1]==='+'?1:-1,v===5||v<=ext?'alter':'add']);continue}
+  if((m=take(/^(?:maj|M)(\d{1,2})?/))){M=true;ext=Math.max(ext,m[1]?+m[1]:7);continue}
+  if((m=take(/^\d{1,2}/))){const v=+m[0];if(!ext&&v>=6&&v!==8)ext=v;else deg.push([v,0,'add']);continue}
+  return null}
+ if(M&&ext<7&&q!=='min')M=false;                     // CM · Cmaj · CM6 은 장3화음 쪽
+ if(q==='min'&&ext===7&&!M){const i=deg.findIndex(d=>d[0]===5&&d[1]===-1);if(i>=0){deg.splice(i,1);q='hdim'}}   // m7b5 = ø
+ let kind;
+ if(q==='pow')kind='power';
+ else if(q==='hdim')kind='half-diminished';
+ else if(q==='dim')kind=ext>=7?'diminished-seventh':'diminished';
+ else if(q==='aug'){kind=ext>=7?(M?'major-seventh':'augmented-seventh'):'augmented';if(M&&ext>=7)deg.push([5,1,'alter'])}
+ else if(sus&&q==='maj'){kind=sus===2?'suspended-second':'suspended-fourth';
+  if(ext>=7)deg.unshift([7,M?1:0,'add']);if(ext===6)deg.push([6,0,'add'])}
+ else{if(sus)deg.push([sus,0,'add']);
+  kind=q==='min'&&M?'major-minor':(q==='min'?{0:'minor',6:'minor-sixth',7:'minor-seventh',9:'minor-ninth',11:'minor-11th',13:'minor-13th'}
+   :M?{7:'major-seventh',9:'major-ninth',11:'major-11th',13:'major-13th'}
+   :{0:'major',6:'major-sixth',7:'dominant',9:'dominant-ninth',11:'dominant-11th',13:'dominant-13th'})[ext]}
+ if(ext>7&&/^(?:half-dim|dim|aug|susp|major-minor)/.test(kind||''))deg.push([ext,0,'add']);   // ø9 · m(maj9) · 9sus4
+ return kind?{kind,deg}:null}
+// 코드 한 개 → {root, kind, deg, suf, bass} · N.C. 는 {none} · 못 읽으면 null. 전조(transposeChord)와 같은 파서를 쓴다
+// — 예전에는 따로 느슨하게 읽어서 'G(후렴)' 처럼 전조가 못 읽는 코드도 근음만 그려져, 옮기면 혼자 G 로 남았다
+function chordSpec(t){const raw=String(t||'').trim();if(!raw)return null;
+ if(/^(?:N\.?\s?C\.?|노\s?코드)$/i.test(raw))return {none:true};
+ const c=parseChord(raw);if(!c)return null;const k=chordKind(c.suffix);if(!k)return null;
+ return {root:c.root,suf:c.suffix,bass:c.bass,...k}}
+function harmXML(t){const raw=String(t||'').trim();if(!raw)return '';const h=chordSpec(raw);
+ // 못 읽는 코드는 버리지 않고 글자 그대로 위에 적는다 (예전에는 6/9·N.C. 가 통째로 사라졌다)
+ if(!h)return `<direction placement="above"><direction-type><words>${xesc(raw)}</words></direction-type></direction>`;
+ if(h.none)return `<harmony print-frame="no"><root><root-step>C</root-step></root><kind text="N.C.">none</kind></harmony>`;
+ const al=(a,tag)=>a==='#'?`<${tag}-alter>1</${tag}-alter>`:a==='b'?`<${tag}-alter>-1</${tag}-alter>`:'';
+ // degree 는 kind 의 text 에 이미 적혀 있으니 따로 찍지 않는다(print-object="no") — 다른 프로그램에서 두 번 보이지 않게
+ return `<harmony print-frame="no"><root><root-step>${h.root[0]}</root-step>${al(h.root[1],'root')}</root><kind text="${xesc(h.suf)}">${h.kind}</kind>`+
+  (h.bass?`<bass><bass-step>${h.bass[0]}</bass-step>${al(h.bass[1],'bass')}</bass>`:'')+
+  h.deg.map(([v,a,ty])=>`<degree print-object="no"><degree-value>${v}</degree-value><degree-alter>${a}</degree-alter><degree-type>${ty}</degree-type></degree>`).join('')+`</harmony>`}
+// OSMD 는 kind·degree 로 글자를 다시 만든다 (6 → 'maj6', 7(b9) → '7(alt b9)', add9 → '(9)').
+// 이 악보에 나온 kind·degree 조합마다 '이렇게 적는다'를 등록해 적힌 그대로 보이게 한다 (글자를 load 때 만들므로 load 전에 부른다).
+// OSMD 는 맞는 등록을 차례로 모두 적용하고 맞은 degree 를 지운다 → degree 없는 것 먼저, 그다음 많은 것부터 두면 정확히 같은 조합이 이긴다
+// 같은 조합을 다르게 적은 것(m7 · -7)은 한 가지로만 보일 수 있어서, 이 악보에서 더 많이 쓴 쪽으로 적는다
+function osmdChordNames(o,sc){const R=o&&o.EngravingRules;if(!R||!R.addChordName)return;
+ const by=new Map();
+ (sc.measures||[]).forEach(m=>(m.c||[]).forEach(c=>{const h=chordSpec(c.t);if(!h||h.none)return;
+  const d={adds:[],alts:[],subs:[]};h.deg.forEach(([v,a,ty])=>d[ty==='add'?'adds':ty==='alter'?'alts':'subs'].push((a>0?'#':a<0?'b':'')+v));
+  const kk=h.kind.replace('-','');const key=kk+'|'+JSON.stringify(d);
+  const x=by.get(key)||{kind:kk,d,n:h.deg.length,names:new Map()};x.names.set(h.suf,(x.names.get(h.suf)||0)+1);by.set(key,x)}));
+ R.CustomChords=[];
+ [...by.values()].sort((a,b)=>(a.n?-a.n:-1e9)-(b.n?-b.n:-1e9)).forEach(x=>{
+  const name=[...x.names].sort((a,b)=>b[1]-a[1])[0][0];R.addChordName(name,x.kind,x.d.adds,x.d.alts,x.d.subs)})}
 // 8분음표 이하를 박 단위로 묶어 꼬리표(beam) 를 만든다. 없으면 음표마다 깃발이 달려 손으로 그린 악보와 달라 보인다
 function beamsOf(notes,unit){
  const lvl=n=>(n&&n.p&&n.d>=8)?Math.round(Math.log2(n.d/4)):0;
@@ -1661,6 +1742,11 @@ const beamUnit=(time)=>{const m=String(time||'4/4').match(/^(\d+)\/(\d+)$/);cons
  return (be%3===0&&bt===8)?(DIVS*4/8)*3:(DIVS*4)/bt};
 function scoreToMusicXML(sc){const s=sc||{};const tm=String(s.time||'4/4').match(/^(\d+)\/(\d+)$/)||[null,'4','4'];
  let cur=s.key||'C';
+ // 붙임줄은 시작과 끝이 짝이어야 그려진다 — 시작만 적으면 OSMD 도, 내보낸 파일을 연 프로그램도 버린다.
+ // 다음 음표(다음 마디 첫 음 포함)가 같은 높이일 때만 잇고, 그 음표에 끝(stop)을 적는다
+ const seq=[];(s.measures||[]).forEach((m,i)=>(m.n||[]).forEach((n,ni)=>seq.push([i+':'+ni,midiOfP(n.p),n.tie])));
+ const tieS=new Set(),tieE=new Set();
+ seq.forEach(([k,mid,tie],j)=>{const nx=seq[j+1];if(tie&&mid!=null&&nx&&nx[1]===mid){tieS.add(k);tieE.add(nx[0])}});
  const ms=(s.measures||[]).map((m,i)=>{const parts=[];const at=[];
   if(i===0)at.push(`<divisions>${DIVS}</divisions>`,`<key><fifths>${xFifths(cur)}</fifths><mode>${/m$/.test(cur)?'minor':'major'}</mode></key>`,
    `<time><beats>${tm[1]}</beats><beat-type>${tm[2]}</beat-type></time>`,`<clef><sign>G</sign><line>2</line></clef>`);
@@ -1677,9 +1763,10 @@ function scoreToMusicXML(sc){const s=sc||{};const tm=String(s.time||'4/4').match
    const alv=pm?(pm[2].startsWith('#')?pm[2].length:pm[2].startsWith('b')?-pm[2].length:0):0;
    const lyr=(Array.isArray(n.l)?n.l:n.l?[n.l]:[]).map((t,vi)=>t?`<lyric number="${vi+1}"><syllabic>${/-$/.test(t)?'begin':'single'}</syllabic><text>${xesc(String(t).replace(/-$/,''))}</text></lyric>`:'').join('');
    const bs=(bm[ni]||[]).map((v,k)=>v?`<beam number="${k+1}">${v}</beam>`:'').join('');
+   const te=tieE.has(i+':'+ni),ts=tieS.has(i+':'+ni);
    parts.push(`<note data-m="${i}" data-n="${ni}">${pm?`<pitch><step>${pm[1]}</step>${alv?`<alter>${alv}</alter>`:''}<octave>${pm[3]}</octave></pitch>`:'<rest/>'}`+
-    `<duration>${d}</duration>${n.tie?'<tie type="start"/>':''}<voice>1</voice><type>${XTYPE[n.d]||'quarter'}</type>${n.dot?'<dot/>':''}`+
-    bs+(n.tie?'<notations><tied type="start"/></notations>':'')+lyr+`</note>`);
+    `<duration>${d}</duration>${te?'<tie type="stop"/>':''}${ts?'<tie type="start"/>':''}<voice>1</voice><type>${XTYPE[n.d]||'quarter'}</type>${n.dot?'<dot/>':''}`+
+    bs+(te||ts?`<notations>${te?'<tied type="stop"/>':''}${ts?'<tied type="start"/>':''}</notations>`:'')+lyr+`</note>`);
    tick+=d});
   while(ci<ch.length){parts.push(harmXML(ch[ci].t));ci++}
   if(m.end)parts.push(`<barline location="right"><ending number="${m.end}" type="${m.re?'stop':'discontinue'}"/>${m.re?'<bar-style>light-heavy</bar-style><repeat direction="backward"/>':''}</barline>`);
@@ -5081,7 +5168,7 @@ async function drawScore(){const r=route();const {svc,it}=scoreItem(r);const hos
   autoResize:false,backend:'svg',drawTitle:true,drawComposer:true,drawSubtitle:false,
   drawMeasureNumbers:true,measureNumberInterval:1,drawPartNames:false,
   drawingParameters:'default',pageBackgroundColor:'#ffffff'});
- try{await o.load(xml);o.zoom=SC.zoom;o.render()}
+ try{osmdChordNames(o,sc);await o.load(xml);o.zoom=SC.zoom;o.render()}
  catch(e){console.warn('osmd',e);host.innerHTML='<div class="muted" style="padding:40px;text-align:center">악보를 그리다 막혔어요. "곡 정보"에서 박자·조를 확인해 보세요</div>';return}
  SC.osmd=o;
  // 마디를 탭했을 때 어느 마디인지 알아내려고 화면 배율을 재 둔다
@@ -5111,7 +5198,7 @@ function measureModal(svc,it,mi){const sc=it.score;const m=sc.measures[mi];if(!m
  const beatsOf=t=>Math.round(t/want*(+String(sc.time).split('/')[0]||4)*100)/100;
  const noteRow=(n,i)=>`<div class="nrow" data-ni="${i}">
    <button class="q sm ${n.p?'':'on'}" data-nrest="${i}" title="쉼표로">쉼</button>
-   <input class="field mono nptc" data-np="${i}" value="${esc(n.p||'')}" placeholder="쉼표" style="width:64px;text-align:center" ${n.p?'':'disabled'}>
+   <input class="field mono nptc ${n.p&&midiOfP(n.p)==null?'bad':''}" data-np="${i}" value="${esc(n.p||'')}" placeholder="쉼표" title="음이름+옥타브 (예: Bb4, F#5)" style="width:64px;text-align:center" ${n.p?'':'disabled'}>
    <button class="icon sm ghost" data-nstep="${i}" data-d="1" title="반음 올림" ${n.p?'':'disabled'}>${ic('up')}</button>
    <button class="icon sm ghost" data-nstep="${i}" data-d="-1" title="반음 내림" ${n.p?'':'disabled'}>${ic('down')}</button>
    <select class="field" data-nd="${i}" style="width:auto;padding-right:8px">${DURS.map(([v,l])=>`<option value="${v}" ${n.d===v?'selected':''}>${l}</option>`).join('')}</select>
@@ -5152,7 +5239,9 @@ function measureModal(svc,it,mi){const sc=it.score;const m=sc.measures[mi];if(!m
  const box=$('#modal');
  box.oninput=e=>{const t=e.target;
   if(t.dataset.ct!=null){m.c[+t.dataset.ct].t=normAcc(t.value.trim());soon();return}
-  if(t.dataset.np!=null){m.n[+t.dataset.np].p=t.value.trim()||null;soon();return}
+  // 음이름은 'Bb4' 꼴만 그려진다. 소문자·♭ 은 고쳐 받고, 못 읽는 것('Bb'·'H4')은 빨갛게 — 그대로 두면 쉼표로 보인다
+  if(t.dataset.np!=null){const v=t.value.trim().replace(/♯/g,'#').replace(/♭/g,'b').replace(/^[a-g]/,c=>c.toUpperCase());
+   m.n[+t.dataset.np].p=v||null;t.classList.toggle('bad',!!v&&midiOfP(v)==null);soon();return}
   if(t.dataset.nl!=null){const n=m.n[+t.dataset.nl];n.l=n.l||[];n.l[+t.dataset.v]=t.value;while(n.l.length&&!n.l[n.l.length-1])n.l.pop();soon();return}
   if(t.id==='mKey'){m.key=t.value.trim()||undefined;soon();return}};
  box.onchange=e=>{const t=e.target;if(t.dataset.nd!=null){m.n[+t.dataset.nd].d=+t.value;commit(true)}};
@@ -5168,7 +5257,8 @@ function measureModal(svc,it,mi){const sc=it.score;const m=sc.measures[mi];if(!m
   if((b=g('[data-ndot]'))){const n=m.n[+b.dataset.ndot];n.dot=n.dot?undefined:true;commit(true);return}
   if((b=g('[data-ntie]'))){const n=m.n[+b.dataset.ntie];n.tie=n.tie?undefined:true;commit(true);return}
   if((b=g('[data-nstep]'))){const n=m.n[+b.dataset.nstep];const mid=midiOfP(n.p);if(mid==null)return;
-   const to=mid+(+b.dataset.d);const flat=wantFlat(sc.key);n.p=(flat?FLAT_N:SHARP_N)[((to%12)+12)%12]+(Math.floor(to/12)-1);commit(true);return}
+   let k=sc.key;sc.measures.slice(1,mi+1).forEach(x=>{if(x.key)k=x.key});   // 중간에 조가 바뀌었으면 이 마디의 조로 적는다
+   n.p=pitchName(keySpeller(k),mid+(+b.dataset.d));commit(true);return}
   if(t.closest('#mnAdd')){const last=m.n[m.n.length-1];m.n.push({p:last&&last.p?last.p:'C5',d:(last&&last.d)||4});commit(true);return}
   if(t.closest('#mRs')){m.rs=m.rs?undefined:true;commit(true);return}
   if(t.closest('#mRe')){m.re=m.re?undefined:true;commit(true);return}
@@ -7412,7 +7502,8 @@ async function printScore(svc,it){
  const capo=+me().capo||0;
  const o=new opensheetmusicdisplay.OpenSheetMusicDisplay(host,{autoResize:false,backend:'svg',drawTitle:true,drawComposer:true,
   drawMeasureNumbers:true,measureNumberInterval:1,drawPartNames:false,pageBackgroundColor:'#ffffff',pageFormat:'A4_P'});
- try{await o.load(scoreToMusicXML(transposeScore(it.score,SC.semi-capo)));o.zoom=1;o.render()}
+ const sc=transposeScore(it.score,SC.semi-capo);
+ try{osmdChordNames(o,sc);await o.load(scoreToMusicXML(sc));o.zoom=1;o.render()}
  catch(e){console.warn('print score',e);area.remove();toast('악보를 인쇄용으로 그리지 못했어요');return}
  host.querySelectorAll('svg').forEach(sv=>{const w=document.createElement('div');w.className='osmdpage';sv.parentNode.insertBefore(w,sv);w.appendChild(sv)});
  document.body.classList.add('printing');
