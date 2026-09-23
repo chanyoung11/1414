@@ -63,7 +63,9 @@ def run():
     if md['notes'][0]['layer'] != 'mine': fail('메모 층이 걸러지지 않음: %r' % md['notes'][0])
     if mk.get('cut') is not None or mk.get('keyShift') is not None: fail('절단선·전조가 걸러지지 않음: %r' % mk)
     if it['score']['tempo'] is not None: fail('템포가 걸러지지 않음: %r' % it['score'])
-    if [f['layer'] for f in it['fixedNotes']] != ['mine', 'all']: fail('고정 메모 층: %r' % it['fixedNotes'])
+    # 이상한 층은 'mine' 으로 걸러 저장된다. 내려줄 때는 fe-03(F68)의 규칙대로 '나만' 메모는 쓴 사람에게만 가므로
+    # 쓴 사람(authorId)이 없는 f1 은 누구에게도 안 내려간다 — 남는 것은 'all' 인 f2 뿐이다
+    if [f['layer'] for f in it['fixedNotes']] != ['all'] or any(f['layer'] not in ('all', 'leader', 'session', 'mine') for f in it['fixedNotes']): fail('고정 메모 층: %r' % it['fixedNotes'])
     if list(it['ov'].keys()) != ['key']: fail('ov 키가 걸러지지 않음: %r' % it['ov'])
     # 초안도
     r = api.put(URL + 'api/services/%s/draft' % ('xd' + tag), headers=HJ, data=json.dumps({'teamId': team, 'doc': dict(bad_doc, id='xd' + tag)}))
@@ -102,10 +104,12 @@ def run():
     # 서버 없이 쓰는 기기처럼 (카톡으로 받은 파일을 가져오는 흐름). 서버에 없는 발행본은 동기화 때 지워지므로 그동안 서버를 끈다
     L.evaluate("()=>{CONTI.NET.server=false}")
     L.evaluate("async (t)=>{await CONTI.importJSON(new Blob([t],{type:'application/json'}))}", json.dumps(data))
-    ver = L.evaluate("CONTI.S.services.find(x=>x.id==='%s').published.version" % sid)
+    # 팀 기기의 인도자가 가져온 발행본은 초안으로 들어온다 (fe-12 F31 — 서버에 없는 발행본은 다음 동기화에 지워지므로)
+    ver = L.evaluate("(()=>{const s=CONTI.S.services.find(x=>x.id==='%s');return s.published?s.published.version:s.version})()" % sid)
     if ver != 0: fail('가져온 파일의 버전이 숫자로 안 바뀜: %r' % ver)
-    # 고치기 전에 이 기기에 이미 받아 둔 문서는 버전에 글자가 든 채로 남아 있다 → 화면에서도 막혀야 한다
-    L.evaluate("(v)=>{const s=CONTI.S.services.find(x=>x.id==='%s');s.version=v;s.published.version=v;CONTI.save()}" % sid, X('version'))
+    # 고치기 전에 이 기기에 이미 받아 둔 문서는 버전에 글자가 든 채로 남아 있다 → 화면에서도 막혀야 한다.
+    # 초안으로 들어왔으면 예전처럼 발행본을 그대로 받아 둔 기기를 흉내 낸다 (걸러지지 않은 발행본)
+    L.evaluate("([v,p])=>{const s=CONTI.S.services.find(x=>x.id==='%s');if(!s.published)s.published=JSON.parse(p);s.version=v;s.published.version=v;CONTI.save()}" % sid, [X('version'), json.dumps(pub)])
     L.evaluate("()=>{location.hash='#/home';CONTI.render()}"); L.wait_for_timeout(900)
     if 'onerror' not in L.locator('#app').inner_text(): fail('홈 배지에 버전 글자가 안 보임 (검사가 헛돎)')
     if xss(L): fail('홈에서 스크립트가 돎: %s' % xss(L))
