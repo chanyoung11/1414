@@ -2997,7 +2997,20 @@ async function applyMembership(t){const next=scopeKey(NET.user&&NET.user.id,t.te
   if(typeof SYNC!=='undefined'&&online())setTimeout(()=>{SYNC.pullLibrary();if(typeof pullSongs!=='undefined')pullSongs(true)},0)}   // 팀이 바뀌면 그 팀 라이브러리를 받아온다
  // 역할·세션이 바뀌면 받을 수 있는 고정 메모가 달라진다(세션 메모는 그 세션과 인도자만). since 로는 안 오니 곡 목록을 통째로 다시 받게
  {const pm=S.team.me||{};if(S.songsAt&&S.team.id===t.teamId&&(pm.role!==t.me.role||String(pm.mySessions||[])!==String(t.me.mySessions||[])))S.songsAt=''}
- S.team.id=t.teamId;S.team.name=t.teamName;S.team.plan=t.plan||'free';S.team.planUntil=t.planUntil||null;S.team.invite=t.invite||'';S.team.sessions=t.sessions.slice();S.team.phrases=t.phrases.slice();S.team.settings=t.settings||S.team.settings||{};S.team.me={userId:t.me.userId,name:t.me.name,session:t.me.session,mySessions:t.me.mySessions||[],role:t.me.role,capo:+t.me.capo||0};save()}
+ const wasLead=!!(S.team.me&&S.team.me.role==='leader');
+ S.team.id=t.teamId;S.team.name=t.teamName;S.team.plan=t.plan||'free';S.team.planUntil=t.planUntil||null;S.team.invite=t.invite||'';S.team.sessions=t.sessions.slice();S.team.phrases=t.phrases.slice();S.team.settings=t.settings||S.team.settings||{};S.team.me={userId:t.me.userId,name:t.me.name,session:t.me.session,mySessions:t.me.mySessions||[],role:t.me.role,capo:+t.me.capo||0};
+ if(wasLead&&t.me.role!=='leader')dropUnsentLib();
+ save()}
+// 인도자에서 내려오면 이 기기에 쌓아 둔 라이브러리 수정은 더 올릴 수 없다 (서버는 인도자 것만 받는다).
+// 들고 있으면 그 곡은 '안 올린 수정'이라 서버 소식도 안 받아서 이 기기에서만 옛 모습으로 굳었다. 버리고 서버 것을 다시 받는다
+function dropUnsentLib(){let n=0,lib=0;
+ (S.songs||[]).forEach(s=>{if(s.dirty||s.pend||s.pendArr){n++;delete s.dirty;delete s.pend;delete s.pendArr}});
+ (S.library||[]).forEach(s=>{if(s.dirty){lib++;delete s.dirty}});
+ if((S.libDeleted||[]).length){lib+=S.libDeleted.length;S.libDeleted=[]}
+ if(!n&&!lib)return;
+ if(lib)S.libAt='';   // 처음부터 다시 받아야 안 올린 것이 서버 모습으로 돌아온다
+ toast(`인도자가 아니라서 못 올린 라이브러리 수정 ${n+lib}건은 버렸어요`);
+ if(typeof SYNC!=='undefined'&&online())setTimeout(()=>{SYNC.pullLibrary();if(typeof pullSongs!=='undefined')pullSongs(true).then(ch=>{if(ch)render()})},0)}
 async function takeMe(m){NET.user=m.user;NET.teams=m.teams||[];NET.blocked=m.blocked||null;const cur=NET.teams.find(x=>x.teamId===S.team.id)||m.team;
  if(cur){if(S.team.id&&cur.teamId!==S.team.id)toast((cur.teamName||'다른')+' 팀으로 전환했어요');await applyMembership(cur)}
  else{await switchScope(scopeKey(m.user&&m.user.id,''));S.team.id='';S.team.invite='';save()}}
