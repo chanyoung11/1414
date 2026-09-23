@@ -71,6 +71,11 @@ def run():
         if '민수' not in pl.locator('.schtab').inner_text(): fail('편성 표에 멤버가 없음')
         pl.locator('.schtab .dcol').first.click(); pl.wait_for_selector('[data-lsel]', timeout=10000)
         did = pl.evaluate('CONTI.route().a')
+        # 칸을 진짜로 눌러도 패널이 닫히면 안 된다 (select_option 은 클릭을 건너뛰어서 못 잡는다)
+        pl.locator('[data-lsel]').first.click(); pl.wait_for_timeout(500)
+        if pl.evaluate('CONTI.route().name') != 'lineup' or not pl.locator('[data-lsel]').count(): fail('사람 고르는 칸을 누르자 편성 패널이 닫힘')
+        pl.locator('.lnhd b').click(); pl.wait_for_timeout(500)
+        if pl.evaluate('CONTI.route().name') != 'lineup': fail('패널 안 빈 곳을 누르자 편성 패널이 닫힘')
         sel = pl.locator('[data-lsel="드럼"]').first
         opts = sel.locator('option').all_inner_texts()
         if not any('민수' in o for o in opts): fail('드럼 드롭다운에 민수 없음: %s' % opts)
@@ -87,6 +92,8 @@ def run():
         if not ns: fail('lineup.notify 알림 없음')
         if '드럼으로 섭니다' not in ns[0]['title']: fail('통보 알림 문구 이상: %s' % ns[0]['title'])
         print('notify ok:', ns[0]['title'])
+        pl.click('.lnhd [data-act="lclose"]'); pl.wait_for_timeout(600)
+        if pl.evaluate('CONTI.route().name') != 'sched': fail('닫기 버튼으로 편성 패널이 안 닫힘')
         # 멤버 홈 카드에 뜨고 확인하면 사라짐
         pm.goto(URL + '#/home'); pm.reload(); pm.wait_for_selector('.todo-card', timeout=10000)
         if '드럼으로 섭니다' not in pm.locator('.todo').inner_text(): fail('홈 카드에 편성 통보 없음')

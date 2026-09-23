@@ -7073,7 +7073,9 @@ document.addEventListener('click',async e=>{
    if(next===now)break;
    LN.dateId=route().a;LN.slots={...(LN.slots&&LN.dateId===route().a?LN.slots:{}),[sess]:next};
    await saveLineup(d);render();break}
-  case 'lclose':{if(el.closest('.lnpanel')&&!el.closest('[data-act="lclose"].icon'))break;LN.slots=null;LN.dateId=null;go('sched');break}
+  // 패널 안 빈 곳·사람 고르는 칸을 눌러도 바깥 가림막(.lnov)의 lclose 까지 올라온다.
+  // 눌린 것(e.target)으로 봐야 한다 — el 은 가림막이라 늘 패널 밖이어서 칸을 누르자마자 패널이 닫혔다
+  case 'lclose':{if(e.target.closest('.lnpanel')&&!el.closest('[data-act="lclose"].icon'))break;LN.slots=null;LN.dateId=null;go('sched');break}
   case 'lclear':{const d=SCH.dates.find(x=>x.id===route().a);if(!d)break;
    const bd=$('.lnbody');const top=bd?bd.scrollTop:0;
    $$(`[data-lsel="${el.dataset.s}"]`).forEach(s=>s.value='');await saveLineup(d);render();
