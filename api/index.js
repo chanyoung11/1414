@@ -570,6 +570,7 @@ on('POST', '/push/token/remove', async ({ uid, body }) => {
 });
 
 // ---------- 푸시 구독 ----------
+const PUSH_SUBS_PER_USER = 10;
 on('GET', '/push/key', async () => ({ configured: pushConfigured(), key: vapidPublicKey(), app: fcmConfigured() || apnsConfigured(), android: fcmConfigured(), ios: apnsConfigured() }));
 on('POST', '/push/subscribe', async ({ uid, body, req }) => {
   if (!uid) throw noAuth();
@@ -582,6 +583,11 @@ on('POST', '/push/subscribe', async ({ uid, body, req }) => {
            on conflict (endpoint) do update set user_id=excluded.user_id, keys=excluded.keys, ua=excluded.ua, last_ok_at=now()`,
     [ep, uid, JSON.stringify({ p256dh: String(sub.keys.p256dh), auth: String(sub.keys.auth) }),
      str((req && req.headers && req.headers['user-agent']) || '', 200)]);
+  // 한 사람의 구독은 최근 것 몇 개만 둔다. 끝이 없으면 가짜 구독을 수천 개 올려 두고 시험 발송 한 번에
+  // 서버가 그 수만큼 바깥으로 요청을 쏘게 할 수 있었다. 브라우저·기기를 바꿔 가며 쌓인 옛 구독이 먼저 빠진다
+  await q(`delete from push_subs where user_id=$1 and endpoint in (
+             select endpoint from push_subs where user_id=$1 order by coalesce(last_ok_at, created_at) desc, created_at desc offset $2)`,
+    [uid, PUSH_SUBS_PER_USER]);
   return { ok: true };
 });
 on('POST', '/push/unsubscribe', async ({ uid, body }) => {

@@ -5793,7 +5793,13 @@ async function render(){
  }
  if(r.name!=='view')VF.draft=false;
  if(/^(edit|view|play)$/.test(r.name)){let svc=svcById(r.a);
-  if(!svc&&online()){app.innerHTML=`<div class="empty" style="margin:40px auto;max-width:420px"><b>콘티를 받는 중…</b>팀 서버에서 발행본을 내려받고 있어요.</div>`;try{svc=await SYNC.pullService(r.a)}catch(e){toast(e.message)}}
+  if(!svc&&online()){app.innerHTML=`<div class="empty" style="margin:40px auto;max-width:420px"><b>콘티를 받는 중…</b>팀 서버에서 발행본을 내려받고 있어요.</div>`;try{svc=await SYNC.pullService(r.a)}catch(e){
+   // 여러 팀에 있는 사람이 다른 팀 콘티 링크(#/view/…)를 열면 지금 팀에는 없다. 링크에는 팀이 없어서
+   // '발행된 콘티가 없어요' 뒤 홈으로 갔다 (앱 링크·웹 모두) → 내 다른 팀에 있으면 그 팀으로 바꿔 연다 (알림을 누른 것과 같다)
+   const tid=e.status===404&&r.name==='view'?await teamWithService(r.a):'';
+   if(stale())return;
+   if(tid){await openPushLink('#/view/'+r.a,tid);if(!stale()&&S.team.id!==tid)go('home');return}   // 못 바꿨으면 '받는 중'에 멈추지 않게
+   toast(e.message)}}
   if(stale())return;
   if(!svc)return go('home');
   // 같은 콘티 안에서 곡만 넘기거나(연습 화면 다음·이전) 보기·연습·편집을 오갈 때는 서버를 다시 기다리지 않는다 — 들어올 때 받았다.
@@ -6517,8 +6523,15 @@ async function openPushLink(link,teamId){
   try{const t=await api('/teams/'+encodeURIComponent(teamId));await applyMembership(t);TM.data=null;toast((t.teamName||'다른')+' 팀으로 전환했어요');
    SYNC.pullServices().then(ch=>{if(ch)render()})}
   catch(e){toast(e.message);return}}   // 이제 그 팀 사람이 아니면 열지 않는다
- if(link)go(String(link).replace(/^#\/?/,''));
+ if(link){leaveStageFor(link);go(String(link).replace(/^#\/?/,''))}
  refreshNoti&&refreshNoti()}
+// 알림·앱 링크로 다른 화면을 열 때 무대 모드가 떠 있으면 먼저 닫는다. 무대가 화면을 통째로 덮고 있어
+// 주소만 뒤에서 바뀌고 새 화면은 안 보였다 (지금 화면을 다시 가리키면 무대는 그대로 둔다)
+function leaveStageFor(h){if($('#stageWrap')&&String(h||'').replace(/^#\/?/,'')!==location.hash.replace(/^#\/?/,''))stageClose()}
+// 이 콘티가 발행된 내 다른 팀 id (없으면 ''). 링크에 팀이 없을 때 찾는다 — 그 팀 사람이 아니면 서버가 거절한다
+async function teamWithService(sid){const others=(NET.teams||[]).filter(t=>t.teamId&&t.teamId!==S.team.id);if(!others.length)return '';
+ const hit=await Promise.all(others.map(t=>api('/services/'+encodeURIComponent(sid)+'?team='+encodeURIComponent(t.teamId)).then(()=>t.teamId,()=>'')));
+ return hit.find(Boolean)||''}
 // 웹: 이미 열린 창이면 sw.js 가 메시지로 알려 준다. 답(ack)을 하면 sw 는 주소를 바꾸지 않는다
 if('serviceWorker' in navigator)navigator.serviceWorker.addEventListener('message',e=>{const d=e.data||{};if(d.type!=='push-open')return;
  if(e.ports&&e.ports[0])e.ports[0].postMessage(1);openPushLink(d.link,d.teamId)});
@@ -6621,7 +6634,7 @@ async function nativeSetup(){
   const h=appLinkRoute(e&&e.url);
   if(!h||h===location.hash.replace(/^#\/?/,''))return;   // 첫 화면 주소면 앱만 연다
   if(/^join\//.test(h))GATE.preview=null;   // 다른 팀 초대면 먼저 본 초대 미리보기를 버린다
-  go(h)})}catch(e){}
+  leaveStageFor(h);go(h)})}catch(e){}
  try{P.SplashScreen&&P.SplashScreen.hide()}catch(e){}}
 // 앱 링크 주소 → 앱 안 주소(# 뒤). 우리 도메인의 첫 화면 주소만 받는다 —
 // yt.html·api 같은 다른 경로는 앱 화면이 아니라서 모른 척한다 (앱은 그대로 열리기만 한다)

@@ -69,6 +69,11 @@ const CASES = [
   ['운영 안 닿음 + 샌드박스 BadDeviceToken', 'down', 'bad', { sent: 0, left: 2 }],
   ['운영 BadDeviceToken + 샌드박스 안 닿음', 'bad', 'down', { sent: 0, left: 2 }],
   ['운영 BadDeviceToken + 샌드박스 키 환경 다름', 'bad', 'wrongkey', { sent: 0, left: 2 }],
+  ['운영·샌드박스 둘 다 안 닿음', 'down', 'down', { sent: 0, left: 2 }],
+  // 운영 서버가 안 닿아도 샌드박스 토큰(Xcode 개발 빌드)은 샌드박스로 받는다
+  ['운영 안 닿음 → 샌드박스로 보냄', 'down', 'ok', { sent: 2, left: 2 }],
+  // 410 은 '이 환경에서 등록이 풀렸다'는 실제 답이다 (운영 토큰이면 샌드박스는 BadDeviceToken 이라 답한다)
+  ['운영 안 닿음 + 샌드박스 410', 'down', 'gone', { sent: 0, left: 0 }],
   // 정리는 여전히 된다
   ['운영·샌드박스 둘 다 BadDeviceToken', 'bad', 'bad', { sent: 0, left: 0 }],
   ['운영 410 Unregistered', 'gone', 'ok', { sent: 0, left: 0 }],
