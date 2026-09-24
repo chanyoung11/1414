@@ -389,9 +389,11 @@ def run():
 
         # ---------- F32(무대): 설정 받기가 끝나지 않아도 무대 모드가 열린다 ----------
         st32 = 'st32' + tag
-        pg.evaluate("CONTI.S.services.push({id:%s,name:'무대 예배',date:'2026-10-11',notice:'',version:0,items:[{id:'st1'+%s,title:'곡1',key:'G',mod:'',form:'',songNote:'',pieces:[],media:[],notes:[]}],published:null});CONTI.save();CONTI.PREFS.data=null" % (json.dumps(st32), json.dumps(tag)))
         held = []
         pg.route('**/api/me/prefs', lambda route: held.append(route))
+        # 바로 앞에서 다시 붙으며 그린 홈이 설정을 받는 중이다(/me 바로 뒤 pullPrefs). 그 응답이 비운 뒤에 오면 설정을 채우고 at 을 새로 적어
+        # 무대의 pullPrefs 가 30초 캐시로 끝나 요청이 없었다 — 시간에 따라 떨어지던 것. seq 를 올려 그 응답은 버리게 한다 (F32 시험 준비)
+        pg.evaluate("CONTI.S.services.push({id:%s,name:'무대 예배',date:'2026-10-11',notice:'',version:0,items:[{id:'st1'+%s,title:'곡1',key:'G',mod:'',form:'',songNote:'',pieces:[],media:[],notes:[]}],published:null});CONTI.save();CONTI.PREFS.data=null;CONTI.PREFS.at=0;CONTI.PREFS.seq++" % (json.dumps(st32), json.dumps(tag)))
         pg.evaluate("location.hash='#/play/%s/0'" % st32); pg.wait_for_timeout(1500)
         t0 = time.time(); pg.evaluate("(()=>{CONTI.stageOpen(%s,0)})()" % svc_js(st32))
         try: pg.wait_for_selector('#stageWrap', timeout=6000)
