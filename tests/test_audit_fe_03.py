@@ -19,6 +19,10 @@
 #  F67    초안에서만 날짜를 옮긴 콘티의 히어로 · F71 알림 탭을 느린 받기 없이 바로 그림 · 받는 사이 끈 것 유지
 #  F66    편성 저장 줄 (닫기·다시 그리기·비우기·자리 수·두 날짜·통보) · F131 로그아웃 전에 못 올린 메모 올리기·경고 · 안 쓰는 파일 지우기
 #  G07    쓰기 간격 안의 새로고침·닫기(저널) · 간격이 끝없이 밀리지 않음 · 초기화·팀 전환과 저널
+#  마지막 검증 (fe-03 final):
+#  F66    기다리던 자리 수를 뒤 고르기가 버리지 않음 · 자리 수 저장이 실패하면 칸도 되돌림
+#  F131   다른 팀에 남은 못 올린 메모도 로그아웃 확인이 팀 이름과 함께 알림
+#  G07    보기 화면에서 쓰고·지운 메모(editedAt 그대로)도 저널에 적힘
 import os, sys, time, re, json, datetime, subprocess
 from playwright.sync_api import sync_playwright
 
@@ -774,6 +778,38 @@ def sec_r_lineup(b):
     if uidM not in nt: fail('통보 기록에 고른 사람이 없음: %s' % nt)
     if pl.errs: fail('JS 오류: %s' % pl.errs[:3])
     print('F66 편성 저장 줄: 닫기·다시 그리기·비우기·자리 수·두 날짜·통보 모두 고른 대로 저장 ok')
+    # N1 고름(저장 중) → 자리 + → 고름: 뒤 고르기가 기다리던 자리 수를 버리지 않는다 (다시 열어도 두 칸)
+    nsel = lambda: pl.locator('[data-lsel="드럼"]').count()
+    d = mk(8); open_(d)
+    pl.select_option('[data-lsel="드럼"]', uidM); pl.wait_for_timeout(120)
+    pl.click('[data-act="lslots"][data-s="드럼"][data-d="1"]'); pl.wait_for_timeout(150)
+    pl.select_option('[data-lsel="인도자"]', uidL); pl.wait_for_timeout(4000)
+    lu, sl, _ = lineup_of(cL, team, d)
+    if sl.get('드럼') != 2: fail('고름 → 자리 + → 고름: 늘린 자리 수가 서버에 안 감: %s' % sl)
+    if lu != both: fail('고름 → 자리 + → 고름: 편성이 빠짐: %s' % (lu,))
+    if nsel() != 2: fail('고름 → 자리 + → 고름 뒤 드럼 칸이 2개가 아님: %d' % nsel())
+    pl.goto(URL + '#/sched'); pl.reload(); pl.wait_for_selector('.shell[data-page]', timeout=15000)
+    delay_put(pl, '/lineup', 800, 1000); open_(d)
+    if nsel() != 2: fail('다시 열었더니 늘린 드럼 자리가 사라짐: %d' % nsel())
+    # N2 자리 + → 자리 + → 고름: 세 칸 그대로
+    d = mk(9); open_(d)
+    pl.click('[data-act="lslots"][data-s="드럼"][data-d="1"]'); pl.wait_for_timeout(150)
+    pl.click('[data-act="lslots"][data-s="드럼"][data-d="1"]'); pl.wait_for_timeout(150)
+    pl.select_option('[data-lsel="인도자"]', uidL); pl.wait_for_timeout(4000)
+    lu, sl, _ = lineup_of(cL, team, d)
+    if sl.get('드럼') != 3 or lu != [('인도자', uidL)]: fail('자리 + 두 번 → 고름: 서버 %s %s' % (sl, lu))
+    if nsel() != 3: fail('자리 + 두 번 → 고름 뒤 드럼 칸이 3개가 아님: %d' % nsel())
+    # 자리 + 저장이 끝내 실패하면 미리 늘려 둔 칸도 되돌린다 (서버에 자리 수가 없던 날 — 기본 정원 1)
+    d = mk(10); open_(d)
+    pl.evaluate("""()=>{const of=window.fetch;window.__lfail=1;window.fetch=(u,o)=>{if(/\\/lineup$/.test(String(u))&&o&&o.method==='PUT'&&window.__lfail>0){window.__lfail--;
+      return new Promise(r=>setTimeout(r,300)).then(()=>new Response(JSON.stringify({error:'x',message:'잠시 실패'}),{status:500,headers:{'content-type':'application/json'}}))}return of(u,o)}}""")
+    pl.click('[data-act="lslots"][data-s="드럼"][data-d="1"]'); pl.wait_for_timeout(150)
+    if nsel() != 2: fail('준비: 자리 + 를 누른 바로 뒤 칸이 늘지 않음')
+    pl.wait_for_timeout(1500)
+    if lineup_of(cL, team, d)[1].get('드럼'): fail('실패한 자리 수가 서버에 있음')
+    if nsel() != 1: fail('자리 수 저장이 실패했는데 늘린 칸이 화면에 남음: %d' % nsel())
+    if pl.errs: fail('JS 오류: %s' % pl.errs[:3])
+    print('F66 기다리던 자리 수를 뒤 고르기가 버리지 않음 · 실패하면 칸도 되돌림 ok')
     cL.close(); cM.close()
 
 # F131: 로그아웃 — 못 올린 메모는 먼저 올리고, 못 올리면 알린다 · 어느 상태도 안 쓰는 파일도 지운다
@@ -824,6 +860,43 @@ def sec_r_logout(b):
     if pg2.locator('#lgUser').count(): fail('취소했는데 로그아웃됨')
     print('F131 로그아웃: 올리지 못한 메모가 있으면 확인 창이 알림 ok')
     c2.close()
+    # 다른 팀(지금 팀이 아닌 팀)에 남은 못 올린 메모도 알린다 — 로그아웃은 이 계정의 모든 팀 저장을 지운다.
+    # 그 팀으로 바꿔 로그아웃하면 먼저 올라간다
+    c3, u3, uid3, tA = leader(b, 'rn', team_name='앞팀', service_workers='block')
+    p3 = c3.new_page(); m3 = []; ans = {'ok': False}; p3.errs = []
+    p3.on('pageerror', lambda e: p3.errs.append(str(e)[:200]))
+    p3.on('dialog', lambda dl: (m3.append(dl.message), dl.accept() if ans['ok'] else dl.dismiss()))
+    p3.goto(URL + '#/home'); p3.wait_for_selector('.shell[data-page]', timeout=15000)
+    sid3 = new_service_ui(p3, '앞팀 예배', '곡1'); publish_ui(p3, sid3)
+    if not wait_until(p3, "(id)=>{const s=CONTI.S.services.find(x=>x.id===id);return s&&s.published&&!s.pubPending}", arg=sid3): fail('발행 실패 3')
+    p3.goto(URL + '#/home'); p3.wait_for_timeout(500)
+    p3.evaluate(add_note, sid3); p3.wait_for_timeout(1500)
+    tB = ok(c3.request.post(URL + 'api/teams', headers=H, data={'name': '둘째팀', 'myName': '하은', 'session': '인도자'}))['teamId']
+    p3.reload(); p3.wait_for_selector('.shell[data-page]', timeout=15000); p3.wait_for_timeout(1000)
+    def switch_to(t):
+        p3.goto(URL + '#/team'); p3.wait_for_selector('[data-act="team-switch"]', timeout=10000)
+        p3.click('[data-act="team-switch"]'); p3.wait_for_selector('[data-switch="%s"]' % t, timeout=5000); p3.click('[data-switch="%s"]' % t)
+        if not wait_until(p3, '(t)=>CONTI.S.team.id===t', 10000, t): fail('준비: 팀 전환이 안 됨')
+        p3.wait_for_timeout(1200)
+    def logout3():
+        p3.goto(URL + '#/settings'); p3.wait_for_selector('.setpane', timeout=8000)
+        p3.click('[data-act="set-tab"][data-t="app"]'); p3.wait_for_selector('#sLogout', timeout=8000); p3.click('#sLogout')
+    if p3.evaluate('CONTI.S.team.id') != tB: switch_to(tB)
+    if any(n.get('text') == '오프라인 메모' for n in ok(c3.request.get(URL + 'api/notes?team=%s&service=%s' % (tA, sid3)))['notes']): fail('준비: 메모가 이미 올라감')
+    logout3(); p3.wait_for_timeout(2500)
+    if not m3 or '앞팀' not in m3[-1] or '못 올린' not in m3[-1]: fail('다른 팀의 못 올린 메모가 있는데 로그아웃 확인에 경고가 없음: %s' % m3[-1:])
+    if p3.locator('#lgUser').count(): fail('취소했는데 로그아웃됨 (다른 팀)')
+    has = p3.evaluate("(k)=>CONTI.IDB.get('kv',k).then(r=>!!r&&r.includes('오프라인 메모'))", 'state:%s:%s' % (uid3, tA))
+    if not has: fail('취소했는데 다른 팀의 메모가 기기에서 지워짐')
+    switch_to(tA); ans['ok'] = True
+    logout3(); p3.wait_for_selector('#lgUser', timeout=15000); p3.wait_for_timeout(800)
+    if '다른 팀' in m3[-1]: fail('그 팀으로 바꿔 올렸는데 다른 팀 경고가 남음: %s' % m3[-1])
+    ok(c3.request.post(URL + 'api/auth/login', headers=H, data={'username': u3, 'password': 'secret1'}))
+    if not any(n.get('text') == '오프라인 메모' for n in ok(c3.request.get(URL + 'api/notes?team=%s&service=%s' % (tA, sid3)))['notes']):
+        fail('그 팀으로 바꿔 로그아웃했는데 메모가 안 올라감')
+    if p3.errs: fail('JS 오류: %s' % p3.errs[:3])
+    print('F131 로그아웃: 다른 팀의 못 올린 메모도 팀 이름과 함께 알림 · 그 팀으로 바꿔 로그아웃하면 올라감 ok')
+    c3.close()
 
 # G07: 쓰기 간격 안에 새로고침·닫기 해도 고친 것이 남는다 · 간격이 끝없이 밀리지 않는다 · 안 쓰던 저장 되살림
 def sec_r_save(b):
@@ -920,12 +993,58 @@ def sec_r_save(b):
     print('G07 팀 전환 중 저널: 앞 팀 콘티를 새 팀 이름으로 적지 않음 ok')
     c3.close()
 
+# G07: 보기 화면에서 쓰거나 지운 메모 (touch() 를 안 거쳐 editedAt 이 그대로) — 홈으로 나간 뒤 쓰기 간격 안에 닫혀도 남는다
+def sec_r_save_note(b):
+    c, u, uid, team = leader(b, 'rv', service_workers='block')
+    pg = page(c)
+    sid = new_service_ui(pg, '메모 저널 예배', '곡1'); publish_ui(pg, sid)
+    if not wait_until(pg, "(id)=>{const s=CONTI.S.services.find(x=>x.id===id);return s&&s.published&&!s.pubPending}", arg=sid): fail('발행 실패')
+    stall = """()=>{const o=CONTI.IDB.put;CONTI.IDB.put=function(s,k,v){
+      if(s==='kv'){const t=performance.now();while(performance.now()-t<120);return new Promise(()=>{})}return o.apply(this,arguments)}}"""
+    local = "(a)=>{const s=CONTI.S.services.find(x=>x.id===a[0]);return !!s&&CONTI.SYNC.localNotes(s).some(n=>n.id===a[1])}"
+    def reopen():
+        pg.reload(); pg.wait_for_function("()=>window.CONTI&&document.querySelector('#app').children.length", timeout=15000); pg.wait_for_timeout(600)
+    # 쓴 메모: 보기 화면에서 쓰고 0.3초 만에 홈으로(메모는 콘티 화면에서만 올라간다) → 쓰기가 끝나기 전에 새로고침
+    pg.goto(URL + '#/view/' + sid); pg.wait_for_timeout(1500)
+    pg.evaluate(stall); pg.evaluate('CONTI.save()'); pg.wait_for_timeout(600)   # 느린 쓰기를 한 번 재게 한다 (쉬는 간격 0.6초)
+    nid = 'jn' + tag
+    pg.evaluate("""(a)=>{const s=CONTI.S.services.find(x=>x.id===a[0]);const it=s.items[0];it.notes=it.notes||[];
+      it.notes.push({id:a[1],marker:null,layer:'mine',session:'인도자',text:'보기 화면 메모',author:'하은',at:Date.now()});CONTI.save()}""", [sid, nid])
+    pg.wait_for_timeout(300); pg.evaluate("location.hash='#/home'"); pg.wait_for_timeout(1200)
+    reopen()
+    if not pg.evaluate(local, [sid, nid]): fail('보기 화면에서 쓴 메모가 홈으로 나간 뒤 새로고침하자 사라짐')
+    # 서버까지: 다시 열면 올라간다
+    pg.goto(URL + '#/view/' + sid)
+    ok_srv = lambda: any(n['id'] == nid for n in ok(c.request.get(URL + 'api/notes?team=%s&service=%s' % (team, sid)))['notes'])
+    for _ in range(20):
+        if ok_srv(): break
+        pg.wait_for_timeout(500)
+    else: fail('되살린 메모가 콘티를 다시 열어도 안 올라감')
+    if not wait_until(pg, "(a)=>(CONTI.S.noteShadow[a[0]]||[]).some(x=>(x.id||x)===a[1])", 8000, [sid, nid]): fail('준비: 그림자에 안 들어감')
+    pg.wait_for_timeout(1500)
+    # 지운 메모: 보기 화면에서 지우고 홈으로 → 새로고침해도 되살아나지 않는다 (다음에 열면 서버에서도 지운다)
+    pg.evaluate(stall); pg.evaluate('CONTI.save()'); pg.wait_for_timeout(600)
+    pg.evaluate("(a)=>{const s=CONTI.S.services.find(x=>x.id===a[0]);s.items[0].notes=s.items[0].notes.filter(n=>n.id!==a[1]);CONTI.save()}", [sid, nid])
+    pg.wait_for_timeout(300); pg.evaluate("location.hash='#/home'"); pg.wait_for_timeout(1200)
+    reopen()
+    if pg.evaluate(local, [sid, nid]): fail('보기 화면에서 지운 메모가 홈으로 나간 뒤 새로고침하자 되살아남')
+    pg.goto(URL + '#/view/' + sid)
+    for _ in range(20):
+        if not ok_srv(): break
+        pg.wait_for_timeout(500)
+    else: fail('지운 메모가 콘티를 다시 열어도 서버에서 안 지워짐')
+    pg.wait_for_timeout(1500)
+    if pg.evaluate("Object.keys(localStorage).filter(k=>k.startsWith('conti-jr')).length"): fail('다 쓴 뒤에도 저널이 남음')
+    if pg.errs: fail('JS 오류: %s' % pg.errs[:3])
+    print('G07 보기 화면에서 쓰고·지운 메모: 홈으로 나간 뒤 쓰기 간격 안에 새로고침해도 남음 ok')
+    c.close()
+
 def run():
     only = set(sys.argv[1:])
     secs = [('publish', sec_publish), ('native', sec_native_token), ('hero', sec_hero_lineup), ('fixed', sec_fixed_notes),
             ('prefs', sec_prefs), ('todo', sec_todo), ('logout', sec_logout), ('yt', sec_yt), ('save', sec_save_cost), ('legal', sec_legal),
             ('r-pub', sec_r_pub), ('r-pub2', sec_r_pub2), ('r-hero', sec_r_hero), ('r-prefs', sec_r_prefs), ('r-lineup', sec_r_lineup),
-            ('r-logout', sec_r_logout), ('r-save', sec_r_save)]
+            ('r-logout', sec_r_logout), ('r-save', sec_r_save), ('r-save-note', sec_r_save_note)]
     with sync_playwright() as p:
         b = p.chromium.launch()
         for name, fn in secs:

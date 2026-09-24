@@ -2271,7 +2271,10 @@ function queueLineup(d,lineup,slots){const id=d.id,team=S.team.id;
  // 통보 기록(notifiedAt)은 서버가 돌려줄 때까지 같은 자리 것을 그대로 보여 준다 (안 그러면 잠깐 '통보 후 변경'으로 보인다)
  const prev=d.lineup||[];
  lineup=lineup.map(r=>{const o=r.memberId&&prev.find(x=>x.session===r.session&&x.memberId===r.memberId);return o?{...o,...r}:r});
- q.want=q.cur={lineup,slots:slots||null};d.lineup=lineup;if(slots)d.slots=slots;SCH.seq++;
+ // 자리 수를 바꾼 저장이 아직 기다리는 중이면 그 자리 수를 이어 보낸다 — 뒤따른 고르기·비우기(자리 수 없음)가
+ // 대기를 통째로 바꿔, 늘린 자리가 서버에 안 가고 다시 열면 사라졌다 (같은 값을 또 보내도 서버는 그대로 적을 뿐이다)
+ slots=slots||(q.cur&&q.cur.slots)||null;
+ q.want=q.cur={lineup,slots};d.lineup=lineup;if(slots)d.slots=slots;SCH.seq++;
  if(!q.run)q.run=(async()=>{let ok=false;
   try{while(q.want){const w=q.want;q.want=null;SCH.seq++;
    try{const r=await api(`/teams/${team}/dates/${id}/lineup`,{method:'PUT',body:w.slots?{lineup:w.lineup,slots:w.slots}:{lineup:w.lineup}});
@@ -2279,7 +2282,8 @@ function queueLineup(d,lineup,slots){const id=d.id,team=S.team.id;
    catch(e){ok=false;toast(e.message)}}}
   finally{delete LQ[id];SCH.seq++}   // 저장하는 동안 시작한 일정 받기의 옛 응답이 덮지 않게
   // 다 보냈으면 서버가 정리해 돌려준 것으로, 끝내 못 보냈으면 서버에 있는 것으로 맞춘다 (일정을 다시 받았으면 새 행에)
-  const d2=S.team.id===team&&SCH.dates.find(x=>x.id===id);if(d2){d2.lineup=q.ok.lineup;if(q.ok.slots)d2.slots=q.ok.slots}
+  // 자리 수를 바꿨는데 끝내 못 보냈으면 미리 늘려 둔 자리도 되돌린다 (서버에 자리 수가 없던 날이면 기본 정원으로)
+  const d2=S.team.id===team&&SCH.dates.find(x=>x.id===id);if(d2){d2.lineup=q.ok.lineup;if(q.ok.slots||(q.cur&&q.cur.slots))d2.slots=q.ok.slots}
   return ok})();
  return q.run}
 // 저장이 다 끝나면 편성이 보이는 화면을 한 번 다시 그린다 (보고 있던 자리는 그대로)
@@ -3002,13 +3006,13 @@ function afterSettings(){
    try{const n=await SYNC.refetchBlobs();toast(n?`악보 ${n}개를 다시 받았어요`:'다시 받을 악보가 없어요');render()}
    catch(err){toast(err.message);btn.disabled=false}return}
   if(e.target.closest('#sLogout')){const btn=e.target.closest('#sLogout');btn.disabled=true;
-   const un=await flushUnsynced().finally(()=>{btn.disabled=false});
-   if(!confirm('로그아웃할까요?\n이 기기에 받아 둔 콘티·악보도 함께 지워져요. 다시 로그인하면 서버에서 다시 받습니다.'+(un?`\n\n아직 서버에 못 올린 수정이 ${un}개 있어요. 지금 로그아웃하면 사라져요.`:'')))return;
+   const warn=await unsyncedWarning().finally(()=>{btn.disabled=false});
+   if(!confirm('로그아웃할까요?\n이 기기에 받아 둔 콘티·악보도 함께 지워져요. 다시 로그인하면 서버에서 다시 받습니다.'+warn))return;
    doGate('logout');return}
   // 다른 기기의 로그인까지 서버에서 끊는다 (비밀번호를 바꿀 때와 같은 방식)
   if(e.target.closest('#sLogoutAll')){const btn=e.target.closest('#sLogoutAll');btn.disabled=true;
-   const un=await flushUnsynced().finally(()=>{btn.disabled=false});
-   if(!confirm('모든 기기에서 로그아웃할까요?\n이 기기를 포함해 로그인한 모든 곳에서 다시 로그인해야 해요. 이 기기에 받아 둔 콘티·악보도 지워져요.'+(un?`\n\n아직 서버에 못 올린 수정이 ${un}개 있어요. 지금 로그아웃하면 사라져요.`:'')))return;
+   const warn=await unsyncedWarning().finally(()=>{btn.disabled=false});
+   if(!confirm('모든 기기에서 로그아웃할까요?\n이 기기를 포함해 로그인한 모든 곳에서 다시 로그인해야 해요. 이 기기에 받아 둔 콘티·악보도 지워져요.'+warn))return;
    try{await api('/auth/logout',{method:'POST',body:{all:true}})}catch(err){toast(err.message);return}
    doGate('logout');return}
   if(e.target.closest('#sReset')){if(confirm(on?'이 기기에 저장된 콘티·악보·메모를 지웁니다. 계정은 그대로예요. 계속할까요?':'모든 데이터를 지웁니다. 계속할까요?')){dropJournals('');indexedDB.deleteDatabase('conti-v1');location.reload()}return}
@@ -3113,10 +3117,16 @@ function save(){SAVE_DUE=true;SAVE_N++;const now=Date.now();if(!SAVE_FIRST)SAVE_
  clearTimeout(JR_T);if(wait>400)JR_T=setTimeout(writeJournal,200);
  if(typeof SYNC!=='undefined')SYNC.schedulePush()}
 function writeJournal(){clearTimeout(JR_T);const sc=CUR_SCOPE;if(JR_OFF||JR_HOLD||sc==='legacy'||SAVE_DONE>=SAVE_N)return;
- try{const on=route().a;const svcs=S.services.filter(x=>x.id===on||x.pubPending||(x.editedAt||0)>=SAVED_AT);const sh={};svcs.forEach(x=>{if(S.noteShadow&&S.noteShadow[x.id])sh[x.id]=S.noteShadow[x.id]});
+ try{const on=route().a;const base=x=>x.id===on||x.pubPending||(x.editedAt||0)>=SAVED_AT;
+  // 메모만 쓰거나 지운 콘티도 적는다 — 보기·연주 화면의 메모는 touch() 를 안 거쳐 editedAt 이 그대로라, 홈으로 나간 뒤(메모는 콘티 화면에서만
+  // 올라간다) 닫히면 저널에서 빠져 메모가 기기에서도 서버에서도 사라졌다
+  let svcs=S.services.filter(x=>base(x)||notesChanged(x));
   const at=Date.now();
-  const txt=JSON.stringify({at,ids:S.services.map(x=>x.id),services:svcs,noteShadow:sh,
-   songs:(S.songs||[]).filter(x=>x.dirty),library:(S.library||[]).filter(x=>x.dirty),readRev:S.readRev||{},delPending:S.delPending||[],dropped:S.dropped||[],libDeleted:S.libDeleted||[]});
+  const make=()=>{const sh={};svcs.forEach(x=>{if(S.noteShadow&&S.noteShadow[x.id])sh[x.id]=S.noteShadow[x.id]});
+   return JSON.stringify({at,ids:S.services.map(x=>x.id),services:svcs,noteShadow:sh,
+    songs:(S.songs||[]).filter(x=>x.dirty),library:(S.library||[]).filter(x=>x.dirty),readRev:S.readRev||{},delPending:S.delPending||[],dropped:S.dropped||[],libDeleted:S.libDeleted||[]})};
+  let txt=make();
+  if(txt.length>2e6&&svcs.some(x=>!base(x))){svcs=S.services.filter(base);txt=make()}   // 메모 때문에 너무 커지면 전처럼 고친 콘티만이라도
   if(txt.length>2e6)throw new Error('journal too big');   // localStorage 를 꽉 채워 다른 설정 쓰기까지 막지 않게
   localStorage.setItem(JR_KEY(sc),txt);JRS[sc]=at}
  catch(e){try{localStorage.removeItem(JR_KEY(sc))}catch(e2){}delete JRS[sc]}}   // 너무 커서 못 적으면 옛 저널도 버린다
@@ -4082,8 +4092,16 @@ async function wipeAccountData(userId){if(!userId)return;
   for(const k of mine){try{await IDB.del('kv',k)}catch(e){}}
  }catch(e){console.warn('wipe',e)}}
 // 아직 서버에 못 올린 것 (로그아웃하면 사라진다) — 발행 대기·서버에 없는 초안 수정·그림자(서버에 올린 메모)에 없는 메모·못 보낸 삭제·라이브러리
-const draftUnsent=x=>isLeader()&&x.editedAt&&x.draftPushedAt!==x.editedAt&&(!x.published||x.version>x.published.version);
-const notesUnsent=x=>{const sh=new Set(((S.noteShadow||{})[x.id]||[]).map(y=>typeof y==='string'?y:y.id));return SYNC.localNotes(x).some(n=>!sh.has(n.id))};
+// (…By·…In 은 다른 팀의 저장된 상태를 셀 때 그 팀의 역할·그림자로 본다. filter 에 바로 넘기는 것은 x 하나만 받는 쪽)
+const draftUnsentBy=(x,lead)=>!!(lead&&x.editedAt&&x.draftPushedAt!==x.editedAt&&(!x.published||x.version>x.published.version));
+const draftUnsent=x=>draftUnsentBy(x,isLeader());
+const notesUnsentIn=(x,shadow)=>{const sh=new Set(((shadow||{})[x.id]||[]).map(y=>typeof y==='string'?y:y.id));return SYNC.localNotes(x).some(n=>!sh.has(n.id))};
+const notesUnsent=x=>notesUnsentIn(x,S.noteShadow);
+// 메모를 쓰거나 지운 뒤 아직 서버에 못 알린 콘티 (그림자와 다르다). 저널이 고른다 — 보기·연주 화면의 메모 쓰기·지우기는
+// touch() 를 거치지 않아 editedAt 으로는 안 보인다. 지운 것은 이 기기 초안에 있는 곡·영상의 메모만 본다(없는 곡 것은 여기서 지운 게 아니다)
+const notesChanged=x=>{if(!x||!Array.isArray(x.items))return false;if(notesUnsent(x))return true;const sh=(S.noteShadow||{})[x.id];if(!sh||!sh.length)return false;
+ const loc=new Set(SYNC.localNotes(x).map(n=>n.id));const items=new Map((x.items||[]).map(i=>[i.id,i]));
+ return sh.some(y=>{if(typeof y==='string'||loc.has(y.id))return false;const it=items.get(y.itemId);return !!it&&(!y.mediaId||(it.media||[]).some(m=>m.id===y.mediaId))})};
 const unsyncedCount=()=>S.services.filter(x=>x.pubPending||draftUnsent(x)||notesUnsent(x)).length
  +(S.delPending||[]).length+(S.library||[]).filter(x=>x.dirty).length+(S.songs||[]).filter(x=>x.dirty).length;
 // 로그아웃 전에 이 기기에만 있는 것(메모·초안·발행·삭제·곡)을 먼저 올려 보고, 그래도 남은 수를 돌려준다.
@@ -4095,6 +4113,22 @@ async function flushUnsynced(){
   for(const svc of S.services.filter(notesUnsent)){try{await SYNC.pushNotes(svc)}catch(e){}}   // 못 올린 메모는 그림자에 안 들어가 아래 수에 남는다
   if(isLeader()){try{await SYNC.flushDeletes()}catch(e){}try{await SYNC.pushLibrary()}catch(e){}try{await pushDirtySongs()}catch(e){}}}
  return unsyncedCount()}
+// 이 계정의 다른 팀에 남은 못 올린 수정. 로그아웃은 이 계정의 모든 팀 기기 저장을 지우는데 위의 올리기·세기는 지금 팀(S)만 봐서,
+// 다른 팀에서 오프라인으로 쓴 메모·초안은 경고 없이 사라졌다. 그 팀 것은 그 팀으로 바꿔야 올라가므로 팀 이름과 수를 알린다.
+// 저장된 상태에 닫히기 전 저널이 더 새것이면 덮어 본다. 지금 들어가 있지 않은 팀은 어차피 올릴 수 없으니 세지 않는다
+async function otherTeamsUnsynced(){const uid0=NET.user&&NET.user.id,out=[];if(!uid0)return out;
+ for(const t of NET.teams||[]){const sc=scopeKey(uid0,t.teamId);if(!t.teamId||sc===CUR_SCOPE)continue;
+  let s=null;try{const raw=await IDB.get('kv',sc);if(raw)s=JSON.parse(raw)}catch(e){}
+  if(!s||typeof s!=='object')s={};applyJournal(s,sc);
+  const lead=!!(t.me&&t.me.role==='leader'),sh=s.noteShadow||{};
+  const n=(Array.isArray(s.services)?s.services:[]).filter(x=>x&&Array.isArray(x.items)&&(x.pubPending||draftUnsentBy(x,lead)||notesUnsentIn(x,sh))).length
+   +(s.delPending||[]).length+(lead?(s.library||[]).filter(x=>x&&x.dirty).length+(s.songs||[]).filter(x=>x&&x.dirty).length:0);   // 인도자가 아니면 곡 수정은 그 팀으로 바꿀 때 버린다 (dropUnsentLib)
+  if(n)out.push({name:t.teamName||'다른 팀',n})}
+ return out}
+// 로그아웃 확인 창에 붙일 경고 — 지금 팀은 먼저 올려 보고 남은 수, 다른 팀은 그 팀 이름과 수
+async function unsyncedWarning(){const un=await flushUnsynced();let oth=[];try{oth=await otherTeamsUnsynced()}catch(e){console.warn('unsynced',e)}
+ return (un?`\n\n아직 서버에 못 올린 수정이 ${un}개 있어요. 지금 로그아웃하면 사라져요.`:'')
+  +(oth.length?`\n\n다른 팀에도 서버에 못 올린 수정이 있어요 (${oth.map(o=>o.name+' '+o.n+'개').join(', ')}). 그 팀으로 바꾼 뒤 인터넷에 연결된 채 로그아웃하면 먼저 올려요. 지금 로그아웃하면 사라져요.`:'')}
 // 구글·애플로 처음 오는 사람: 계정을 만들기 전에 약관·개인정보처리방침과 만 14세 안내를 보여 주고 동의를 받는다
 function socialConsent(provider,idToken,name){
  modal(`<b style="font-size:17px">처음 오셨네요</b>
