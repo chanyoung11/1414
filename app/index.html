@@ -5516,7 +5516,7 @@ function measureModal(svc,it,mi){const sc=it.score;const m=sc.measures[mi];if(!m
   if(t.closest('#mPrev')){commit(false);closeModal();measureModal(svc,it,mi-1);return}
   if(t.closest('#mNext')){commit(false);closeModal();measureModal(svc,it,mi+1);return}};
 }
-/* 곡 전체 정보 고치기 */
+/* 곡 전체 정보 고치기. 빠르기·줄 수·비용은 숫자로 바꿔 끼운다 — 가져온 파일의 악보는 서버에서 걸러지지 않은 채 들어온다 */
 function scoreInfoModal(svc,it){const sc=it.score;
  modal(`<b style="font-size:17px">곡 정보</b><div class="hint" style="margin-top:4px">악보 맨 위에 찍히는 정보예요</div>
   <div class="lbl">제목</div><input class="field" id="siTitle" value="${esc(sc.title||'')}" placeholder="곡 제목">
@@ -5524,13 +5524,13 @@ function scoreInfoModal(svc,it){const sc=it.score;
   <div class="row" style="gap:10px;margin-top:10px">
    <label class="grow"><div class="lbl">조</div><input class="field mono" id="siKey" value="${esc(sc.key||'C')}" placeholder="C · Am · Bb"></label>
    <label class="grow"><div class="lbl">박자</div><input class="field mono" id="siTime" value="${esc(sc.time||'4/4')}" placeholder="4/4"></label>
-   <label class="grow"><div class="lbl">빠르기 ♩=</div><input class="field mono" id="siTempo" value="${sc.tempo||''}" placeholder="72" inputmode="numeric"></label>
+   <label class="grow"><div class="lbl">빠르기 ♩=</div><input class="field mono" id="siTempo" value="${+sc.tempo||''}" placeholder="72" inputmode="numeric"></label>
   </div>
   <div class="row" style="gap:10px;margin-top:10px">
    <label class="grow"><div class="lbl">가사 절 수</div><input class="field mono" id="siVerses" value="${Math.max(1,+sc.verses||1)}" inputmode="numeric"></label>
    <label class="row" style="gap:6px;align-items:center;margin-top:22px"><input type="checkbox" id="siPickup" ${sc.pickup?'checked':''}><span class="hint">첫 마디가 못갖춘마디</span></label>
   </div>
-  <div class="hint" style="margin-top:10px">${sc.model?`${esc(sc.model)}로 오선 ${sc.lines||1}줄을 읽었어요${sc.cost?` · 약 ${sc.cost}원`:''}`:''}</div>
+  <div class="hint" style="margin-top:10px">${sc.model?`${esc(sc.model)}로 오선 ${+sc.lines||1}줄을 읽었어요${+sc.cost?` · 약 ${Math.round(+sc.cost)}원`:''}`:''}</div>
   <div class="row" style="margin-top:16px;justify-content:flex-end;gap:6px"><button class="btn" data-close="1">취소</button><button class="btn pri" id="siOk">${ic('check')}저장</button></div>`,{center:true});
  $('#modal').onclick=e=>{if(e.target.closest('[data-close]')){closeModal();return}
   if(e.target.closest('#siOk')){

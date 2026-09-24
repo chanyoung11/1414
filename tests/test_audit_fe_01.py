@@ -1,5 +1,5 @@
 # 전역 감사 fe-01 회귀 검사
-#   F14 발행본·편곡·가져온 파일의 숫자 칸(버전·영상 시작·템포·절단선·전조·메모 층·ov 키)에 태그를 넣어도 스크립트가 돌지 않는다
+#   F14 발행본·편곡·가져온 파일의 숫자 칸(버전·영상 시작·템포·절단선·전조·메모 층·ov 키 · 악보의 박자·줄 수·비용)에 태그를 넣어도 스크립트가 돌지 않는다
 #   F15 폴더로 거른 채 '전체 선택' → 삭제해도 안 보이는 폴더의 예배는 남는다
 #   F16 초안에서 영상을 지운 발행 콘티를 열어도 콘티 보기가 멈추지 않는다
 #   F17 발행 뒤 연습 화면에서 남긴 "이 곡에 항상" 메모 · 팀원의 '나만' 고정 메모가 바로 보인다 · 재생 시각에도 붙이기
@@ -37,8 +37,11 @@ def xss(pg): return pg.evaluate('window.__xss||null')
 def run():
   with sync_playwright() as p:
     b = p.chromium.launch(); errs = []
+    # 유튜브 임베드 스크립트 안에서 나는 오류(this.api.isExternalMethodAvailable …)는 우리 코드가 아니다.
+    # 메시지에는 youtube 가 없고 스택에만 있어서 스택으로 거른다
+    def on_err(who): return lambda e: None if 'youtube.com' in (e.stack or '') else errs.append(who + ':' + str(e))
     cL = b.new_context(viewport={'width': 1300, 'height': 950}); L = cL.new_page()
-    L.on('pageerror', lambda e: errs.append('L:' + str(e))); L.on('dialog', lambda d: d.accept())
+    L.on('pageerror', on_err('L')); L.on('dialog', lambda d: d.accept())
     L.goto(URL); L.wait_for_selector('#lgUser', timeout=8000)
     signup(L, '하은', 'fa' + tag)
     L.wait_for_selector('#gtTeam', timeout=8000); L.fill('#gtTeam', '감사팀'); L.click('[data-act="team-create"]')
@@ -82,6 +85,22 @@ def run():
     songs = api.get(URL + 'api/songs?team=' + team).json()['songs']
     a = [x for x in songs if x['id'] == sg['id']][0]['arrangements'][0]
     if a['media'][0]['start'] != 0 or a['score']['tempo'] is not None: fail('편곡 숫자 칸이 걸러지지 않음: %r %r' % (a['media'], a['score']))
+    # 악보의 줄 수·비용·박자도 (곡 정보 창·옛 앱의 마디 창이 그대로 끼운다). 인도자 넘기기는 받는 쪽 동의가 없어
+    # 이런 발행본을 남의 팀원에게 떠넘길 수 있다 — 서버가 걸러야 한다
+    bad_sc = {'key': 'G', 'time': X('time'), 'tempo': X('tempo'), 'model': 'mdl', 'lines': X('lines'), 'cost': X('cost'), 'verses': 1,
+              'measures': [{'c': [{'b': 0, 't': 'G'}], 'n': [{'p': 'G4', 'd': 1}]}]}
+    sd = {'id': 'xs2' + tag, 'name': '악보 공격', 'date': '2030-01-06', 'version': 1, 'items': [{'id': 'it1', 'title': '곡', 'key': 'G', 'pieces': [], 'media': [], 'score': bad_sc}]}
+    r = api.put(URL + 'api/services/' + sd['id'], headers=HJ, data=json.dumps({'teamId': team, 'doc': sd}))
+    if r.status != 200: fail('악보 발행 PUT 실패 %s' % r.status)
+    gs = api.get(URL + 'api/services/%s?team=%s' % (sd['id'], team)).json()['doc']['items'][0]['score']
+    if [gs.get(k) for k in ('time', 'tempo', 'lines', 'cost')] != ['4/4', None, None, None]: fail('악보 박자·빠르기·줄 수·비용이 걸러지지 않음: %r' % {k: gs.get(k) for k in ('time', 'tempo', 'lines', 'cost')})
+    # 제대로 된 값은 그대로 둔다 (AI 가 채운 값·곡 정보에서 고친 값)
+    good_sc = dict(bad_sc, time='6/8', tempo=72, lines=3, cost=41)
+    r = api.patch(URL + 'api/arrangements/' + arr_id, headers=HJ, data=json.dumps({'teamId': team, 'score': good_sc}))
+    if r.status != 200: fail('편곡 악보 PATCH 실패 %s' % r.status)
+    a = [x for x in api.get(URL + 'api/songs?team=' + team).json()['songs'] if x['id'] == sg['id']][0]['arrangements'][0]
+    if [a['score'].get(k) for k in ('time', 'tempo', 'lines', 'cost')] != ['6/8', 72, 3, 41]: fail('제대로 된 악보 값이 바뀜: %r' % a['score'])
+    api.delete(URL + 'api/services/%s?team=%s' % (sd['id'], team), headers=H)
     api.delete(URL + 'api/services/%s?team=%s' % (bad_doc['id'], team), headers=H)
     api.delete(URL + 'api/services/%s?team=%s' % ('xd' + tag, team), headers=H)
     log('F14 server sanitize ok')
@@ -94,7 +113,8 @@ def run():
       'media': [{'id': 'md1', 'type': 'youtube', 'url': 'https://youtu.be/abcdefghijk', 'name': '영상', 'start': X('start'), 'end': 0,
                  'notes': [{'id': 'tn1', 't': X('t'), 'layer': 'leader', 'session': None, 'text': '타임라인', 'author': '인도자'}]}],
       'notes': [{'id': 'nt1', 'marker': 'mk1', 'layer': X('layer'), 'session': None, 'text': '층', 'author': '하은'}],
-      'score': {'key': 'G', 'tempo': X('tempo'), 'time': '4/4', 'measures': [{'c': [{'b': 0, 't': 'G'}], 'n': [{'p': 'G4', 'd': 1}]}]},
+      'score': {'key': 'G', 'tempo': X('tempo'), 'time': '4/4', 'model': 'mdl', 'lines': X('lines'), 'cost': X('cost'),
+                'measures': [{'c': [{'b': 0, 't': 'G'}], 'n': [{'p': 'G4', 'd': 1}]}]},
       'ov': {X('ov'): True}}
     pub = dict(version=X('version'), at=int(time.time() * 1000), name='가져온 예배', date='2030-02-02', notice='', message='인도자 글', messageRev=1,
                author='하은', items=[dict(item, notes=None)], changes=[{'kind': 'add', 'text': '곡 추가'}])
@@ -124,6 +144,13 @@ def run():
     if xss(L): fail('연습 화면에서 스크립트가 돎: %s' % xss(L))
     L.evaluate("()=>location.hash='#/score/%s/it1'" % sid); L.wait_for_timeout(1500)
     if xss(L): fail('악보 화면에서 스크립트가 돎: %s' % xss(L))
+    # 곡 정보 창 — 빠르기(value=)·오선 줄 수·비용 칸. 가져온 파일의 악보는 서버를 거치지 않았다
+    L.locator('[data-act="score-info"]').first.click(); L.wait_for_selector('#modal #siTempo', timeout=5000); L.wait_for_timeout(300)
+    if xss(L): fail('곡 정보 창에서 스크립트가 돎: %s' % xss(L))
+    if L.locator('#siTempo').input_value() != '': fail('빠르기 칸에 글자가 들어감: %r' % L.locator('#siTempo').input_value())
+    info = L.locator('#modal').inner_text()
+    if 'mdl로 오선 1줄을 읽었어요' not in info or '원' in info.split('읽었어요')[1].split('\n')[0]: fail('곡 정보의 줄 수·비용: %r' % info[-80:])
+    L.evaluate("()=>{const c=document.querySelector('#modal [data-close]');if(c)c.click()}"); L.wait_for_timeout(200)
     L.evaluate("()=>location.hash='#/edit/%s'" % sid); L.wait_for_selector('#sheet .mkabs, #sheet .strip', timeout=8000); L.wait_for_timeout(900)
     if xss(L): fail('편집기에서 스크립트가 돎: %s' % xss(L))
     L.locator('#sheet [data-marker="mk1"]').first.click(); L.wait_for_timeout(700)
@@ -207,7 +234,7 @@ def run():
 
     # ---- 멤버 ----
     cM = b.new_context(viewport={'width': 1300, 'height': 950}); M = cM.new_page()
-    M.on('pageerror', lambda e: errs.append('M:' + str(e))); M.on('dialog', lambda d: d.accept())
+    M.on('pageerror', on_err('M')); M.on('dialog', lambda d: d.accept())
     M.goto(link); M.wait_for_selector('#lgUser', timeout=8000)
     signup(M, '민수', 'fb' + tag)
     M.wait_for_selector('#jnName', timeout=8000)
@@ -286,7 +313,7 @@ def run():
 
     # ================= F63 — 넓은 화면에서 저장한 폭·높이 =================
     cW = b.new_context(viewport={'width': 1024, 'height': 700}, storage_state=cL.storage_state()); W = cW.new_page()
-    W.on('pageerror', lambda e: errs.append('W:' + str(e))); W.on('dialog', lambda d: d.accept())
+    W.on('pageerror', on_err('W')); W.on('dialog', lambda d: d.accept())
     W.goto(URL); W.wait_for_selector('.shell[data-page]', timeout=10000)
     W.evaluate("()=>{localStorage.setItem('conti-lw','1002px');localStorage.setItem('conti-th-edit','2000')}")
     W.evaluate("()=>location.hash='#/edit/%s'" % s1); W.wait_for_selector('#edsheet', timeout=10000); W.wait_for_timeout(1200)
