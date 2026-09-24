@@ -11,8 +11,11 @@
 #  F120 정기 예배 날짜·자동 초안은 한국 날짜 기준
 #  F121 스케줄 요청의 '미선택' 수는 1부·2부 줄이 아니라 날짜로 센다
 #  F122 크론이 팀을 나눠 동시에 돌아도 결과가 같다 (CRON_SECRET 이 있을 때만)
+#  (다시 고침) F08 날짜를 옮기는 동안 스케줄을 여럿이 열어도 편성이 사라지거나, 두 줄에 붙거나, 옛 날짜로 돌아가지 않는다
+#  (다시 고침) F122 동시에 도는 팀의 초안 수를 덮어쓰지 않는다 · 실패하면 500, 다시 부르면 남은 팀만 (이미 받은 사람에게 또 안 간다)
 # 실행: CONTI_URL=http://localhost:8803/ [CRON_SECRET=...] .venv/bin/python tests/test_audit_api_schedule_cron.py
-import os, sys, time, json, datetime, threading, itertools
+# 예전 경합이 남긴 상태를 만들거나 크론 실패를 흉내 내는 곳은 로컬 DB 를 직접 쓴다 (psql 또는 docker exec conti-pg, CONTI_DB) — 없으면 그 부분만 건너뛴다
+import os, sys, time, json, datetime, threading, itertools, shutil, subprocess
 import urllib.request, urllib.error, http.cookiejar
 from playwright.sync_api import sync_playwright
 
@@ -22,6 +25,17 @@ tag = str(int(time.time() * 1000))[-8:]
 _n = itertools.count(1)
 
 def fail(m): print('FAIL:', m); sys.exit(1)
+
+DB = os.environ.get('CONTI_DB', 'postgres://postgres:pg@localhost:54329/postgres')
+def sql(s):
+    if shutil.which('psql'): cmd = ['psql', DB, '-tAc', s]
+    else: cmd = ['docker', 'exec', 'conti-pg', 'psql', '-U', 'postgres', '-tAc', s]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode: raise RuntimeError('psql: ' + r.stderr.strip()[:300])
+    return r.stdout.strip()
+def have_sql():
+    try: return sql('select 1') == '1'
+    except Exception: return False
 
 # 한국 날짜 (서버의 '오늘'과 같은 기준)
 KST_TODAY = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=9)).date()
@@ -126,6 +140,54 @@ def f08():
     n = L.ok('POST', 'teams/%s/dates/%s/notify' % (tid, mv[0]['id']))
     if n['sent'] != 1: fail('F08 옮긴 날짜로 다시 통보가 안 감: %s' % n)
     print('F08 ok')
+
+def f08_race():
+    # 날짜를 옮기는 저장과 스케줄 열기가 겹쳐도: 새 날짜 한 줄에만 붙고, 거기 짠 편성이 남는다
+    L = signup('하은'); t = team(L, 'F08R'); tid = t['teamId']
+    def mine(sid): return [x for x in sched(L, tid)['dates'] if x['serviceId'] == sid]
+    def setup(sid, d1, free_on=None):
+        if free_on: L.ok('POST', 'teams/%s/dates' % tid, {'date': free_on, 'label': '수요예배'})
+        L.ok('PUT', 'services/%s/draft' % sid, {'teamId': tid, 'doc': draft_doc(sid, '특별예배', d1)})
+        L.ok('PUT', 'teams/%s/dates/%s/lineup' % (tid, mine(sid)[0]['id']), {'lineup': [{'session': '건반', 'memberId': L.id}]})
+    def check(sid, d2, what):
+        for _ in range(2):   # 다음 GET 에서도 그대로여야 한다
+            m = mine(sid)
+            if len(m) != 1 or m[0]['date'] != d2: fail('F08 %s: 새 날짜 한 줄이 아님: %s' % (what, [(x['date'], x['label']) for x in m]))
+            if [r['memberId'] for r in m[0]['lineup']] != [L.id]: fail('F08 %s: 편성이 사라짐: %s' % (what, m[0]))
+    def together(fns):
+        ths = [threading.Thread(target=f) for f in fns]
+        [x.start() for x in ths]; [x.join() for x in ths]
+    for i in range(8):
+        sid = 'f08r%s%02d' % (tag, i); d1, d2 = day(50 + i * 2), day(51 + i * 2)
+        setup(sid, d1, free_on=d2 if i % 2 else None)
+        together([lambda: L.ok('PUT', 'services/%s/draft' % sid, {'teamId': tid, 'doc': draft_doc(sid, '특별예배', d2)})] + [lambda: sched(L, tid)] * 2)
+        check(sid, d2, '저장·열기 경합 %d' % i)
+    if not have_sql():
+        print('F08 race ok (DB 직접 확인 SKIP)'); return
+    # 예전 코드가 남긴 어긋남(초안 날짜만 바뀌고 줄은 옛 날짜) 을 여럿이 동시에 열며 바로잡는다
+    for i in range(6):
+        sid = 'f08g%s%02d' % (tag, i); d1, d2 = day(70 + i * 2), day(71 + i * 2)
+        setup(sid, d1, free_on=d2 if i % 2 else None)
+        sql("update drafts set doc=jsonb_set(doc, '{date}', '\"%s\"') where team_id='%s' and id='%s'" % (d2, tid, sid))
+        together([lambda: sched(L, tid)] * 3)
+        check(sid, d2, '옛 어긋남 바로잡기 %d' % i)
+    # 경합이 남긴 '같은 날짜 두 줄' (인도자가 연 줄에 편성, 콘티 몫 빈 줄) → 편성 있는 한 줄만 남는다
+    sid = 'f08d' + tag; d = day(90)
+    setup(sid, day(89), free_on=d)
+    L.ok('PUT', 'services/%s/draft' % sid, {'teamId': tid, 'doc': draft_doc(sid, '특별예배', d)})
+    sql("insert into service_dates(team_id, date, label, source, open, service_id) values('%s', '%s', '특별예배', 'service', true, '%s')" % (tid, d, sid))
+    check(sid, d, '같은 날 두 줄')
+    if sql("select count(*) from service_dates where team_id='%s' and date='%s'" % (tid, d)) != '1': fail('F08 같은 날 남는 콘티 몫 줄이 안 지워짐')
+    # 같은 날 같은 이름의 다른 콘티가 있어 새 날짜에 못 붙으면, 옛 줄과 편성을 지우지 않는다
+    sa, sb = 'f08x' + tag, 'f08y' + tag; d1, d2 = day(92), day(93)
+    L.ok('PUT', 'services/%s/draft' % sb, {'teamId': tid, 'doc': draft_doc(sb, '겹침예배', d2)})
+    L.ok('PUT', 'services/%s/draft' % sa, {'teamId': tid, 'doc': draft_doc(sa, '겹침예배', d1)})
+    L.ok('PUT', 'teams/%s/dates/%s/lineup' % (tid, mine(sa)[0]['id']), {'lineup': [{'session': '건반', 'memberId': L.id}]})
+    L.ok('PUT', 'services/%s/draft' % sa, {'teamId': tid, 'doc': draft_doc(sa, '겹침예배', d2)})
+    ma, mb = mine(sa), mine(sb)
+    if len(ma) != 1 or [r['memberId'] for r in ma[0]['lineup']] != [L.id]: fail('F08 못 옮긴 콘티의 옛 줄·편성이 사라짐: %s' % ma)
+    if len(mb) != 1 or mb[0]['date'] != d2: fail('F08 같은 이름 다른 콘티의 줄이 바뀜: %s' % mb)
+    print('F08 race ok')
 
 def f09():
     L = signup('하은'); t = team(L, 'F09'); tid = t['teamId']
@@ -341,6 +403,60 @@ def cron_checks():
     linked = [x['serviceId'] for x in rows if x['serviceId']]
     if len(drafts) != len(linked) or len(set(linked)) != len(linked): fail('F122 초안·연결 수가 어긋남: %d vs %s' % (len(drafts), linked))
     print('F122 ok (%s)' % res[0][1])
+    f122_resume(auth)
+
+def f122_resume(auth):
+    # (1) 동시에 도는 팀의 초안 수를 서로 덮어쓰지 않는다: 새 팀 K 개에 빈 날짜 하나씩 → 적어도 K 개로 센다
+    K = 24; mine = []
+    for i in range(K):
+        L = signup('하은'); tt = team(L, 'F122C%02d' % i)
+        L.ok('POST', 'teams/%s/dates' % tt['teamId'], {'date': day(5), 'label': '카운트예배'}); mine.append((L, tt['teamId']))
+    st, j = U('c').call('GET', 'cron/dates', headers=auth)
+    if st != 200: fail('F122 dates 크론 실패: %s %s' % (st, j))
+    for L, tid in mine:
+        if len(L.ok('GET', 'services?team=' + tid)['drafts']) != 1: fail('F122 새 팀에 자동 초안이 하나가 아님')
+    if j['created'] < K: fail('F122 만든 초안 수를 덜 셈: created=%s, 이 시험의 팀만 %d' % (j['created'], K))
+    print('F122 count ok (%s)' % j['created'])
+    if not have_sql():
+        print('F122 resume SKIP — DB 를 직접 못 씀'); return
+    # (2) 보류 D-14 알림(요일·날짜와 상관없이 매일)으로: 한 팀이 실패하면 500, 다시 부르면 그 팀만 보내고 이미 받은 사람에게는 또 안 간다
+    def maybe_team(nm):
+        L = signup('하은'); tt = team(L, nm); tid = tt['teamId']
+        M = signup('민수'); join(M, tt, ['드럼'])
+        L.ok('POST', 'teams/%s/dates' % tid, {'date': day(14), 'label': '보류예배'})
+        M.ok('PUT', 'teams/%s/availability' % tid, {'date': day(14), 'state': 'maybe'})
+        return M, tid
+    def got(M, tid): return [n for n in notis(M, tid) if n['type'] == 'avail.maybe']
+    Ma, ta = maybe_team('F122A'); Mb, tb = maybe_team('F122B')
+    fn = 'f122_fail_' + tag
+    sql("""create or replace function %s() returns trigger language plpgsql as $$ begin
+             if new.team_id = '%s' then raise exception 'f122 test'; end if; return new; end $$""" % (fn, tb))
+    sql('create trigger %s before insert on notifications for each row execute function %s()' % (fn, fn))
+    try:
+        st, j = U('c').call('GET', 'cron/remind', headers=auth)
+    finally:
+        sql('drop trigger if exists %s on notifications' % fn); sql('drop function if exists %s()' % fn)
+    if st != 500: fail('F122 한 팀이 실패했는데 크론이 성공(%s)으로 끝남 — 스케줄러가 다시 부르지 않는다: %s' % (st, j))
+    a1 = got(Ma, ta)
+    if len(a1) != 1: fail('F122 실패하지 않은 팀이 못 받음: %s' % a1)
+    if got(Mb, tb): fail('F122 전제: 실패한 팀은 아직 못 받아야 함')
+    if sql("select count(*) from cron_marks where job='remind' and team_id='%s' and done_at is null" % tb) != '0': fail('F122 실패한 팀의 표시가 남아 다시 못 함')
+    time.sleep(1.1)
+    st, j = U('c').call('GET', 'cron/remind', headers=auth)
+    if st != 200: fail('F122 다시 부른 크론 실패: %s %s' % (st, j))
+    if len(got(Mb, tb)) != 1: fail('F122 다시 불렀는데 실패했던 팀이 못 받음')
+    a2 = got(Ma, ta)
+    if len(a2) != 1 or a2[0]['at'] != a1[0]['at']: fail('F122 다시 부르니 이미 받은 사람에게 또 감: %s → %s' % (a1[0]['at'], a2[0]['at'] if a2 else None))
+    # (3) 앞 시도가 잡고 끝내지 못한 팀: 10분이 넘었으면 죽은 것으로 보고 다시 하고, 막 잡은 것은 건너뛴다
+    Mc, tc = maybe_team('F122S'); Md, td = maybe_team('F122F')
+    kst = KST_TODAY.isoformat()
+    sql("insert into cron_marks(job, day, team_id, started_at) values('remind', '%s', '%s', now() - interval '20 minutes'), ('remind', '%s', '%s', now())" % (kst, tc, kst, td))
+    st, j = U('c').call('GET', 'cron/remind', headers=auth)
+    if st != 200: fail('F122 크론 실패: %s %s' % (st, j))
+    if len(got(Mc, tc)) != 1: fail('F122 끊긴 앞 시도가 잡아 둔 팀을 다시 하지 않음')
+    if got(Md, td): fail('F122 다른 시도가 막 잡은 팀을 또 함 (두 번 보냄)')
+    sql("delete from cron_marks where team_id='%s'" % td)
+    print('F122 resume ok')
 
 def f54_and_ui():
     # 두 팀에 속한 사람: 지금 팀 A 를 보고 있다가 팀 B 알림을 누른다
@@ -421,6 +537,7 @@ def f57_ui(L, M, tid, did):
 def run():
     f11()
     f08()
+    f08_race()
     f09()
     f55()
     f56()

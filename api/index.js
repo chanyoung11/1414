@@ -1562,7 +1562,7 @@ on('PUT', '/services/:id', async ({ uid, params, body }) => {
     const prevWord = cur && cur.doc ? wordKey(cur.doc.word) : '';
     if (cur && (String(doc.message || '') !== prevMsg || wordKey(doc.word) !== prevWord) && (String(doc.message || '').trim() || wordKey(doc.word)))
       await notify(teamId, to, 'note.updated', params.id, { title: `${label} 인도자의 글이 바뀌었어요`, body: String(doc.message).split('\n')[0], link: '#/view/' + params.id });
-    await linkDate(teamId, params.id, doc.date, name);
+    await linkDate(teamId, params.id);
   } catch (e) { console.error('notify publish', e); }
   try { await syncUsages(teamId, params.id, doc, uid); } catch (e) { console.error('usages', e); }
   // 다시 발행하며 빠진 파일(자른 악보의 옛 판, 지운 곡)은 팀 어디에서도 안 쓰면 지운다 (F117)
@@ -1653,7 +1653,7 @@ on('PUT', '/services/:id/draft', async ({ uid, params, body }) => {
   if (!doc || !Array.isArray(doc.items)) throw bad('초안이 비어 있어요');
   await q(`insert into drafts(team_id, id, doc, updated_by, updated_at) values($1,$2,$3,$4,now())
            on conflict (team_id, id) do update set doc=excluded.doc, updated_by=excluded.updated_by, updated_at=now()`, [teamId, params.id, JSON.stringify(doc), uid]);
-  try { await linkDate(teamId, params.id, doc.date, str(doc.name, 60)); } catch (e) { console.error('linkDate', e); }
+  try { await linkDate(teamId, params.id); } catch (e) { console.error('linkDate', e); }
   return { ok: true };
 });
 
@@ -2895,41 +2895,59 @@ async function viewLinkOr(teamId, serviceId, fallback) {
   if (serviceId && await one('select 1 from services where team_id=$1 and id=$2', [teamId, serviceId])) return '#/view/' + serviceId;
   return fallback;
 }
-// 콘티(발행본·초안)를 같은 날짜의 사역 날짜에 연결한다. 없으면 manual 날짜를 만든다 (§2.2)
-async function linkDate(teamId, serviceId, date, label) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return;
-  const lbl = str(label, 40) || '예배';
-  const cur = await q('select id, date::text as date, source, lineup from service_dates where team_id=$1 and service_id=$2', [teamId, serviceId]);
-  // 날짜를 옮겼으면 옛 날짜에서 뗀다. 전에는 어디든 붙어 있기만 하면 그냥 돌아가서, 옛 날짜가 계속 이 콘티를
-  // 가리키고 새 날짜는 빈 채로 남아 자동 생성이 거기에 빈 초안을 하나 더 만들었다 (편성·말씀·D-day 가 엉뚱한 콘티로).
-  // 인도자가 연 날짜·정기 예배는 남기되, 콘티를 지웠을 때처럼 자동 초안으로 다시 채우지는 않는다 (그날 편성도 그대로)
-  for (const r of cur) if (r.date !== date && r.source !== 'service')
-    await q('update service_dates set service_id=null, auto_skip=true where id=$1 and service_id=$2', [r.id, serviceId]);
-  // 콘티 때문에 생긴 옛 날짜(source='service')는 콘티를 따라간다 — 거기 짜 둔 편성도 같이
-  const own = cur.filter((r) => r.date !== date && r.source === 'service');
-  const drop = async (keep) => { for (const r of own) if (r.id !== keep) await q('delete from service_dates where id=$1 and service_id=$2', [r.id, serviceId]); };
-  if (cur.some((r) => r.date === date)) return drop(null);
-  const carry = own.find((r) => Array.isArray(r.lineup) && r.lineup.length);
-  // 날짜가 바뀌었으니 전에 한 통보는 옛 날짜 이야기다 → 통보 기록을 비워 새 날짜로 다시 알리게 한다
-  const fresh = (l) => JSON.stringify((Array.isArray(l) ? l : []).map((x) => (x && typeof x === 'object' ? { ...x, notifiedAt: null, acknowledgedAt: null } : x)));
-  const free = await one(`select id from service_dates where team_id=$1 and date=$2 and service_id is null order by (source='recurring') desc, created_at asc limit 1`, [teamId, date]);
-  // 비어 있을 때만 잡는다. 자동 생성과 동시에 같은 날짜를 잡으면 한쪽 연결이 덮여 사라졌다
-  if (free && await one('update service_dates set service_id=$2, auto_skip=false where id=$1 and service_id is null returning id', [free.id, serviceId])) {
-    if (carry) await q(`update service_dates set lineup=$2, notified='[]' where id=$1 and coalesce(jsonb_array_length(lineup), 0) = 0`, [free.id, fresh(carry.lineup)]);
-    return drop(null);
-  }
-  if (own.length) {
-    const mv = carry || own[0];
-    const ok = await one(`update service_dates set date=$3, label=$4, lineup=$5, notified='[]' where id=$1 and service_id=$2
-                          and not exists (select 1 from service_dates o where o.team_id=$6 and o.date=$3 and o.label=$4) returning id`,
-      [mv.id, serviceId, date, lbl, fresh(mv.lineup), teamId]);
-    if (ok) return drop(mv.id);
-  }
-  // source='service' 는 이 콘티 때문에 생긴 날짜라는 뜻이다. 인도자가 직접 연 날짜('manual')와
-  // 구분해야, 콘티를 지웠을 때 남길지 같이 지울지 정할 수 있다
-  await q(`insert into service_dates(team_id, date, label, source, open, service_id) values($1,$2,$3,'service',true,$4)
-           on conflict (team_id, date, label) do update set service_id=coalesce(service_dates.service_id, excluded.service_id)`, [teamId, date, lbl, serviceId]);
-  return drop(null);
+// 콘티(발행본·초안)를 그 날짜의 사역 날짜에 연결한다. 없으면 콘티 몫의 날짜를 만든다 (§2.2).
+// 날짜는 부른 쪽이 읽어 둔 값이 아니라 지금 DB 에 있는 것(발행본·초안 중 나중에 저장된 쪽, reconcileDates 와 같은 기준)으로 정하고,
+// 팀마다 잠근 한 트랜잭션에서 문장마다 지금 상태를 보고 스스로 대상을 고른다 (운영 Neon HTTP 는 앞 결과를 보고 다음을 정할 수 없다).
+// 전에는 읽어 두고 따로따로 고쳐서, 인도자가 날짜를 바꾸는 동안 멤버들이 스케줄을 열면(GET 마다 reconcile 이 부른다)
+// 한쪽이 방금 새 날짜로 옮긴 줄을 다른 쪽이 옛 날짜 줄로 알고 편성째 지우거나, 같은 날짜 두 줄에 붙은 채 남거나,
+// 저장 전에 읽은 옛 날짜로 되돌렸다 (F08)
+const LINK_LIVE = `select s.date::date as date, coalesce(nullif(left(regexp_replace(s.name, '^\\s+|\\s+$', '', 'g'), 40), ''), '예배') as label from (
+    select date, name, updated_at from services where team_id=$1 and id=$2 and date is not null
+    union all select doc->>'date', doc->>'name', updated_at from drafts where team_id=$1 and id=$2 and doc->>'date' <> ''
+    order by updated_at desc limit 1) s where s.date ~ '^\\d{4}-\\d{2}-\\d{2}$'`;
+const lineupHas = (c) => `(case when jsonb_typeof(${c})='array' then jsonb_array_length(${c}) else 0 end > 0)`;
+// 날짜가 바뀌었으니 전에 한 통보는 옛 날짜 이야기다 → 통보 기록을 비워 새 날짜로 다시 알리게 한다
+const lineupFresh = (c) => `coalesce((select jsonb_agg(case when jsonb_typeof(e.x)='object' then e.x || '{"notifiedAt":null,"acknowledgedAt":null}'::jsonb else e.x end order by e.n)
+    from jsonb_array_elements(case when jsonb_typeof(${c})='array' then ${c} else '[]'::jsonb end) with ordinality e(x, n)), '[]'::jsonb)`;
+async function linkDate(teamId, serviceId) {
+  const w = `with t as (${LINK_LIVE})`, P = [teamId, serviceId];
+  const onT = `exists (select 1 from service_dates o where o.team_id=$1 and o.service_id=$2 and o.date=t.date)`;
+  await tx([
+    ['select pg_advisory_xact_lock(hashtext($1))', ['link:' + teamId]],
+    // 그 날짜 두 줄에 붙어 있으면(예전 경합이 남긴 것) 하나만 남긴다 — 편성 있는 줄, 인도자가 연 줄 먼저.
+    // 남는 콘티 몫 줄은 지우고, 인도자가 연 줄은 연결만 푼다 (같은 날 자동 초안으로 다시 채우지 않게)
+    [`${w}, k as (select sd.id from service_dates sd, t where sd.team_id=$1 and sd.service_id=$2 and sd.date=t.date
+                  order by ${lineupHas('sd.lineup')} desc, (sd.source <> 'service') desc, sd.created_at, sd.id limit 1),
+          x as (select sd.id, sd.source from service_dates sd, t where sd.team_id=$1 and sd.service_id=$2 and sd.date=t.date and sd.id not in (select id from k)),
+          d as (delete from service_dates where id in (select id from x where source='service'))
+      update service_dates set service_id=null, auto_skip=true where id in (select id from x where source<>'service')`, P],
+    // 그 날짜에 빈 줄이 있으면 잡는다 (정기 예배 먼저). 비어 있을 때만 — 자동 생성과 동시에 잡으면 한쪽 연결이 덮여 사라졌다
+    [`${w}, f as (select sd.id from service_dates sd, t where sd.team_id=$1 and sd.date=t.date and sd.service_id is null and not ${onT}
+                  order by (sd.source='recurring') desc, sd.created_at asc limit 1)
+      update service_dates sd set service_id=$2, auto_skip=false from f where sd.id=f.id and sd.service_id is null`, P],
+    // 없으면 콘티 때문에 생긴 옛 날짜(source='service')가 콘티를 따라간다 — 거기 짜 둔 편성도 같이
+    [`${w}, mv as (select sd.id from service_dates sd, t where sd.team_id=$1 and sd.service_id=$2 and sd.date <> t.date and sd.source='service'
+                   order by ${lineupHas('sd.lineup')} desc, sd.created_at limit 1)
+      update service_dates sd set date=t.date, label=t.label, lineup=${lineupFresh('sd.lineup')}, notified='[]' from t, mv
+       where sd.id=mv.id and not ${onT} and not exists (select 1 from service_dates o where o.team_id=$1 and o.date=t.date and o.label=t.label)`, P],
+    // 그래도 없으면 만든다. source='service' 는 이 콘티 때문에 생긴 날짜라는 뜻이다. 인도자가 직접 연 날짜('manual')와
+    // 구분해야, 콘티를 지웠을 때 남길지 같이 지울지 정할 수 있다
+    [`${w} insert into service_dates(team_id, date, label, source, open, service_id)
+      select $1::uuid, t.date, t.label, 'service', true, $2::text from t where not ${onT}
+      on conflict (team_id, date, label) do update set service_id=coalesce(service_dates.service_id, excluded.service_id)`, P],
+    // 옛 날짜 줄에 짠 편성은 새 날짜 줄이 비어 있으면 그리로 옮긴다
+    [`${w}, c as (select sd.lineup from service_dates sd, t where sd.team_id=$1 and sd.service_id=$2 and sd.date <> t.date and sd.source='service'
+                  and ${lineupHas('sd.lineup')} order by sd.created_at limit 1)
+      update service_dates sd set lineup=${lineupFresh('c.lineup')}, notified='[]' from t, c
+       where sd.team_id=$1 and sd.service_id=$2 and sd.date=t.date and not ${lineupHas('sd.lineup')}`, P],
+    // 새 날짜에 붙었을 때만 옛 날짜에서 뗀다 (같은 날 같은 이름의 다른 콘티가 있어 못 붙었으면 옛 줄·편성을 그대로 둔다).
+    // 인도자가 연 날짜·정기 예배는 남기되, 콘티를 지웠을 때처럼 자동 초안으로 다시 채우지는 않는다 (그날 편성도 그대로).
+    // 콘티 때문에 생긴 옛 날짜는 지운다
+    [`${w} update service_dates sd set service_id=null, auto_skip=true from t
+       where sd.team_id=$1 and sd.service_id=$2 and sd.date <> t.date and sd.source <> 'service' and ${onT}`, P],
+    [`${w} delete from service_dates sd using t
+       where sd.team_id=$1 and sd.service_id=$2 and sd.date <> t.date and sd.source='service' and ${onT}`, P],
+  ]);
 }
 // 한국 날짜의 오늘. DB 의 current_date 는 세션 시간대(운영 UTC)라 한국 00~09시에는 어제다
 const KST_TODAY_SQL = "(now() at time zone 'Asia/Seoul')::date";
@@ -3179,7 +3197,8 @@ async function reconcileDates(teamId) {
   for (const r of live) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(r.date || '')) continue;
     const ds = at.get(r.id) || [];
-    if (ds.length !== 1 || ds[0] !== r.date) await linkDate(teamId, r.id, r.date, r.name);
+    // 여기서 읽은 날짜는 그사이 바뀌었을 수 있다 — linkDate 가 잠근 채 지금 날짜를 다시 본다. 한 콘티가 실패해도 나머지는 맞춘다
+    if (ds.length !== 1 || ds[0] !== r.date) { try { await linkDate(teamId, r.id); } catch (e) { console.error('linkDate', r.id, e.message); } }
   }
 }
 
@@ -3449,13 +3468,38 @@ async function scheduleReminders(teamId, st) {
 }
 
 // 팀·항목마다 하는 일을 몇 개씩 동시에 돌린다. 한 줄로 차례대로 돌면 팀이 늘수록 크론 제한 시간(300초·재시도 없음)을
-// 넘겨, 뒤쪽 팀과 맨 끝의 정리 작업이 조용히 빠졌다. 한 팀이 실패해도 나머지는 계속한다
+// 넘겨, 뒤쪽 팀과 맨 끝의 정리 작업이 조용히 빠졌다. 한 팀이 실패해도 나머지는 계속한다. 돌려주는 값 = 실패한 개수
 async function eachLimit(list, fn, n = 8) {
-  let i = 0;
+  let i = 0, failed = 0;
   await Promise.all(Array.from({ length: Math.min(n, list.length) }, async () => {
-    while (i < list.length) { const x = list[i++]; try { await fn(x); } catch (e) { console.error('cron', x && (x.id || x.team_id), e); } }
+    while (i < list.length) { const x = list[i++]; try { await fn(x); } catch (e) { failed++; console.error('cron', x && (x.id || x.team_id), e); } }
   }));
+  return failed;
 }
+// 실패한 것이 있으면 500 으로 끝내 Cloud Scheduler 가 다시 부르게 한다 (scripts/cloudrun.sh 의 재시도).
+// 200 으로 끝내면 스케줄러는 성공으로 알고, 빠진 팀은 다음 날(월간 요청은 다음 달)까지 아무도 다시 하지 않았다
+function cronDone(failed, out) {
+  if (!failed) return out;
+  console.error('cron partial', failed, JSON.stringify(out));
+  throw new HttpError(500, 'cron_partial', `${failed}개가 실패했어요. 다시 부르면 남은 것을 해요`);
+}
+// 크론의 팀별 일을 한국 날짜마다 한 번만 한다 (cron_marks). 다시 불려도 끝낸 팀은 건너뛰고, 실패한 팀만 다음 시도가 다시 한다.
+// 이게 없으면 재시도가 이미 받은 사람에게 알림을 또 보낸다 (notify 는 같은 키가 와도 푸시를 다시 보낸다).
+// 다른 시도(시간이 끊긴 앞 시도가 아직 도는 것)가 잡고 있는 팀도 건너뛴다 — 10분 넘게 안 끝났으면 죽은 것으로 보고 다시 잡는다
+async function cronOnce(job, day, teamId, fn) {
+  const got = await one(`insert into cron_marks(job, day, team_id) values($1, $2, $3)
+                         on conflict (job, day, team_id) do update set started_at=now()
+                           where cron_marks.done_at is null and cron_marks.started_at < now() - interval '10 minutes'
+                         returning team_id`, [job, day, teamId]);
+  if (!got) return false;
+  try { await fn(); } catch (e) {
+    await q('delete from cron_marks where job=$1 and day=$2 and team_id=$3 and done_at is null', [job, day, teamId]).catch(() => {});
+    throw e;
+  }
+  await q('update cron_marks set done_at=now() where job=$1 and day=$2 and team_id=$3', [job, day, teamId]);
+  return true;
+}
+const kstDay = () => new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
 
 on('GET', '/cron/dates', async ({ req }) => {
   // Vercel 크론은 CRON_SECRET 이 설정돼 있으면 Authorization: Bearer <secret> 를 붙여 부른다. 미설정이면 아예 막는다 (위조 가능한 헤더로는 통과 불가)
@@ -3464,23 +3508,24 @@ on('GET', '/cron/dates', async ({ req }) => {
   // 90일 지난 알림 정리
   const purged = (await q(`delete from notifications where updated_at < now() - interval '90 days' returning id`)).length;
   await q('delete from revoked_sessions where exp < now()').catch((e) => console.error('revoked purge', e.message));   // 만료된 토큰은 어차피 안 통한다
+  await q(`delete from cron_marks where day < current_date - 7`).catch((e) => console.error('cron marks purge', e.message));
   // §5.4 녹음 보관: 만료 7일 전 인도자에게 알림함 항목, 지난 것은 파일까지 삭제
-  let warned = 0, dropped = 0;
-  await eachLimit(await q(`select id, team_id, service_id, label, date::text as date, expires_at from rehearsals
+  let warned = 0, dropped = 0, failed = 0;
+  failed += await eachLimit(await q(`select id, team_id, service_id, label, date::text as date, expires_at from rehearsals
                            where keep=false and warned_at is null and expires_at is not null and expires_at < now() + interval '7 days'`), async (r) => {
     const leaders = (await q(`select user_id from members where team_id=$1 and role='leader'`, [r.team_id])).map((x) => x.user_id);
     await notify(r.team_id, leaders, 'rehearsal.expiring', r.id, { title: `${r.label} 녹음이 7일 뒤 삭제돼요`, body: '보관하려면 잠금', link: '#/view/' + r.service_id });
     await q('update rehearsals set warned_at=now() where id=$1', [r.id]);
     warned++;
   });
-  await eachLimit(await q(`select id, team_id, blob_id from rehearsals where keep=false and expires_at is not null and expires_at < now()`), async (r) => {
+  failed += await eachLimit(await q(`select id, team_id, blob_id from rehearsals where keep=false and expires_at is not null and expires_at < now()`), async (r) => {
     await q('delete from rehearsals where id=$1', [r.id]);
     await dropBlobs(r.team_id, [r.blob_id]);
     dropped++;
   });
   // B.7.1 삭제 예약한 지 30일이 지난 팀은 여기서 실제로 지운다 (파일까지)
   let teamsDropped = 0;
-  await eachLimit(await q(`select id from teams where deleted_at is not null and deleted_at < now() - interval '30 days'`), async (t) => {
+  failed += await eachLimit(await q(`select id from teams where deleted_at is not null and deleted_at < now() - interval '30 days'`), async (t) => {
     const urls = (await q('select url from blobs where team_id=$1', [t.id])).map((b) => b.url);
     if (urls.length) await delBlobs(urls);
     await q('delete from teams where id=$1', [t.id]);   // 나머지는 on delete cascade
@@ -3489,26 +3534,33 @@ on('GET', '/cron/dates', async ({ req }) => {
   // 지우다 실패한 파일, 직접 업로드 URL 만 받고 등록하지 않은 파일을 저장소에서 치운다 (lib/blob.js). 이것도 정리라 팀별 작업보다 먼저
   let blobsSwept = null;
   try { blobsSwept = await sweepBlobs(); } catch (e) { console.error('blob sweep', e); }
-  // 팀마다: 정기 예배 13주 앞 유지 → D-N주 콘티 자동 생성
+  // 팀마다: 정기 예배 13주 앞 유지 → D-N주 콘티 자동 생성. 다시 돌아도 결과가 같다 (빠진 날짜만 넣고 빈 날짜에만 초안) — 재시도해도 된다
   const recs = await q(`select r.* from recurring r join teams t on t.id=r.team_id where r.active=true and t.deleted_at is null`);
   const byTeam = new Map();
   for (const r of recs) byTeam.set(r.team_id, (byTeam.get(r.team_id) || []).concat(r));
   let n = 0, created = 0;
-  await eachLimit(await q('select id from teams where deleted_at is null'), async (t) => {
+  failed += await eachLimit(await q('select id from teams where deleted_at is null'), async (t) => {
     for (const rec of byTeam.get(t.id) || []) { await fillDates(t.id, rec); n++; }
-    created += await autoCreateServices(t.id);
+    // 기다린 뒤에 더한다. `created += await …` 는 기다리기 전의 created 를 읽어, 동시에 도는 팀끼리 서로의 몫을 덮었다
+    const c = await autoCreateServices(t.id); created += c;
   });
-  return { ok: true, recurring: n, created, purged, warned, dropped, teamsDropped, blobsSwept };
+  return cronDone(failed, { ok: true, recurring: n, created, purged, warned, dropped, teamsDropped, blobsSwept });
 });
 
 // 알림 배치 (KST 10:00): 월간 스케줄 요청 · 보류 D-14 · 주간 말씀 요청 (§1.2 시각)
 on('GET', '/cron/remind', async ({ req }) => {
   if (!process.env.CRON_SECRET || req.headers['authorization'] !== `Bearer ${process.env.CRON_SECRET}`) throw forbidden('크론 전용');
-  let asked = 0, maybes = 0;
-  await eachLimit(await q('select id, settings from teams where deleted_at is null'), async (t) => {
-    const r = await scheduleReminders(t.id, { ...DEF_SETTINGS, ...(t.settings || {}) }); asked += r.asked; maybes += r.maybes;
+  // 팀마다 한국 날짜로 한 번만 보낸다 (cronOnce). 끊기거나 실패하면 스케줄러가 다시 부르고, 그때는 남은 팀만 한다.
+  // 요청은 그날(reminderDay·D-14·말씀 요청일)에만 가서, 전에는 한 번 끊기면 뒤쪽 팀이 그달 요청을 통째로 못 받았다 (F122)
+  const day = kstDay();
+  let asked = 0, maybes = 0, teams = 0;
+  const failed = await eachLimit(await q(`select id, settings from teams t where deleted_at is null
+      and not exists (select 1 from cron_marks m where m.job='remind' and m.day=$1 and m.team_id=t.id and m.done_at is not null)`, [day]), async (t) => {
+    await cronOnce('remind', day, t.id, async () => {
+      const r = await scheduleReminders(t.id, { ...DEF_SETTINGS, ...(t.settings || {}) }); asked += r.asked; maybes += r.maybes; teams++;
+    });
   });
-  return { ok: true, asked, maybes };
+  return cronDone(failed, { ok: true, asked, maybes, teams });
 });
 
 /* ---------- 진입점 ---------- */

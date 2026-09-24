@@ -68,7 +68,9 @@ case "${1:-}" in
       name="lets1414-cron-${job%%|*}"; sched="${job#*|}"
       args=(--location="$REGION" --schedule="$sched" --time-zone="Asia/Seoul"
             --uri="$u/api/cron/${job%%|*}" --http-method=GET
-            --attempt-deadline=300s --max-retry-attempts=0)
+            --attempt-deadline=300s --max-retry-attempts=3 --min-backoff=60s --max-backoff=600s)
+      # 재시도: 크론은 몇 팀이라도 실패하면 500 을 돌려주고(시간이 끊겨도 실패로 친다), 다시 불리면 남은 것만 한다
+      # (dates 는 몇 번 돌아도 결과가 같고, remind 는 팀마다 끝낸 날을 적어 둔다 — cron_marks). 한 번 끊기면 그날 뒤쪽 팀이 통째로 빠졌다
       if $G scheduler jobs describe "$name" --location="$REGION" >/dev/null 2>&1; then
         $G scheduler jobs update http "$name" "${args[@]}" --update-headers="Authorization=Bearer $secret"
       else

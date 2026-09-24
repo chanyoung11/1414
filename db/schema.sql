@@ -611,3 +611,14 @@ create table if not exists revoked_sessions (
   id  text primary key,
   exp timestamptz not null
 );
+
+-- 크론(/cron/remind)이 팀마다 끝낸 날 (한국 날짜). 끊기거나 실패해 스케줄러가 다시 부르면 끝낸 팀은 건너뛰고
+-- 남은 팀만 한다 — 적어 두지 않으면 재시도가 이미 받은 사람에게 알림을 또 보낸다. 7일 지난 것은 /cron/dates 가 지운다
+create table if not exists cron_marks (
+  job        text not null,
+  day        date not null,
+  team_id    uuid not null references teams(id) on delete cascade,
+  started_at timestamptz not null default now(),
+  done_at    timestamptz,
+  primary key (job, day, team_id)
+);
