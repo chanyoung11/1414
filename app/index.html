@@ -6128,6 +6128,7 @@ let SEL={};// editor selection: {sid:{item,tool}}
 const SCROLL={};function keepScroll(){SCROLL.sheet=($('#sheetwrap')||{}).scrollTop||0;SCROLL.bodies=$$('.pbody').map(b=>b.scrollTop)}
 function restoreScroll(){const sw=$('#sheetwrap');if(sw&&SCROLL.sheet)sw.scrollTop=SCROLL.sheet;$$('.pbody').forEach((b,i)=>{if(SCROLL.bodies&&SCROLL.bodies[i])b.scrollTop=SCROLL.bodies[i]})}
 let lastRoute='';
+let svcOnHash='';   // 콘티 화면을 온라인으로 다 그린(메모·말씀·초안을 받은) 주소. 오프라인으로 그리거나 콘티 밖으로 나가면 비운다
 // 서버를 기다리되 오래 걸리면 가진 것으로 먼저 그린다 (online() 은 켤 때 한 번 정해져 약한 망에서도 참이다).
 // 늦게 끝나 받은 게 바뀌었으면 같은 화면일 때 한 번 다시 그린다 — 보기 화면만. 연습·편집은 다시 그리면 재생·입력이 끊긴다.
 // 실패하거나 그대로여도 다시 그리면, 약한 망에서 다시 그리기 → 또 받기 → 또 늦게 실패 → 또 다시 그리기가 계속 돌았다
@@ -6137,6 +6138,8 @@ function netCap(p,ms){let late=false;const h=location.hash;
 function redrawView(h,ok){if(ok&&location.hash===h&&route().name==='view')render()}
 const NOTES_Q={},WORD_Q={};   // 늦게 끝나는 받기를 기다리지 않고 넘어간 사이 같은 콘티를 또 받지 않게
 function pullNotesOnce(svc){return NOTES_Q[svc.id]||(NOTES_Q[svc.id]=SYNC.pullNotes(svc).finally(()=>{delete NOTES_Q[svc.id]}))}
+// 초안도 — 편집 화면을 그리는 사이 같은 주소를 또 그리면(목록·곡 받기 뒤) 두 번 받아 '더 새로운 초안' 창이 두 번 떴다
+const DRAFT_Q={};function pullDraftOnce(svc){return DRAFT_Q[svc.id]||(DRAFT_Q[svc.id]=SYNC.pullDraft(svc).finally(()=>{delete DRAFT_Q[svc.id]}))}
 // 말씀(목회자)과 읽음 표시. 바뀌었으면 true
 function pullWordOnce(svc){return WORD_Q[svc.id]||(WORD_Q[svc.id]=(async()=>{try{const wd=await api('/services/'+svc.id+'/word?team='+S.team.id);
   const was=JSON.stringify(svc.word||null),rv0=(S.readRev||{})[svc.id]||0;
@@ -6153,6 +6156,7 @@ async function render(){
  if(NATIVE)setTimeout(adsSync,0);else setTimeout(webAdsRender,0);   // 화면이 바뀔 때마다 광고를 켜고 끈다 (예배 화면에서는 내린다)
  const prevHash=lastRoute;
  if(r.name!=='lineup')document.body.classList.remove('lnopen');const same=lastRoute===location.hash;lastRoute=location.hash;if(same)keepScroll();else{SCROLL.sheet=0;SCROLL.bodies=null}
+ if(!/^(edit|view|play)$/.test(r.name))svcOnHash='';
  // §4.6 목회자 링크: 로그인 없이 여는 페이지
  // 약관·방침은 로그인 없이 볼 수 있다
  if(r.name==='legal'){app.innerHTML=legalHTML(r.a||'privacy');restoreScroll();return}
@@ -6178,18 +6182,26 @@ async function render(){
   // 메모·말씀은 뒤에서 새로 받는다 (다른 기기의 메모·목회자가 쓴 말씀이 들어오게). 예전에는 곡을 넘길 때마다 받은 뒤에야 그려,
   // 느린 망에서는 탭마다 몇 초씩 옛 곡에 멈춰 있었다. 들어올 때와 편집으로 갈 때만 최대 2.5초 기다린다 —
   // 편집은 나중에 다시 그리면 입력이 끊겨, 받기 전에 그리면 목사님이 보낸 말씀 대신 빈 말씀 카드가 남는다
-  const pr=prevHash.replace(/^#\/?/,'').split('/');const enter=!same&&!(pr[1]===r.a&&/^(edit|view|play)$/.test(pr[0]));
-  if(online()&&!same){const h=location.hash;
+  // 켤 때 /me 가 늦으면(약한 와이파이) 2.5초 뒤 먼저 오프라인으로 그리고, 연결이 끊겼다 붙으면(recheckServer) 같은 주소를 다시 그린다.
+  // 그 오프라인 그리기가 lastRoute 를 적어 두어, 연결된 뒤의 그리기는 '같은 화면'이라 메모·말씀·초안을 한 번도 안 받았다 →
+  // 이 주소를 아직 온라인으로 다 그린 적이 없으면(오프라인으로 그렸거나, 들어오던 그리기가 목록·곡 받기 뒤의 그리기에 밀려 끝나지 못했으면)
+  // 새로 온 것으로 본다(fresh). 어디서 왔는지는 마지막으로 다 그린 콘티 화면으로 본다 — 같은 콘티 안이면 여전히 기다리지 않는다.
+  // 받기에 실패해 pulledAt 이 없으면 같은 화면이어도 뒤에서 다시 받는다 — 실패하거나 그대로면 다시 그리지 않으니(redrawView) 되풀이되지 않는다
+  const on=online(),fresh=!same||svcOnHash!==location.hash;
+  const pr=(same?svcOnHash:prevHash).replace(/^#\/?/,'').split('/');const enter=fresh&&!(pr[1]===r.a&&/^(edit|view|play)$/.test(pr[0]));
+  if(on&&(fresh||!SYNC.pulledAt[svc.id])){const h=location.hash;
    const p=Promise.all([pullNotesOnce(svc),pullWordOnce(svc)]).then(a=>a.some(Boolean));   // 둘은 서로 기다릴 까닭이 없다
-   if(enter||r.name==='edit')await netCap(p);else p.then(ch=>redrawView(h,ch)).catch(()=>{})}
+   if(enter||fresh&&r.name==='edit'){await netCap(p);if(same&&!stale())keepScroll()}   // 먼저 그린 화면을 기다리는 사이 넘긴 자리를 지킨다
+   else p.then(ch=>redrawView(h,ch)).catch(()=>{})}
   if(stale())return;
   if(online()&&r.name==='view'&&!REH.at[svc.id])await pullRehearsals(svc.id);
-  else if(online()&&r.name==='view'&&!same)pullRehearsals(svc.id).then(ch=>{if(ch&&route().name==='view')render()});
+  else if(online()&&r.name==='view'&&fresh)pullRehearsals(svc.id).then(ch=>{if(ch&&route().name==='view')render()});
   if(online()&&r.name==='view'&&!SCH.at)pullSchedule(monthKey(),true).catch(()=>{});
   await preload(svc);
   if(stale())return;
-  if(r.name==='edit'){if(online()&&!same&&isLeader()){try{await SYNC.pullDraft(svc)}catch(e){}}
-   if(online()&&isLeader())pullUsage().then(()=>{if(route().name==='edit')drawEditorSheet(svcById(route().a))});if(stale())return;app.innerHTML=editorHTML(svc);afterEditor(svc);restoreScroll();return}
+  if(r.name==='edit'){if(online()&&fresh&&isLeader()){try{await pullDraftOnce(svc)}catch(e){}}
+   if(online()&&isLeader())pullUsage().then(()=>{if(route().name==='edit')drawEditorSheet(svcById(route().a))});if(stale())return;svcOnHash=on?location.hash:'';app.innerHTML=editorHTML(svc);afterEditor(svc);restoreScroll();return}
+  svcOnHash=on?location.hash:'';
   if(r.name==='view'){app.innerHTML=viewerHTML(svc);restoreScroll();if(!same&&msgUnread(svc))setTimeout(()=>{if(!stale())messageSheet(svc,true)},150);return}
   app.innerHTML=playHTML(svc,+r.b||0);afterPlay(svc,+r.b||0);restoreScroll();return}
  // 라이브러리 (A부)

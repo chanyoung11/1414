@@ -13,6 +13,7 @@
 #  G08 Em 악보를 E·Emin·E minor·E단조 콘티에서 C#m 으로 그리던 것 (SCMODE)
 #  G19 B♭ 같은 느슨한 키·키 모를 때 카포·반감화음·베이스 글자 (CHORD2)
 #  F91 들어올 때 받기가 늦게 실패하면 다시 그리기를 되풀이·곡마다 2.5초 기다림·옮겨도 메모·말씀을 안 받음 (F91B)
+#  F91 /me 가 늦거나 실패해 먼저 오프라인으로 그린 콘티 화면(보기·편집·연습)은 연결된 뒤에도 메모·말씀·초안을 한 번도 안 받던 것 (F91C)
 import os, sys, time, json
 from playwright.sync_api import sync_playwright
 
@@ -646,6 +647,79 @@ def t_nav_more(b, errs):
     pg.evaluate("sessionStorage.removeItem('failNotes')")
     c.close()
 
+# F91 되돌림 2: 약한 와이파이로 켜면 /me 가 2.5초를 넘겨 부팅이 먼저 오프라인으로 그린다(80cc2d1). 그 그리기가 lastRoute 를 적어,
+# 연결된 뒤의 그리기·목록 받은 뒤의 그리기가 모두 '같은 화면'이라 메모·말씀(편집이면 초안도)을 한 번도 안 받았다
+SLOW_ME = r"""
+(()=>{const N=window.__net={notes:0,word:0,draft:0,meDone:false,meFail:0};const F=window.fetch;
+ window.fetch=function(u,o){const s=String((u&&u.url)||u);const get=!(o&&o.method&&o.method!=='GET');
+  if(get&&/\/api\/notes\?/.test(s))N.notes++;
+  if(get&&/\/api\/services\/[^/]+\/word\?/.test(s))N.word++;
+  if(get&&/\/api\/services\/[^/]+\/draft\?/.test(s))N.draft++;
+  if(/\/api\/me(\?|$)/.test(s)&&sessionStorage.getItem('failMe')==='1'&&N.meFail<3){N.meFail++;
+   return Promise.resolve(new Response('{"error":"x"}',{status:503,headers:{'content-type':'application/json'}}))}
+  if(/\/api\/me(\?|$)/.test(s)&&sessionStorage.getItem('slowMe')==='1')
+   return new Promise(r=>setTimeout(r,4000)).then(()=>F.call(window,u,o)).finally(()=>{N.meDone=true});
+  return F.apply(this,arguments)}})();
+"""
+def t_slow_boot(b, errs):
+    c, pg = new_page(b, errs, 'slowboot')
+    c.add_init_script(SLOW_ME)
+    signup(pg, 'sb' + tag); make_team(pg, '느린부팅팀')
+    pg.click('[data-act="new-svc"]'); pg.wait_for_selector('[data-f="svc.name"]'); pg.fill('[data-f="svc.name"]', '느린 부팅 예배')
+    for t in ['첫곡', '둘째곡']:
+        pg.click('[data-act="add-item"]'); pg.wait_for_selector('[data-f="item.title"]'); pg.fill('[data-f="item.title"]', t); pg.wait_for_timeout(300)
+    svc = pg.evaluate('CONTI.S.services[0].id')
+    pg.wait_for_function('!!CONTI.S.services[0].draftPushedAt&&CONTI.S.services[0].draftPushedAt===CONTI.S.services[0].editedAt', timeout=15000)
+    post_note = """(t)=>fetch('/api/notes',{method:'POST',headers:{'content-type':'application/json','x-conti':'1'},
+      body:JSON.stringify({teamId:CONTI.S.team.id,serviceId:CONTI.S.services[0].id,notes:[{id:'nt'+Date.now().toString(36)+Math.random().toString(36).slice(2,8),itemId:CONTI.S.services[0].items[0].id,layer:'leader',text:t,at:Date.now()}]})}).then(r=>r.status)"""
+    put_word = """(p)=>fetch('/api/services/'+CONTI.S.services[0].id+'/word',{method:'PUT',headers:{'content-type':'application/json','x-conti':'1'},
+      body:JSON.stringify({teamId:CONTI.S.team.id,word:{passage:p,title:'',line:'',memo:''}})}).then(r=>r.status)"""
+    # 다른 기기에서 고친 초안 (이 기기 것보다 새것)
+    put_draft = """(n)=>{const s=CONTI.S.services[0];const doc=JSON.parse(JSON.stringify(CONTI.SYNC.draftDoc(s)));doc.name=n;doc.editedAt=Date.now()+60000;
+      return fetch('/api/services/'+s.id+'/draft',{method:'PUT',headers:{'content-type':'application/json','x-conti':'1'},body:JSON.stringify({teamId:CONTI.S.team.id,doc})}).then(r=>r.status)}"""
+    for i, (name, hsh) in enumerate([('view', '#/view/%s' % svc), ('edit', '#/edit/%s' % svc), ('play', '#/play/%s/0' % svc)]):
+        pg.goto(URL + '#/'); pg.wait_for_selector('.shell[data-page]', timeout=10000)
+        pg.goto(URL + hsh); pg.wait_for_function("document.body.innerText.indexOf('첫곡')>=0", timeout=10000); pg.wait_for_timeout(1500)
+        note = '느린 부팅 메모 %d' % i; passage = '시편 23:%d' % (i + 1)
+        if pg.evaluate(post_note, note) != 200: fail('F91C 준비: 메모 올리기 실패')
+        if pg.evaluate(put_word, passage) != 200: fail('F91C 준비: 말씀 올리기 실패')
+        if name == 'edit' and pg.evaluate(put_draft, '다른 기기 초안') != 200: fail('F91C 준비: 초안 올리기 실패')
+        pg.evaluate("sessionStorage.setItem('slowMe','1')"); pg.reload()
+        # 부팅이 /me 를 기다리는 사이 먼저 오프라인으로 그렸는지 (이 경우를 정말 거쳤는지)
+        try: pg.wait_for_function("!__net.meDone&&document.body.innerText.indexOf('첫곡')>=0", timeout=3900)
+        except Exception: fail('F91C 준비(%s): /me 를 기다리는 사이 먼저 그리지 않음' % name)
+        pg.wait_for_function('!!window.CONTI&&CONTI.NET.server===true', timeout=15000)
+        try: pg.wait_for_function("CONTI.S.services[0].items[0].notes.some(n=>n.text===%s)" % json.dumps(note), timeout=8000)
+        except Exception: fail('F91C 느리게 켠 %s 화면이 다른 기기의 메모를 안 받음 (GET %s)' % (name, pg.evaluate('JSON.stringify(__net)')))
+        try: pg.wait_for_function("(CONTI.S.services[0].word||{}).passage===%s" % json.dumps(passage), timeout=5000)
+        except Exception: fail('F91C 느리게 켠 %s 화면이 목회자의 말씀을 안 받음 (GET %s)' % (name, pg.evaluate('JSON.stringify(__net)')))
+        if name == 'view':
+            try: pg.wait_for_function("document.body.innerText.indexOf(%s)>=0" % json.dumps(note), timeout=5000)
+            except Exception: fail('F91C 느리게 켠 보기 화면에 받은 메모가 안 보임')
+        if name == 'edit':
+            try: pg.wait_for_function("CONTI.S.services[0].name==='다른 기기 초안'", timeout=6000)
+            except Exception: fail('F91C 느리게 켠 편집 화면이 다른 기기의 새 초안을 안 받음 (GET %s)' % pg.evaluate('JSON.stringify(__net)'))
+            try: pg.wait_for_function("(document.querySelector('[data-f=\"svc.name\"]')||{}).value==='다른 기기 초안'", timeout=5000)
+            except Exception: fail('F91C 받은 초안이 편집 화면에 안 그려짐')
+        pg.wait_for_timeout(5000)
+        n = pg.evaluate('JSON.stringify(__net)'); k = json.loads(n)
+        if k['notes'] > 2 or k['word'] > 2: fail('F91C 느리게 켠 %s 화면이 메모·말씀을 되풀이해 받음 %s' % (name, n))
+        pg.evaluate("sessionStorage.removeItem('slowMe')")
+        print('F91C /me 가 늦어 먼저 그린 %s 화면도 연결된 뒤 메모·말씀%s 받음 ok %s' % (name, '·초안' if name == 'edit' else '', n))
+    # 켤 때 /me 가 실패해 오프라인으로 연 보기 화면 — 뒤에서 다시 붙으면(recheckServer) 같은 주소를 다시 그리며 메모·말씀을 받는다
+    pg.goto(URL + '#/view/%s' % svc); pg.wait_for_function("document.body.innerText.indexOf('첫곡')>=0", timeout=10000); pg.wait_for_timeout(1500)
+    if pg.evaluate(post_note, '다시 붙은 뒤 메모') != 200: fail('F91C 준비: 메모 올리기 실패')
+    if pg.evaluate(put_word, '요한복음 3:16') != 200: fail('F91C 준비: 말씀 올리기 실패')
+    pg.evaluate("sessionStorage.setItem('failMe','1')"); pg.reload()
+    pg.wait_for_function('!!window.CONTI', timeout=15000)
+    if pg.evaluate('CONTI.NET.server') is not None: fail('F91C 준비: /me 가 실패했는데 오프라인으로 안 열림')
+    pg.wait_for_function('CONTI.NET.server===true', timeout=30000)
+    try: pg.wait_for_function("document.body.innerText.indexOf('다시 붙은 뒤 메모')>=0&&(CONTI.S.services[0].word||{}).passage==='요한복음 3:16'", timeout=8000)
+    except Exception: fail('F91C 다시 연결된 보기 화면이 메모·말씀을 안 받음 (GET %s)' % pg.evaluate('JSON.stringify(__net)'))
+    pg.evaluate("sessionStorage.removeItem('failMe')")
+    print('F91C /me 가 실패해 오프라인으로 연 보기 화면도 다시 붙으면 메모·말씀 받음 ok %s' % pg.evaluate('JSON.stringify(__net)'))
+    c.close()
+
 # ---------------------------------------------------------------- G20 스스로 나간 사람
 def t_leave(b, errs):
     cl, L = new_page(b, errs, 'leader')
@@ -688,7 +762,7 @@ def t_leave(b, errs):
     print('G20 비활성 화면에서도 팀 만들기 ok')
     cl.close(); cm.close()
 
-TESTS = [('F25', t_push_off), ('F25R', t_push_relogin), ('SCORE', t_score), ('SCMODE', t_score_mode), ('CHORD', t_chords), ('CHORD2', t_chords_more), ('F90', t_ai_switch), ('F91', t_nav), ('F91B', t_nav_more), ('G20', t_leave)]
+TESTS = [('F25', t_push_off), ('F25R', t_push_relogin), ('SCORE', t_score), ('SCMODE', t_score_mode), ('CHORD', t_chords), ('CHORD2', t_chords_more), ('F90', t_ai_switch), ('F91', t_nav), ('F91B', t_nav_more), ('F91C', t_slow_boot), ('G20', t_leave)]
 
 def run():
     only = set(sys.argv[1:])
