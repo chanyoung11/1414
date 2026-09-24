@@ -7593,10 +7593,30 @@ function stgLayoutSlim(L){
   x:+(b.x||0).toFixed(4),y:+(b.y||0).toFixed(4),w:+(b.w||0).toFixed(4),h:+(b.h||0).toFixed(4)});
  return {v:2,screens:(L.screens||[]).map(sc=>({blocks:(sc.blocks||[]).map(slim)})),
   off:L.off&&L.off.length?L.off.map(o=>({s:o.s,b:slim(o.b)})):undefined}}   // 송폼 모드가 잠시 뺀 송폼 블록 (stageRender)
+// 업데이트 전 사본(conti-lay:<예배>~<기기> — 사람이 없다). 예전에는 켜져 있을 때만 600ms 뒤 서버에 한 번 보내고(실패해도 다시 안 보냄)
+// 오프라인에서 고친 조판은 여기에만 있었다. 무대를 처음 열 때 통째로 지우면 주일에 쓸 조판이 업데이트 한 번에 사라진다 →
+// 이 기기를 쓴 계정이 지금 사람 하나뿐이면(저장소 state:<사용자>:<팀> 이 모두 그 사람 것) 그 사람 사본으로 옮기고, 서버에 없으면
+// 올린 뒤에 지운다 (오프라인이거나 설정을 못 받았으면 다음에 열 때 다시). 여럿이 썼거나 로그아웃한 적이 있는(state:local:…)
+// 기기는 누구 것인지 모르니 전처럼 읽지 않고 치운다 (F97 — 다음 사람이 앞 사람 조판을 받던 것)
+async function stgAdoptLegacy(){
+ let olds=[];try{olds=Object.keys(localStorage).filter(k=>k.indexOf('conti-lay:')===0&&k.indexOf('@')<0)}catch(e){}
+ if(!olds.length)return;
+ const uid=(NET.user&&NET.user.id)||String(CUR_SCOPE).split(':')[1]||'';
+ let users;try{users=new Set((await IDB.tx('kv','readonly',st=>st.getAllKeys())).filter(k=>typeof k==='string'&&k.indexOf('state:')===0).map(k=>k.split(':')[1]))}
+ catch(e){return}   // 못 읽었으면 누구 것인지 모른다 — 지우지도 옮기지도 않고 다음에
+ const solo=!!uid&&uid!=='local'&&users.size===1&&users.has(uid);
+ for(const k of olds){const slot=k.slice(6);const drop=()=>{try{localStorage.removeItem(k)}catch(e){}};
+  let raw=null,v=null;try{raw=localStorage.getItem(k);v=JSON.parse(raw||'null')}catch(e){}
+  if(!solo||!v||!v.screens){drop();continue}
+  const lk=stgLocKey(slot);let cur=null;try{cur=localStorage.getItem(lk);if(cur==null){localStorage.setItem(lk,raw);cur=raw}}catch(e){continue}   // 못 옮겼으면 지우지 않는다
+  if(cur!==raw){drop();continue}   // 업데이트 뒤 이 기기에서 새로 고친 것이 있다 — 그것이 지금 조판이다
+  if(!online()||!NET.user||!PREFS.data)continue;   // 서버에 있는지 모른다 — 다음에 열 때 올리고 지운다
+  const srv=(PREFS.data.stage||{})[slot];if(srv&&srv.screens){drop();continue}   // 서버에 이미 있다 (그것이 먼저다 — stgLayoutLoad)
+  api('/me/prefs/stage/'+encodeURIComponent(slot),{method:'PUT',body:{value:v}})
+   .then(()=>{if(PREFS.data){PREFS.data.stage=PREFS.data.stage||{};if(!PREFS.data.stage[slot])PREFS.data.stage[slot]=v}drop()})
+   .catch(e=>{if(e&&e.status>=400&&e.status<500)drop()})}}   // 받지 않는 것(키·크기)은 다시 보내도 같다 — 기기 사본은 남았다
 function stgLayoutLoad(){
  const slot=stgLaySlot();
- // 누구 것인지 모르는 예전 사본(conti-lay:… 에 사용자가 없는 것)은 읽지 않고 치운다
- try{Object.keys(localStorage).forEach(k=>{if(k.indexOf('conti-lay:')===0&&k.indexOf('@')<0)localStorage.removeItem(k)})}catch(e){}
  const srv=((PREFS.data||{}).stage||{})[slot];
  if(srv&&srv.screens)return srv;
  try{const v=JSON.parse(localStorage.getItem(stgLocKey(slot))||'null');if(v&&v.screens)return v}catch(e){}
@@ -7881,6 +7901,7 @@ function stgBlockMenu(b,pos){
 async function stageOpen(svc,idx){
  // 서버에 둔 내 조판을 받아 온다. 약한 와이파이에서는 끝나지 않아 무대가 안 열렸다 — 잠깐만 기다리고 이 기기 것으로 연다
  await Promise.race([pullPrefs(),new Promise(r=>setTimeout(r,2000))]);
+ try{await stgAdoptLegacy()}catch(e){console.warn('stage legacy',e)}   // 업데이트 전 이 기기에만 있던 조판 (위)
  STG.svc=svc;STG.idx=idx||0;STG.screen=0;STG.open=false;STG.from=idx||0;
  const it=stgItem();STG.pref=stgLoad();
  STG.edit=false;STG.menu=null;STG.sel=[];
