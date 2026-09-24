@@ -7522,15 +7522,22 @@ function stgHydrate(autoL,saved,g){
    if(!s.ranges.some(r=>r[0]-1<=t.cut&&t.cut<r[1]-1))continue;
    const up=stgSubR(s.ranges,[[t.cut,Infinity]]),dn=stgSubR(s.ranges,[[-Infinity,t.cut]]);if(!dn.length)continue;
    const k=stgBlockAt(s,g,g.W,g.H),s0=k.nb.scale,hU=stgRH(up,s0),hL=stgRH(dn,s0),y0=k.nb.top;
-   const f=Math.max(0.5,Math.min(1,(Math.max((s.h||0)*g.H,hU+hL)-STRIP_H-2)/(hU+hL)));
+   // 틀이 그린 악보보다 길면(q>1 — 가로에서 만든 조판을 세로에서 열면 악보는 틀 폭대로 그려지고 밑이 빈다) 두 조각의
+   // 높이·자리도 틀 높이로 잰다. 그린 악보 높이로 적으면 틀이 좁아지지 않고 낮아지기만 해 가로세로 비율이 바뀌고,
+   // 저장한 캔버스로 돌아가면 stgBlockAt 이 악보를 그 낮은 틀에 맞춰 반 크기로 줄여 그렸다 (세로에서 편집을 켰다 끄기만 해도).
+   // 틀을 그린 악보 줄 비율대로 나누면 두 조각 틀도 원래 틀과 같은 비율이라 저장한 캔버스에서는 틀을 꽉 채운다.
+   // 이 캔버스에서는 원래 틀처럼 조각마다 악보 밑이 빈다 (q<1 이면 틀 = 줄여 그린 악보 높이라 q=1 — 전과 같다)
+   const FH=(s.h||0)*g.H,q=Math.max(1,FH/(hU+hL));
+   const f=Math.max(0.5,Math.min(1,(Math.max(FH,hU+hL)-STRIP_H-2)/((hU+hL)*q))),e=q*f;
    // 가로는 틀(x·w)로 적는다 — 이 캔버스에서 줄여 그린 폭을 적으면 저장한 캔버스에서 두 조각이 그만큼 작아졌다.
-   // 높이는 줄인 배율로 재므로 두 조각도 같은 비율로 줄여 그려져 이 화면에서는 보이는 폭 그대로다 (stgBlockAt)
+   // 높이는 줄인 배율로 재므로 두 조각도 같은 비율로 줄여 그려져 이 화면에서는 보이는 폭 그대로다 (stgBlockAt).
+   // 띠도 틀 폭으로 — 줄여 그린 폭(k.w)을 적으면 저장한 캔버스에서 띠만 두 조각보다 좁았다
    const fx=s.x!=null?s.x:k.left/g.W,fw=s.w!=null?s.w:k.w/g.W;
    const part=(rs,y,id)=>({...s,id,ranges:rs,height:stgRH(rs,s.scale),fixed:true,
-    x:fx+fw*(1-f)/2,w:fw*f,y:y/g.H,h:stgRH(rs,s0)*f/g.H});
+    x:fx+fw*(1-f)/2,w:fw*f,y:y/g.H,h:stgRH(rs,s0)*e/g.H});
    const out=up.length?[part(up,y0,s.id)]:[];
-   out.push({...t,x:k.left/g.W,y:(y0+hU*f)/g.H,w:k.w/g.W,h:STRIP_H/g.H,hidden:!!s.hidden},
-    part(dn,y0+hU*f+STRIP_H+2,up.length?stgRoot(s.id)+'#'+Math.round(t.cut):s.id));
+   out.push({...t,x:fx,y:(y0+hU*e)/g.H,w:fw,h:STRIP_H/g.H,hidden:!!s.hidden},
+    part(dn,y0+hU*e+STRIP_H+2,up.length?stgRoot(s.id)+'#'+Math.round(t.cut):s.id));
    sc.blocks.splice(sc.blocks.indexOf(s),1,...out);
    return true}
   return false};

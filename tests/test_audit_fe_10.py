@@ -16,6 +16,9 @@
 # 되짚기 2
 #   F96 편집 중 그릴 때마다 줄여 그린 폭을 조판에 적어, 편집을 켰다 끄기만 해도(편집 중 화면을 돌려도) 저장한
 #       캔버스(세로 화면·다른 아이패드)의 악보가 반 크기로 줄어 저장됨. 끌기·꼭짓점·±·자르기·붙이기·화면 안에 남기기는 보이는 상자로
+# 되짚기 3
+#   F96 저장한 조판에 없던 메모 띠를 다른 캔버스에서 끼우면 두 조각 틀을 그린 악보 높이로 적어, 가로 조판을 세로에서 열어
+#       편집을 켰다 끄기만 해도 가로로 돌아가면 두 조각이 반 크기로 줄어 그려짐 · 띠는 줄여 그린 폭으로 적혀 세로에서 좁음
 import os, sys, time, base64, json
 from playwright.sync_api import sync_playwright
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -399,6 +402,62 @@ def run():
     pg.set_viewport_size({'width': 1180, 'height': 820}); pg.wait_for_timeout(500)
     print('F96 되짚기 2 — 가로에서 끌기·꼭짓점·＋·끝으로 끌기·자르기·붙이기를 보이는 대로 재고, 세로 조판은 줄지 않음 ok')
     exit_stage(pg)
+
+    # ---- F96 되짚기 3 — 저장한 조판에 없던 메모 띠를 다른 캔버스에서 끼우고 편집을 켰다 끄면 ----
+    # 가로에서 만든 조판을 세로에서 열면 틀이 그린 악보보다 길다(악보 밑이 빈다). 띠를 끼우며 두 조각 틀을 그린 악보 높이로 적어
+    # 틀이 좁아지지 않고 낮아지기만 해, 세로에서 편집을 켰다 끄기만 해도 저장되고 가로로 돌아가면 두 조각이 반 크기(441px → 204px)로
+    # 줄어 그려졌다. 반대로 세로에서 만든 조판을 가로에서 열면(틀보다 악보가 길어 줄여 그린다) 띠만 줄여 그린 폭으로 적혀 세로에서 좁았다
+    si5 = new_service(pg, '띠 끼우기 예배')
+    add_song(pg, si5, '띠 곡', [SHEET])
+    pg.evaluate("""(si)=>{const p=CONTI.S.services[si].items[0].pieces[0];
+      p.markers=['A','B'].map((l,i)=>({id:'mk'+l,label:l,x:40,y:Math.round(p.h*(0.35+i*0.25)),cut:null}));CONTI.save()}""", si5)
+    publish(pg)
+    sid5 = pg.evaluate("(si)=>CONTI.S.services[si].id", si5)
+    # 그려진 악보 블록·띠 [왼쪽, 위, 폭, 높이] (위에서 아래 순서)
+    DRAWN = """()=>{const pg=document.querySelector('#stageWrap .stgpage');const pr=pg.getBoundingClientRect();
+     const r=e=>{const q=e.getBoundingClientRect();return [Math.round(q.left-pr.left),Math.round(q.top-pr.top),Math.round(q.width),Math.round(q.height)]};
+     const by=(a,b)=>a[1]-b[1];
+     return {sl:[...pg.querySelectorAll('.blk')].filter(e=>e.querySelector('.pslice')).map(r).sort(by),st:[...pg.querySelectorAll('.pstrip')].map(r).sort(by)}}"""
+    STRIPS5 = "(sid)=>{const L=((CONTI.PREFS.data||{}).stage||{})['lay:'+sid+'~tab-l'];return L?L.screens.flatMap(s=>s.blocks).filter(b=>b.type==='strip').length:-1}"
+    LAND, PORT = {'width': 1180, 'height': 820}, {'width': 820, 'height': 1180}
+    for home, other, mk, what in [(LAND, PORT, 'mkA', '가로 조판을 세로에서'), (PORT, LAND, 'mkB', '세로 조판을 가로에서')]:
+        pg.set_viewport_size(home); open_stage(pg, sid5)
+        edit(); pg.click('[data-stg="auto"]'); pg.wait_for_timeout(700)
+        pg.evaluate("(()=>{const S=CONTI.STG;S.sel=[S.layout.screens[0].blocks.find(b=>b.type==='head').id]})()")
+        pg.keyboard.press('ArrowRight'); pg.wait_for_timeout(500)
+        edit()
+        n0, d0 = pg.evaluate(STRIPS5, sid5), pg.evaluate(DRAWN)
+        exit_stage(pg)
+        # 조판을 저장한 뒤에 메모가 생긴다 (인도자가 단 메모 등) — 저장한 조판에 없는 띠
+        pg.evaluate("""([si,mk,id])=>{const it=CONTI.S.services[si].items[0];
+          it.notes=(it.notes||[]).concat([{id,marker:mk,layer:'leader',session:null,text:mk+' 여기서',author:'하은',at:Date.now()}]);CONTI.save()}""",
+                    [si5, mk, 'n96' + mk + tag])
+        pg.set_viewport_size(other); open_stage(pg, sid5)
+        # 끼운 띠는 이 캔버스에서 제 줄 바로 위에 선다
+        r = pg.evaluate(PLACE); ins = [s for s in r['strips'] if s['label'] == mk[-1]]
+        if len(ins) != 1 or mk + ' 여기서' not in ins[0]['texts'] or ins[0]['gap'] is None or not -2 <= ins[0]['gap'] <= 6:
+            fail('F96 %s 열어 끼운 띠가 제 줄 위에 없음 %s' % (what, r))
+        edit(); edit()
+        if pg.evaluate(STRIPS5, sid5) != n0 + 1: fail('F96 준비: %s 끼운 띠가 조판에 저장되지 않음 (%s → %s)' % (what, n0, pg.evaluate(STRIPS5, sid5)))
+        exit_stage(pg)
+        pg.set_viewport_size(home)
+        pg.goto(URL); pg.wait_for_selector('.shell[data-page]', timeout=15000); pg.wait_for_timeout(1500)   # 새로고침 — 저장본으로
+        open_stage(pg, sid5)
+        d1 = pg.evaluate(DRAWN)
+        if len(d1['sl']) != len(d0['sl']) + 1 or len(d1['st']) != len(d0['st']) + 1: fail('F96 준비: %s 끼운 띠가 조판에 없음 %s → %s' % (what, d0, d1))
+        w0 = min(s[2] for s in d0['sl'])
+        if any(s[2] < w0 * 0.9 for s in d1['sl']): fail('F96 %s 띠를 끼우고 편집을 켰다 끈 뒤 돌아오니 악보가 작아짐 (%dpx) %s → %s' % (what, w0, d0['sl'], d1['sl']))
+        if any(t[2] < min(s[2] for s in d1['sl']) - 2 for t in d1['st']): fail('F96 %s 끼운 띠가 악보보다 좁음 %s / %s' % (what, d1['st'], d1['sl']))
+        for (i_, w_, fw_, h_, fh_) in pg.evaluate(FIT):
+            if abs(w_ - fw_) > 2 or abs(h_ - fh_) > 2: fail('F96 %s 끼운 뒤 저장한 캔버스에서 악보 %s 가 틀과 다름 (그린 %dx%d · 틀 %dx%d)' % (what, i_, w_, h_, fw_, fh_))
+        # 띠는 위 조각 악보를 덮지 않고, 두 조각은 원래 틀 안에 든다
+        for t in d1['st']:
+            above = [s for s in d1['sl'] if s[1] < t[1]]
+            if above and max(s[1] + s[3] for s in above) > t[1] + 2: fail('F96 %s 띠가 위 조각 악보를 덮음 %s / %s' % (what, d1['st'], d1['sl']))
+        if max(s[1] + s[3] for s in d1['sl']) > max(s[1] + s[3] for s in d0['sl']) + 2: fail('F96 %s 두 조각이 원래 틀 밑으로 넘침 %s → %s' % (what, d0['sl'], d1['sl']))
+        if pg.evaluate(COV): fail('F96 %s 띠를 끼운 뒤 줄이 빠지거나 두 번 나옴 %s' % (what, pg.evaluate(COV)))
+        print('F96 되짚기 3 — %s 띠를 끼우고 편집을 켰다 끈 뒤 돌아와도 악보 %s → %s px · 띠 %s ok' % (what, [s[2] for s in d0['sl']], [s[2] for s in d1['sl']], [t[2] for t in d1['st']]))
+        exit_stage(pg)
 
     # ---- G35 같은 곡 두 번 ----
     si3 = new_service(pg, '반복 곡 예배')
