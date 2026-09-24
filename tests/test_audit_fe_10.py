@@ -13,6 +13,9 @@
 #   F28 인도자 추천 조판(띠 포함)을 메모가 다른 멤버가 열면 띠를 번호로 찾아 A 메모가 B 줄 위에 섬
 #   F96 모든 블록 범위를 고정하니 화면비가 다른 캔버스에서 악보가 틀보다 길어져 화면 아래로 잘림
 #   F93 연습 화면을 떠나면 패널은 닫히는데 메트로놈은 멈출 단추 없이 계속 울림
+# 되짚기 2
+#   F96 편집 중 그릴 때마다 줄여 그린 폭을 조판에 적어, 편집을 켰다 끄기만 해도(편집 중 화면을 돌려도) 저장한
+#       캔버스(세로 화면·다른 아이패드)의 악보가 반 크기로 줄어 저장됨. 끌기·꼭짓점·±·자르기·붙이기·화면 안에 남기기는 보이는 상자로
 import os, sys, time, base64, json
 from playwright.sync_api import sync_playwright
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -74,6 +77,7 @@ COV = """()=>{const S=CONTI.STG;const scr=S.layout?S.layout.screens:S.lay.screen
  return out}"""
 IDS = "(()=>{const S=CONTI.STG;return (S.layout?S.layout.screens:S.lay.screens).flatMap(s=>s.blocks.map(b=>b.id))})()"
 POS = "(id)=>{for(const s of CONTI.STG.layout.screens)for(const b of s.blocks)if(b.id===id)return [b.x,b.y];return null}"
+FRAMES = "(()=>JSON.stringify(CONTI.STG.layout.screens.map(s=>s.blocks.map(b=>[b.id,+(+b.x).toFixed(4),+(+b.y).toFixed(4),+(+b.w).toFixed(4),+(+b.h).toFixed(4)]))))()"
 # 화면에서 캔버스 아래로 넘친 블록 (.stgpage 는 넘치는 것을 잘라, 잘린 줄은 어느 화면에도 안 나온다)
 CLIP = """()=>{const pg=document.querySelector('#stageWrap .stgpage');const pr=pg.getBoundingClientRect();const out=[];
  pg.querySelectorAll('.blk').forEach(e=>{const r=e.getBoundingClientRect();const ov=Math.round(r.bottom-pr.bottom);
@@ -264,16 +268,13 @@ def run():
     pg.set_viewport_size({'width': 1180, 'height': 820}); pg.wait_for_timeout(600)
     if pg.evaluate(COV): fail('F96 예전 저장본 복원 뒤 크기를 바꾸니 어긋남: %s' % pg.evaluate(COV))
     print('F96 자른 블록이 있어도 캔버스 크기·바·예전 저장본에서 줄이 빠지거나 겹치지 않음 ok')
-    # 되짚기 — 편집 중에도 잘리지 않고, 보이는 폭이 조판에 적힌 폭이다 (끌기·크기 조절이 이 폭으로 잰다)
+    # 되짚기 — 편집 중에도 잘리지 않는다. 줄여 그린 폭은 그릴 때만 쓰고 조판(틀)에는 적지 않는다 (되짚기 2)
     pg.set_viewport_size({'width': 1180, 'height': 700}); pg.wait_for_timeout(600)
+    fr0 = pg.evaluate(FRAMES)
     pg.click('[data-stg="edit"]'); pg.wait_for_timeout(600)
     cl = clipped(pg)
     if cl: fail('F96 편집 중 악보가 화면 아래로 잘림: %s' % cl)
-    bad = pg.evaluate("""()=>{const S=CONTI.STG;const W=document.querySelector('#stageWrap .stgpage').offsetWidth;const out=[];
-      S.layout.screens[S.screen].blocks.forEach(b=>{if(b.type!=='slice'||b.hidden)return;
-       const e=document.querySelector('.sblk[data-sid="'+CSS.escape(b.id)+'"]');
-       if(e&&Math.abs(e.offsetWidth-b.w*W)>1.5)out.push([b.id,e.offsetWidth,Math.round(b.w*W)])});return out}""")
-    if bad: fail('F96 편집 중 그린 폭과 조판에 적힌 폭이 다름 %s' % bad)
+    if pg.evaluate(FRAMES) != fr0: fail('F96 편집을 켜기만 했는데 조판의 틀이 바뀜\n%s\n%s' % (fr0, pg.evaluate(FRAMES)))
     pg.click('[data-stg="edit"]'); pg.wait_for_timeout(600)
     exit_stage(pg)
     # 같은 기기 종류(tab-l)의 화면비가 다른 기기 — 1366x1024 에서 조금 옮겨 저장한 조판을 1180x820 에서 연다
@@ -291,6 +292,112 @@ def run():
         if pg.evaluate(COV): fail('F96 1366x1024 조판을 %dx%d 에서 여니 줄이 빠지거나 두 번 나옴: %s' % (w, h, pg.evaluate(COV)))
     pg.set_viewport_size({'width': 1180, 'height': 820}); pg.wait_for_timeout(500)
     print('F96 되짚기 — 화면비가 다른 캔버스·다른 기기·편집 중에도 악보가 화면 아래로 잘리지 않음 ok')
+    exit_stage(pg)
+
+    # ---- F96 되짚기 2 — 줄여 그린 폭(보이기만 하는 것)이 조판에 적혀 저장한 캔버스로 돌아가도 작아진 채 남음 ----
+    # 같은 아이패드의 세로·가로는 같은 기기 종류(tab-l) 조판을 쓴다. 세로에서 만든 조판을 가로에서 열면 악보를 줄여 그린다
+    SAVED = "(sid)=>JSON.stringify(((CONTI.PREFS.data||{}).stage||{})['lay:'+sid+'~tab-l']||null)"
+    GEOM = """()=>{const pg=document.querySelector('#stageWrap .stgpage');const pr=pg.getBoundingClientRect();
+     return [...pg.querySelectorAll('.blk')].map(e=>{const r=e.getBoundingClientRect();
+      return [Math.round(r.left-pr.left),Math.round(r.top-pr.top),Math.round(r.width),Math.round(r.height)]})}"""
+    # 악보 블록마다 [이름표, 그린 폭, 틀 폭, 그린 높이, 틀 높이] (css px, 화면에 그린 순서 그대로)
+    FIT = """()=>{const S=CONTI.STG;const sc=S.layout.screens[S.screen];const pg=document.querySelector('#stageWrap .stgpage');
+     const W=pg.offsetWidth,H=pg.offsetHeight,els=[...pg.children];
+     return sc.blocks.filter(b=>!b.hidden).map((b,i)=>{if(b.type!=='slice')return null;const e=els[i].querySelector('.blk')||els[i];
+      return [b.id,e.offsetWidth,b.w*W,e.offsetHeight,b.h*H]}).filter(Boolean)}"""
+    FR = "(id)=>{for(const s of CONTI.STG.layout.screens)for(const b of s.blocks)if(b.id===id)return [b.x,b.y,b.w,b.h];return null}"
+    BOX = "(id)=>{const e=document.querySelector('.sblk[data-sid=\"'+CSS.escape(id)+'\"]');return e?[e.offsetLeft,e.offsetTop,e.offsetWidth,e.offsetHeight]:null}"
+    SLICES = "(()=>{const S=CONTI.STG;return S.layout.screens[S.screen].blocks.filter(b=>b.type==='slice'&&!b.hidden).map(b=>b.id)})()"
+    def edit(): pg.click('[data-stg="edit"]'); pg.wait_for_timeout(700)
+    def sblk(i): return '.sblk[data-sid="%s"]' % i
+    def calm(): pg.evaluate("CONTI.STG.sel=[];CONTI.STG.menu=null;window.dispatchEvent(new Event('resize'))"); pg.wait_for_timeout(450)
+    def drag(sel, dx, dy, ox=None, oy=None, mid=None):
+        bb = pg.locator(sel).bounding_box()
+        sx = bb['x'] + (bb['width'] / 2 if ox is None else ox); sy = bb['y'] + (bb['height'] / 2 if oy is None else oy)
+        pg.mouse.move(sx, sy); pg.mouse.down(); pg.mouse.move(sx + dx / 2, sy + dy / 2, steps=5)
+        r = mid() if mid else None
+        pg.mouse.move(sx + dx, sy + dy, steps=5); pg.mouse.up(); pg.wait_for_timeout(500); calm()
+        return r
+    def near(a, b, t): return all(abs(x - y) <= t for x, y in zip(a, b)) and len(a) == len(b)
+    pg.set_viewport_size({'width': 820, 'height': 1180}); open_stage(pg, sid2)
+    edit(); pg.click('[data-stg="auto"]'); pg.wait_for_timeout(700)
+    pg.evaluate("(()=>{const S=CONTI.STG;S.sel=[S.layout.screens[0].blocks.find(b=>b.type==='head').id]})()")
+    pg.keyboard.press('ArrowRight'); pg.wait_for_timeout(500)
+    edit()
+    L0 = pg.evaluate(SAVED, sid2); P0 = pg.evaluate(GEOM)
+    if L0 == 'null': fail('F96 준비: 세로 조판이 저장되지 않음')
+    pg.set_viewport_size({'width': 1180, 'height': 820}); pg.wait_for_timeout(700)
+    if not any(w < fw - 20 for _, w, fw, _, _ in pg.evaluate(FIT)): fail('F96 준비: 가로에서 세로 조판 악보를 줄여 그리지 않음 %s' % pg.evaluate(FIT))
+    edit(); edit()
+    if pg.evaluate(SAVED, sid2) != L0: fail('F96 가로에서 편집을 켰다 끄기만 했는데 세로에서 만든 조판이 바뀜\n%s\n%s' % (L0, pg.evaluate(SAVED, sid2)))
+    edit()
+    pg.set_viewport_size({'width': 820, 'height': 1180}); pg.wait_for_timeout(700)
+    pg.set_viewport_size({'width': 1180, 'height': 820}); pg.wait_for_timeout(700)
+    edit()
+    if pg.evaluate(SAVED, sid2) != L0: fail('F96 편집 중 화면을 돌렸다 돌아와 끄니 조판이 바뀜\n%s\n%s' % (L0, pg.evaluate(SAVED, sid2)))
+    pg.set_viewport_size({'width': 820, 'height': 1180}); pg.wait_for_timeout(700)
+    P1 = pg.evaluate(GEOM)
+    if not all(near(a, b, 1) for a, b in zip(P0, P1)) or len(P0) != len(P1): fail('F96 가로에서 편집만 켰다 끈 뒤 세로 악보 크기가 바뀜 %s → %s' % (P0, P1))
+    print('F96 되짚기 2 — 가로에서 편집을 켰다 끄거나 편집 중 돌려도 세로 조판·악보 크기 그대로 ok')
+
+    # 가로에서 줄여 그린 악보를 고친다 — 편집은 보이는 상자로 재고, 조판에는 틀을 옮기거나 같은 배율로 키운 것만
+    pg.set_viewport_size({'width': 1180, 'height': 820}); pg.wait_for_timeout(700); edit()
+    bid = pg.evaluate(SLICES)[0]
+    b0, f0 = pg.evaluate(BOX, bid), pg.evaluate(FR, bid)
+    m = drag(sblk(bid), 60, 20, mid=lambda: pg.evaluate(BOX, bid))
+    if abs(m[2] - b0[2]) > 1.5: fail('F96 줄여 그린 악보를 잡자마자 폭이 바뀜 %s → %s' % (b0, m))
+    b1, f1 = pg.evaluate(BOX, bid), pg.evaluate(FR, bid)
+    if abs(f1[2] - f0[2]) > 1e-4 or abs(f1[3] - f0[3]) > 1e-4: fail('F96 옮기기만 했는데 틀 크기가 바뀜 %s → %s' % (f0, f1))
+    if f1[0] <= f0[0] or abs(b1[2] - b0[2]) > 1.5: fail('F96 옮긴 자리·폭이 이상함 %s → %s / %s → %s' % (f0, f1, b0, b1))
+    # 꼭짓점: 잡은 꼭짓점의 맞은편(보이는 왼쪽 위)이 제자리에 있고, 틀은 가로세로 같은 배율로
+    pg.evaluate("(id)=>{CONTI.STG.sel=[id];window.dispatchEvent(new Event('resize'))}", bid); pg.wait_for_timeout(450)
+    b2, f2 = pg.evaluate(BOX, bid), pg.evaluate(FR, bid)
+    drag(sblk(bid) + ' .sgrip[data-c="se"]', -40, -40)
+    b3, f3 = pg.evaluate(BOX, bid), pg.evaluate(FR, bid)
+    if abs(b3[0] - b2[0]) > 1.5 or abs(b3[1] - b2[1]) > 1.5: fail('F96 꼭짓점으로 줄이니 보이는 왼쪽 위가 움직임 %s → %s' % (b2, b3))
+    if not b3[2] < b2[2] - 10: fail('F96 꼭짓점으로 줄여지지 않음 %s → %s' % (b2, b3))
+    if abs(f3[3] / f3[2] - f2[3] / f2[2]) > 0.002: fail('F96 꼭짓점 크기 조절이 틀 비율을 바꿈 %s → %s' % (f2, f3))
+    # ＋: 보이는 왼쪽 끝은 그대로, 틀은 같은 배율로
+    pg.evaluate("(id)=>{CONTI.STG.sel=[id];CONTI.STG.menu=id;window.dispatchEvent(new Event('resize'))}", bid); pg.wait_for_timeout(450)
+    b4 = pg.evaluate(BOX, bid)
+    pg.click('.sblkmenu [data-sm="big"]'); pg.wait_for_timeout(450)
+    b5, f5 = pg.evaluate(BOX, bid), pg.evaluate(FR, bid)
+    if abs(b5[0] - b4[0]) > 1.5 or not b5[2] > b4[2] * 1.05: fail('F96 ＋ 가 보이는 왼쪽 끝을 옮기거나 안 커짐 %s → %s' % (b4, b5))
+    if abs(f5[3] / f5[2] - f2[3] / f2[2]) > 0.002: fail('F96 ＋ 가 틀 비율을 바꿈 %s → %s' % (f2, f5))
+    calm()
+    # 화면 오른쪽 끝으로 끌어도 보이는 악보가 STG_KEEP(28px) 은 남는다 (틀로 재면 틀의 빈 옆자리만 남았다)
+    pr, bb = pg.locator('#stageWrap .stgpage').bounding_box(), pg.locator(sblk(bid)).bounding_box()
+    drag(sblk(bid), pr['x'] + pr['width'] - 8 - (bb['x'] + 10), 0, ox=10)
+    b6, Wc = pg.evaluate(BOX, bid), pg.evaluate("document.querySelector('#stageWrap .stgpage').offsetWidth")
+    if b6 is None: fail('F96 오른쪽 끝으로 끈 악보가 다른 화면으로 감')
+    if b6[0] > Wc - 28 + 1: fail('F96 오른쪽 끝으로 끈 악보가 화면 안에 %dpx 만 남음' % (Wc - b6[0]))
+    bb = pg.locator(sblk(bid)).bounding_box()
+    drag(sblk(bid), pr['x'] + 20 - bb['x'], 0, ox=10)
+    # 자른 두 조각을 나란히 (보이는 틈 20px) 두면 붙지 않고, 겹치면 붙는다
+    pg.evaluate("(id)=>{CONTI.STG.menu=id;window.dispatchEvent(new Event('resize'))}", bid); pg.wait_for_timeout(450)
+    pg.click('.sblkmenu [data-sm="cut"]'); pg.wait_for_timeout(600); calm()
+    pcs = pg.evaluate(SLICES)
+    if len(pcs) != 2: fail('F96 준비: 가로에서 자르기가 안 됨 %s' % pcs)
+    a1, a2 = pg.locator(sblk(pcs[0])).bounding_box(), pg.locator(sblk(pcs[1])).bounding_box()
+    drag(sblk(pcs[1]), a1['x'] + a1['width'] + 20 - a2['x'], a1['y'] - a2['y'], oy=30)
+    if len(pg.evaluate(SLICES)) != 2: fail('F96 나란히 둔 두 조각이 (보이는 틈이 있는데) 붙어 버림')
+    c1, c2 = pg.evaluate(BOX, pcs[0]), pg.evaluate(BOX, pcs[1])
+    if c2[0] - (c1[0] + c1[2]) < 10: fail('F96 준비: 두 조각이 나란히 놓이지 않음 %s %s' % (c1, c2))
+    a1, a2 = pg.locator(sblk(pcs[0])).bounding_box(), pg.locator(sblk(pcs[1])).bounding_box()
+    drag(sblk(pcs[1]), a1['x'] + 10 - a2['x'], a1['y'] + a1['height'] - 10 - a2['y'], oy=30)
+    if len(pg.evaluate(SLICES)) != 1: fail('F96 겹쳐 놓은 두 조각이 붙지 않음 %s' % pg.evaluate(SLICES))
+    if pg.evaluate(COV): fail('F96 가로에서 자르고 붙인 뒤 줄이 빠지거나 두 번 나옴 %s' % pg.evaluate(COV))
+    edit()
+    # 세로로 돌아오면 가로에서 고친 악보도 틀을 꽉 채운다 (줄인 폭을 적었으면 좁고 밑이 빈다)
+    pg.set_viewport_size({'width': 820, 'height': 1180}); pg.wait_for_timeout(700)
+    for s_ in range(pg.evaluate("CONTI.STG.nscreens||1")):
+        pg.evaluate("(s)=>{CONTI.STG.screen=s;window.dispatchEvent(new Event('resize'))}", s_); pg.wait_for_timeout(350)
+        for (i_, w_, fw_, h_, fh_) in pg.evaluate(FIT):
+            if abs(w_ - fw_) > 2 or abs(h_ - fh_) > 2: fail('F96 세로에서 악보 %s 가 틀보다 작음 (그린 %dx%d · 틀 %dx%d)' % (i_, w_, h_, fw_, fh_))
+    pg.evaluate("CONTI.STG.screen=0;window.dispatchEvent(new Event('resize'))"); pg.wait_for_timeout(350)
+    if pg.evaluate(COV): fail('F96 세로로 돌아오니 줄이 빠지거나 두 번 나옴 %s' % pg.evaluate(COV))
+    pg.set_viewport_size({'width': 1180, 'height': 820}); pg.wait_for_timeout(500)
+    print('F96 되짚기 2 — 가로에서 끌기·꼭짓점·＋·끝으로 끌기·자르기·붙이기를 보이는 대로 재고, 세로 조판은 줄지 않음 ok')
     exit_stage(pg)
 
     # ---- G35 같은 곡 두 번 ----

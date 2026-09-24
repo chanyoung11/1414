@@ -7495,8 +7495,11 @@ function stgHydrate(autoL,saved,g){
    const up=stgSubR(s.ranges,[[t.cut,Infinity]]),dn=stgSubR(s.ranges,[[-Infinity,t.cut]]);if(!dn.length)continue;
    const k=stgBlockAt(s,g,g.W,g.H),s0=k.nb.scale,hU=stgRH(up,s0),hL=stgRH(dn,s0),y0=k.nb.top;
    const f=Math.max(0.5,Math.min(1,(Math.max((s.h||0)*g.H,hU+hL)-STRIP_H-2)/(hU+hL)));
+   // 가로는 틀(x·w)로 적는다 — 이 캔버스에서 줄여 그린 폭을 적으면 저장한 캔버스에서 두 조각이 그만큼 작아졌다.
+   // 높이는 줄인 배율로 재므로 두 조각도 같은 비율로 줄여 그려져 이 화면에서는 보이는 폭 그대로다 (stgBlockAt)
+   const fx=s.x!=null?s.x:k.left/g.W,fw=s.w!=null?s.w:k.w/g.W;
    const part=(rs,y,id)=>({...s,id,ranges:rs,height:stgRH(rs,s.scale),fixed:true,
-    x:(k.left+k.w*(1-f)/2)/g.W,w:k.w*f/g.W,y:y/g.H,h:stgRH(rs,s0)*f/g.H});
+    x:fx+fw*(1-f)/2,w:fw*f,y:y/g.H,h:stgRH(rs,s0)*f/g.H});
    const out=up.length?[part(up,y0,s.id)]:[];
    out.push({...t,x:k.left/g.W,y:(y0+hU*f)/g.H,w:k.w/g.W,h:STRIP_H/g.H,hidden:!!s.hidden},
     part(dn,y0+hU*f+STRIP_H+2,up.length?stgRoot(s.id)+'#'+Math.round(t.cut):s.id));
@@ -7532,6 +7535,10 @@ function stgBlockAt(b,lay,W,H){
  const nb={...b,col:0,top:b.y!=null?b.y*H:b.top};
  if(b.type==='slice'){nb.scale=b.scale*r;nb.height=b.height*r}
  return {nb,w,left,nat}}
+// 화면에 보이는 가로 자리·폭 (캔버스 폭에 대한 비율). 줄여 그린 악보는 저장한 틀보다 좁다 (위).
+// 편집(끌기·꼭짓점·붙이기·화면 안에 남기기)은 이 상자로 재고, 조판에는 틀을 옮기거나 같은 배율로 키운 것만 적는다 —
+// 줄인 폭을 조판에 적으면 저장한 캔버스(세로 화면·다른 아이패드)로 돌아가도 그만큼 작은 채로 남는다
+function stgVis(b,W,H){const k=stgBlockAt(b,STG.lay||{cw:W},W,H);return {x:k.left/W,w:k.w/W}}
 // 격자 12×8 에 맞춘다
 // 자유 배치. 격자에 붙이지 않고 소수점만 정리한다 (PPT 처럼 아무 자리에나)
 const stgSnapX=x=>Math.round(x*1e4)/1e4, stgSnapY=y=>Math.round(y*1e4)/1e4;
@@ -7662,14 +7669,15 @@ function stgEditBind(host,W,H,k){
   const group=STG.sel.map(x=>L.blocks.find(y=>y.id===x)).filter(g=>g&&!g.hidden);
   if(!group.includes(b))group.push(b);
   st={b,el,rs,x0:e.clientX,y0:e.clientY,moved:false,
-      grab:group.map(g=>{const e2=elOf(g);
-       return {g,x:g.x,y:g.y,w:g.w,h:g.h,el:e2,inner:e2&&e2.querySelector('.blk,.pstrip'),
-        hp:e2?e2.offsetHeight:(g.h||0)*H}})};
+      grab:group.map(g=>{const e2=elOf(g),v=stgVis(g,W,H);
+       return {g,x:g.x,y:g.y,w:g.w,h:g.h,vx:v.x,vw:v.w,el:e2,inner:e2&&e2.querySelector('.blk,.pstrip'),
+        hp:e2?e2.offsetHeight:(g.h||0)*H,wp:v.w*W}})};
   if(rs){
    // 여러 개를 고른 채 꼭짓점을 끌면 묶음 전체의 테두리 상자를 기준으로 모두 같은 배율로
-   // 커지고 줄어든다 (옮길 때 묶음째 가는 것과 같다). 잡은 꼭짓점의 맞은편 꼭짓점이 제자리에 있다
-   const x0=Math.min(...st.grab.map(o=>o.x)),y0=Math.min(...st.grab.map(o=>o.y));
-   const x1=Math.max(...st.grab.map(o=>o.x+o.w)),y1=Math.max(...st.grab.map(o=>o.y+o.hp/H));
+   // 커지고 줄어든다 (옮길 때 묶음째 가는 것과 같다). 잡은 꼭짓점의 맞은편 꼭짓점이 제자리에 있다.
+   // 상자는 보이는 대로 잰다(stgVis) — 틀째 같은 배율로 키우면 틀 가운데에 그린 악보도 이 점을 두고 같이 커진다
+   const x0=Math.min(...st.grab.map(o=>o.vx)),y0=Math.min(...st.grab.map(o=>o.y));
+   const x1=Math.max(...st.grab.map(o=>o.vx+o.vw)),y1=Math.max(...st.grab.map(o=>o.y+o.hp/H));
    st.ax=rs.includes('w')?x1:x0;st.ay=rs.includes('n')?y1:y0;
    st.sx=rs.includes('w')?-1:1;st.sy=rs.includes('n')?-1:1;
    st.gw=Math.max(1,(x1-x0)*W);st.gh=Math.max(1,(y1-y0)*H);
@@ -7692,7 +7700,7 @@ function stgEditBind(host,W,H,k){
     if(g.type==='slice'&&o.h)g.h=o.h*f;
     // 끄는 동안 악보도 같이 커지고 줄어든다 (놓은 뒤에야 바뀌던 것).
     // 안쪽은 처음 폭으로 묶어 두고 배율만 바꾼다 (글자가 다시 흐르지 않게)
-    const wp=o.w*W;
+    const wp=o.wp;   // 그려진 폭 (줄여 그린 악보는 틀 폭보다 좁다)
     if(o.inner&&wp){o.inner.style.setProperty('width',wp+'px','important');
      o.inner.style.transformOrigin='top left';o.inner.style.transform='scale('+f+')'}
     if(o.el){stgPaintBlock(o.el,g,W,H);o.el.style.height=(o.hp*f)+'px'}})}   // 테두리도 같이 줄고 는다
@@ -7706,8 +7714,9 @@ function stgEditBind(host,W,H,k){
    stgKeepIn(grab.map(o=>o.g),W,H,page);stgLayoutSave();stageRender();return}
   // 캔버스 밖으로 통째로 끌어내면 옆 화면으로 (하나만 끌 때)
   if(grab.length===1){
-   if(b.x>1.02){stgMoveScreen(b.id,1);return}
-   if(b.x+b.w<-0.02){stgMoveScreen(b.id,-1);return}}
+   const v=stgVis(b,W,H);   // 보이는 블록이 통째로 나갔는지 (틀은 줄여 그린 악보보다 넓을 수 있다)
+   if(v.x>1.02){stgMoveScreen(b.id,1);return}
+   if(v.x+v.w<-0.02){stgMoveScreen(b.id,-1);return}}
   stgKeepIn(grab.map(o=>o.g),W,H,page);
   if(grab.length===1&&b.type==='slice')stgTryMerge(cur(),b);
   stgLayoutSave();stageRender()};
@@ -7720,17 +7729,21 @@ function stgKeepIn(gs,W,H,page){
  const hs=gs.map(b=>{if(b.type==='slice'&&b.h)return b.h;
   const el=page&&page.querySelector('[data-sid="'+CSS.escape(b.id)+'"]');
   return el?el.offsetHeight/H:(b.h||0.05)});
+ // 가로는 보이는 상자로 잰다 — 줄여 그린 악보는 틀 가운데에 좁게 있어, 틀로 재면 틀의 빈 옆자리만 남고
+ // 악보는 화면 밖으로 나가 다시 잡을 수 없었다. 옮길 때는 틀째 (d = 틀 왼쪽에서 보이는 왼쪽까지)
+ const vs=gs.map(b=>{const v=stgVis(b,W,H);return {d:v.x-(b.x||0),w:v.w}});
  const fit=(pos,size,M,set)=>{
   const rng=gs.map((b,i)=>{const s=size(b,i),m=Math.min(M,s);return [m-s,1-m]});
   let lo=-Infinity,hi=Infinity;
-  gs.forEach((b,i)=>{lo=Math.max(lo,rng[i][0]-pos(b));hi=Math.min(hi,rng[i][1]-pos(b))});
-  if(lo<=hi){const d=Math.max(lo,Math.min(hi,0));gs.forEach(b=>set(b,pos(b)+d))}
-  else gs.forEach((b,i)=>set(b,Math.max(rng[i][0],Math.min(rng[i][1],pos(b)))))};   // 묶음이 너무 크면 하나씩
- fit(b=>b.x,b=>b.w,STG_KEEP/W,(b,v)=>{b.x=stgSnapX(v)});
+  gs.forEach((b,i)=>{lo=Math.max(lo,rng[i][0]-pos(b,i));hi=Math.min(hi,rng[i][1]-pos(b,i))});
+  if(lo<=hi){const d=Math.max(lo,Math.min(hi,0));gs.forEach((b,i)=>set(b,pos(b,i)+d,i))}
+  else gs.forEach((b,i)=>set(b,Math.max(rng[i][0],Math.min(rng[i][1],pos(b,i))),i))};   // 묶음이 너무 크면 하나씩
+ fit((b,i)=>(b.x||0)+vs[i].d,(b,i)=>vs[i].w,STG_KEEP/W,(b,v,i)=>{b.x=stgSnapX(v-vs[i].d)});
  fit(b=>b.y,(b,i)=>hs[i],STG_KEEP/H,(b,v)=>{b.y=stgSnapY(v)})}
 
-function stgPaintBlock(el,b,W,H){
- el.style.left=(b.x*W)+'px';el.style.top=(b.y*H)+'px';el.style.width=(b.w*W)+'px'}
+// 끄는 동안에도 그릴 때(stageRender)와 같은 상자로 — 틀 폭으로 칠하면 줄여 그린 악보가 잡자마자 틀만큼 넓어졌다
+function stgPaintBlock(el,b,W,H){const v=stgVis(b,W,H);
+ el.style.left=(v.x*W)+'px';el.style.top=(b.y*H)+'px';el.style.width=(v.w*W)+'px'}
 
 /* ---------- 편집 단축키 (기획 §3 — PPT 처럼) ---------- */
 const stgSelBlocks=()=>{const L=STG.layout&&STG.layout.screens[STG.screen];if(!L)return [];
@@ -7808,7 +7821,9 @@ function stgCut(bid){
 function stgTryMerge(L,b){
  const mates=L.blocks.filter(o=>o!==b&&o.type==='slice'&&stgRoot(o.id)===stgRoot(b.id));
  for(const o of mates){
-  const over=!(b.x+b.w<o.x||o.x+o.w<b.x||b.y+(b.h||0)<o.y||o.y+(o.h||0)<b.y);
+  // 보이는 상자끼리 겹쳐야 붙는다 — 틀은 줄여 그린 악보보다 넓어, 틀로 재면 나란히 둔 두 조각이 붙어 버렸다
+  const vb=stgVis(b,stgCanvasW(),stgCanvasH()),vo=stgVis(o,stgCanvasW(),stgCanvasH());
+  const over=!(vb.x+vb.w<vo.x||vo.x+vo.w<vb.x||b.y+(b.h||0)<o.y||o.y+(o.h||0)<b.y);
   if(!over)continue;
   const endB=b.ranges[b.ranges.length-1][1], startO=o.ranges[0][0];
   const endO=o.ranges[o.ranges.length-1][1], startB=b.ranges[0][0];
@@ -7921,10 +7936,9 @@ function stageRender(){
    while(screens.length<=o.s)screens.push({blocks:[]});screens[o.s].blocks.push(o.b)});
   screens.forEach((sc,s)=>{sc.blocks=sc.blocks.filter(b=>{if(!isOff(b))return true;off.push({s,b});return false})});
   STG.layout=stgHydrate(autoL,{screens},{W,H,cw:auto.cw})||(off.length||STG.edit?{screens:screens.length?screens.map(()=>({blocks:[]})):[{blocks:[]}]}:null);
-  if(STG.layout)STG.layout.off=off;
-  // 편집 중에는 틀에 맞춰 줄여 그린 폭(stgBlockAt)을 조판에 적어 둔다 — 끌기·크기·자르기가 보이는 크기로 잰다
-  if(STG.layout&&STG.edit)STG.layout.screens.forEach(sc=>sc.blocks.forEach(b=>{if(b.type!=='slice'||b.w==null)return;
-   const k=stgBlockAt(b,auto,W,H);if(k.w<b.w*W-0.5){b.x=k.left/W;b.w=k.w/W}}))}
+  if(STG.layout)STG.layout.off=off}
+ // 틀에 맞춰 줄여 그린 폭(stgBlockAt)은 그릴 때만 쓴다. 전에는 편집 중 그릴 때마다 조판에 적어, 편집을 켰다 끄기만
+ // 해도(또는 편집 중 화면을 돌리면) 저장한 캔버스의 악보가 반 크기로 줄어 저장됐다. 편집은 보이는 상자로 잰다 (stgVis)
  const custom=!!STG.layout;
  const lay=custom?{...auto,screens:STG.layout.screens}:auto;
  const screens=lay.screens;STG.nscreens=screens.length;
@@ -8027,8 +8041,9 @@ function stageClick(e){
  const sm=e.target.closest('[data-sm]');
  if(sm){const L=STG.layout&&STG.layout.screens[STG.screen];const bb=L&&L.blocks.find(x=>x.id===sm.dataset.id);
   if(bb){const a2=sm.dataset.sm;
-   if(a2==='small'||a2==='big'){const f=a2==='big'?1.1:0.9;
-    const w=Math.max(0.12,Math.min(3,bb.w*f));if(bb.h)bb.h*=w/bb.w;bb.w=w}
+   if(a2==='small'||a2==='big'){const f=a2==='big'?1.1:0.9,W=stgCanvasW(),H=stgCanvasH(),l0=stgVis(bb,W,H).x;
+    const w=Math.max(0.12,Math.min(3,bb.w*f));if(bb.h)bb.h*=w/bb.w;bb.w=w;
+    bb.x=stgSnapX((bb.x||0)+l0-stgVis(bb,W,H).x)}   // 보이는 왼쪽 끝은 그대로 (줄여 그린 악보는 틀 가운데에 있다)
    else if(a2==='prev'){stgMoveScreen(bb.id,-1);return}
    else if(a2==='next'){stgMoveScreen(bb.id,1);return}
    else if(a2==='cut'){stgCut(bb.id);return}
