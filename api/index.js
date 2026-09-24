@@ -454,11 +454,13 @@ on('POST', '/auth/delete', async ({ req, uid, body }) => {
   await recheckPassword(uid, u.password_hash, body.password, null, body);
   // 넘길 사람이 있는 팀만 막는다. 삭제 예약한 팀(30일 유예)과 나머지가 모두 비활성인 팀은
   // 넘길 수도 없으니(비활성에게는 못 넘긴다) 막지 않고 아래에서 정리한다
-  const stuck = await q(`select t.name from members m join teams t on t.id=m.team_id
+  const STUCK = `select t.name from members m join teams t on t.id=m.team_id
                          where m.user_id=$1 and m.role='leader' and t.deleted_at is null
                            and (select count(*) from members m2 where m2.team_id=m.team_id and m2.role='leader') = 1
-                           and exists (select 1 from members m3 where m3.team_id=m.team_id and m3.user_id<>$1 and m3.active)`, [uid]);
-  if (stuck.length) throw bad(`${stuck.map((r) => r.name).join(', ')} 팀의 인도자예요. 다른 사람을 인도자로 지정한 뒤 다시 시도해 주세요`);
+                           and exists (select 1 from members m3 where m3.team_id=m.team_id and m3.user_id<>$1 and m3.active)`;
+  const stuckErr = (rows) => bad(`${rows.length ? `${rows.map((r) => r.name).join(', ')} 팀의 인도자예요` : '방금 인도자를 맡은 팀이 있어요'}. 다른 사람을 인도자로 지정한 뒤 다시 시도해 주세요`);
+  const stuck = await q(STUCK, [uid]);
+  if (stuck.length) throw stuckErr(stuck);
   // 한 트랜잭션으로 지운다. 전에는 한 줄씩이라 중간(사람을 가리키는 칸)에서 막히면
   // 메모와 혼자 쓰던 팀만 먼저 지워지고 계정은 남았다. 운영 DB(Neon HTTP)는 문장 묶음을 한 번에 보내므로
   // 문장마다 스스로 대상을 고른다 (앞 문장의 결과를 JS 로 받아 다음을 정하지 않는다)
@@ -467,6 +469,13 @@ on('POST', '/auth/delete', async ({ req, uid, body }) => {
   const solo = `select t.id from teams t where (t.created_by=$1 or exists (select 1 from members m where m.team_id=t.id and m.user_id=$1))
                   and not exists (select 1 from members m where m.team_id=t.id and m.user_id<>$1)`;
   const steps = [
+    // 위 검사와 이 트랜잭션 사이에 누가 나에게 인도자를 넘기면, 계정과 함께 멤버 줄이 지워져 팀에 인도자가 없어졌다 (F113).
+    // 맨 앞에서 내 멤버 줄을 잠근다 — 넘기기의 '세우기'는 이 줄을 고쳐야 하니 이 삭제가 끝날 때까지 기다리고(그 넘기기는 실패),
+    // 넘기기가 먼저 잡았으면 끝나기를 기다린 뒤 다음 문장이 그 결과를 새로 보고 다시 검사한다.
+    // 걸리면 0 으로 나눠(22012) 트랜잭션째 되돌린다. 운영 DB 는 문장 묶음을 한 번에 보내 중간에 JS 로 멈출 수 없다
+    // (1/0 을 그대로 쓰면 계획할 때 계산돼 늘 실패하므로 나누는 수를 exists 로 만든다)
+    [`select 1 from members where user_id=$1 for update`, P],
+    [`select 1 / (case when exists (${STUCK}) then 0 else 1 end)`, P],
     // '누가 했는지'만 가리키는 칸은 비운다. 스키마도 on delete set null 이지만 옛 DB 에서도 되게 직접 비운다
     // (결제 담당·초대 링크·관리 기록·곡·공유 코드를 빠뜨려 전 인도자·팀을 나간 사람의 삭제가 500 이었다)
     ...[['services', 'updated_by'], ['drafts', 'updated_by'], ['service_words', 'updated_by'], ['rehearsals', 'uploaded_by'],
@@ -489,7 +498,7 @@ on('POST', '/auth/delete', async ({ req, uid, body }) => {
   ];
   // 편성에서 뺄 팀은 멤버 줄이 지워지기 전에 적어 둔다
   const myTeams = await q('select team_id from members where user_id=$1', [uid]);
-  const out = await tx(steps);
+  const out = await tx(steps).catch(async (e) => { throw e && e.code === '22012' ? stuckErr(await q(STUCK, [uid])) : e; });
   // 앞으로의 편성에서 뺀다 (비활성·내보내기와 같게). 안 빼면 지운 계정이 편성 표에 남아 자리를 차지한다.
   // 계정이 실제로 지워진 뒤에 (삭제가 되돌려지면 편성은 그대로)
   for (const m of myTeams) {
@@ -1021,9 +1030,16 @@ on('PATCH', '/teams/:id/members/:userId', async ({ uid, params, body }) => {
     if (!['session_lead', 'member', 'pastor'].includes(role)) throw bad('인도자는 「인도자 넘기기」로만 바꿔요');
     if (cur.role === 'leader') throw bad('인도자는 「인도자 넘기기」로만 바꿔요');
     // 목회자가 되거나 목회자에서 내려오면 세는 자리가 바뀐다 (목회자 두 명 · 정원). 비활성이면 켤 때 센다
-    const ok = await seated(params.id, t, `update members set role=$4 where team_id=$1 and user_id=$3
+    // 그사이 넘기기로 인도자가 된 사람은 내리지 않는다 (role<>'leader'). 위에서 읽은 역할만 보고 내리면
+    // 넘기기와 겹칠 때 새 인도자가 내려가 팀에 인도자가 없어졌다 (F113)
+    const ok = await seated(params.id, t, `update members set role=$4 where team_id=$1 and user_id=$3 and role<>'leader'
         and (not active or role=$4 or (role<>'pastor' and $4<>'pastor') or ${seatOk('$4')}) returning 1`, [params.userId, role]);
-    if (!ok.length) throw seatFull(role, t);
+    if (!ok.length) {
+      const now = await one('select role from members where team_id=$1 and user_id=$2', [params.id, params.userId]);
+      if (!now) throw notFound('그 멤버가 없어요');
+      if (now.role === 'leader') throw bad('인도자는 「인도자 넘기기」로만 바꿔요');
+      throw seatFull(role, t);
+    }
     // 목회자가 되면 세션은 비운다. 목회자에서 내려오면 세션 하나는 있어야 한다
     if (role === 'pastor') await q(`update members set sessions='{}', session='' where team_id=$1 and user_id=$2`, [params.id, params.userId]);
     else if (cur.role === 'pastor') await q('update members set sessions=$3, session=$4 where team_id=$1 and user_id=$2',
@@ -1110,10 +1126,15 @@ on('POST', '/teams/:id/transfer', async ({ uid, params, body }) => {
     [`update teams set billing_user_id = coalesce(billing_user_id, created_by), created_by=$2 where id=$1
         and exists (select 1 from members where team_id=$1 and user_id=$2 and role='leader' and active)`, [params.id, to]],
   ]);
-  if (!up.length) throw bad('인도자를 넘기지 못했어요. 그 멤버가 방금 나갔거나 인도자가 이미 바뀌었어요');
-  await audit(params.id, uid, 'team.transfer', to, {});
-  const all = await teamUserIds(params.id);
-  await notify(params.id, all, 'team.transfer', to, { title: `인도자가 ${target.name}으로 바뀌었어요`, link: '#/team' });
+  if (!up.length) {
+    // 같은 사람에게 두 번 눌러(두 기기) 먼저 간 요청이 이미 넘겼으면 그대로 성공이다. 기록·알림은 그쪽이 했다
+    if (!(await one(`select 1 from members where team_id=$1 and user_id=$2 and role='leader' and active`, [params.id, to])))
+      throw bad('인도자를 넘기지 못했어요. 그 멤버가 방금 나갔거나 인도자가 이미 바뀌었어요');
+  } else {
+    await audit(params.id, uid, 'team.transfer', to, {});
+    const all = await teamUserIds(params.id);
+    await notify(params.id, all, 'team.transfer', to, { title: `인도자가 ${target.name}으로 바뀌었어요`, link: '#/team' });
+  }
   return { ok: true, billingUserId: (await one('select billing_user_id, created_by from teams where id=$1', [params.id])) };
 });
 
@@ -1282,7 +1303,8 @@ on('POST', '/invite/:token/join', async ({ uid, params, body }) => {
   // 먼저 세지 않으면 동시에 들어올 때 1회용 링크가 두 번 쓰인다
   const claimed = await one(`update invites set uses = uses + 1 where id=$1
     and (max_uses is null or uses < max_uses) and revoked_at is null returning id`, [inv.id]);
-  if (!claimed) { await q('delete from members where team_id=$1 and user_id=$2', [t.id, uid]); throw notFound('이 코드는 이미 다 쓰였어요'); }
+  // (그사이 인도자로 세워졌으면 지우지 않는다 — 팀에 인도자가 없어진다, F113)
+  if (!claimed) { await q(`delete from members where team_id=$1 and user_id=$2 and role<>'leader'`, [t.id, uid]); throw notFound('이 코드는 이미 다 쓰였어요'); }
   // 인도자에게 알림
   const leader = await one(`select user_id from members where team_id=$1 and role='leader' and active limit 1`, [t.id]);
   if (leader && leader.user_id !== uid) await notify(t.id, [leader.user_id], 'member.join', uid,
@@ -1532,8 +1554,9 @@ on('PUT', '/services/:id', async ({ uid, params, body }) => {
   const notUploaded = missing.filter((id) => !have.includes(id));
   if (notUploaded.length) throw bad('아직 올라가지 않은 파일이 있어요: ' + notUploaded.length + '개');
   const docJson = JSON.stringify(doc);
-  const cur = await one(`select version, doc, (doc - 'stageLayouts') = ($3::jsonb - 'stageLayouts') as same from services where team_id=$1 and id=$2`,
+  const curOf = () => one(`select version, doc, (doc - 'stageLayouts') = ($3::jsonb - 'stageLayouts') as same from services where team_id=$1 and id=$2`,
     [teamId, params.id, docJson]);
+  const cur = await curOf();
   // 같은 판을 다시 보낸 것(서버엔 들어갔는데 응답을 못 받아 앱이 다시 올림)은 이미 된 것으로 받는다. 알림도 다시 안 보낸다.
   // 전에는 409 로 막혀 '서버에 못 올림'이 영영 남았다
   if (cur && cur.version === (+doc.version || 0) && cur.same) return { ok: true, version: cur.version, same: true };
@@ -1550,9 +1573,10 @@ on('PUT', '/services/:id', async ({ uid, params, body }) => {
            returning version`,
     [teamId, params.id, docJson, +doc.version || 0, str(doc.name, 120), str(doc.date, 20), uid]);
   if (!wrote.length) {
-    // 같은 판을 동시에 두 번 받으면(켤 때 다시 올리기 + 단추, 두 기기의 같은 되올림) 위의 같은-판 검사를 둘 다 지나
-    // 늦은 쪽이 가짜 409 를 받았다. 막힌 뒤 지금 서버 것이 바로 이 판이면 이미 된 것으로 받는다 (알림은 먼저 쓴 쪽이 보냈다)
-    const now = await one(`select version, (doc - 'stageLayouts') = ($3::jsonb - 'stageLayouts') as same from services where team_id=$1 and id=$2`, [teamId, params.id, docJson]);
+    // 같은 판·같은 내용이 동시에 두 번 왔으면(발행 중에 다시 누름, 두 탭이 밀린 발행을 함께 올림) 먼저 간 것이 이미 넣었다.
+    // 위의 '같은 판을 다시 보낸 것'과 같게 받는다. 전에는 둘째가 409 를 받아 앱이 되돌리고 '수정 중'으로 남았다
+    // (켤 때 다시 올리기 + 단추, 두 기기의 같은 되올림도 같다. 알림은 먼저 쓴 쪽이 보냈다)
+    const now = await curOf();
     if (now && now.version === (+doc.version || 0) && now.same) return { ok: true, version: now.version, same: true };
     throw conflict((now || { version: +doc.version || 0 }).version);
   }
@@ -1706,6 +1730,15 @@ async function teamBlobRefs(teamId) {
   for (const r of await q('select pieces, media from arrangements where team_id=$1 and deleted_at is null', [teamId])) arrBlobIds(r).forEach((id) => used.add(id));
   for (const r of await q('select blob_id from rehearsals where team_id=$1', [teamId])) if (r.blob_id) used.add(r.blob_id);
   return used;
+}
+// 크론이 팀마다: 팀 어디에서도 안 쓰는 파일을 치운다 (F117). 콘티를 지우거나 다시 발행할 때 바로 치우는 것만으로는
+// 첫 발행 전에 다시 자른 악보, 초안에서 바꾼 파일, 라이브러리·편곡에서 뺀 파일이 영영 남았다.
+// 올린 지 ORPHAN_DAYS 가 안 된 파일은 둔다 — 올린 뒤 초안·발행이 가리키기 전이거나, 오프라인 기기의 밀린 저장이 아직
+// 안 왔을 수 있다 (그래도 치운 파일을 나중에 가리키면 그 기기가 저장할 때 ensureBlobs 가 제 사본으로 다시 올린다)
+const ORPHAN_DAYS = 30;
+async function sweepOrphans(teamId) {
+  const old = await q('select id from blobs where team_id=$1 and created_at < now() - make_interval(days => $2::int)', [teamId, ORPHAN_DAYS]);
+  return freeBlobs(teamId, old.map((r) => r.id));
 }
 
 // 파일: 어떤 id가 이미 있는지
@@ -3553,7 +3586,16 @@ on('GET', '/cron/dates', async ({ req }) => {
     // 기다린 뒤에 더한다. `created += await …` 는 기다리기 전의 created 를 읽어, 동시에 도는 팀끼리 서로의 몫을 덮었다
     const c = await autoCreateServices(t.id); created += c;
   });
-  return cronDone(failed, { ok: true, recurring: n, created, purged, warned, dropped, teamsDropped, blobsSwept });
+  // 팀마다 어디에서도 안 쓰는 파일 (F117, sweepOrphans). 팀의 콘티·초안·곡을 다 읽어 무거우니 맨 끝에, 1분 안에서만.
+  // 못 다 본 팀은 순서를 섞었으니 다음 날 먼저 잡힐 수 있다
+  let orphans = 0;
+  const t1 = Date.now();
+  await eachLimit(await q(`select b.team_id as id from blobs b join teams t on t.id=b.team_id
+      where t.deleted_at is null and b.created_at < now() - make_interval(days => $1::int) group by b.team_id order by random()`, [ORPHAN_DAYS]), async (t) => {
+    // (`orphans += await …` 는 기다리기 전의 값에 더해 동시에 도는 팀끼리 덮어쓴다 — 받은 뒤에 더한다)
+    if (Date.now() - t1 < 60000) { const n = await sweepOrphans(t.id); orphans += n; }
+  }, 4);
+  return cronDone(failed, { ok: true, recurring: n, created, purged, warned, dropped, teamsDropped, blobsSwept, orphans });
 });
 
 // 알림 배치 (KST 10:00): 월간 스케줄 요청 · 보류 D-14 · 주간 말씀 요청 (§1.2 시각)

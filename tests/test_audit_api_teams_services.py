@@ -7,6 +7,12 @@
 #  F43  같은 판을 동시에 두 번 발행하면 하나만 받고 하나는 409
 #  G23  말씀을 소리 없이 자르지 않는다 (400 + 입력칸 maxlength)
 #  F117 콘티를 지우면 초안에만 있던 파일과 그 콘티의 녹음도 지운다 · 다시 발행해 빠진 파일도 지운다
+#  (되살린 수정 r2)
+#  F113 넘기는 도중에 받을 사람이 계정을 지우거나, 인도자가 받을 사람의 역할을 바꿔도 인도자가 남는다 ·
+#       같은 사람에게 두 번 넘기면 둘 다 200
+#  F43  같은 판·같은 내용을 동시에 두 번 보내면 둘 다 200 (하나는 same)
+#  F117 크론이 팀 어디에서도 안 쓰는 오래된 파일을 치운다 (첫 발행 전에 다시 자른 악보 · 라이브러리에서 뺀 파일).
+#       곡의 악보·발행본 음원·잠근 녹음·다른 초안의 파일·새로 올린 파일은 남긴다. CRON_SECRET 이 서버와 같을 때만
 #  ENFORCE_PLAN=1 일 때만: F39 F112 (채보 곡 수·크레딧) · F40 (기한 지난 유료) · F41 (정원은 모든 길에서)
 import os, sys, time, json, subprocess, http.cookiejar, urllib.request, urllib.error
 from concurrent.futures import ThreadPoolExecutor
@@ -67,6 +73,28 @@ def leaders(team):
 
 def par(*fns):
   with ThreadPoolExecutor(len(fns)) as ex: return [f.result() for f in [ex.submit(fn) for fn in fns]]
+
+# 다른 연결에서 트랜잭션을 열어 문장을 실행하고 커밋하지 않은 채 잡고 있는다 (넘기기가 한창일 때를 그대로 만든다)
+HOLD_JS = ('import("pg").then(async({default:pg})=>{const c=new pg.Client({connectionString:process.env.DATABASE_URL});'
+           'await c.connect();await c.query("begin");for(const [t,p] of JSON.parse(process.argv[1]))await c.query(t,p);'
+           'console.log("held");process.stdin.once("data",async()=>{await c.query("commit");console.log("done");await c.end();process.exit(0)})})')
+def held(stmts, call):
+  p = subprocess.Popen(['node', '-e', HOLD_JS, json.dumps(stmts)], cwd=ROOT, env={**os.environ, 'DATABASE_URL': DB},
+                       stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+  if p.stdout.readline().strip() != 'held': fail('트랜잭션 잡기 실패: ' + p.stderr.read()[-300:])
+  with ThreadPoolExecutor(1) as ex:
+    f = ex.submit(call)
+    time.sleep(1.0)
+    waited = not f.done()      # 잡힌 줄을 기다려야 맞다
+    p.stdin.write('go\n'); p.stdin.flush()
+    if p.stdout.readline().strip() != 'done': fail('커밋 실패')
+    p.wait(10)
+    return f.result(), waited
+# 넘기기 트랜잭션의 내리기·세우기·created_by 옮기기 (POST /teams/:id/transfer 와 같은 순서)
+def transfer_stmts(team, frm, to):
+  return [["update members set role='session_lead' where team_id=$1 and user_id=$2 and role='leader'", [team, frm]],
+          ["update members set role='leader' where team_id=$1 and user_id=$2", [team, to]],
+          ['update teams set billing_user_id = coalesce(billing_user_id, created_by), created_by=$2 where id=$1', [team, to]]]
 
 def g03():
   A, B = Who('가은'), Who('나은')
@@ -264,6 +292,114 @@ def f117():
   if b3 not in h or b4 not in h: fail('F117 쓰이는 파일을 지움: %s' % h)
   print('F117 ok — 초안 파일 · 녹음 · 빠진 판 정리, 쓰이는 파일은 남김')
 
+# ---------------- 되살린 수정 (r2) ----------------
+def f113_r2():
+  # 넘기기가 받을 사람을 막 세운 순간(아직 커밋 전)에 그 사람이 계정을 지운다.
+  # 전에는 앞 검사를 지나 멤버 줄째 지워져 인도자 없는 팀이 남거나(200), created_by 가 걸려 500 이었다
+  A, B, C = Who('가'), Who('나'), Who('다')
+  team, code = team_of(A); join(B, code); join(C, code)
+  (st, d), waited = held(transfer_stmts(team, A.id, B.id),
+                         lambda: B.call('POST', '/auth/delete', {'username': B.uname, 'password': 'secret1'}))
+  if not waited: fail('F113 계정 삭제가 넘기기를 기다리지 않음: %s %s' % (st, d))
+  if st != 400 or '인도자' not in str(d): fail('F113 넘기는 중에 받을 사람이 계정을 지움: %s %s' % (st, d))
+  if not sql('select 1 from users where id=$1', [B.id]): fail('F113 계정이 지워짐')
+  if leaders(team) != [B.id]: fail('F113 계정 삭제가 겹친 뒤 인도자: %s' % leaders(team))
+  # 넘기기가 먼저 끝나지 않았으면(삭제가 먼저 줄을 잡음) 넘기기가 실패하고 옛 인도자가 남는다 — 동시에 여러 번
+  for i in range(4):
+    X, Y, Z = Who('라'), Who('마'), Who('바')
+    t2, c2 = team_of(X); join(Y, c2); join(Z, c2)
+    r = par(lambda: X.call('POST', '/teams/%s/transfer' % t2, {'userId': Y.id}),
+            lambda: Y.call('POST', '/auth/delete', {'username': Y.uname, 'password': 'secret1'}))
+    if any(s >= 500 for s, _ in r): fail('F113 넘기기·계정 삭제 500: %s' % r)
+    if len(leaders(t2)) != 1: fail('F113 넘기기·계정 삭제가 겹친 뒤 인도자 %d명 %s' % (len(leaders(t2)), r))
+  # 넘기는 중에 (두 기기에서) 인도자가 받을 사람의 역할을 바꾼다. 전에는 앞에서 읽은 역할만 보고 새 인도자를 내렸다
+  A, B = Who('사'), Who('아')
+  team, code = team_of(A); join(B, code)
+  (st, d), waited = held(transfer_stmts(team, A.id, B.id),
+                         lambda: A.call('PATCH', '/teams/%s/members/%s' % (team, B.id), {'role': 'member'}))
+  if not waited: fail('F113 역할 바꾸기가 넘기기를 기다리지 않음: %s %s' % (st, d))
+  if st != 400 or '넘기기' not in str(d): fail('F113 넘기는 중에 새 인도자의 역할을 바꿈: %s %s' % (st, d))
+  if leaders(team) != [B.id]: fail('F113 역할 바꾸기가 겹친 뒤 인도자: %s' % leaders(team))
+  # 같은 사람에게 두 번 (두 번 누름·두 기기): 둘 다 성공, 기록·알림은 한 번
+  A, B = Who('자'), Who('차')
+  team, code = team_of(A); join(B, code)
+  r = par(lambda: A.call('POST', '/teams/%s/transfer' % team, {'userId': B.id}),
+          lambda: A.call('POST', '/teams/%s/transfer' % team, {'userId': B.id}))
+  codes = sorted(s for s, _ in r)
+  if codes not in ([200, 200], [200, 403]): fail('F113 같은 사람에게 두 번 넘기기: %s' % r)
+  if leaders(team) != [B.id]: fail('F113 두 번 넘긴 뒤 인도자: %s' % leaders(team))
+  n = sql("select count(*)::int n from team_audit where team_id=$1 and action='team.transfer'", [team])[0]['n']
+  if n != 1: fail('F113 두 번 넘기기에 기록 %d개' % n)
+  print('F113 r2 ok — 계정 삭제·역할 바꾸기가 겹쳐도 인도자 한 명 · 두 번 넘기기 %s' % codes)
+
+def f43_r2():
+  L = Who('같은판'); team, _ = team_of(L)
+  for i in range(5):
+    for first in (False, True):
+      sid = ('sf%d' if first else 'sv%d') % i
+      if not first:
+        L.ok('PUT', '/services/' + sid, {'teamId': team, 'doc': {'id': sid, 'name': 'v1', 'date': '2026-10-04', 'version': 1, 'items': []}})
+      v = 1 if first else 2
+      body = {'teamId': team, 'doc': {'id': sid, 'name': 'X', 'date': '2026-10-04', 'version': v, 'items': [{'id': 'i', 'title': 'X'}]}}
+      r = par(lambda: L.call('PUT', '/services/' + sid, body), lambda: L.call('PUT', '/services/' + sid, body))
+      if [s for s, _ in r] != [200, 200]: fail('F43 같은 내용을 동시에 두 번 보냈는데 %s' % r)
+      if [bool(d.get('same')) for _, d in r].count(True) > 1: fail('F43 둘 다 same: %s' % r)
+      got = L.ok('GET', '/services/%s?team=%s' % (sid, team))
+      if got['version'] != v or got['doc']['name'] != 'X': fail('F43 저장된 판: %s' % got['version'])
+  print('F43 r2 ok — 같은 내용 동시 두 번은 둘 다 200')
+
+def f117_r2():
+  cron = os.environ.get('CRON_SECRET', '')
+  if not cron:
+    print('F117 r2 SKIP — CRON_SECRET 없음 (서버와 같은 값으로 주면 크론 정리를 본다)'); return
+  L = Who('정리'); team, _ = team_of(L)
+  def up(bid):
+    st, d = L.call('POST', '/blobs/%s?team=%s' % (bid, team), raw=b'\x89PNG' + os.urandom(64), ctype='image/png')
+    if st != 200: fail('파일 올리기 실패 %s %s' % (st, d))
+  def have(ids):
+    return set(L.ok('GET', '/blobs?team=%s&ids=%s' % (team, ','.join(ids)))['blobs'].keys())
+  item = lambda bid: {'id': 'it' + bid, 'title': '곡', 'pieces': [{'id': 'p' + bid, 'blob': bid}]}
+  doc = lambda items, **k: dict({'id': 'k1', 'name': '자르기', 'date': '2026-10-04', 'items': items}, **k)
+  crop1, crop2, drf, lib, fresh = 'ca' + tag, 'cb' + tag, 'cd' + tag, 'cl' + tag, 'cf' + tag
+  arr, aud = 'cr' + tag, 'cu' + tag
+  # 첫 발행 전에 다시 자름: 초안이 crop1 → crop2 로 바뀐 뒤 crop2 로 발행 (crop1 은 어디에도 없다). 발행본의 음원도 쓰이는 것
+  up(crop1); L.ok('PUT', '/services/k1/draft', {'teamId': team, 'doc': doc([item(crop1)])})
+  up(crop2); L.ok('PUT', '/services/k1/draft', {'teamId': team, 'doc': doc([item(crop2)])})
+  up(aud)
+  L.ok('PUT', '/services/k1', {'teamId': team, 'doc': doc([item(crop2), {'id': 'ia', 'title': '음원', 'pieces': [],
+                                                        'media': [{'id': 'm1', 'type': 'audio', 'blob': aud}]}], version=1)})
+  # 곡(편곡)의 악보와 잠근 합주 녹음도 쓰이는 것
+  up(arr); L.ok('POST', '/songs', {'teamId': team, 'title': '편곡곡', 'pieces': [{'id': 'pa', 'blob': arr}]})
+  u = L.ok('POST', '/rehearsals/upload-url', {'teamId': team, 'size': 100, 'mime': 'audio/mp4'})
+  urllib.request.urlopen(urllib.request.Request(u['uploadUrl'], data=os.urandom(100), method='PUT', headers={'content-type': 'audio/mp4'})).read()
+  rh = L.ok('POST', '/rehearsals', {'teamId': team, 'serviceId': 'k1', 'pathname': u['pathname'], 'blobId': u['blobId'], 'duration': 3})['rehearsal']
+  L.ok('PATCH', '/rehearsals/%s' % rh['id'], {'teamId': team, 'keep': True})
+  reh = u['blobId']
+  # 다른 콘티의 초안에만 있는 파일은 쓰이는 것
+  up(drf); L.ok('PUT', '/services/k2/draft', {'teamId': team, 'doc': dict(doc([item(drf)]), id='k2')})
+  # 라이브러리 곡에 붙였다가 뺀 파일
+  up(lib)
+  L.ok('PUT', '/library', {'teamId': team, 'songs': [{'id': 'sg1', 'title': '곡', 'pieces': [{'id': 'pl', 'blob': lib}]}]})
+  L.ok('PUT', '/library', {'teamId': team, 'songs': [{'id': 'sg1', 'title': '곡', 'pieces': []}]})
+  # 올린 지 얼마 안 된 파일은 아직 아무도 안 가리켜도 둔다 (올리고 → 저장 사이)
+  up(fresh)
+  sql("update blobs set created_at = now() - interval '31 days' where team_id=$1 and id <> $2", [team, fresh])
+  urls = {r['id']: r['url'] for r in sql('select id, url from blobs where team_id=$1', [team])}
+  every = [crop1, crop2, drf, lib, fresh, arr, aud, reh]
+  if have(every) != set(every): fail('F117 r2 준비: 파일이 이미 빠짐')
+  req = urllib.request.Request(URL + 'api/cron/dates', headers={'authorization': 'Bearer ' + cron})
+  with urllib.request.urlopen(req, timeout=280) as r: out = json.loads(r.read())
+  h = have(every)
+  if crop1 in h or lib in h: fail('F117 r2 안 쓰는 오래된 파일이 남음: %s (크론 %s)' % (h, out))
+  if h != {crop2, drf, fresh, arr, aud, reh}: fail('F117 r2 쓰이는 파일·새 파일을 지움: %s' % (set(every) - h))
+  if (out.get('orphans') or 0) < 2: fail('F117 r2 크론이 치운 개수를 덜 셈: %s' % out)
+  def gone(u):
+    try: urllib.request.urlopen(u, timeout=10).read(); return False
+    except urllib.error.HTTPError as e: return e.code == 404
+  if urls[crop1].startswith('http') and not gone(urls[crop1]): fail('F117 r2 기록만 지우고 저장소 파일이 남음')
+  if urls[crop2].startswith('http') and gone(urls[crop2]): fail('F117 r2 쓰이는 파일이 저장소에서 지워짐')
+  print('F117 r2 ok — 크론이 다시 자른 옛 판·뺀 파일을 치움 (orphans=%s), 쓰이는 것·새 것은 남김' % out.get('orphans'))
+
 # ---------------- ENFORCE_PLAN=1 일 때만 ----------------
 def f39_f112():
   L = Who('채보'); team, _ = team_of(L)
@@ -320,6 +456,7 @@ def f41():
 def run():
   health = json.loads(urllib.request.urlopen(URL + 'api/health').read())
   g03(); f113(); f116_f115(); f43(); f117()
+  f113_r2(); f43_r2(); f117_r2()
   with sync_playwright() as p:
     g23(p); f42(p)
   if health.get('enforcePlan'):

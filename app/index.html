@@ -8609,7 +8609,7 @@ document.addEventListener('click',async e=>{
   case 'view-svc':VF.draft=(r.name==='edit');go('view/'+svc.id);break;
   case 'del-svc':{
    if(!isLeader()){toast('인도자만 지울 수 있어요');break}
-   if(!online()&&!confirm('지금은 서버에 연결돼 있지 않아요. 이 기기에서만 지워지고, 다시 연결되면 팀 서버에서도 지웁니다. 계속할까요?'))break;
+   if(!online()&&!confirm('지금은 서버에 연결돼 있지 않아요. 이 기기에서만 지워지고, 다시 연결되면 팀 서버의 발행본·메모·합주 녹음도 지웁니다. 계속할까요?'))break;
    if(!confirm(online()?'이 예배를 삭제할까요? 팀 서버의 발행본·메모·합주 녹음도 지워집니다.':'이 예배를 삭제할까요?'))break;
    {
    const id=svc.id;S.services=S.services.filter(s=>s.id!==id);
@@ -8638,7 +8638,7 @@ document.addEventListener('click',async e=>{
   case 'pick-del':{
    if(!isLeader()){toast('인도자만 지울 수 있어요');break}
    const vis=new Set(homeVisible(S.services).map(x=>x.id));const ids=HOME.sel.filter(id=>vis.has(id));if(!ids.length)break;
-   if(!confirm(`${ids.length}개 예배를 삭제할까요?${online()?' 팀 서버의 발행본·메모·합주 녹음도 지워집니다.':''}\n되돌릴 수 없어요.`))break;
+   if(!confirm(`${ids.length}개 예배를 삭제할까요?${online()?' 팀 서버의 발행본·메모·합주 녹음도 지워집니다.':' 다시 연결되면 팀 서버의 발행본·메모·합주 녹음도 지웁니다.'}\n되돌릴 수 없어요.`))break;
    S.services=S.services.filter(x=>!ids.includes(x.id));
    ids.forEach(id=>{if(S.noteShadow)delete S.noteShadow[id]});
    S.dropped=(S.dropped||[]).concat(ids);
