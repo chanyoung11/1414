@@ -10,6 +10,7 @@
 #  F48 옛 자료(객체가 아닌 것·id·지은이 없는 것)는 녹음 메모 지우기에 안 걸림
 #  F50 다른 팀 메모와 id 가 겹친 메모(다른 팀 파일에서 가져온 인도자 메모)는 새 id 로 넣고 알림 → 앱도 id 를 바꿈
 #  F52 구독을 처음 반영한 팀에 적어 두고 그 팀으로 갱신·만료 (결제 담당을 넘겨도 · 새 팀 · 새 인도자 · 앱이 고른 팀)
+#  F52 끊겼다 다시 산 것(RENEWAL)·속성 없는 새 구독·크레딧은 끊긴 옛 기록의 팀이 아니라 지금 고른 팀으로 (떠난 팀이 다시 유료가 되던 것)
 # 사용: CONTI_URL=http://localhost:8817/ .venv/bin/python tests/test_audit_api_ai_billing.py
 # (AI 는 가짜. 웹훅·코드 인식 실패는 서버 코드를 이 프로세스 안에서 fetch 를 막고 직접 부른다 — 밖으로 나가는 호출 없음)
 # 준비(프로모션 코드·옛 별칭 행)는 로컬 DB 에 바로 쓴다: CONTI_DB (기본 localhost:54329, 서버와 같은 DB 여야 한다)
@@ -374,6 +375,64 @@ const h1 = (await call('POST', '/teams', { name: '셋째팀', myName: '아' }, a
 out.hBuy = await hookAs(h, { type: 'INITIAL_PURCHASE', product_id: 'pro_monthly', expiration_at_ms: Date.now() + 30 * day, id: 'h1' + T, ...attr(g1.teamId) });
 out.g1after = await row(g1.teamId); out.h1 = await row(h1.teamId);
 
+// 끊겼다 다시 산 것(RevenueCat 은 RENEWAL 로 보낸다)은 끊긴 옛 기록의 팀이 아니라 지금 고른 팀으로.
+// A 가 X 에서 사고 인도자·결제 담당을 B 에게 넘긴 뒤 만료 → X 를 떠나 새 팀 Y 를 만들고 다시 산다
+const leave = (tm, who) => call('DELETE', `/teams/${tm.teamId}/members/${who.id}`, {}, as(who)).then((r) => r.status);
+for (const [k, ev] of [['rAttr', (y) => ({ type: 'RENEWAL', ...attr(y.teamId) })], ['rNo', () => ({ type: 'RENEWAL' })], ['iNo', () => ({ type: 'INITIAL_PURCHASE' })]]) {
+  const pa = await user('p' + k + 'a'), pb = await user('p' + k + 'b');
+  const px = (await call('POST', '/teams', { name: '옛팀', myName: '가' }, as(pa))).body;
+  await call('POST', `/invite/${px.invite}/join`, { name: '나', sessions: ['드럼'] }, as(pb));
+  await hookAs(pa, { type: 'INITIAL_PURCHASE', product_id: 'pro_monthly', expiration_at_ms: Date.now() + 30 * day, id: k + '1' + T });
+  const steps = [(await call('POST', `/teams/${px.teamId}/transfer`, { userId: pb.id }, as(pa))).status,
+                 (await call('POST', `/teams/${px.teamId}/billing`, { userId: pb.id }, as(pa))).status];
+  steps.push((await hookAs(pa, { type: 'EXPIRATION', product_id: 'pro_monthly', id: k + '2' + T })).kind);
+  steps.push(await leave(px, pa));
+  const py = (await call('POST', '/teams', { name: '새팀', myName: '가' }, as(pa))).body;
+  out[k] = { steps, hook: await hookAs(pa, { product_id: 'pro_monthly', expiration_at_ms: Date.now() + 30 * day, id: k + '3' + T, ...ev(py) }),
+             x: await row(px.teamId), y: await row(py.teamId), a: pa.id };
+}
+// 구독이 살아 있으면(결제 유예로 기한이 조금 지났어도 만료가 오기 전이면) 갱신은 속성이 다른 팀을 가리켜도 적힌 팀으로
+{
+  const la = await user('la');
+  const lx = (await call('POST', '/teams', { name: '구독팀', myName: '가' }, as(la))).body;
+  const ly = { teamId: (await one(`insert into teams(name, invite_token, created_by) values('다른팀', $2, $1) returning id`, [la.id, 'ly' + T])).id };
+  await q(`insert into members(user_id, team_id, name, session, sessions, role) values($1, $2, '가', '인도자', $3, 'leader')`, [la.id, ly.teamId, ['인도자']]);
+  await hookAs(la, { type: 'INITIAL_PURCHASE', product_id: 'pro_monthly', expiration_at_ms: Date.now() + 30 * day, id: 'la1' + T, ...attr(lx.teamId) });
+  await q(`update teams set plan_until = now() - interval '2 days' where id=$1`, [lx.teamId]);
+  out.grace = { hook: await hookAs(la, { type: 'RENEWAL', product_id: 'pro_monthly', expiration_at_ms: Date.now() + 30 * day, id: 'la2' + T, ...attr(ly.teamId) }),
+                x: await row(lx.teamId), y: await row(ly.teamId) };
+}
+// 크레딧: 구독이 살아 있는 X 의 인도자를 넘기고(결제 담당은 그대로) 새 팀 Y 를 만든 사람이 속성 없이 산다 → Y
+{
+  const ca = await user('ca'), cb = await user('cb');
+  const cx = (await call('POST', '/teams', { name: '구독팀', myName: '가' }, as(ca))).body;
+  await call('POST', `/invite/${cx.invite}/join`, { name: '나', sessions: ['드럼'] }, as(cb));
+  await hookAs(ca, { type: 'INITIAL_PURCHASE', product_id: 'pro_monthly', expiration_at_ms: Date.now() + 30 * day, id: 'ca1' + T });
+  await call('POST', `/teams/${cx.teamId}/transfer`, { userId: cb.id }, as(ca));
+  const cy = (await call('POST', '/teams', { name: '새팀', myName: '가' }, as(ca))).body;
+  out.cred = { hook: await hookAs(ca, { type: 'NON_RENEWING_PURCHASE', product_id: 'credits_30', id: 'ca2' + T }),
+               x: (await one('select omr from credit_balance where team_id=$1', [cx.teamId]) || { omr: 0 }).omr,
+               y: (await one('select omr from credit_balance where team_id=$1', [cy.teamId]) || { omr: 0 }).omr,
+               xPlan: await row(cx.teamId) };
+}
+// 인도자·결제 담당을 넘기고 멤버로 남은 사람의 구독이 결제 문제로 만료됐다가 되살아나면(RENEWAL) 그 팀으로.
+// 속성이 제가 인도자·결제 담당이 아닌 다른 팀을 가리키면 어디에도 넣지 않는다
+{
+  const sa = await user('sa'), sb = await user('sb'), sz = await user('sz');
+  const sx = (await call('POST', '/teams', { name: '구독팀', myName: '가' }, as(sa))).body;
+  await call('POST', `/invite/${sx.invite}/join`, { name: '나', sessions: ['드럼'] }, as(sb));
+  const szt = (await call('POST', '/teams', { name: '남의팀', myName: '다' }, as(sz))).body;
+  await call('POST', `/invite/${szt.invite}/join`, { name: '라', sessions: ['드럼'] }, as(sa));
+  await hookAs(sa, { type: 'INITIAL_PURCHASE', product_id: 'pro_monthly', expiration_at_ms: Date.now() + 30 * day, id: 'sa1' + T, ...attr(sx.teamId) });
+  await call('POST', `/teams/${sx.teamId}/transfer`, { userId: sb.id }, as(sa));
+  await call('POST', `/teams/${sx.teamId}/billing`, { userId: sb.id }, as(sa));
+  await hookAs(sa, { type: 'EXPIRATION', product_id: 'pro_monthly', id: 'sa2' + T });
+  const other = await hookAs(sa, { type: 'RENEWAL', product_id: 'pro_monthly', expiration_at_ms: Date.now() + 30 * day, id: 'sa3' + T, ...attr(szt.teamId) });
+  const afterOther = { x: await row(sx.teamId), z: await row(szt.teamId) };
+  const back = await hookAs(sa, { type: 'RENEWAL', product_id: 'pro_monthly', expiration_at_ms: Date.now() + 30 * day, id: 'sa4' + T, ...attr(sx.teamId) });
+  out.stay = { other, afterOther, back, x: await row(sx.teamId), a: sa.id, b: sb.id };
+}
+
 // F106 · F51 코드 인식: Gemini 가 과부하면 502, 이번 달 곡 한도를 돌려주고, 하루 호출 수도 세지 않는다
 const c = await user('oc');
 const ct = (await call('POST', '/teams', { name: '인식팀', myName: '다' }, as(c))).body;
@@ -414,6 +473,23 @@ if o['s7buy'].get('kind') != 'grant' or s7['plan'] != 'pro' or s7['iap_user_id']
 if o['s3yAfter']['plan'] != 'free' or o['s3xAfter']['plan'] != 'pro': fail('F52 옛 인도자의 만료가 새 인도자가 산 팀을 끊음: 옛 %s 새 %s' % (o['s3xAfter'], o['s3yAfter']))
 if o['gBuy'].get('kind') != 'grant' or o['g2']['plan'] != 'pro' or o['g1']['plan'] != 'free': fail('F52 앱이 알려 준 팀(teamId)이 아닌 곳에 들어감: %s %s %s' % (o['gBuy'], o['g1'], o['g2']))
 if 'skipped' not in o['hBuy'] or o['g1after']['plan'] != 'free' or o['h1']['plan'] != 'free': fail('F52 제 팀이 아닌 teamId 로 산 것이 어딘가에 들어감: %s %s %s' % (o['hBuy'], o['g1after'], o['h1']))
+for k in ('rAttr', 'rNo', 'iNo'):
+  r = o[k]
+  if r['steps'] != [200, 200, 'revoke', 200]: fail('F52 다시 산 경우 준비 실패(%s): %s' % (k, r['steps']))
+  if r['hook'].get('kind') != 'grant' or r['y']['plan'] != 'pro' or r['y']['iap_user_id'] != r['a'] or r['x']['plan'] != 'free' or r['x']['iap_user_id'] is not None:
+    fail('F52 구독이 끊긴 뒤 새 팀에서 다시 산 것(%s)이 떠난 옛 팀에 들어감: %s 옛 %s 새 %s' % (k, r['hook'], r['x'], r['y']))
+g = o['grace']
+if g['hook'].get('kind') != 'grant' or g['x']['plan'] != 'pro' or not (29 < float(g['x']['d']) < 31) or g['y']['plan'] != 'free':
+  fail('F52 구독이 살아 있는(결제 유예) 팀의 갱신이 속성의 다른 팀으로 감: %s 구독팀 %s 다른팀 %s' % (g['hook'], g['x'], g['y']))
+c = o['cred']
+if c['hook'].get('kind') != 'credits' or c['y'] != 30 or c['x'] != 0 or c['xPlan']['plan'] != 'pro':
+  fail('F52 속성 없는 크레딧이 지금 인도자인 팀이 아니라 구독이 적힌 옛 팀으로: %s 옛 %s 새 %s' % (c['hook'], c['x'], c['y']))
+st = o['stay']
+if 'skipped' not in st['other'] or st['afterOther']['z']['plan'] != 'free' or st['afterOther']['x']['plan'] != 'free':
+  fail('F52 제가 인도자·결제 담당이 아닌 팀을 가리킨 갱신이 어딘가에 들어감: %s %s' % (st['other'], st['afterOther']))
+if st['back'].get('kind') != 'grant' or st['x']['plan'] != 'pro' or st['x']['iap_user_id'] != st['a'] or st['x']['billing_user_id'] != st['b']:
+  fail('F52 결제 담당을 넘기고 남은 사람의 되살아난 구독이 그 팀을 못 찾음: %s %s' % (st['back'], st['x']))
+print('F52 ok — 끊겼다 다시 산 것은 지금 고른 팀으로(속성·산 사람의 팀) · 살아 있는 구독의 갱신은 적힌 팀 · 크레딧은 지금 인도자인 팀 · 멤버로 남은 사람의 되살아난 구독')
 print('F52·F107 ok — 구독은 처음 반영한 팀으로 (인도자·결제 담당을 넘겨도) · 새 팀·새 인도자 · 앱이 고른 팀 · 남의 구독 안 빼앗음 · 멈춤·해지·환불 · 크레딧 중복 없음 · 수동 플랜 보호')
 if o['ocr'] != {'status': 502, 'error': 'ocr_failed'}: fail('F106 Gemini 과부하인데 %s' % o['ocr'])
 if o['ocrSongs'] != 0: fail('F106 실패했는데 이번 달 곡 한도가 빠짐')

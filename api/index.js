@@ -2809,7 +2809,7 @@ on('POST', '/ocr', async ({ uid, body }) => {
 /* ---------- 결제 · 프로모션 코드 ---------- */
 // RevenueCat 웹훅. 결제·갱신·환불이 일어나면 여기로 온다.
 // 구독은 산 사람(app_user_id)의 것이라, 처음 반영할 때 그 팀에 적어 두고(teams.iap_user_id)
-// 갱신·만료·환불은 그 기록으로 팀을 찾는다
+// 갱신·만료·환불은 그 기록으로 팀을 찾는다. 만료·환불로 끊긴 뒤 다시 산 것(RENEWAL)은 팀을 새로 고른다
 on('POST', '/iap/webhook', async ({ req, body }) => {
   if (!rcConfigured()) throw new HttpError(503, 'no_iap', '결제가 아직 연결되지 않았어요');
   if (!rcAuthOk(req)) throw new HttpError(401, 'bad_sig', '인증 실패');
@@ -2823,12 +2823,24 @@ on('POST', '/iap/webhook', async ({ req, body }) => {
   // 결제 담당을 넘긴 뒤의 갱신은 팀을 못 찾아 돈은 나가는데 무료로 떨어졌고, 인도자를 넘기고 새 팀을 만들어 산 것은
   // 옛 팀에 들어갔고, 넘겨받은 새 인도자가 산 것은 버려졌다 (F52)
   const cols = 'id, iap_user_id, plan, plan_until, plan_source';
+  const hint = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(act.teamId || '') ? 'attr' : 'buyer';
   // 다른 사람의 스토어 구독이 살아 있는 팀은 새로 고르지 않는다 (그 사람의 갱신·만료가 팀을 잃는다). 크레딧 팩은 상관없다
   const notTaken = act.kind === 'grant' ? `and not (iap_user_id is not null and iap_user_id <> $1 and plan_source = 'iap'
                 and plan <> 'free' and (plan_until is null or plan_until > now()))` : '';
   const find = {
     // 이 사람의 구독이 이미 적힌 팀
     map: () => one(`select ${cols} from teams where iap_user_id=$1 and deleted_at is null order by created_at limit 1`, [u.id]),
+    // 적힌 팀 — 그 구독으로 아직 유료일 때만 (만료·환불이 오기 전. 결제 유예 중이라 기한이 조금 지난 것도 포함).
+    // 끊긴 뒤의 기록은 옛 것이라, 그걸 먼저 보면 떠났거나 넘긴 옛 팀이 다시 산 것을 가져갔다
+    live: () => one(`select ${cols} from teams where iap_user_id=$1 and deleted_at is null and plan_source='iap' and plan <> 'free'
+                     order by created_at limit 1`, [u.id]),
+    // 끊긴 구독의 적힌 팀 — 산 사람이 아직 그 팀 멤버이고 앱이 다른 팀을 말하지 않았을 때만.
+    // 결제 담당을 넘기고 남은 사람의 구독이 결제 문제로 만료됐다가 되살아나면 RENEWAL 로 오는데, 속성의 팀(그 팀)은
+    // 이제 그 사람이 인도자·결제 담당이 아니라 attr 로는 못 찾는다
+    stay: () => one(`select ${cols} from teams where iap_user_id=$1 and deleted_at is null
+                     and ($2::text = '' or id = nullif($2::text, '')::uuid)
+                     and exists (select 1 from members m where m.team_id=teams.id and m.user_id=$1 and m.active)
+                     order by created_at limit 1`, [u.id, hint === 'attr' ? act.teamId : '']),
     // 앱이 알려 준 팀 — 산 사람이 그 팀의 인도자이거나 결제 담당일 때만
     attr: () => one(`select ${cols} from teams where id=$2::uuid and deleted_at is null
                    and (created_by=$1 or billing_user_id=$1) ${notTaken}`, [u.id, act.teamId]),
@@ -2838,10 +2850,13 @@ on('POST', '/iap/webhook', async ({ req, body }) => {
   };
   // 새로 산 것(INITIAL_PURCHASE·크레딧 팩)은 앱이 알려 준 팀에만 — 그 팀에 넣을 수 없다고(남의 구독이 살아 있는 등)
   // 산 사람의 다른 팀으로 돌리면 그 팀이 이 구독의 팀으로 적혀 갱신까지 엉뚱한 팀에 들어간다.
-  // 갱신은 적힌 팀이 먼저 (속성은 사람마다 하나라 다른 팀 결제 화면을 열었다 닫기만 해도 바뀐다).
+  // 갱신은 그 구독이 아직 유료로 두고 있는 적힌 팀이 먼저 (속성은 사람마다 하나라 다른 팀 결제 화면을 열었다 닫기만 해도 바뀐다).
+  // 끊겼다 다시 산 것도 RENEWAL 로 오는데, 그때 끊긴 옛 기록을 먼저 보면 떠났거나 인도자·결제 담당을 넘긴 옛 팀이
+  // 다시 유료가 되고 앱이 고른 새 팀은 무료로 남았다 (F52). 끊긴 뒤에는 앱이 알려 준 팀 → 산 사람의 팀 → 아직 멤버로 남은 적힌 팀.
+  // 크레딧 팩은 구독과 상관없으니 속성이 없으면 산 사람이 지금 인도자·결제 담당인 팀이 먼저다.
   // 그 밖의 사건(변경·해지 취소·연장·만료·환불)은 적힌 팀에만 — 아무 팀에나 붙이면 남의 팀 플랜을 끊거나 준다
-  const hint = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(act.teamId || '') ? 'attr' : 'buyer';
-  const order = act.pick === 'new' ? (hint === 'attr' ? ['attr'] : ['map', 'buyer']) : act.pick === 'renew' ? ['map', hint] : ['map'];
+  const order = act.pick === 'new' ? (hint === 'attr' ? ['attr'] : act.kind === 'credits' ? ['buyer', 'stay'] : ['live', 'buyer'])
+    : act.pick === 'renew' ? ['live', hint, 'stay'] : ['map'];
   let t = null;
   for (const k of order) if (!t) t = await find[k]();
   if (!t) return { ok: true, skipped: '이 구독이 반영될 팀이 없음' };
