@@ -4502,7 +4502,10 @@ async function pushSongs(){
       // 받는 사이 팀을 바꿨으면 새 팀 라이브러리(S.songs)에 넣지 않는다. 옛 팀에 돌아가면 같은 요청 id(songReq)로 다시 보내 이어진다
       if(moved())return false;
       delete it.songReq;if(!songById(r.song.id))S.songs.push(r.song);linkItemToArr(it,r.song,r.song.arrangements[0]||{});changed=true}
-     catch(e){if(e.status>=400&&e.status<500)delete it.songReq;   // 서버가 거절한 것이면 다음엔 새 id 로
+     // 그 id 를 다른 곡이 쓰고 있다(409)고 하면 다음엔 새 id 로. 저장은 하지 않는다 — 요청을 지우거나 저장하면 다음 바퀴가 새 요청을
+     // 만들며 save() → 3초 뒤 다시 밀기 → 또 거절로 이어져, 계속 거절되는 동안(401·402·403) 사용자가 아무것도 안 해도 3초마다
+     // 요청을 보내고 상태 전체를 다시 썼다. 거절된 요청은 그대로 두고 다음 저장 때 다시 민다
+     catch(e){if(e.status===409)it.songReq={id:songReqId(),title:it.title};
       console.warn('song create',e.message);return false}
     }
    }
