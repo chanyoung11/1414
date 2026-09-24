@@ -136,7 +136,8 @@ def run():
         pg.evaluate("(()=>{const s=%s.items[0].score;s.tempo=%s;s.lines=%s;s.cost=%s;CONTI.save()})()" % (svc_js(s30), json.dumps(XSS), json.dumps(XSS), json.dumps(XSS)))
         score_info()
         if pg.evaluate('window.__xss||0'): fail('저장돼 있던 악보 칸으로 스크립트가 실행됨')
-        if pg.evaluate("document.getElementById('siTempo').value") != XSS: fail('빠르기 칸이 글자 그대로 보이지 않음')
+        # 곡 정보 창은 빠르기를 숫자로 바꿔 끼운다 (fe-01 과 같은 수정) — 숫자가 아니면 빈 칸이고 글자가 새지 않는다
+        if pg.evaluate("document.getElementById('siTempo').value") != '': fail('숫자가 아닌 빠르기가 칸에 들어감')
         pg.keyboard.press('Escape'); pg.evaluate("location.hash='#/home'"); pg.wait_for_timeout(300)
         # 제대로 된 악보는 그대로
         pg.evaluate("(()=>{const s=%s.items[0].score;s.tempo=72;s.lines=3;s.cost=41;CONTI.save()})()" % svc_js(s30))
