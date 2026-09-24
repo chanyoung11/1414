@@ -3249,18 +3249,24 @@ function josaRo(v){const t=String(v||'').trim();if(!t)return t;
  return t+(hasBat(t)?'으로':'로')}
 const online=()=>NET.server===true;
 // 오프라인으로 켜면 NET.server 가 null 로 굳어, 다시 연결돼도 발행이 서버로 안 갔다
-let RECONNECT_T=null,RECHECK=null;
+let RECONNECT_T=null,RECHECK=null,BOOTING=true;
 // 여러 곳(online 이벤트·다시 묻기 타이머·화면 복귀)에서 겹쳐 불려도 한 번만 돈다. 겹치면 콘티를 두 번 받아 같은 콘티가 둘 생길 수 있다
+// 켜는 중(boot 가 서버 확인·/me 를 기다리는 동안)에는 묻지 않는다 — 켜기와 겹쳐 /me 를 두 번 부르고 '다시 연결됐어요' 가 뜨고,
+// 켜기가 끝나며 늦게 온 '모름'으로 방금 붙은 연결을 덮었다. 켜기가 오프라인으로 끝나면 거기서 scheduleReprobe 가 다시 묻는다
 function recheckServer(){return RECHECK||(RECHECK=(async()=>{
- if(NET.server===true)return;
- const was=NET.server;NET.server=await probeServer();
- if(NET.server===true&&was!==true){
-  // 서버는 닿는데 /me 가 아직 안 되면(503·느림) 로그인 화면으로 넘기지 않는다 — 오프라인(모름)으로 두고 다음에 다시
-  try{await takeMe(await api('/me',{timeout:10000}))}catch(e){if(e.status===401)NET.user=null;else{NET.server=null;return}}
-  toast('서버에 다시 연결됐어요');
-  // 못 올린 발행을 먼저 올리고 나서 목록을 받는다 (거꾸로면 방금 올린 것을 '서버에서 지워진 것'으로 볼 수 있다)
-  if(S.team.id){retryPending().then(()=>SYNC.pullServices()).then(ch=>{if(ch)render()});pullSongs('fresh').catch(()=>{})}
-  SYNC.schedulePush();render()}})().finally(()=>{RECHECK=null}))}
+ if(NET.server===true||BOOTING)return;
+ const srv=await probeServer();
+ if(srv!==true){NET.server=srv;return}
+ // NET.server 는 /me 가 끝난 뒤에 true 로 — 먼저 두면 /me 를 기다리는 사이 그린 화면이 사용자 없이 로그인 창이 되고,
+ // /me 가 503·느림으로 실패하면 그 로그인 창이 오프라인인 채로 남았다. 실패하면 오프라인(모름)으로 두고 다음에 다시
+ let m;try{m=await api('/me',{timeout:10000})}catch(e){if(e.status!==401){NET.server=null;return}}
+ // takeMe 는 NET.user 부터 채운다 — true 와 사용자 사이에 그릴 틈이 없다. 팀이 바뀌었으면 그 안에서 온라인으로 라이브러리를 받는다
+ NET.server=true;
+ if(!m)NET.user=null;else try{await takeMe(m)}catch(e){console.warn('me',e&&e.message);NET.server=null;return}
+ toast('서버에 다시 연결됐어요');
+ // 못 올린 발행을 먼저 올리고 나서 목록을 받는다 (거꾸로면 방금 올린 것을 '서버에서 지워진 것'으로 볼 수 있다)
+ if(S.team.id){retryPending().then(()=>SYNC.pullServices()).then(ch=>{if(ch)render()});pullSongs('fresh').catch(()=>{})}
+ SYNC.schedulePush();render()})().finally(()=>{RECHECK=null}))}
 // 못 올린 발행(pubPending)을 올린다. 끝나면 홈 표시('서버에 못 올림'·'올리는 중')를 바로 맞춘다 — 전에는 다시 연결돼
 // 올리고도 다른 화면으로 갈 때까지 '서버에 못 올림'·다시 올리기 단추가 남았다
 function retryPending(){if(!online()||!S.team.id||!S.services.some(x=>x.pubPending))return Promise.resolve(0);
@@ -3452,7 +3458,9 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),getting:new Map(),notePut:{},no
   const prevPub=cur.published;
   // 버전만 올라가 있고 내용은 발행본 그대로인 것은 고친 게 아니다 — 예전 앱은 발행 창을 열기만 해도(카톡 글 복사) 버전을 올려 두어,
   // 그런 콘티는 '수정 중'으로 남아 다른 기기의 새 발행본을 영영 안 받았고, 나중에 이 기기에서 발행하면 그 발행을 되돌렸다
-  const edited=isLeader()&&(keep||(prevPub?cur.version>prevPub.version&&pubSig(cur,cur.items)!==pubSig(prevPub,prevPub.items):!!(cur.editedAt&&cur.draftPushedAt!==cur.editedAt)));
+  // 파일에서 초안으로 들인 뒤 손대지 않았고 서버 것이 파일보다 오래되지 않았다 → 고친 것이 아니다. 서버 발행본을 받는다 (F31)
+  const ff=cur.fromFile,fromFile=!prevPub&&isObj(ff)&&ff.at===cur.editedAt&&(+ff.v||0)<=doc.version;delete cur.fromFile;
+  const edited=isLeader()&&(keep||(!fromFile&&(prevPub?cur.version>prevPub.version&&pubSig(cur,cur.items)!==pubSig(prevPub,prevPub.items):!!(cur.editedAt&&cur.draftPushedAt!==cur.editedAt))));
   cur.published={version:doc.version,at:new Date(d.updatedAt).getTime()||Date.now(),name:doc.name,date:doc.date,folder:doc.folder||'',notice:doc.notice||'',message:doc.message||'',messageRev:doc.messageRev||0,word:doc.word||null,author:doc.author||'',items:clone(doc.items),changes:doc.changes||[],stageLayouts:doc.stageLayouts||null}; // 인도자 추천 조판도 같이 (없으면 멤버 무대가 늘 자동 조판으로 열렸다)
   if(edited&&cur.version<=doc.version)cur.version=doc.version+1;   // 고친 초안은 받은 발행본보다 한 단계 위 — '수정 중'으로 보이고 다음 발행이 v+1 이 된다
   if(!isLeader()||(!edited&&cur.version<=doc.version)){ // 인도자 기기의 더 새로운 초안은 건드리지 않음
@@ -7743,7 +7751,8 @@ function stgBlockMenu(b,pos){
    <button class="sbtn2" data-sm="hide" data-id="${b.id}" title="숨기기">${ic('x')}</button></div></div>`}
 
 async function stageOpen(svc,idx){
- await pullPrefs();
+ // 서버에 둔 내 조판을 받아 온다. 약한 와이파이에서는 끝나지 않아 무대가 안 열렸다 — 잠깐만 기다리고 이 기기 것으로 연다
+ await Promise.race([pullPrefs(),new Promise(r=>setTimeout(r,2000))]);
  STG.svc=svc;STG.idx=idx||0;STG.screen=0;STG.open=false;STG.from=idx||0;
  const it=stgItem();STG.pref=stgLoad();
  STG.edit=false;STG.menu=null;STG.sel=[];
@@ -8294,13 +8303,16 @@ function tidyItem(it){if(!it.id)it.id=uid();tidyStrs(it,['title','key','mod','fo
  if(it.chart!=null){if(!isObj(it.chart)||!Array.isArray(it.chart.sections))delete it.chart;
   else{it.chart.sections=objs(it.chart.sections);it.chart.sections.forEach(sec=>{if('bars' in sec)sec.bars=objs(sec.bars);(sec.bars||[]).forEach(b=>{if('chords' in b)b.chords=Array.isArray(b.chords)?b.chords.filter(x=>typeof x==='string'):[]})})}}
  if(it.score!=null&&!(isObj(it.score)&&Array.isArray(it.score.measures)))delete it.score;
+ // 악보의 숫자 칸(빠르기·줄 수·비용)도 '곡 정보' 창에 그대로 박힌다 — 글자면 뺀다. 마디는 객체만 (문자 마디 하나로 고치기 창이 멈췄다)
+ if(it.score){const sc=it.score;tidyNums(sc,['tempo','lines','cost','verses','at','failed']);sc.measures=objs(sc.measures);
+  sc.measures.forEach(m=>{['c','n'].forEach(k=>{if(k in m)m[k]=objs(m[k])})})}
  return it}
 function tidySvc(s){if(!s.id)s.id=uid();tidyStrs(s,['name','date','folder','notice','message','label']);tidyNums(s,['version','messageRev','editedAt'],0);
  s.items=objs(s.items).map(tidyItem);if('word' in s)s.word=tidyWord(s.word);
  if(s.published!=null){const p=s.published;if(!isObj(p))s.published=null;
   else{tidyStrs(p,['name','date','folder','notice','message','author']);tidyNums(p,['version','at','messageRev'],0);p.items=objs(p.items).map(tidyItem);p.word=tidyWord(p.word);
    if('changes' in p){p.changes=objs(p.changes);p.changes.forEach(c=>tidyStrs(c,['kind','text']))}}}
- delete s.pubPending;delete s.draftPushedAt;   // 보낸 기기의 동기화 표시는 이 기기와 상관없다 (묻어 오면 초안이 올라간 것으로 착각한다)
+ delete s.pubPending;delete s.draftPushedAt;delete s.fromFile;   // 보낸 기기의 동기화 표시는 이 기기와 상관없다 (묻어 오면 초안이 올라간 것으로 착각한다)
  return s}
 async function importJSON(file){
  let data;try{data=JSON.parse(await file.text())}catch{toast('파일을 읽지 못했어요');return}
@@ -8323,7 +8335,10 @@ async function importJSON(file){
   inc.items.forEach(it=>{it.notes=it.notes.filter(keepNote);it.media.forEach(md=>md.notes=md.notes.filter(keepNote))});
   if(!cur){const twin=S.services.find(x=>x.id!==inc.id&&(inc.name||'').trim()&&x.name===inc.name&&x.date===inc.date); // §9 같은 이름·날짜 → 합칠지 묻기
    if(twin&&confirm(`"${inc.name}" (${inc.date})이 이미 있어요. 파일의 곡을 그 예배에 합칠까요?\n(취소하면 따로 추가돼요)`)){mergeInto(twin,inc);n++;continue}}
-  if(asDraft&&inc.published){inc.published=null;inc.editedAt=Date.now();if(!cur||!cur.published)drafted++}
+  if(asDraft&&inc.published){inc.published=null;inc.editedAt=Date.now();
+   // 손대지 않은 채 다시 연결됐는데 팀 서버에 이미 같은 콘티(같거나 새 버전)가 있으면 그것을 받는다 (pullService).
+   // 표시가 없으면 초안을 올리기 전에 목록을 받을 때 파일 내용을 '고친 것'으로 쳐서, 옛 곡 목록으로 '수정 중' 에 굳었다
+   if(!cur||!cur.published){drafted++;inc.fromFile={at:inc.editedAt,v:+inc.version||0}}}
   if(cur){ // carry my own notes across
    inc.items.forEach(it=>{const old=cur.items.find(x=>x.id===it.id);if(!old)return;const mine=(old.notes||[]).filter(x=>x.layer!=='leader'&&x.author===my);const mids=new Set(it.pieces.flatMap(p=>p.markers.map(m=>m.id)));it.notes=(it.notes||[]).filter(x=>x.layer==='leader'||x.author!==my).concat(mine.filter(x=>mids.has(x.marker)));
     it.media.forEach(md=>{const om=(old.media||[]).find(x=>x.id===md.id);if(om){md.notes=(md.notes||[]).filter(x=>x.layer==='leader'||x.author!==my).concat((om.notes||[]).filter(x=>x.layer!=='leader'&&x.author===my))}})});
@@ -8747,7 +8762,7 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
   console.warn('me 실패',e&&e.message);
   if(S.team.id||await probeServer()!==true)srv=null;
   break}}
- clearTimeout(early);NET.server=srv;
+ clearTimeout(early);NET.server=srv;BOOTING=false;   // 이제부터 다시 묻기(recheckServer)가 돈다
  // 알림을 눌러 새 창으로 열렸으면 주소의 ?team= 이 그 알림의 팀이다 (sw.js). 그 팀으로 바꾸고 주소에서는 뗀다
  const pushTeam=new URLSearchParams(location.search).get('team');
  if(pushTeam){const h=location.hash;try{history.replaceState(null,'',location.pathname+h)}catch(e){}
@@ -8759,7 +8774,7 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
   SYNC.schedulePush()}   // 오프라인에서 고친 것. 예전에는 /me 뒤 save() 가 대신 불러 줬는데, 이제 그때는 아직 연결 전(NET.server)이다
  // 시간 초과로 오프라인이 됐어도 브라우저는 여전히 '온라인'이라 online 이벤트가 오지 않는다 → 간격을 늘려 가며 다시 묻고(scheduleReprobe),
  // 20초마다도 한 번 본다. 앱으로 돌아올 때는 위의 visibilitychange 가 바로 묻는다
- if(!online())scheduleReprobe();
+ if(!online()){REPROBE.n=0;scheduleReprobe()}   // 켜는 동안 건너뛴 다시 묻기가 간격만 늘려 놨다 — 5초부터 다시
  setInterval(()=>{if(NET.server===null&&!document.hidden)recheckServer()},20000);
  probeOmr();startNotiPoll();nativeSetup();
  window.CONTI={ADS,WEBADS,AD_HOSTS,setZoom,P,pl:()=>PL,STG,stageOpen,stageExit,adsAllowed,webAdsAllowed,MET,PIANO,metOpen,metStart,metStop,metSet,pianoOpen,HOME,PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go,PLANQ,planCls,ytOriginParam,ytEmbedSrc,YT};

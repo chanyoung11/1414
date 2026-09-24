@@ -1,13 +1,16 @@
 # 감사 fe-12: 가져오기·내보내기·켜기(부팅)·오프라인 삭제
 #  - F30  가져온 파일의 타임라인 메모 시각(t)·레이어·키 이동에 글자를 넣어도 스크립트가 돌지 않는다 (저장된 옛 값도)
-#         날짜로 못 바꾸는 메모 시각(at)이 메모 올리기 전체를 막지 않는다
+#         날짜로 못 바꾸는 메모 시각(at)이 메모 올리기 전체를 막지 않는다. 악보의 빠르기·줄 수·비용 칸('곡 정보' 창)도 같다
 #  - F101 모양이 망가진 파일을 가져와도 앱이 백지가 되지 않는다 (이미 저장된 망가진 예배도 켤 때 고친다)
 #  - F142 같은 이름·날짜 예배로 '합치기'를 골라도 남의 메모가 내 이름으로 들어오지 않는다
-#  - F31  팀 기기의 인도자가 발행본이 든 파일을 가져오면 초안으로 들어와 다음 동기화에 사라지지 않는다
+#  - F31  팀 기기의 인도자가 발행본이 든 파일을 가져오면 초안으로 들어와 다음 동기화에 사라지지 않는다.
+#         팀 서버에 이미 같은(더 새) 콘티가 있고 가져온 뒤 손대지 않았으면 서버 것을 받는다 ('수정 중' 으로 옛 곡 목록에 굳지 않게)
 #  - F99  내보내기 파일에 비공개 말씀 메모·보낸 사람 계정 id 가 담기지 않는다
 #  - F102 오프라인(또는 서버 오류)에서 지운 예배는 다시 연결되면 서버에서도 지워진다
-#  - F32  서버 확인이 끝나지 않아도(약한 와이파이) 받아 둔 팀 화면이 몇 초 안에 뜨고, 나중에 다시 붙는다
-#  - F143 켤 때 /me 가 한 번 503 이어도 로그인 창이 뜨지 않는다. 계속 실패하면 오프라인으로 열고 나중에 붙는다
+#  - F32  서버 확인이 끝나지 않아도(약한 와이파이) 받아 둔 팀 화면이 몇 초 안에 뜨고, 나중에 다시 붙는다.
+#         켜는 중에는 다시 묻기가 겹치지 않는다(/me 두 번·'다시 연결됐어요'·늦은 '모름'이 연결을 덮기). 설정 받기가 걸려도 무대가 열린다
+#  - F143 켤 때 /me 가 한 번 503 이어도 로그인 창이 뜨지 않는다. 계속 실패하면 오프라인으로 열고 나중에 붙는다.
+#         나중에 다시 붙을 때도 /me 가 끝나기 전에는 연결됨으로 보지 않는다 (그 사이 로그인 창 · 실패 뒤 남는 로그인 창)
 #  - F100 앱(NATIVE)에서 내보내기는 공유 시트로 넘기고, 끝까지 됐을 때만 '보냄' 이라고 알린다 (운영 서버로는 아무 요청도 안 나간다)
 import os, sys, time, json, base64, zlib, struct, random
 from playwright.sync_api import sync_playwright
@@ -58,6 +61,16 @@ def home(pg):
     pg.evaluate("location.hash='#/home'"); pg.wait_for_selector('.hd', timeout=10000); pg.wait_for_timeout(300)
 
 
+def sim_offline(pg, off):
+    # 오프라인 흉내(NET.server=null) 동안은 서버 확인도 실패로 둔다. 안 그러면 앱의 다시 묻기(20초마다)가
+    # 그 사이 몰래 다시 붙어서, 오프라인 삭제·가져오기가 온라인 길로 가 시험이 가끔 틀렸다
+    if off:
+        pg.route('**/api/health', lambda r: r.fulfill(status=503, body='{}', headers={'content-type': 'application/json'}))
+        pg.evaluate("CONTI.NET.server=null;CONTI.render()")
+    else:
+        pg.unroute('**/api/health')
+
+
 def run():
     with sync_playwright() as p:
         b = p.chromium.launch(); errs = []
@@ -104,6 +117,34 @@ def run():
         if pg.evaluate('window.__xss||0'): fail('저장돼 있던 옛 값으로 스크립트가 실행됨')
         print('F30 ok')
         pg.evaluate("location.hash='#/home'"); pg.reload(); pg.wait_for_selector('.hd', timeout=20000)   # 막아 둔 메모 동기화를 되돌린다
+
+        # ---------- F30(악보): 악보의 빠르기·줄 수·비용 칸으로도 스크립트가 돌지 않는다 ----------
+        s30 = 'sc30' + tag; i30 = 'si30' + tag
+        score = {'measures': [{'c': [{'t': 'C', 'b': 0}], 'n': [{'p': 'C4', 'd': 16}]}, 'x'], 'title': '악보', 'key': 'C', 'time': '4/4',
+                 'tempo': XSS, 'lines': XSS, 'cost': XSS, 'verses': XSS, 'model': 'gem'}
+        imp(pg, {'app': 'conti', 'services': [{'id': s30, 'name': '악보 예배', 'date': '2026-11-01', 'version': 0, 'published': None,
+                 'items': [item(i30, '악보곡', score=score)]}], 'library': [dict(item('lb30' + tag, '라이브러리 악보곡'), score=score)]})
+        sc = pg.evaluate("(()=>{const a=%s.items[0].score,b=CONTI.S.library.find(x=>x.id===%s).score;return [a,b].map(s=>[s.tempo,s.lines,s.cost,s.verses,s.measures.length])})()" % (svc_js(s30), json.dumps('lb30' + tag)))
+        if sc != [[None, None, None, None, 1]] * 2: fail('악보 숫자 칸·마디가 정리되지 않음: %s' % sc)
+        def score_info():
+            pg.evaluate("location.hash='#/score/%s/%s'" % (s30, i30)); pg.wait_for_selector('[data-act="score-info"]', timeout=10000)
+            pg.click('[data-act="score-info"]'); pg.wait_for_selector('#siTempo', timeout=5000); pg.wait_for_timeout(300)
+        score_info()
+        if pg.evaluate('window.__xss||0'): fail('가져온 악보 칸으로 스크립트가 실행됨')
+        pg.keyboard.press('Escape'); pg.evaluate("location.hash='#/home'"); pg.wait_for_timeout(300)
+        # 서버·예전 버전이 남긴 값이어도 창에서 글자로만 보인다
+        pg.evaluate("(()=>{const s=%s.items[0].score;s.tempo=%s;s.lines=%s;s.cost=%s;CONTI.save()})()" % (svc_js(s30), json.dumps(XSS), json.dumps(XSS), json.dumps(XSS)))
+        score_info()
+        if pg.evaluate('window.__xss||0'): fail('저장돼 있던 악보 칸으로 스크립트가 실행됨')
+        if pg.evaluate("document.getElementById('siTempo').value") != XSS: fail('빠르기 칸이 글자 그대로 보이지 않음')
+        pg.keyboard.press('Escape'); pg.evaluate("location.hash='#/home'"); pg.wait_for_timeout(300)
+        # 제대로 된 악보는 그대로
+        pg.evaluate("(()=>{const s=%s.items[0].score;s.tempo=72;s.lines=3;s.cost=41;CONTI.save()})()" % svc_js(s30))
+        score_info()
+        info = pg.evaluate("[document.getElementById('siTempo').value,document.querySelector('#modal').textContent]")
+        if info[0] != '72' or '오선 3줄' not in info[1] or '약 41원' not in info[1]: fail('악보 정보가 제대로 안 보임: %s' % info)
+        pg.keyboard.press('Escape')
+        print('F30 score ok')
 
         # ---------- F101: 망가진 파일 · 이미 저장된 망가진 예배 ----------
         home(pg)
@@ -157,6 +198,32 @@ def run():
         if ps not in drafts: fail('가져온 초안이 서버에 올라가지 않음: %s' % drafts)
         print('F31 ok')
 
+        # ---------- F31(같은 팀): 오프라인에서 가져온 파일의 콘티가 팀 서버에 이미 있으면(더 새 버전) 그것을 받는다 ----------
+        # 초안을 올리기 전에 목록부터 받아도, 손대지 않은 가져오기를 '고친 것'으로 쳐서 옛 곡 목록으로 굳지 않는다
+        home(pg)
+        def pub_srv(sid2, v, titles):
+            r = ctx.request.put(URL + 'api/services/' + sid2, headers=H, data={'teamId': team, 'doc': {'id': sid2, 'name': '같은 팀 예배 ' + sid2[:4], 'date': '2026-10-12', 'version': v,
+                                'items': [item('s%d' % i + sid2, t) for i, t in enumerate(titles)], 'changes': []}})
+            if r.status != 200: fail('서버 발행 실패: %s' % r.text()[:200])
+        def file_v1(sid2):
+            its = [item('s0' + sid2, '곡1')]
+            nm = '같은 팀 예배 ' + sid2[:4]   # 이름·날짜가 같으면 '합칠까요' 로 간다 — 따로 들어오게 이름을 다르게
+            return {'app': 'conti', 'at': int(time.time() * 1000), 'library': [], 'services': [{'id': sid2, 'name': nm, 'date': '2026-10-12', 'version': 1,
+                    'items': its, 'published': {'version': 1, 'at': 1, 'name': nm, 'date': '2026-10-12', 'items': its, 'changes': []}}]}
+        same, kept = 'same31' + tag, 'kept31' + tag
+        sim_offline(pg, True); pg.wait_for_timeout(300)   # 이 기기는 아직 받지 않았다 (오프라인)
+        for s2 in (same, kept): pub_srv(s2, 1, ['곡1'])
+        imp(pg, file_v1(same), wait=500); imp(pg, file_v1(kept), wait=500)
+        # 두 번째 것은 가져온 뒤 오프라인에서 고쳤다 → 그것은 진짜 '수정 중' 으로 지킨다
+        pg.evaluate("(()=>{const s=%s;s.name='고친 예배';s.editedAt=Date.now()+5;CONTI.save()})()" % svc_js(kept))
+        for s2 in (same, kept): pub_srv(s2, 2, ['곡1', '곡2'])   # 다른 인도자가 v2 발행
+        sim_offline(pg, False)
+        pg.evaluate("CONTI.NET.server=true;CONTI.SYNC.pullServices().then(()=>CONTI.render())"); pg.wait_for_timeout(2500)
+        st = pg.evaluate("[%s,%s].map(s=>s&&{v:s.version,pv:s.published&&s.published.version,items:s.items.map(i=>i.title),name:s.name,ff:'fromFile' in s})" % (svc_js(same), svc_js(kept)))
+        if st[0] != {'v': 2, 'pv': 2, 'items': ['곡1', '곡2'], 'name': '같은 팀 예배 same', 'ff': False}: fail('손대지 않은 가져오기가 서버 발행본으로 바뀌지 않음: %s' % st[0])
+        if not st[1] or st[1]['name'] != '고친 예배' or st[1]['pv'] != 2 or st[1]['v'] != 3: fail('가져온 뒤 고친 것은 지켜야 함: %s' % st[1])
+        print('F31 same-team ok')
+
         # ---------- F99: 내보내기에 비공개 말씀 메모가 담기지 않는다 ----------
         home(pg)
         w_priv = {'passage': '요 3:16', 'title': '사랑', 'line': '한 줄', 'memo': '인도자만 볼 비공개 메모', 'memoPublic': False, 'from': {'type': 'pastor', 'memberId': 'uid-secret', 'name': '목사님'}}
@@ -184,9 +251,10 @@ def run():
         publish_on_server(d1, '오프라인 삭제'); publish_on_server(d2, '서버 오류 삭제')
         pg.evaluate("CONTI.SYNC.pullServices().then(()=>CONTI.render())"); pg.wait_for_timeout(2500); home(pg)
         if not pg.evaluate("!!%s&&!!%s" % (svc_js(d1), svc_js(d2))): fail('서버 발행본을 받지 못함')
-        pg.evaluate("CONTI.NET.server=null;CONTI.render()"); pg.wait_for_timeout(500)
+        sim_offline(pg, True); pg.wait_for_timeout(500)
         pg.click('[data-act="del-svc"][data-id="%s"]' % d1); pg.wait_for_timeout(800)
         if pg.evaluate("(CONTI.S.delPending||[]).includes(%s)" % json.dumps(d1)) is not True: fail('오프라인 삭제가 대기열에 없음')
+        sim_offline(pg, False)
         pg.evaluate("CONTI.NET.server=true;CONTI.render()"); pg.wait_for_timeout(500)
         # 서버 오류(5xx) 한 번 → 대기열, 다음 동기화 때 다시
         state = {'n': 0}
@@ -250,6 +318,90 @@ def run():
         pg.evaluate("window.dispatchEvent(new Event('online'))")
         pg.wait_for_function('window.CONTI&&CONTI.NET.server===true&&!!CONTI.NET.user', timeout=15000)
         print('F143 ok')
+
+        # ---------- F143(다시 붙기): 오프라인에서 다시 붙는 동안 /me 가 느리거나 실패해도 로그인 창이 뜨지 않는다 ----------
+        mode = {'m': '503', 'held': []}
+        def me_route(route):
+            if mode['m'] == '503': route.fulfill(status=503, body='{"error":"x","message":"오류"}', headers={'content-type': 'application/json'})
+            else: mode['held'].append(route)
+        pg.route('**/api/me', me_route)
+        pg.reload(); pg.wait_for_selector('.hd', timeout=15000); pg.wait_for_timeout(3500)
+        if not pg.evaluate('CONTI.NET.server===null'): fail('/me 503 으로 오프라인이 되지 않음')
+        mode['m'] = 'hold'
+        pg.evaluate("window.dispatchEvent(new Event('online'))"); pg.wait_for_timeout(1500)
+        if not mode['held']: fail('다시 붙기가 /me 를 부르지 않음')
+        pg.evaluate("location.hash='#/library'"); pg.wait_for_timeout(800)   # /me 를 기다리는 사이 화면을 그린다
+        if pg.locator('#lgUser').count(): fail('다시 붙는 중 /me 를 기다리는 사이 로그인 창이 뜸')
+        if pg.evaluate('CONTI.NET.server') is not None: fail('/me 가 끝나기 전에 연결됨으로 봄')
+        mode['m'] = '503'
+        for r in mode['held']:
+            try: r.fulfill(status=503, body='{"error":"x","message":"오류"}', headers={'content-type': 'application/json'})
+            except Exception: pass
+        pg.wait_for_timeout(1000)
+        if pg.locator('#lgUser').count() or not pg.evaluate('CONTI.NET.server===null'): fail('다시 붙기의 /me 503 뒤 로그인 창 또는 연결 상태가 남음')
+        pg.unroute('**/api/me')
+        pg.evaluate("window.dispatchEvent(new Event('online'))")
+        pg.wait_for_function('CONTI.NET.server===true&&!!CONTI.NET.user', timeout=15000)
+        if pg.locator('#lgUser').count(): fail('붙은 뒤 로그인 창이 뜸')
+        print('F143 reconnect ok')
+
+        # ---------- F32/F143(켜는 중): 켜기가 서버 확인·/me 를 기다리는 동안 다시 묻기가 겹치지 않는다 ----------
+        pg.evaluate("location.hash='#/home'"); pg.wait_for_timeout(300)
+        cnt = {'me': 0, 'held': []}
+        def slow_me(route):
+            cnt['me'] += 1
+            if cnt['me'] == 1: cnt['held'].append(route)
+            else: route.continue_()
+        pg.route('**/api/me', slow_me)
+        pg.reload(); pg.wait_for_timeout(700)
+        pg.evaluate("document.dispatchEvent(new Event('visibilitychange'));window.dispatchEvent(new Event('online'))"); pg.wait_for_timeout(1800)
+        if cnt['me'] != 1: fail('켜는 중 화면 복귀로 /me 를 또 부름 (%d번)' % cnt['me'])
+        if pg.locator('#lgUser').count(): fail('켜는 중 로그인 창이 뜸')
+        for r in cnt['held']:
+            try: r.continue_()
+            except Exception: pass
+        pg.wait_for_function('window.CONTI&&CONTI.NET.server===true&&!!CONTI.NET.user', timeout=15000); pg.wait_for_timeout(500)
+        if '다시 연결됐어요' in pg.evaluate("(document.getElementById('toast')||{}).textContent||''"): fail('그냥 느리게 켜졌는데 다시 연결됐다고 알림')
+        if cnt['me'] != 1: fail('켜기가 끝난 뒤에도 /me 를 또 부름 (%d번)' % cnt['me'])
+        pg.unroute('**/api/me')
+        # 켜기의 서버 확인이 걸려 있는 동안 화면 복귀 → 켜기가 끝나며 방금 붙은 연결을 '모름'으로 덮지 않는다 (켜기가 오프라인으로 끝나면 곧 다시 붙는다)
+        hold = {'h': [], 'n': 0, 'me': 0}
+        def hang_first_health(route):
+            hold['n'] += 1
+            if hold['n'] == 1: hold['h'].append(route)
+            else: route.continue_()
+        def count_me(route):
+            hold['me'] += 1; route.continue_()
+        pg.route('**/api/health', hang_first_health); pg.route('**/api/me', count_me)
+        pg.reload(); pg.wait_for_timeout(1000)
+        pg.evaluate("document.dispatchEvent(new Event('visibilitychange'))"); pg.wait_for_timeout(1500)
+        if hold['me']: fail('켜기가 서버 확인을 기다리는 동안 다시 묻기가 따로 붙음')
+        pg.wait_for_function('window.CONTI&&CONTI.NET.server===null', timeout=12000)   # 켜기의 서버 확인 시간 초과
+        t0 = time.time()
+        pg.wait_for_function('CONTI.NET.server===true&&!!CONTI.NET.user', timeout=15000)
+        if time.time() - t0 > 9: fail('켜기가 오프라인으로 끝난 뒤 늦게 붙음: %.1fs' % (time.time() - t0))
+        for r in hold['h']:
+            try: r.abort()
+            except Exception: pass
+        pg.unroute('**/api/health'); pg.unroute('**/api/me')
+        print('F32 boot/recheck ok')
+
+        # ---------- F32(무대): 설정 받기가 끝나지 않아도 무대 모드가 열린다 ----------
+        st32 = 'st32' + tag
+        pg.evaluate("CONTI.S.services.push({id:%s,name:'무대 예배',date:'2026-10-11',notice:'',version:0,items:[{id:'st1'+%s,title:'곡1',key:'G',mod:'',form:'',songNote:'',pieces:[],media:[],notes:[]}],published:null});CONTI.save();CONTI.PREFS.data=null" % (json.dumps(st32), json.dumps(tag)))
+        held = []
+        pg.route('**/api/me/prefs', lambda route: held.append(route))
+        pg.evaluate("location.hash='#/play/%s/0'" % st32); pg.wait_for_timeout(1500)
+        t0 = time.time(); pg.evaluate("(()=>{CONTI.stageOpen(%s,0)})()" % svc_js(st32))
+        try: pg.wait_for_selector('#stageWrap', timeout=6000)
+        except Exception: fail('설정 받기가 걸려 있는 동안 무대 모드가 열리지 않음')
+        if not held: fail('설정 받기 요청이 가로채지지 않음')
+        pg.evaluate("CONTI.stageExit()"); pg.wait_for_timeout(300)
+        for r in held:
+            try: r.abort()
+            except Exception: pass
+        pg.unroute('**/api/me/prefs')
+        print('F32 stage ok (%.1fs)' % (time.time() - t0))
 
         if errs: fail('page errors: %s' % errs)
 
