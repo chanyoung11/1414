@@ -24,6 +24,20 @@ public class PrinterPlugin extends Plugin {
   // 큰 파일은 여러 번에 나눠 온다 (append). 이름은 마지막 조각만 써서 폴더 밖으로 못 나가게 한다
   @PluginMethod
   public void saveFile(final PluginCall call) {
+    writeExport(call, call.getString("data", "").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+  }
+
+  // 글이 아닌 파일(합주 녹음). 웹뷰에서 바이트를 그대로 못 넘겨 base64 조각으로 온다 → 풀어서 쓴다.
+  // saveFile 로 보내면 UTF-8 글로 써져 소리 파일이 깨진다
+  @PluginMethod
+  public void saveBytes(final PluginCall call) {
+    byte[] b;
+    try { b = android.util.Base64.decode(call.getString("data", ""), android.util.Base64.DEFAULT); }
+    catch (IllegalArgumentException e) { call.reject("파일 조각이 이상해요"); return; }
+    writeExport(call, b);
+  }
+
+  private void writeExport(PluginCall call, byte[] bytes) {
     String name = new java.io.File(call.getString("name", "1414.txt")).getName().replace(':', '_');
     if (name.isEmpty() || name.equals(".") || name.equals("..")) { call.reject("파일 이름이 이상해요"); return; }
     try {
@@ -31,7 +45,7 @@ public class PrinterPlugin extends Plugin {
       if (!dir.isDirectory() && !dir.mkdirs()) { call.reject("임시 폴더를 만들지 못했어요"); return; }
       java.io.File f = new java.io.File(dir, name);
       try (java.io.OutputStream os = new java.io.FileOutputStream(f, Boolean.TRUE.equals(call.getBoolean("append", false)))) {
-        os.write(call.getString("data", "").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        os.write(bytes);
       }
       JSObject r = new JSObject();
       r.put("uri", Uri.fromFile(f).toString());

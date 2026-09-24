@@ -1659,13 +1659,17 @@ const SHARP_N=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'],FLAT_N=['C'
 const STEPV={C:0,D:2,E:4,F:5,G:7,A:9,B:11};
 const midiOfP=p=>{const m=String(p||'').match(/^([A-G])(#{1,2}|b{1,2}|)(-?\d)$/);if(!m)return null;
  const al=m[2].startsWith('#')?m[2].length:m[2].startsWith('b')?-m[2].length:0;return (+m[3]+1)*12+STEPV[m[1]]+al};
-function keyShiftName(key,semis){const m=String(key||'C').match(/^([A-G])(#|b)?(m)?$/);if(!m)return key;
+function keyShiftName(key,semis,want){const m=String(key||'C').match(/^([A-G])(#|b)?(m)?$/);if(!m)return key;
  const r=STEPV[m[1]]+(m[2]==='#'?1:m[2]==='b'?-1:0);const to=((r+semis)%12+12)%12;
  // 단조는 단조 조표 수로 고른다. 장조 표로 고르면 C#m 이 Dbm(표에 없는 이름 → 조표 0개), G#m 이 Abm(7개)이 됐다
  const T=m[3]?XMIN:XFIF;const w=x=>T[x]==null?9:Math.abs(T[x]);
+ const cand=[...new Set([SHARP_N[to],FLAT_N[to]])];
+ // 옮겨 간 조가 연주 키(want)와 조표가 같으면(그 조 또는 나란한조) 사람이 고른 이름대로 적는다 —
+ // F# 으로 정한 곡의 F 차트·악보가 Gb 로(코드 Gb B Db), C# 곡이 Db 로 적혔다. ▲▼ 로 다른 키가 되면 아래 규칙대로
+ const wk=normAcc(want).replace(/\s/g,'');
+ if(keySemi(wk)!=null){const wf=xFifths(wk);const hit=cand.find(x=>T[x]===wf);if(hit)return hit+(m[3]||'')}
  // 조표 수가 같으면(F#·Gb, D#m·Ebm) 원래 조가 있던 쪽(#·b)을 따른다 — Ab 로 바뀌는 곡을 내리면 F# 이 아니라 Gb
  const src=xFifths(key);const pf=src<0||(src===0&&!!m[3]);
- const cand=[...new Set([SHARP_N[to],FLAT_N[to]])];
  return cand.sort((a,b)=>w(a)-w(b)||(pf?(T[b]<0)-(T[a]<0):0))[0]+(m[3]||'')}
 // 조표대로 음이름을 붙인다: Gb장조의 시는 Cb, F#장조의 파는 E#. 조에 없는 음은 조가 있는 쪽(#·b)으로.
 // 예전에는 # 이름표·b 이름표 둘 중 하나로만 적어 7개짜리 조에서 조표와 다른 이름(제자리표 B·E)이 나왔다
@@ -1685,11 +1689,11 @@ const scoreChord=(t,semis,nm)=>{const c=parseChord(t);if(!c)return t;const r=NOT
 // 악보 전체를 반음 옮긴다 (음표·코드·조표 함께)
 // 중간에 조가 바뀌면(m.key) 그 마디부터는 바뀐 조로 이름을 붙인다 — 예전에는 첫 조로만 적어 Bb 조표 아래 A#·D# 이 나왔다.
 // 음이름을 못 읽는 음표('Bb'·'c5')는 건드리지 않는다: 원래 키에서 쉼표로 보이던 것이 옮기면 옥타브 -1 음표가 됐다
-function transposeScore(sc,semis){if(!semis)return sc;
- const key2=keyShiftName(sc.key,semis);let cur=key2;
+function transposeScore(sc,semis,want){if(!semis)return sc;
+ const key2=keyShiftName(sc.key,semis,want);let cur=key2;
  return {...sc,key:key2,measures:(sc.measures||[]).map((m,i)=>{
-  if(m.key&&i>0)cur=keyShiftName(m.key,semis);const nm=keySpeller(cur);
-  return {...m,key:m.key?keyShiftName(m.key,semis):m.key,
+  if(m.key&&i>0)cur=keyShiftName(m.key,semis,want);const nm=keySpeller(cur);
+  return {...m,key:m.key?keyShiftName(m.key,semis,want):m.key,
    c:(m.c||[]).map(c=>({...c,t:scoreChord(c.t,semis,nm)})),
    n:(m.n||[]).map(n=>{const mid=n.p?midiOfP(n.p):null;return mid==null?n:{...n,p:pitchName(nm,mid+semis)}})}})}}
 // 악보 데이터 → MusicXML (OSMD 가 읽는 표준)
@@ -1835,7 +1839,7 @@ function chartOffset(item,forPlay){const a=keySemi(item.key),b=keySemi(item.char
 const chartBars=sec=>(sec&&sec.bars)||[];
 function chartHTML(item,opts){const ch=item.chart;if(!ch||!ch.sections||!ch.sections.length)return '';
  const o=opts||{};const off=chartOffset(item,o.play);const showKey=item.key||ch.key||'';
- const spellKey=keyShiftName(keySemi(ch.key)!=null?ch.key:showKey,off);   // 카포 모양이면 그 모양의 키로 적는다
+ const spellKey=keyShiftName(keySemi(ch.key)!=null?ch.key:showKey,off,item.key);   // 카포 모양이면 그 모양의 키로 적는다
  const tr=c=>off?transposeChord(c,off,spellKey):c;
  const secs=ch.sections.map((sec,si)=>{const bars=chartBars(sec);
   return `<div class="csec"><div class="cshd"><b>${esc(sec.name||'?')}</b>${sec.repeat?`<span class="pill">x${esc(String(sec.repeat))}</span>`:''}</div>
@@ -1923,13 +1927,15 @@ const REH={bySvc:{},urls:{},at:{}};
 const canUploadReh=()=>{const st=S.team.settings||{};const rank={member:0,session_lead:1,pastor:-1,leader:2};return (rank[me().role]||0)>=(rank[st.rehearsalUploadRole||'member']||0)&&!isPastor()};
 const fmtDur=s=>{s=Math.max(0,Math.round(s||0));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return (h?h+':'+String(m).padStart(2,'0'):m)+':'+String(x).padStart(2,'0')};
 const fmtMB=b=>(b/1048576).toFixed(b>10485760?0:1)+'MB';
-async function pullRehearsals(svcId,force){if(!online()||!S.team.id||!svcId)return false;
+async function pullRehearsals(svcId,force,tmo){if(!online()||!S.team.id||!svcId)return false;
  if(!force&&REH.at[svcId]&&Date.now()-REH.at[svcId]<20000)return false;
- try{const r=await api(`/rehearsals?team=${S.team.id}&service=${svcId}`);REH.bySvc[svcId]=r.rehearsals||[];Object.assign(REH.urls,r.urls||{});REH.at[svcId]=Date.now();return true}catch(e){return false}}
+ try{const r=await api(`/rehearsals?team=${S.team.id}&service=${svcId}`,tmo?{timeout:tmo}:undefined);REH.bySvc[svcId]=r.rehearsals||[];Object.assign(REH.urls,r.urls||{});REH.at[svcId]=Date.now();return true}catch(e){return false}}
 function rehearsalsHTML(svc){const list=REH.bySvc[svc.id]||[];const can=canUploadReh();
+ // 올리다 권한이 막힌 녹음(REH.draft)은 권한이 없어도 다시 열 수 있어야 기기에 저장한다 — 예전에는 403 뒤 단추가 사라져 창을 닫으면 잃었다
+ const dr=!can&&REH.draft&&REH.draft.svcId===svc.id;
  if(!online())return '';
- if(!list.length&&!can)return '';
- return `<div class="card"><div class="row sb"><b>연습 녹음</b>${can?`<button class="btn sm" data-act="reh-add">${ic('mic')}녹음 올리기</button>`:''}</div>
+ if(!list.length&&!can&&!dr)return '';
+ return `<div class="card"><div class="row sb"><b>연습 녹음</b>${can?`<button class="btn sm" data-act="reh-add">${ic('mic')}녹음 올리기</button>`:dr?`<button class="btn sm" data-act="reh-add">${ic('mic')}올리지 못한 녹음</button>`:''}</div>
   ${list.length?`<div style="margin-top:8px">${list.map(r=>`<div class="rehrow" data-act="reh-play" data-id="${esc(r.id)}"><span class="icon sm">${ic('play')}</span>
    <div class="grow"><b>${esc(r.label)}${r.keep?' 🔒':''}</b><div class="hint">${esc(fmtDate(r.date).md)} · ${fmtDur(r.duration)} · ${esc(r.uploaderName||'')}${r.sizeBytes?' · '+fmtMB(+r.sizeBytes):''}</div></div>
    ${isLeader()?`<button class="icon sm ghost" data-act="reh-menu" data-id="${esc(r.id)}" title="더 보기">${ic('list')}</button>`:''}</div>`).join('')}</div>`
@@ -1974,14 +1980,15 @@ function rehAddModal(svc){
   file=f;dur=await measure(f);setPick(f.name,dur)};
  $('#modal').onclick=async e=>{
   if(e.target.closest('[data-close]')){closeModal();return}   // 녹음 중이면 위의 감시가 멈추고 남겨 둔다
-  if(e.target.closest('#rhSave')){if(!file)return;
+  if(e.target.closest('#rhSave')){if(!file)return;const sb=e.target.closest('#rhSave');if(sb.disabled)return;
    const ext=/mp4|m4a|aac/.test(file.type)?'m4a':/webm/.test(file.type)?'webm':/ogg/.test(file.type)?'ogg':((file.name.match(/\.(\w+)$/)||[])[1]||'m4a');
    const name=(($('#rhLabel').value.trim()||fmtDate($('#rhDate').value||today()).md+' 연습').replace(/[\\/:*?"<>|]/g,'_'))+'.'+ext;
-   // 앱(웹뷰)은 내려받기 링크가 안 먹으니 공유 시트로 넘긴다 ('파일에 저장'·카톡 나에게)
-   const f2=new File([file],name,{type:file.type||'audio/mp4'});
-   if(NATIVE&&navigator.canShare&&navigator.canShare({files:[f2]})){try{await navigator.share({files:[f2],title:name})}catch(err){}return}
-   const a=document.createElement('a');a.href=URL.createObjectURL(f2);a.download=name;
-   document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},4000);toast('기기에 저장했어요');return}
+   // 앱(웹뷰)은 내려받기 링크가 안 먹는다 → saveFile 이 공유 시트로 넘긴다 (iOS 는 웹 공유, 안드로이드는 앱이 파일로 써서).
+   // 끝까지 건넸을 때만 '저장' 이라고 알린다 — 예전에는 안드로이드에서 아무 일도 없는데 '기기에 저장했어요'가 떠서 믿고 닫으면 녹음을 잃었다
+   sb.disabled=true;
+   try{if(await saveFile(name,file,file.type||'audio/mp4'))toast(NATIVE?'녹음 파일을 보냈어요':'기기에 저장했어요')}
+   catch(err){toast(err.message||'파일을 저장하지 못했어요')}
+   sb.disabled=false;return}
   if(e.target.closest('#rhRec')){const btn=$('#rhRec');
    if(rec&&rec.state==='recording'){rec.stop();return}
    try{stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:false,noiseSuppression:false}});
@@ -2041,7 +2048,11 @@ function putDirect(url,file,onProgress){return new Promise((res,rej)=>{const x=n
 // at: {t:시작 초, play:바로 재생} — 메모를 적고 돌아오면 보던 자리에서 다시 연다 (예전에는 0:00 으로 돌아갔다)
 async function rehPlayer(svc,r,at){
  // 재생 주소는 서명한 지 1시간이면 끊긴다 → 받은 지 50분이 넘었으면 새로 받는다 (예전에는 화면을 오래 켜 두면 말없이 0:00 에 멈춰 있었다)
- if(online()&&(!REH.urls[r.blobId]||Date.now()-(REH.at[svc.id]||0)>50*60e3))await pullRehearsals(svc.id,true);
+ // 망이 멈춰 있으면 누른 뒤 한참 아무것도 안 떠서 8초에서 끊는다 — 받아 둔 주소로 열고, 끊겼으면 아래 onerror 가 다시 받는다
+ if(online()&&(!REH.urls[r.blobId]||Date.now()-(REH.at[svc.id]||0)>50*60e3))await pullRehearsals(svc.id,true,8000);
+ // 새로 받으면 목록이 새 객체로 바뀐다 → 그 녹음을 다시 찾아 쓴다. 옛 객체를 쥐고 있으면 여기서 단 메모가
+ // 그 객체에만 붙어, 닫았다 다시 열면 '메모 없음'으로 보였다 (서버에는 저장됨 → 같은 메모를 또 달게 된다)
+ const cur=()=>(REH.bySvc[svc.id]||[]).find(x=>x.id===r.id)||r;r=cur();
  const src=REH.urls[r.blobId];
  if(!src){toast('재생 주소를 받지 못했어요');return}
  const notes=()=>(r.notes||[]).slice().sort((a,b)=>a.t-b.t);
@@ -2059,15 +2070,16 @@ async function rehPlayer(svc,r,at){
  const a=$('#rhAudio');const mine=()=>$('#rhAudio')===a;   // 창이 닫히거나 메모 창으로 바뀌면 이 플레이어는 끝
  const btnTo=h=>{const b=$('#rhPlay');if(b&&mine())b.innerHTML=h};
  a.ontimeupdate=draw;a.onplay=()=>btnTo(ic('pause')+'멈춤');a.onpause=()=>btnTo(ic('play')+'재생');
- let intend=!!(at&&at.play),want=at&&at.t>0?+at.t:0,lastT=want,retried=false;
+ let intend=!!(at&&at.play),want=at&&at.t>0?+at.t:0,lastT=want,retryAt=0;
  const play=()=>{intend=true;const p=a.play();if(p&&p.catch)p.catch(()=>{})};   // 실패는 onerror 가 알린다
  // 길이를 알기 전에는 자리를 옮기지 못하는 브라우저가 있어 메타데이터를 받은 뒤에 한 번 더 맞춘다
  const seek=()=>{if(want>0){try{a.currentTime=want}catch(e){}}};
  a.onloadedmetadata=()=>{seek();want=0;draw()};
  a.addEventListener('timeupdate',()=>{if(a.currentTime>0)lastT=a.currentTime});
  // 주소가 끊겼으면(만료 403 등) 한 번 새로 받아 이어서 튼다. 그래도 안 되면 말해 준다 (예전에는 0:00 에 말없이 멈춰 있었다)
+ // 새로 받는 건 5분에 한 번 — 받은 주소도 곧장 끊기면 되풀이하지 않고 알린다. 1시간 넘게 틀어 두면 다음 만료 때 또 받는다
  a.onerror=async()=>{if(!mine())return;
-  if(!retried&&online()){retried=true;await pullRehearsals(svc.id,true);const u=REH.urls[r.blobId];
+  if(Date.now()-retryAt>5*60e3&&online()){retryAt=Date.now();await pullRehearsals(svc.id,true);r=cur();const u=REH.urls[r.blobId];
    if(u&&mine()){want=lastT;a.src=u;if(intend)play();return}}
   if(mine())toast('녹음을 재생하지 못했어요 · 인터넷 연결을 확인해 주세요')};
  seek();draw();if(intend)play();
@@ -2095,7 +2107,9 @@ function rehNoteSheet(svc,r,t,done){if(!canMemo()){toast('목회자 메모는 �
   if(e.target.closest('[data-close]')){closeModal();done&&done();return}
   if(e.target.closest('#rnOk')){const text=$('#rnText').value.trim();if(!text){toast('내용을 적어주세요');return}
    const n={id:uid(),t:Math.round(t),text,author:me().name||'나',layer,session:layer==='session'?me().session:undefined,itemId:$('#rnItem').value||undefined,createdAt:Date.now()};
-   try{await api('/rehearsals/'+r.id+'/notes',{method:'POST',body:{teamId:S.team.id,note:n}});r.notes=(r.notes||[]).concat(n)}
+   try{await api('/rehearsals/'+r.id+'/notes',{method:'POST',body:{teamId:S.team.id,note:n}});
+    // 적는 사이 목록을 새로 받았으면(주소 갱신·화면 다시 열기) 지금 목록의 그 녹음에도 단다 — 곡 카드 '지난 연습에서'·다시 연 플레이어가 그걸 본다
+    const cur=(REH.bySvc[svc.id]||[]).find(x=>x.id===r.id);[r,cur].forEach(o=>{if(o&&!(o.notes||[]).some(x=>x.id===n.id))o.notes=(o.notes||[]).concat(n)})}
    catch(err){toast('메모를 저장하지 못했어요: '+err.message);return}   // 저장 실패면 화면에도 남기지 않는다
    closeModal();done&&done();return}}}
 function rehMenu(svc,r){
@@ -5400,7 +5414,7 @@ function transposeChord(text,semis,key){const c=parseChord(text);if(!c)return te
 function shiftAt(item,pi,y){let best=null;(item.pieces||[]).forEach((p,i)=>{if(i>pi)return;(p.markers||[]).forEach(m=>{if(m.keyShift==null)return;if(i<pi||m.y<=y){if(!best||i>best.i||(i===best.i&&m.y>best.y))best={i,y:m.y,v:m.keyShift}}})});return best?best.v:0}
 // 조각의 코드를 off 만큼 옮겼을 때 그 코드가 속한 키 — 카포·'여기부터 전조'까지 반영한 실제로 치는 키다.
 // 원래 연주 키의 #·b 로 적으면 G 에서 +1 전조한 Ab 에 G#·C#·D# 이, F 카포 3(D 모양)에 Gbm·D/Gb 가 나왔다
-function chordKeyAt(item,piece,off){if(keySemi(piece&&piece.sheetKey)!=null)return keyShiftName(piece.sheetKey,off);return keyShiftName(item.key||'',off-chordOffset(item,piece))}
+function chordKeyAt(item,piece,off){if(keySemi(piece&&piece.sheetKey)!=null)return keyShiftName(piece.sheetKey,off,item.key);return keyShiftName(item.key||'',off-chordOffset(item,piece),item.key)}
 // ▲▼ 로 고친 offset 은 그때의 연주 키(offKey) 기준이다. 연주 키를 바꾸면 그만큼 따라간다 —
 // 예전엔 한 번 누르면 절대값으로 굳어 키를 바꿔도(다른 예배로 옮겨도) 옛 키 코드가 나왔다 (F88).
 // offKey 가 없는 예전 데이터·연주 키 없이 고친 값은 어디에 맞춘 건지 모르니 그대로 쓴다
@@ -5614,7 +5628,7 @@ function scoreItem(r){const svc=svcById(r.a);if(!svc)return{};
  return {svc,it,editable:!!(isLeader()&&draft&&it===draft)}}
 function scoreHTML(svc,it){const sc=it.score;const my=me();const capo=SC.edit?0:(+my.capo||0);
  const base=SC.edit?0:scorePlayOff(it),semi=SC.edit?0:SC.semi;
- const shown=base+semi?keyShiftName(sc.key,base+semi):sc.key;
+ const shown=base+semi?keyShiftName(sc.key,base+semi,it.key):sc.key;
  const bad=badMeasuresOf(sc);
  return `<div class="top"><button class="icon ghost" title="뒤로" aria-label="뒤로" data-act="score-back" data-id="${svc.id}">${ic('back')}</button>
   <h1>${esc(it.title||sc.title||'악보')}<span class="pill key">${esc(shown||'')}</span>${semi?`<span class="pill amber">${semi>0?'+':''}${semi}</span>`:''}${capo?`<span class="pill">카포 ${capo}</span>`:''}${base?`<span class="hint" style="font-size:12px;font-weight:400">악보 ${esc(sc.key)} → 연주 ${esc(it.key)}</span>`:''}${SC.edit&&scoreSemis(it)?`<span class="hint" style="font-size:12px;font-weight:400">고치는 동안은 적힌 키(${esc(sc.key)})로 보여요</span>`:''}</h1>
@@ -5630,7 +5644,7 @@ function scoreHTML(svc,it){const sc=it.score;const my=me();const capo=SC.edit?0:
 async function drawScore(keepTop){const r=route();const {svc,it}=scoreItem(r);const host=$('#osmd');if(!host||!it||!it.score)return;
  try{await loadOSMD()}catch(e){host.innerHTML=`<div class="muted" style="padding:40px;text-align:center">${esc(e.message)}<br><span class="hint">인터넷에 한 번 연결되면 그 뒤로는 오프라인에서도 열려요</span></div>`;return}
  SC.editable=scoreItem(r).editable;
- const sc=transposeScore(it.score,scoreSemis(it,true));
+ const sc=transposeScore(it.score,scoreSemis(it,true),it.key);
  let xml;try{xml=scoreToMusicXML(sc)}catch(e){host.innerHTML='<div class="muted" style="padding:40px;text-align:center">악보 데이터를 그릴 수 없어요</div>';return}
  // 다시 그리는 동안 칸이 비면 스크롤이 맨 위로 잘린다 (80마디 악보의 68마디를 고칠 때마다 1마디로 튀었다).
  // 높이를 붙잡아 두고 그린 뒤 스크롤을 되돌린다. 늦게 끝난 옛 그리기는 버린다 (같은 칸에 악보가 두 벌 붙지 않게)
@@ -5785,7 +5799,7 @@ function scoreMenuModal(svc,it){const sc=it.score;
   <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" data-close="1">닫기</button></div>`,{center:true});
  $('#modal').onclick=e=>{
   if(e.target.closest('[data-close]')){closeModal();return}
-  if(e.target.closest('#smXml')){const xml=scoreToMusicXML(transposeScore(sc,scoreSemis(it)));
+  if(e.target.closest('#smXml')){const xml=scoreToMusicXML(transposeScore(sc,scoreSemis(it),it.key));
    saveFile((it.title||sc.title||'악보')+'.musicxml',xml,'application/vnd.recordare.musicxml+xml').catch(e2=>toast(e2.message||'파일을 저장하지 못했어요'));closeModal();return}
   if(e.target.closest('#smZoomIn')){SC.zoom=Math.min(2,SC.zoom+0.15);closeModal();drawScore();return}
   if(e.target.closest('#smZoomOut')){SC.zoom=Math.max(0.5,SC.zoom-0.15);closeModal();drawScore();return}
@@ -8107,7 +8121,7 @@ async function printScore(svc,it){
  const host=document.createElement('div');area.appendChild(host);document.body.appendChild(area);
  const o=new opensheetmusicdisplay.OpenSheetMusicDisplay(host,{autoResize:false,backend:'svg',drawTitle:true,drawComposer:true,
   drawMeasureNumbers:true,measureNumberInterval:1,drawPartNames:false,pageBackgroundColor:'#ffffff',pageFormat:'A4_P'});
- const sc=transposeScore(it.score,scoreSemis(it));
+ const sc=transposeScore(it.score,scoreSemis(it),it.key);
  try{osmdChordNames(o,sc);await o.load(scoreToMusicXML(sc));o.zoom=1;o.render()}
  catch(e){console.warn('print score',e);area.remove();toast('악보를 인쇄용으로 그리지 못했어요');return}
  host.querySelectorAll('svg').forEach(sv=>{const w=document.createElement('div');w.className='osmdpage';sv.parentNode.insertBefore(w,sv);w.appendChild(sv)});
@@ -8271,10 +8285,13 @@ async function saveFile(name,text,type){
    $('#modal').onclick=e=>{if(e.target.closest('#sfGo')){closeModal();go().then(res,rej);return}if(e.target.closest('[data-close]')||e.target.classList.contains('ov')){closeModal();res(false)}}})}
  // 안드로이드 웹뷰에는 웹 공유가 없다 → 앱이 임시 폴더에 써 두고(Printer.saveFile) 공유 시트(@capacitor/share)로 넘긴다
  const Pr=CapPlug().Printer,Sh=CapPlug().Share;
- if(!Pr||!Pr.saveFile||!Sh||!Sh.share)throw new Error('이 앱 버전에서는 파일을 건넬 수 없어요. 앱을 업데이트해 주세요');
+ // 글이 아닌 파일(합주 녹음 Blob)은 base64 로 나눠 넘기고 앱이 바이트로 되돌려 쓴다 — saveFile 은 UTF-8 글로만 써서 소리 파일이 깨진다
+ const bin=typeof Blob!=='undefined'&&text instanceof Blob;
+ if(!Pr||!(bin?Pr.saveBytes:Pr.saveFile)||!Sh||!Sh.share)throw new Error('이 앱 버전에서는 파일을 건넬 수 없어요. 앱을 업데이트해 주세요');
  // 큰 파일(악보·녹음이 든 내보내기)은 한 번에 넘기면 브리지가 버거워 나눠 쓴다. 이모지 반쪽에서 자르지 않는다
  const CH=512*1024;let uri='',i=0;
- do{let j=Math.min(text.length,i+CH);const c=text.charCodeAt(j-1);if(j<text.length&&c>=0xd800&&c<=0xdbff)j--;
+ if(bin){const B=CH/4*3;do{uri=(await Pr.saveBytes({name,data:await toB64(text.slice(i,i+B)),append:i>0})).uri;i+=B}while(i<text.size)}
+ else do{let j=Math.min(text.length,i+CH);const c=text.charCodeAt(j-1);if(j<text.length&&c>=0xd800&&c<=0xdbff)j--;
   uri=(await Pr.saveFile({name,data:text.slice(i,j),append:i>0})).uri;i=j}while(i<text.length);
  try{await Sh.share({title:name,files:[uri],dialogTitle:name})}catch(e){if(/cancel/i.test(String(e&&e.message)))return false;throw e}
  return true}

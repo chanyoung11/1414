@@ -106,7 +106,47 @@ def score_checks(b):
   if 'bad' not in (pg.get_attribute('[data-np="0"]', 'class') or ''): fail('G26 못 읽는 음이름이 표시되지 않음')
   pg.fill('[data-np="0"]', 'B4'); pg.click('[data-close="1"]'); pg.wait_for_timeout(800)
   print('pitch input ok')
+
   if errs: fail('악보 페이지 오류: %s' % errs[:3])
+  c.close()
+
+# ---- G13 되돌림: 연주 키를 F# 으로 정한 곡의 F 악보·차트가 Gb 로(코드 Gb B Db Ebm Abm) 적혔다 → 정한 이름대로 ----
+SHEET = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'docs', 'sample_sheet.jpg')
+def key_name_checks(b):
+  c, pg = signup(b, '하은', 'fk' + tag)
+  errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
+  pg.wait_for_selector('#gtTeam', timeout=8000); pg.fill('#gtTeam', '감사조이름'); pg.click('[data-act="team-create"]'); pg.wait_for_selector('.shell[data-page]', timeout=8000)
+  pg.click('[data-act="new-svc"]'); pg.wait_for_selector('[data-f="svc.name"]'); pg.fill('[data-f="svc.name"]', '조 예배')
+  pg.click('[data-act="add-item"]'); pg.wait_for_selector('[data-f="item.title"]'); pg.fill('[data-f="item.title"]', 'F샵'); pg.fill('[data-f="item.key"]', 'F#'); pg.wait_for_timeout(300)
+  pg.set_input_files('#pieceFile', [SHEET])
+  pg.wait_for_function("(()=>{const it=CONTI.S.services[0].items[0];return it&&(it.pieces||[]).length>0})()", timeout=30000)
+  svc = pg.evaluate('CONTI.S.services[0].id'); item = pg.evaluate('CONTI.S.services[0].items[0].id')
+  pg.evaluate("""()=>{const it=CONTI.S.services[0].items[0];const p=it.pieces[0];it.key='F#';p.sheetKey='F';p.keyConfirmed=true;p.ocr='done';
+    p.chords=['F','Bb','C','Dm','Gm'].map((t,i)=>({id:'c'+i,text:t,x:100+i*120,y:300,w:40,h:30,conf:100,fixed:true}));
+    it.chart={key:'F',sections:[{name:'V',bars:[{chords:['F','Bb']},{chords:['C','Dm','Gm']}]}]};
+    it.score={title:'샵',key:'F',time:'4/4',measures:[{c:[{b:0,t:'F'},{b:2,t:'Bb'}],n:[{p:'F4',d:2},{p:'Bb4',d:2}]}]};CONTI.save();CONTI.render()}""")
+  WANT = ['F#', 'B', 'C#', 'D#m', 'G#m']
+  pg.goto(URL + '#/edit/%s' % svc); pg.wait_for_selector('#sheet .chd', timeout=10000); pg.wait_for_timeout(500)
+  band = pg.evaluate("[...document.querySelectorAll('#sheet .chd')].map(e=>e.textContent)")
+  if band != WANT: fail('G13 F 악보의 코드 띠를 F# 으로: %s' % band)
+  pg.goto(URL + '#/view/%s' % svc); pg.wait_for_selector('.chart .cc', state='attached', timeout=10000)
+  ch = pg.evaluate("[...document.querySelectorAll('.chart .cc')].map(e=>e.textContent)")
+  if ch != WANT: fail('G13 F 차트를 F# 으로: %s' % ch)
+  pg.goto(URL + '#/score/%s/%s' % (svc, item)); pg.wait_for_selector('#osmd svg', timeout=25000); pg.wait_for_timeout(1500)
+  t3 = [x for x in svg_texts(pg) if not x.isdigit()]
+  if pg.inner_text('.pill.key') != 'F#' or 'F#' not in t3 or 'Gb' in t3 or 'Cb' in t3: fail('G13 F 악보를 F# 으로: %s %s' % (pg.inner_text('.pill.key'), t3))
+  k = pg.evaluate("""()=>{const T=(key,s,w)=>CONTI.transposeScore({key,time:'4/4',measures:[{c:[],n:[{p:'F4',d:2},{p:'Bb4',d:2}]}]},s,w);
+    const fs=T('F',1,'F#');
+    return {fs:[fs.key,fs.measures[0].n.map(n=>n.p),CONTI.scoreToMusicXML(fs).match(/<fifths>(-?\\d+)/)[1]],
+      ebm:T('Dm',1,'Ebm').key,dsm:T('Dm',1,'D#m').key,rel:T('Dm',1,'F#').key,cs:T('C',1,'C#').key,
+      up:T('F',3,'F#').key,none:T('Ab',-2).key,bad:T('F',1,'?').key}}""")
+  want = {'fs': ['F#', ['F#4', 'B4'], '6'], 'ebm': 'Ebm', 'dsm': 'D#m', 'rel': 'D#m', 'cs': 'C#', 'up': 'Ab', 'none': 'Gb', 'bad': 'Gb'}
+  if k != want: fail('G13 연주 키 이름 따르기: %s' % k)
+  # ▲ 로 연주 키를 벗어나면 예전 규칙(원래 조 쪽 #·b)대로 — F 악보를 F# 에서 두 번 더 올리면 G# 이 아니라 Ab
+  pg.click('[data-act="score-tr"][data-d="1"]'); pg.wait_for_timeout(400); pg.click('[data-act="score-tr"][data-d="1"]'); pg.wait_for_timeout(1500)
+  if pg.inner_text('.pill.key') != 'Ab': fail('G13 ▲▲ 뒤 키: %s' % pg.inner_text('.pill.key'))
+  print('performing key spelling ok:', band)
+  if errs: fail('조 이름 페이지 오류: %s' % errs[:3])
   c.close()
 
 # ---------------------------------------------------------------- 합주 녹음
@@ -186,7 +226,26 @@ def reh_checks(b):
   pl.click('.rehrow'); pl.wait_for_selector('#rhAudio', state='attached', timeout=10000); pl.wait_for_timeout(500)
   pl.evaluate("Date.now=window.__d0")
   if not seen: fail('F65 50분이 지났는데 재생 주소를 새로 받지 않음')
+  # 새로 받은 뒤 단 메모는 닫았다 다시 열어도 보인다 (예전에는 옛 녹음 객체에만 붙어 '메모 없음' → 같은 메모를 또 달게 됐다)
+  pl.click('#rhNote'); pl.wait_for_selector('#rnText', timeout=5000); pl.fill('#rnText', '검증메모'); pl.click('#rnOk')
+  pl.wait_for_selector('#rhAudio', state='attached', timeout=10000); pl.wait_for_timeout(300)
   pl.keyboard.press('Escape'); pl.wait_for_timeout(300)
+  pl.click('.rehrow'); pl.wait_for_selector('#rhNotes .tl', timeout=10000)
+  if '검증메모' not in pl.inner_text('#rhNotes'): fail('F65 주소를 새로 받은 뒤 단 메모가 다시 열면 없음: %s' % pl.inner_text('#rhNotes'))
+  pl.keyboard.press('Escape'); pl.wait_for_timeout(300)
+  # 망이 멈춰 있으면 새로 받기를 8초에서 끊고 받아 둔 주소로 연다 (예전에는 누른 뒤 아무것도 안 떴다)
+  hung = []
+  is_list = lambda u: '/api/rehearsals?' in u
+  pl.route(is_list, lambda route: hung.append(route))
+  pl.evaluate("Date.now=()=>window.__d0()+120*60e3")
+  t0 = time.time(); pl.click('.rehrow'); pl.wait_for_selector('#rhAudio', state='attached', timeout=15000); dt = time.time() - t0
+  pl.evaluate("Date.now=window.__d0"); pl.unroute(is_list)
+  for h in hung:
+    try: h.abort()
+    except Exception: pass
+  if not hung or dt > 12: fail('F65 멈춘 망에서 플레이어가 %.1f초 뒤에 열림 (새로 받기 %d번)' % (dt, len(hung)))
+  pl.keyboard.press('Escape'); pl.wait_for_timeout(300)
+  print('refetched notes kept · stalled refetch gives up: %.1fs' % dt)
   src = pl.evaluate("fetch('/api/rehearsals?team=%s&service=%s',{headers:{'x-conti':'1'}}).then(r=>r.json()).then(j=>Object.values(j.urls)[0])" % (team, svc_id))
   hits = []
   def once403(route):
@@ -199,6 +258,16 @@ def reh_checks(b):
   if len(hits) < 2 or not seen: fail('F65 끊긴 주소를 다시 받지 않음: hits=%d refetch=%d' % (len(hits), len(seen)))
   pl.unroute(src.split('?')[0] + '*'); pl.keyboard.press('Escape'); pl.wait_for_timeout(300)
   print('expired url refetch ok')
+  # 새로 받기는 5분에 한 번: 곧장 또 끊기면 되풀이하지 않고, 1시간 넘게 틀어 둬 다음 만료가 오면 또 받는다 (예전에는 플레이어당 한 번뿐)
+  pl.click('.rehrow'); pl.wait_for_function("document.querySelector('#rhAudio')&&document.querySelector('#rhAudio').readyState>=1", timeout=10000)
+  seen.clear(); n = []
+  for shift in (0, 0, 6):
+    pl.evaluate("m=>{Date.now=()=>window.__d0()+m*60e3}", shift)
+    pl.evaluate("document.querySelector('#rhAudio').onerror()"); pl.wait_for_timeout(500); n.append(len(seen))
+  pl.evaluate("Date.now=window.__d0")
+  if n != [1, 1, 2]: fail('F65 끊길 때 새로 받는 횟수: %s' % n)
+  pl.keyboard.press('Escape'); pl.wait_for_timeout(300)
+  print('refetch throttle ok')
 
   # ---- G27: 인도자가 권한을 좁히면, 멤버가 올리기 창을 열 때 바로 알고 · 올리다 막히면 기기에 저장 ----
   pm.goto(URL + '#/view/' + svc_id); pm.wait_for_selector('[data-act="reh-add"]', timeout=15000)
@@ -213,12 +282,99 @@ def reh_checks(b):
   cL.request.patch(URL + 'api/teams/%s/settings' % team, headers=H, data={'rehearsalUploadRole': 'leader'})
   pm.click('#rhOk'); pm.wait_for_selector('#rhSave', timeout=8000)
   if not pm.is_disabled('#rhOk'): fail('G27 권한이 없는데 올리기를 다시 누를 수 있음')
+  pm.evaluate("document.getElementById('toast').textContent=''")
   with pm.expect_download(timeout=8000) as dl: pm.click('#rhSave')
   if not dl.value.suggested_filename.endswith('.wav'): fail('G27 저장 파일 이름: %s' % dl.value.suggested_filename)
+  pm.wait_for_timeout(300)
+  if '기기에 저장했어요' not in pm.inner_text('#toast'): fail('G27 저장 알림이 없음: %s' % pm.inner_text('#toast'))
   print('upload permission refresh ok:', dl.value.suggested_filename)
+  pm.click('[data-close="1"]'); pm.wait_for_timeout(300)
+
+  # 방금 녹음한 것이 막히면 창을 닫아도 '올리지 못한 녹음' 으로 다시 열어 기기에 저장한다 (예전에는 403 뒤 단추가 사라져 잃었다)
+  cL.request.patch(URL + 'api/teams/%s/settings' % team, headers=H, data={'rehearsalUploadRole': 'member'})
+  pm.reload(); pm.wait_for_selector('[data-act="reh-add"]', timeout=15000)
+  pm.click('[data-act="reh-add"]'); pm.wait_for_selector('#rhRec', timeout=5000); pm.wait_for_timeout(1200)
+  pm.click('#rhRec'); pm.wait_for_timeout(2500); pm.click('#rhRec')
+  pm.wait_for_function("document.querySelector('#rhPick').textContent.includes('방금 녹음')", timeout=8000)
+  cL.request.patch(URL + 'api/teams/%s/settings' % team, headers=H, data={'rehearsalUploadRole': 'leader'})
+  pm.click('#rhOk'); pm.wait_for_selector('#rhSave', timeout=8000); pm.wait_for_timeout(800)
+  pm.click('[data-close="1"]'); pm.wait_for_timeout(800)
+  btn = pm.locator('[data-act="reh-add"]')
+  if not btn.count() or '올리지 못한 녹음' not in btn.inner_text(): fail('G27 막힌 녹음을 다시 열 단추가 없음')
+  btn.click(); pm.wait_for_selector('#rhSave', timeout=8000)
+  if '올리지 않은 녹음' not in pm.inner_text('#rhPick') or not pm.is_disabled('#rhOk'): fail('G27 다시 연 창: %s' % pm.inner_text('#rhPick'))
+  with pm.expect_download(timeout=8000) as dl2: pm.click('#rhSave')
+  size = os.path.getsize(dl2.value.path())
+  if size < 1000 or dl2.value.suggested_filename.rsplit('.', 1)[-1] not in ('m4a', 'webm', 'ogg'): fail('G27 녹음 저장: %s %d' % (dl2.value.suggested_filename, size))
+  pm.click('[data-close="1"]'); pm.wait_for_timeout(300)
+  print('blocked recording stays reachable ok:', dl2.value.suggested_filename, size)
+
   os.remove(wav)
   if errs: fail('녹음 페이지 오류: %s' % errs[:3])
   cL.close(); cM.close()
+
+# ---- G27 안드로이드 앱: 웹 공유도 <a download> 도 없다 → 앱(Printer.saveBytes)이 base64 조각을 바이트로 써서 공유 시트로 넘긴다 ----
+# https://localhost (포트 없음) 로 열면 앱으로 본다. 앱은 운영 주소(lets1414.com)의 API 를 부르므로 그 요청은 로컬 서버로 돌리고,
+# 그 밖의 바깥 요청은 막는다 (운영에는 하나도 나가지 않는다)
+def android_save_checks(b):
+  import json, base64
+  c, pg = signup(b, '하은', 'rn' + tag)
+  pg.wait_for_selector('#gtTeam', timeout=8000); pg.fill('#gtTeam', '앱녹음'); pg.click('[data-act="team-create"]'); pg.wait_for_selector('.shell[data-page]', timeout=8000)
+  pg.click('[data-act="new-svc"]'); pg.wait_for_selector('[data-f="svc.name"]'); pg.fill('[data-f="svc.name"]', '앱 예배')
+  pg.click('[data-act="add-item"]'); pg.wait_for_selector('[data-f="item.title"]'); pg.fill('[data-f="item.title"]', '곡'); pg.wait_for_timeout(400)
+  svc_id = pg.evaluate('CONTI.S.services[0].id')
+  pg.click('[data-act="publish"]'); pg.wait_for_selector('#pubOnly'); pg.click('#pubOnly'); pg.wait_for_timeout(3000)
+  c.close()
+  wav = wav_file(40); WAV = open(wav, 'rb').read()
+  n = b.new_context(viewport={'width': 1180, 'height': 820}, service_workers='block'); leaked = []
+  def gate(route):
+    u = route.request.url
+    if u.startswith('https://localhost/'):
+      r = route.fetch(url=URL + u[len('https://localhost/'):]); return route.fulfill(response=r)
+    if u.startswith('https://lets1414.com/api/'):
+      if '/rehearsals/upload-url' in u:   # 올리기가 실패해야 '기기에 저장'이 나온다
+        return route.fulfill(status=500, body=json.dumps({'message': '잠시 문제가 있어요'}), headers={'content-type': 'application/json', 'access-control-allow-origin': 'https://localhost', 'access-control-allow-credentials': 'true'})
+      r = route.fetch(url=URL + u[len('https://lets1414.com/'):]); return route.fulfill(response=r)
+    if u.startswith(URL): return route.continue_()
+    leaked.append(u); route.abort()
+  n.route('**/*', gate)
+  n.add_init_script("""
+    window.__chunks=[];window.__shared=[];window.__shareMode='ok';
+    window.Capacitor={getPlatform:()=>'android',Plugins:{
+      Printer:{saveFile:async o=>{window.__chunks.push({text:1,...o});return {uri:'file:///data/cache/exports/'+o.name}},
+               saveBytes:async o=>{window.__chunks.push(o);return {uri:'file:///data/cache/exports/'+o.name}}},
+      Share:{share:async o=>{if(window.__shareMode==='cancel')throw new Error('Share canceled');window.__shared.push(o.files);return {activityType:'x'}}}}};
+    Object.defineProperty(Navigator.prototype,'canShare',{value:undefined,configurable:true});
+    Object.defineProperty(Navigator.prototype,'share',{value:undefined,configurable:true});
+  """)
+  a = n.new_page(); errs = []; a.on('pageerror', lambda e: errs.append(str(e)))
+  a.goto('https://localhost/'); a.wait_for_selector('#lgUser', timeout=15000)
+  if not a.evaluate("location.protocol==='https:'&&!location.port"): fail('앱 주소로 열리지 않음')
+  a.fill('#lgUser', 'rn' + tag); a.fill('#lgPass', 'secret1'); a.click('[data-act="lg-submit"]'); a.wait_for_selector('.shell[data-page]', timeout=15000)
+  a.goto('https://localhost/#/view/' + svc_id); a.wait_for_selector('[data-act="reh-add"]', timeout=15000)
+  a.click('[data-act="reh-add"]'); a.wait_for_selector('#rhFile', state='attached', timeout=5000)
+  a.set_input_files('#rhFile', wav); a.wait_for_timeout(800); a.fill('#rhLabel', '앱 합주')
+  a.click('#rhOk'); a.wait_for_selector('#rhSave', timeout=8000)
+  toast = lambda: a.evaluate("document.getElementById('toast').textContent")
+  a.evaluate("document.getElementById('toast').textContent=''")
+  a.click('#rhSave'); a.wait_for_function('window.__shared.length>0', timeout=15000); a.wait_for_timeout(300)
+  ch = a.evaluate("window.__chunks.map(c=>({text:!!c.text,n:c.name,a:c.append}))")
+  data = b''.join(base64.b64decode(x) for x in a.evaluate("window.__chunks.map(c=>c.data)"))
+  if data != WAV or len(ch) < 2 or any(x['text'] for x in ch) or ch[0]['a'] or not all(x['a'] for x in ch[1:]) or {x['n'] for x in ch} != {'앱 합주.wav'}:
+    fail('G27 안드로이드: 녹음이 그대로 써지지 않음 (%d/%d 바이트) %s' % (len(data), len(WAV), ch[:3]))
+  if a.evaluate('window.__shared') != [['file:///data/cache/exports/앱 합주.wav']]: fail('G27 안드로이드: 공유 시트에 안 넘어감: %s' % a.evaluate('window.__shared'))
+  if '보냈어요' not in toast(): fail('G27 안드로이드: 넘겼는데 알림이 없음: %r' % toast())
+  # 공유를 닫으면(취소) 저장했다고 하지 않는다 — 예전에는 아무 일도 없는데 '기기에 저장했어요'가 떴다
+  a.evaluate("window.__shareMode='cancel';document.getElementById('toast').textContent=''"); a.click('#rhSave'); a.wait_for_timeout(1500)
+  if '저장' in toast() or '보냈' in toast(): fail('G27 안드로이드: 취소했는데 알림: %r' % toast())
+  # saveBytes 가 없는 앱이면 깨진 파일(글로 쓴 녹음)을 넘기지 않고 업데이트하라고 한다
+  a.evaluate("window.__shareMode='ok';delete window.Capacitor.Plugins.Printer.saveBytes;window.__chunks=[];document.getElementById('toast').textContent=''")
+  a.click('#rhSave'); a.wait_for_timeout(1500)
+  if '업데이트' not in toast() or a.evaluate('window.__chunks.length'): fail('G27 안드로이드 옛 앱: %r' % toast())
+  if [u for u in leaked if 'lets1414' in u]: fail('운영 쪽으로 요청이 나감: %s' % leaked[:3])
+  if errs: fail('앱 녹음 저장 오류: %s' % errs[:3])
+  n.close(); os.remove(wav)
+  print('android recording save ok: %d chunks' % len(ch))
 
 # ---------------------------------------------------------------- 편성
 def sched_checks(b):
@@ -299,7 +455,9 @@ def run(only=os.environ.get('ONLY', '')):
   with sync_playwright() as p:
     b = p.chromium.launch(args=['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'])
     if only in ('', 'score'): score_checks(b)
+    if only in ('', 'score', 'key'): key_name_checks(b)
     if only in ('', 'reh'): reh_checks(b)
+    if only in ('', 'reh', 'app'): android_save_checks(b)
     if only in ('', 'sched'): sched_checks(b)
     b.close()
   print('OK test_audit_fe_02')
