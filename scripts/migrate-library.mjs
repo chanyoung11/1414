@@ -65,13 +65,21 @@ try {
       let touched = false;
       for (const it of items) {
         let m = it.libId ? made.find((x) => x.libId === it.libId) : null;
-        if (!m && it.title) m = made.find((x) => x.titleNorm === norm(it.title));
+        // 다듬은 제목으로 찾는다. 전에는 '   ' 같은 제목이 norm 하면 빈 글자라 '-' 같은 곡에 붙었다.
+        // norm 이 빈 글자인 제목('-')끼리는 글자 그대로 같을 때만 같은 곡이다
+        const t0 = String(it.title || '').trim(), tn0 = norm(t0);
+        if (!m && t0) m = made.find((x) => (tn0 ? x.titleNorm === tn0 : x.title === t0));
         // 제목 없는 칸은 곡으로 만들지 않는다 (앱의 pushSongs 도 건너뛴다). 전에는 칸마다 '(제목 없음)' 곡이
-        // 하나씩 따로 생겨 라이브러리를 어지럽혔다. 연결이 없으니 사용 이력도 남지 않는다
-        if (!m && !String(it.title || '').trim()) continue;
+        // 하나씩 따로 생겨 라이브러리를 어지럽혔다. 연결이 없으니 사용 이력도 남지 않는다.
+        // 이 팀은 아직 곡이 하나도 없으니 칸에 남은 songId·arrId(다른 팀 콘티를 가져온 것 등)는 모두 남의 것이거나
+        // 없는 것이다 → 지운다. 남겨 두면 사용 이력이 남의 곡을 가리키거나, 없는 편곡이라 이행 전체가 FK 로 되돌려졌다
+        if (!m && !t0) {
+          if (it.songId || it.arrId) { delete it.songId; delete it.arrId; touched = true; }
+          continue;
+        }
         if (!m) {
-          const title = String(it.title || '').trim() || '(제목 없음)';
-          const tn = norm(title);
+          const title = t0;
+          const tn = tn0;
           const r = await q(`insert into songs(team_id, title, title_norm, title_cho, orig_key, created_at, updated_at)
                              values($1,$2,$3,$4,$5,now(),now()) returning id`, [t.id, title, tn, cho(tn), String(it.key || '')]);
           const a = await q(`insert into arrangements(song_id, team_id, name, is_default, key, mod, form, song_note, pieces, media, chart, score, created_from_service_id, created_at, updated_at)
@@ -87,11 +95,11 @@ try {
       }
       if (touched) await q('update services set doc=$2 where id=$1 and team_id=$3', [sv.id, JSON.stringify(doc), t.id]);
 
-      // 사용 이력 (발행본만)
+      // 사용 이력 (발행본만). 여기서 만들거나 이은 곡만 센다 (칸에 남아 있던 남의 id 로는 쓰지 않는다)
       const last = items.length - 1;
       for (let i = 0; i < items.length; i++) {
         const it = items[i];
-        if (!it.songId) continue;
+        if (!it.songId || !made.some((x) => x.songId === it.songId && x.arrId === it.arrId)) continue;
         await q(`insert into song_usages(team_id, song_id, arrangement_id, service_id, service_date, service_name, position, is_application, key_used)
                  values($1,$2,$3,$4,$5,$6,$7,$8,$9) on conflict (song_id, service_id) do nothing`,
           [t.id, it.songId, it.arrId, sv.id, /^\d{4}-\d{2}-\d{2}$/.test(doc.date || '') ? doc.date : null,

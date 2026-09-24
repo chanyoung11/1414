@@ -2277,6 +2277,21 @@ const REHEARSAL_MAX = 150 * 1024 * 1024, REHEARSAL_KEEP_DAYS = 90;
 const BLOB_EXT = ['', '.jpg', '.png', '.webp', '.audio'], REH_EXT = ['.m4a', '.webm', '.mp3', '.audio'];
 const isPathOf = (pathname, base, exts) => exts.some((e) => pathname === base + e);
 
+// 직접 업로드 서명 URL 은 사람당 15분에 200개까지. 받기만 하고 올리지 않아도 치울 목록(blob_trash)에 한 줄씩 쌓여,
+// 스크립트로 마구 받으면 하루 한 번 도는 치우기가 그 뒤에 진짜로 버려진 파일에 늦게 닿았다.
+// 한 문장으로 세고 한도에서 멈춘다(동시에 보내도 못 넘긴다). last 는 창이 열린 때 — 띄엄띄엄 오래 올려도 쌓이지 않는다.
+// 앱은 3.5MB 넘는 파일만 이 길로 올리니 넉넉하다
+const UPLOAD_URL_MAX = 200;
+async function takeUploadUrl(uid) {
+  const r = await one(`insert into login_attempts(username, n, last) values($1, 1, now())
+                       on conflict (username) do update set
+                         n = case when login_attempts.last < now() - interval '15 minutes' then 1 else login_attempts.n + 1 end,
+                         last = case when login_attempts.last < now() - interval '15 minutes' then now() else login_attempts.last end
+                       where login_attempts.n < $2 or login_attempts.last < now() - interval '15 minutes'
+                       returning n`, ['upload|' + uid, UPLOAD_URL_MAX]).catch(() => ({ n: 0 }));   // 표를 못 쓰면 막지 않는다
+  if (!r) throw new HttpError(429, 'too_many', '파일을 너무 많이 올리고 있어요. 15분 뒤에 다시 해 주세요');
+}
+
 // 콘티 파일(악보·오디오)도 4.5MB 를 넘으면 브라우저가 Blob 으로 바로 올린다
 on('POST', '/blobs/:id/upload-url', async ({ uid, params, body }) => {
   if (!uid) throw noAuth();
@@ -2289,6 +2304,7 @@ on('POST', '/blobs/:id/upload-url', async ({ uid, params, body }) => {
   const type = str(body.mime, 100) || 'application/octet-stream';
   const ext = type.includes('jpeg') ? '.jpg' : type.includes('png') ? '.png' : type.includes('webp') ? '.webp' : type.startsWith('audio/') ? '.audio' : '';
   const pathname = `teams/${teamId}/${params.id}${ext}`;
+  await takeUploadUrl(uid);
   const p = await presignPut(pathname, type, 10, size);
   return { uploadUrl: p.url, pathname, mime: type };
 });
@@ -2340,6 +2356,7 @@ on('POST', '/rehearsals/upload-url', async ({ uid, body }) => {
   const blobId = 'r' + randomToken(12).replace(/[^A-Za-z0-9]/g, '').slice(0, 16).toLowerCase();
   const ext = mime.includes('mp4') || mime.includes('m4a') ? '.m4a' : mime.includes('webm') ? '.webm' : mime.includes('mpeg') ? '.mp3' : '.audio';
   const pathname = `teams/${teamId}/rehearsals/${blobId}${ext}`;
+  await takeUploadUrl(uid);
   const p = await presignPut(pathname, mime, 10, size);
   return { blobId, pathname, uploadUrl: p.url, mime };
 });

@@ -257,6 +257,7 @@ alter table service_dates add column if not exists notified jsonb not null defau
 alter table teams add column if not exists plan text not null default 'free';
 alter table teams drop constraint if exists teams_plan_check;
 -- plus 도 넣는다. 전에는 free/pro 만 받아서 Plus 결제 웹훅과 Plus 프로모션 코드가 전부 500 이었다
+-- (되돌릴 때: plus 팀이 생긴 뒤 이 줄 이전의 schema.sql 을 다시 깔면 여기서 23514 로 실패한다 — docs/서버_설정.md)
 alter table teams add constraint teams_plan_check check (plan in ('free','pro','plus'));
 -- B.6.2 결제 담당자. null 이면 인도자(teams.created_by)
 alter table teams add column if not exists billing_user_id uuid references users(id);
