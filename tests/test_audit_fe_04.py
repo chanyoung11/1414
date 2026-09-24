@@ -504,6 +504,416 @@ def t_logout(b):
     print('F81 · F82 ok')
 
 
+# ======== 2차 (검증에서 되돌려진 것 바로잡기) ========
+def team_switch(pl, tid):
+    pl.evaluate("()=>{document.querySelectorAll('#tswx').forEach(e=>e.remove());document.body.insertAdjacentHTML('beforeend','<button id=\"tswx\" data-act=\"team-switch\">x</button>')}")
+    pl.click('#tswx'); pl.click('#modal [data-switch="%s"]' % tid)
+    until(pl, "CONTI.S.team.id===%s" % json.dumps(tid), what='팀 전환')
+
+
+def lay(A, B, x, extra=True):
+    # 송폼 블록 둘 + 메모 띠·자른 악보·글 블록 (id 에 점·# 이 든다) + 이상한 id · 큰 화면 번호
+    blocks = [{'id': 'h0', 'pid': A, 'iid': A, 'type': 'head', 'x': x, 'y': 0.05, 'w': 0.4, 'h': 0.1},
+              {'id': 'h1', 'pid': B, 'iid': B, 'type': 'head', 'x': 0.1, 'y': 0.4, 'w': 0.4, 'h': 0.1}]
+    if extra:
+        blocks += [{'id': 't0.0.0', 'pid': 'p1', 'iid': A, 'type': 'strip', 'x': 0.1, 'y': 0.6, 'w': 0.3, 'h': 0.05},
+                   {'id': 's0.1.40#5', 'pid': 'p1', 'iid': A, 'type': 'slice', 'x': 0.5, 'y': 0.6, 'w': 0.3, 'h': 0.2, 'ranges': [[40, 90]]},
+                   {'id': 'x1a', 'type': 'text', 'text': '<b>글</b>', 'x': 0.6, 'y': 0.1, 'w': 0.3, 'h': 0.05},
+                   {'id': '"><img src=x onerror=window.__xss=1>', 'type': 'text', 'text': 'x', 'x': 0, 'y': 0, 'w': 0.1, 'h': 0.1}]
+    L = {'v': 2, 'screens': [{'blocks': blocks}]}
+    if extra: L['off'] = [{'s': 1000000000, 'b': {'id': 'h9', 'type': 'head', 'x': 0, 'y': 0, 'w': 0.1, 'h': 0.1}}]
+    return L
+
+
+HEAD_X = "(()=>{const L=CONTI.STG.layout;if(!L)return null;const b=[].concat(...L.screens.map(s=>s.blocks)).find(b=>b.type==='head'&&b.idx===0);return b?b.x:null})()"
+
+
+# F20: 인도자가 추천을 다시 저장하면 멤버가 다음에 열 때 바로 새 추천으로 · 받은 추천의 블록 id(점·#)가 그대로
+def t_r2_f20(b):
+    L = leader(b); M = member(b, L)
+    sid = nid('st'); A = nid('i'); B = nid('i')
+    publish(L, sid, 1, [item(A, '예수로 나의 구주 삼고'), item(B, '주 사랑합니다', 'D')])
+    must(L, 'PUT', '/services/%s/stage-layout' % sid, {'teamId': L._team, 'device': 'tab-l', 'layout': lay(A, B, 0.3)})
+    pm = page(M)
+    until(pm, svc_js(sid) + "&&" + svc_js(sid) + ".published", what='멤버가 발행본을 받음')
+    got = pm.evaluate("(%s.published.stageLayouts||{})['tab-l']||null" % svc_js(sid))
+    if not got: fail('F20: 받은 발행본에 추천 조판이 없음')
+    ids = [x['id'] for x in got['screens'][0]['blocks']]
+    for want in ('h0', 'h1', 't0.0.0', 's0.1.40#5', 'x1a'):
+        if want not in ids: fail('F20: 받은 추천 조판의 블록 id 가 바뀜 %s (%s 없음)' % (ids, want))
+    if any('<' in i or '"' in i for i in ids): fail('F20: 이상한 블록 id 가 그대로 들어옴 %s' % ids)
+    if not got.get('off') or got['off'][0]['s'] > 199: fail('F20: 화면 번호를 자르지 않음 %s' % got.get('off'))
+    pm.evaluate("(id)=>CONTI.stageOpen(CONTI.S.services.find(x=>x.id===id),0)", sid)
+    pm.wait_for_selector('#stageWrap .stgpage', timeout=15000)
+    until(pm, HEAD_X + "===0.3", timeout=8000, what='멤버 무대가 첫 추천(0.3)으로 열림')
+    pm.evaluate("CONTI.stageExit()")
+    # 인도자가 추천을 고쳐 다시 저장 → 멤버가 다음에 열 때 그 자리에서 새 추천으로 (한 번 늦게 보이지 않는다)
+    must(L, 'PUT', '/services/%s/stage-layout' % sid, {'teamId': L._team, 'device': 'tab-l', 'layout': lay(A, B, 0.6)})
+    pm.evaluate("(id)=>CONTI.stageOpen(CONTI.S.services.find(x=>x.id===id),0)", sid)
+    pm.wait_for_selector('#stageWrap .stgpage', timeout=15000)
+    until(pm, HEAD_X + "===0.6", timeout=6000, what='다시 연 멤버 무대가 고친 추천(0.6)으로 바뀜')
+    ids = [x['id'] for x in pm.evaluate("%s.published.stageLayouts['tab-l'].screens[0].blocks" % svc_js(sid))]
+    if 't0.0.0' not in ids or any('<' in i for i in ids): fail('F20: 무대를 열 때 받은 추천 조판의 id %s' % ids)
+    pm.evaluate("CONTI.stageExit()")
+    # 내가 고친 조판이 있으면 추천이 바뀌어도 내 것 그대로
+    must(M, 'PUT', '/me/prefs/stage/' + 'lay:%s~tab-l' % sid, {'value': lay(A, B, 0.45, extra=False)})
+    pm.evaluate("()=>{CONTI.PREFS.at=0}")
+    must(L, 'PUT', '/services/%s/stage-layout' % sid, {'teamId': L._team, 'device': 'tab-l', 'layout': lay(A, B, 0.7)})
+    pm.evaluate("(id)=>CONTI.stageOpen(CONTI.S.services.find(x=>x.id===id),0)", sid)
+    pm.wait_for_selector('#stageWrap .stgpage', timeout=15000)
+    until(pm, HEAD_X + "===0.45", timeout=6000, what='내 조판으로 열림')
+    pm.wait_for_timeout(1500)
+    if pm.evaluate(HEAD_X) != 0.45: fail('F20: 내가 고친 조판을 추천이 덮음 %s' % pm.evaluate(HEAD_X))
+    if pm.evaluate("%s.published.stageLayouts['tab-l'].screens[0].blocks[0].x" % svc_js(sid)) != 0.7: fail('F20: 새 추천을 받아 두지 않음')
+    pm.evaluate("CONTI.stageExit()")
+    if pm.evaluate("!!window.__xss"): fail('F20: 추천 조판의 id 로 스크립트가 돎')
+    if pm._errs: fail('page errors: %s' % pm._errs)
+    L.close(); M.close()
+    print('R2 F20 ok')
+
+
+# F22: 기기에 있는 곡이라도, 더 새 버전에서 더해진 영상의 메모는 그림자에 넣지도 지우지도 않는다
+def t_r2_notes(b):
+    L = leader(b); M = member(b, L)
+    sid = nid('nm'); A = nid('iA'); m1 = nid('m1'); m2 = nid('m2')
+    v1 = dict(item(A, '곡 A'), media=[{'id': m1, 'type': 'youtube', 'url': 'https://youtu.be/aaaaaaaaaaa', 'name': '영상1'}])
+    publish(L, sid, 1, [v1])
+    pm = page(M)
+    until(pm, svc_js(sid), what='멤버가 v1 을 받음')
+    v2 = dict(item(A, '곡 A'), media=v1['media'] + [{'id': m2, 'type': 'youtube', 'url': 'https://youtu.be/bbbbbbbbbbb', 'name': '영상2'}])
+    publish(L, sid, 2, [v2])
+    nm = nid('nM'); nl = nid('nL')
+    must(M, 'POST', '/notes', {'teamId': L._team, 'serviceId': sid, 'notes': [{'id': nm, 'itemId': A, 'mediaId': m2, 't': 5, 'layer': 'mine', 'text': '영상2 메모'}]})
+    must(L, 'POST', '/notes', {'teamId': L._team, 'serviceId': sid, 'notes': [{'id': nl, 'itemId': A, 'mediaId': m2, 't': 9, 'layer': 'leader', 'text': '인도자 영상2 메모'}]})
+    pm.route(re.compile(r'/api/services\?team='), lambda r: r.abort())
+    pm.goto(URL + '#/view/' + sid); pm.wait_for_timeout(3500)
+    if pm.evaluate("%s.items[0].media.length" % svc_js(sid)) != 1: fail('전제 실패: 기기가 이미 v2 를 받음')
+    if nm not in [n['id'] for n in notes_on_server(M, sid)]: fail('F22: v1 기기가 v2 에서 더해진 영상의 메모를 서버에서 지움')
+    if pm.evaluate("(CONTI.S.noteShadow[%s]||[]).some(x=>x.id===%s)" % (json.dumps(sid), json.dumps(nm))): fail('F22: 이 기기에 없는 영상의 메모가 그림자에 들어감')
+    # 예전 버전이 남긴 그림자(없는 영상의 메모)가 있어도 지우지 않고 그림자에서만 뺀다
+    pm.evaluate("async ([id,nm,A,m2])=>{CONTI.S.noteShadow[id].push({id:nm,itemId:A,mediaId:m2});await CONTI.SYNC.pushNotes(CONTI.S.services.find(x=>x.id===id))}", [sid, nm, A, m2])
+    if nm not in [n['id'] for n in notes_on_server(M, sid)]: fail('F22: 오염된 그림자로 없는 영상의 메모를 지움')
+    if pm.evaluate("(CONTI.S.noteShadow[%s]||[]).some(x=>x.id===%s)" % (json.dumps(sid), json.dumps(nm))): fail('F22: 없는 영상의 그림자를 치우지 않음')
+    # 인도자 기기(v1 에 머문)도 팀 전체 메모를 지우지 않는다
+    pl = page(L)
+    until(pl, svc_js(sid) + "&&" + svc_js(sid) + ".published", what='인도자 기기에 콘티')
+    pl.route(re.compile(r'/api/services\?team='), lambda r: r.abort())
+    pl.evaluate("""(id)=>{const s=CONTI.S.services.find(x=>x.id===id);s.items[0].media=s.items[0].media.slice(0,1);
+      s.published.items[0].media=s.published.items[0].media.slice(0,1);s.published.version=1;s.version=1;if(CONTI.S.noteShadow)delete CONTI.S.noteShadow[id];CONTI.save()}""", sid)
+    pl.goto(URL + '#/view/' + sid); pl.wait_for_timeout(3500)
+    if nl not in [n['id'] for n in notes_on_server(L, sid)]: fail('F22: v1 인도자 기기가 v2 영상의 인도자 메모를 지움')
+    # 받은 뒤에는 붙고, 그 영상이 있는 기기에서 지우면 서버에서도 지워진다
+    pm.unroute(re.compile(r'/api/services\?team='))
+    pm.evaluate("async (id)=>{await CONTI.SYNC.pullServices();await CONTI.SYNC.pullNotes(CONTI.S.services.find(x=>x.id===id))}", sid)
+    if not pm.evaluate("%s.items[0].media[1].notes.some(n=>n.id===%s)" % (svc_js(sid), json.dumps(nm))): fail('v2 를 받은 뒤 영상2 메모가 안 붙음')
+    pm.evaluate("async (id)=>{const s=CONTI.S.services.find(x=>x.id===id);s.items[0].media[1].notes=[];await CONTI.SYNC.pushNotes(s)}", sid)
+    if nm in [n['id'] for n in notes_on_server(M, sid)]: fail('F22: 영상이 있는 기기에서 지운 메모가 서버에 남음')
+    for p_ in (pm, pl):
+        if p_._errs: fail('page errors: %s' % p_._errs)
+    L.close(); M.close()
+    print('R2 F22 ok')
+
+
+# F73 · F77: 올리는 사이 팀을 바꾸거나 콘티를 지워도 옛 팀 것이 새 팀으로 가지 않고, 지운 초안이 살아나지 않는다
+def t_r2_team(b):
+    L = leader(b, '에이팀')
+    tA = L._team
+    tB = must(L, 'POST', '/teams', {'name': '비팀' + TAG, 'myName': '인도', 'session': '인도자'})['teamId']
+    pl = page(L)
+    if pl.evaluate("CONTI.S.team.id") != tA: team_switch(pl, tA)
+    pl.wait_for_timeout(1500)
+    lib_titles = lambda tid: [x.get('title') for x in must(L, 'GET', '/library?team=' + tid)['songs']]
+    song_titles = lambda tid: [x.get('title') for x in must(L, 'GET', '/songs?team=' + tid)['songs']]
+    blob_on = lambda tid, bid: bid in (must(L, 'GET', '/blobs?team=%s&ids=%s' % (tid, bid))['blobs'] or {})
+    # (1) POST /songs 응답을 기다리는 사이 B 로 → B 의 곡 목록(S.songs)에 넣지 않는다
+    posts = []
+    pl.on('request', lambda r: posts.append(1) if r.method == 'POST' and r.url.endswith('/api/songs') else None)
+    t2 = 'A팀 곡 둘 ' + TAG
+    pl.evaluate("""(t)=>{CONTI.S.services.push({id:'s2'+Date.now(),name:'A 예배 2',date:'2099-08-09',notice:'',version:0,published:null,editedAt:Date.now(),
+       items:[{id:'j'+Date.now(),title:t,key:'A',form:'',pieces:[],media:[],notes:[]}]})}""", t2)
+    pl.evaluate(SLOW, [{'re': '/api/songs$', 'method': 'POST', 'ms': 2500}])
+    pl.evaluate("()=>{clearTimeout(CONTI.pushSongs.retry);window.__ps=CONTI.pushSongs()}")
+    pl.wait_for_timeout(600)
+    team_switch(pl, tB)
+    pl.wait_for_timeout(3500)
+    pl.evaluate("()=>{window.__slow=[]}")
+    if pl.evaluate("CONTI.S.songs.some(x=>x.title===%s)" % json.dumps(t2)): fail('F73: A 팀 곡이 B 팀 기기 곡 목록(S.songs)에 들어감')
+    if t2 in song_titles(tB): fail('F73: A 팀 곡이 B 팀 서버에')
+    if not posts or t2 not in song_titles(tA): fail('전제 실패: 곡 만들기 요청이 A 팀으로 안 감 (%d)' % len(posts))
+    team_switch(pl, tA); pl.wait_for_timeout(800)
+    # (2) pushSongs: 새 곡의 악보를 올리는 사이 B 로 → 곡이 B 에 만들어지지 않고, 악보는 A 로 올라간다
+    b1 = nid('bS'); t1 = 'A팀 새 곡 ' + TAG
+    pl.evaluate("""async ([sid,bid,t])=>{await CONTI.IDB.put('blobs',bid,new Blob([new Uint8Array(3000).fill(5)],{type:'image/png'}));
+      CONTI.S.services.push({id:sid,name:'A 예배',date:'2099-08-02',notice:'',version:0,published:null,editedAt:Date.now(),
+       items:[{id:'i'+Date.now(),title:t,key:'G',form:'',pieces:[{id:'p'+Date.now(),blob:bid,markers:[]}],media:[],notes:[]}]})}""", [nid('sA'), b1, t1])
+    pl.evaluate(SLOW, [{'re': '/api/blobs/' + b1, 'method': 'POST', 'ms': 2500}])
+    pl.evaluate("()=>{clearTimeout(CONTI.pushSongs.retry);window.__ps=CONTI.pushSongs()}")
+    pl.wait_for_timeout(600)
+    team_switch(pl, tB)
+    pl.wait_for_timeout(4000)
+    if t1 in song_titles(tB): fail('F73: 올리는 사이 팀을 바꿨더니 A 팀 곡이 B 팀에 만들어짐')
+    if blob_on(tB, b1) or not blob_on(tA, b1): fail('F73: A 팀 악보가 B 팀으로 올라감')
+    if pl.evaluate("CONTI.S.songs.some(x=>x.title===%s)" % json.dumps(t1)): fail('F73: A 팀 곡이 B 팀 목록에')
+    team_switch(pl, tA); pl.wait_for_timeout(800)
+    # (3) pushLibrary: 파일을 올리는 사이 B 로 → A 라이브러리 곡이 B 에 들어가지 않는다
+    b3 = nid('bL'); t3 = 'A팀 보관 곡 ' + TAG
+    pl.evaluate("""async ([bid,t])=>{await CONTI.IDB.put('blobs',bid,new Blob([new Uint8Array(3000).fill(6)],{type:'image/png'}));
+      CONTI.S.library.push({id:'l'+Date.now(),title:t,key:'C',pieces:[{id:'q'+Date.now(),blob:bid,markers:[]}],media:[],dirty:true})}""", [b3, t3])
+    pl.evaluate(SLOW, [{'re': '/api/blobs/' + b3, 'method': 'POST', 'ms': 2500}])
+    pl.evaluate("()=>{window.__pl=CONTI.SYNC.pushLibrary()}")
+    pl.wait_for_timeout(600)
+    team_switch(pl, tB)
+    pl.wait_for_timeout(4000)
+    pl.evaluate("()=>{window.__slow=[]}")
+    if t3 in lib_titles(tB): fail('F73: A 팀 라이브러리 곡이 B 팀 서버 라이브러리에 들어감')
+    if blob_on(tB, b3): fail('F73: A 팀 라이브러리 파일이 B 팀으로 올라감')
+    if pl._errs: fail('page errors: %s' % pl._errs)
+    L.close()
+    print('R2 F73 ok')
+
+
+def t_r2_draft(b):
+    L = leader(b, '에이팀')
+    tA = L._team
+    tB = must(L, 'POST', '/teams', {'name': '비팀' + TAG, 'myName': '인도', 'session': '인도자'})['teamId']
+    pl = page(L)
+    if pl.evaluate("CONTI.S.team.id") != tA: team_switch(pl, tA)
+    pl.wait_for_timeout(1500)
+    # (4) F77: 초안을 올리는 사이 또 고치고(다시 밀기 예약) 팀을 바꾸면 — 다시 밀기가 B 팀에 A 초안을 쓰지 않는다
+    d1 = nid('dA')
+    pl.evaluate("(id)=>{CONTI.S.services.push({id,name:'팀A 비밀 예배 1',date:'2099-09-06',notice:'',version:0,published:null,items:[],editedAt:Date.now()})}", d1)
+    pl.evaluate(SLOW, [{'re': '/api/services/' + d1 + '/draft', 'method': 'PUT', 'ms': 2500}])
+    pl.evaluate("(id)=>{const s=CONTI.S.services.find(x=>x.id===id);window.__pd=CONTI.SYNC.pushDraft(s)}", d1)
+    pl.wait_for_timeout(300)
+    pl.evaluate("(id)=>{const s=CONTI.S.services.find(x=>x.id===id);s.name='팀A 비밀 예배 2';s.editedAt=Date.now();CONTI.SYNC.pushDraft(s)}", d1)
+    team_switch(pl, tB)
+    pl.wait_for_timeout(4500)
+    pl.evaluate("()=>{window.__slow=[]}")
+    st, j = call(L, 'GET', '/services/%s/draft?team=%s' % (d1, tB))
+    if st == 200 and j and j.get('doc'): fail('F77: 팀을 바꾼 뒤 다시 밀기가 A 팀 초안을 B 팀에 씀')
+    team_switch(pl, tA); pl.wait_for_timeout(800)
+    # (5) 올리는 사이 콘티를 지우면 다시 밀기가 지운 초안을 되살리지 않는다
+    d2 = nid('dD')
+    pl.evaluate("(id)=>{CONTI.S.services.push({id,name:'지울 예배',date:'2099-09-13',notice:'',version:0,published:null,items:[],editedAt:Date.now()})}", d2)
+    pl.evaluate(SLOW, [{'re': '/api/services/' + d2 + '/draft', 'method': 'PUT', 'ms': 2500}])
+    pl.evaluate("(id)=>{const s=CONTI.S.services.find(x=>x.id===id);window.__pd=CONTI.SYNC.pushDraft(s)}", d2)
+    pl.wait_for_timeout(300)
+    pl.evaluate("(id)=>{const s=CONTI.S.services.find(x=>x.id===id);s.name='지울 예배 2';s.editedAt=Date.now();CONTI.SYNC.pushDraft(s)}", d2)
+    pl.wait_for_timeout(300)
+    pl.evaluate("async (id)=>{const S=CONTI.S;S.services=S.services.filter(s=>s.id!==id);S.dropped=(S.dropped||[]).concat(id);CONTI.save();await CONTI.SYNC.deleteService(id)}", d2)
+    pl.wait_for_timeout(5000)
+    pl.evaluate("()=>{window.__slow=[]}")
+    drafts = [d['id'] for d in (must(L, 'GET', '/services?team=' + tA).get('drafts') or [])]
+    if d2 in drafts: fail('F77: 올리는 사이 지운 초안이 서버에 되살아남')
+    if pl._errs: fail('page errors: %s' % pl._errs)
+    L.close()
+    print('R2 F77 ok')
+
+
+# F78: 다른 순서로 겹친 올리기 · 늦게 온 '서버에 없음' 답이 방금 올린 파일을 또 올리지 않는다
+def t_r2_blobs(b):
+    L = leader(b)
+    pl = page(L)
+    x = nid('bx'); y = nid('by'); z = nid('bz')
+    # 올리기 요청은 1초 늦게 떠난다 (느린 망). 그 위에 SLOW 로 답을 늦춘다
+    pl.evaluate("""()=>{window.__posts={};const f=window.fetch;
+      window.fetch=function(u,o){const a=arguments;const m=String(u).match(/\\/api\\/blobs\\/([^?/]+)\\?/);
+        if(m&&o&&o.method==='POST'){window.__posts[m[1]]=(window.__posts[m[1]]||0)+1;return new Promise(ok=>setTimeout(ok,1000)).then(()=>f.apply(this,a))}return f.apply(this,a)}}""")
+    pl.evaluate(SLOW, [])
+    n = pl.evaluate("""async ([x,y])=>{for(const id of [x,y])await CONTI.IDB.put('blobs',id,new Blob([new Uint8Array(400000).fill(4)],{type:'audio/mp4'}));
+      window.__posts={};const A={pieces:[],media:[{id:'a',type:'audio',blob:x}]},B={pieces:[],media:[{id:'b',type:'audio',blob:y}]};
+      await Promise.all([CONTI.SYNC.ensureBlobs([A,B],true),CONTI.SYNC.ensureBlobs([B,A],true)]);return window.__posts}""", [x, y])
+    if n.get(x) != 1 or n.get(y) != 1: fail('F78: 순서가 다른 두 올리기가 같은 파일을 또 올림 %s' % n)
+    n = pl.evaluate("""async (z)=>{await CONTI.IDB.put('blobs',z,new Blob([new Uint8Array(400000).fill(2)],{type:'audio/mp4'}));window.__posts={};
+      const it=[{pieces:[],media:[{id:'c',type:'audio',blob:z}]}];const p1=CONTI.SYNC.ensureBlobs(it,true);
+      // 두 번째 호출의 '서버에 있나' 답은 첫 호출이 올리기를 마친 뒤에 온다
+      window.__slow=[{re:'/api/blobs\\\\?team=',method:'GET',ms:2500}];const p2=CONTI.SYNC.ensureBlobs(it,true);window.__slow=[];
+      await Promise.all([p1,p2]);return window.__posts}""", z)
+    if n.get(z) != 1: fail('F78: 늦게 온 답 때문에 방금 올린 파일을 또 올림 %s' % n)
+    n = pl.evaluate("async (z)=>{window.__posts={};await CONTI.SYNC.ensureBlobs([{pieces:[],media:[{id:'c',type:'audio',blob:z}]}],true);return window.__posts}", z)
+    if n.get(z): fail('F78: 서버에 있는 파일을 또 올림 %s' % n)
+    if pl._errs: fail('page errors: %s' % pl._errs)
+    L.close()
+    print('R2 F78 ok')
+
+
+# F76: 발행 대기(못 올린 발행)가 409 로 돌아와도 고친 것이 남는다 · 버전만 올라간 옛 콘티는 새 발행본을 받는다
+def t_r2_f76(b):
+    L = leader(b)
+    sid = nid('pp'); X = nid('iX')
+    publish(L, sid, 1, [item(X, '곡 X', 'G')])
+    pl = page(L)
+    until(pl, svc_js(sid) + "&&" + svc_js(sid) + ".published", what='v1 받음')
+    # 이 기기: 키를 A 로, 곡 Y 를 더해 발행했는데 올리다 끊겨 발행 대기로 남았다 (발행 창이 남기는 모양)
+    pl.evaluate("""(id)=>{const s=CONTI.S.services.find(x=>x.id===id);s.items[0].key='A';s.items.push({id:'y'+Date.now(),title:'곡 Y',key:'D',form:'',pieces:[],media:[],notes:[]});
+      s.version=2;s.editedAt=Date.now();s.published={...s.published,version:2,at:Date.now(),items:JSON.parse(JSON.stringify(s.items)).map(it=>({...it,notes:undefined}))};s.pubPending=true;CONTI.save()}""", sid)
+    publish(L, sid, 2, [item(X, '곡 X', 'G')], notice='PC 에서 고침')   # 그 사이 PC 가 v2 를 발행
+    pl.evaluate("CONTI.SYNC.pushPending()"); pl.wait_for_timeout(1500)
+    st = pl.evaluate("(()=>{const s=%s;return {key:s.items[0].key,n:s.items.length,pv:s.published.version,v:s.version,pend:!!s.pubPending,notice:s.published.notice}})()" % svc_js(sid))
+    if st['key'] != 'A' or st['n'] != 2: fail('F76: 발행 대기가 409 로 돌아오며 고친 것이 덮임 %s' % st)
+    if st['pv'] != 2 or st['v'] != 3 or st['pend'] or st['notice'] != 'PC 에서 고침': fail('F76: 409 뒤 상태 %s' % st)
+    # 예전 앱이 발행 창을 열기만 해서 버전만 올라간 콘티: 고친 게 없으니 다른 기기의 새 발행본을 받는다
+    sid2 = nid('pv')
+    publish(L, sid2, 1, [item(nid('i'), '곡', 'G')])
+    pl.evaluate("CONTI.SYNC.pullServices()"); until(pl, svc_js(sid2) + "&&" + svc_js(sid2) + ".published", what='v1 받음')
+    pl.evaluate("(id)=>{const s=CONTI.S.services.find(x=>x.id===id);s.version=s.published.version+1;CONTI.save()}", sid2)
+    publish(L, sid2, 2, [item(nid('i'), '곡 (PC)', 'C')])
+    pl.evaluate("CONTI.SYNC.pullServices()"); pl.wait_for_timeout(1500)
+    st = pl.evaluate("(()=>{const s=%s;return {t:s.items[0].title,v:s.version,pv:s.published.version}})()" % svc_js(sid2))
+    if st['t'] != '곡 (PC)' or st['v'] != 2: fail('F76: 버전만 올라간 콘티가 새 발행본을 안 받음 %s' % st)
+    if pl._errs: fail('page errors: %s' % pl._errs)
+    L.close()
+    print('R2 F76 ok')
+
+
+# G31: 한도는 바이트로 잰다 — 한글이 많아 글자 수는 한도 아래여도 바이트가 넘으면 파일·요청을 보내지 않고 알린다
+def t_r2_g31(b):
+    L = leader(b)
+    sid = nid('kb')
+    publish(L, sid, 1, [item(nid('i'), '가사 많은 곡')])
+    pl = page(L)
+    until(pl, svc_js(sid), what='콘티 받음')
+    sent = []
+    pl.on('request', lambda r: sent.append(r.method + ' ' + r.url) if r.method == 'PUT' and re.search(r'/api/services/%s(/draft)?$' % sid, r.url) else None)
+    # 한글 140만 자: 글자 수 1.4M(한도 4M 아래) · UTF-8 4.2MB(한도 위)
+    pl.evaluate("(id)=>{const s=CONTI.S.services.find(x=>x.id===id);s.items[0].songNote='가'.repeat(1400000);s.version=s.published.version+1;s.editedAt=Date.now()}", sid)
+    pl.evaluate("(id)=>CONTI.SYNC.pushDraft(CONTI.S.services.find(x=>x.id===id))", sid)
+    pl.wait_for_timeout(500)
+    if sent: fail('G31: 바이트로는 한도를 넘는 초안을 보냄 %s' % sent)
+    msgs = []
+    pl.on('dialog', lambda d: msgs.append(d.message))
+    pl.goto(URL + '#/edit/' + sid); pl.wait_for_selector('[data-act="publish"]', timeout=15000)
+    pl.click('[data-act="publish"]'); pl.wait_for_selector('#pubOnly'); pl.click('#pubOnly')
+    pl.wait_for_timeout(2500)
+    if [x for x in sent if '/draft' not in x]: fail('G31: 바이트로는 한도를 넘는 발행을 보냄 %s' % sent)
+    m = [x for x in msgs if 'MB' in x]
+    if not m or not re.search(r'\((4\.[1-9]|[5-9])', m[0]): fail('G31: 알린 크기가 한도 위로 나오지 않음 %s' % msgs)
+    st = pl.evaluate("(()=>{const s=%s;return {pv:s.published.version,pend:!!s.pubPending}})()" % svc_js(sid))
+    if st['pv'] != 1 or st['pend']: fail('G31: 너무 큰 발행이 남음 %s' % st)
+    if pl._errs: fail('page errors: %s' % pl._errs)
+    L.close()
+    print('R2 G31 ok')
+
+
+# F80: 애플 새 계정 동의 창을 취소하고 다시 들어와도 애플이 준 이름으로 가입 (예전 앱의 가입은 서버 SOCIAL_JS 에서)
+def t_r2_f80(b):
+    c = b.new_context(viewport={'width': 430, 'height': 900}, service_workers='block')
+    pg = c.new_page(); errs = []; pg.on('pageerror', lambda e: errs.append(str(e)[:300]))
+    sent = []
+
+    def social(route):
+        body = json.loads(route.request.post_data or '{}'); sent.append(body)
+        if not body.get('agreedAt'):
+            return route.fulfill(status=428, content_type='application/json', body=json.dumps({'error': 'needs_consent', 'message': '처음 오셨네요'}))
+        return route.fulfill(status=503, content_type='application/json', body=json.dumps({'error': 'no_social', 'message': '시험 끝'}))
+    pg.route(re.compile(r'/api/auth/social$'), social)
+    pg.route(re.compile(r'/api/auth/providers$'), lambda r: r.fulfill(status=200, content_type='application/json', body=json.dumps({'apple': 'audit.service'})))
+    b64 = lambda o: base64.urlsafe_b64encode(json.dumps(o).encode()).decode().rstrip('=')
+    tok = b64({'alg': 'RS256'}) + '.' + b64({'sub': 'apple-' + TAG, 'iss': 'https://appleid.apple.com'}) + '.sig'
+    other = b64({'alg': 'RS256'}) + '.' + b64({'sub': 'apple-other-' + TAG}) + '.sig'
+    # 애플 웹 로그인 흉내: 이름은 그 계정의 첫 허락 때만 준다 (window.__appleTok 으로 계정을 고른다)
+    pg.route(re.compile(r'appleid\.cdn-apple\.com/.*appleid\.auth\.js'), lambda r: r.fulfill(status=200, content_type='text/javascript', body=
+        "window.__appleSeen={};window.AppleID={auth:{init(){},async signIn(){const t=window.__appleTok;const first=!window.__appleSeen[t];window.__appleSeen[t]=1;"
+        "return {authorization:{id_token:t},user:first?{name:{firstName:'길동',lastName:'홍'}}:undefined}}}}"))
+    pg.goto(URL); pg.wait_for_selector('#aBtn', timeout=15000)
+    pg.evaluate("(t)=>{window.__appleTok=t}", tok)
+    pg.click('#aBtn')
+    pg.wait_for_selector('#scAgree', timeout=5000)
+    if sent[-1].get('name') != '홍길동': fail('전제 실패: 첫 허락에 이름이 안 감 %s' % sent[-1])
+    pg.click('#modal [data-close]'); pg.wait_for_timeout(200)
+    # 다시 누르면 애플은 이름을 주지 않는다
+    pg.click('#aBtn')
+    pg.wait_for_selector('#scAgree', timeout=5000)
+    pg.check('#scAgree'); pg.click('#scOk'); pg.wait_for_timeout(800)
+    if not sent[-1].get('agreedAt') or sent[-1].get('name') != '홍길동': fail('F80: 취소 뒤 다시 가입할 때 애플 이름이 빠짐 %s' % sent[-1])
+    # 다른 애플 계정(이미 허락해 이름을 안 주는)에는 그 이름을 쓰지 않는다
+    pg.evaluate("(t)=>{window.__appleTok=t;window.__appleSeen[t]=1}", other)
+    pg.click('#aBtn'); pg.wait_for_selector('#scAgree', timeout=5000)
+    if sent[-1].get('name'): fail('F80: 다른 계정에 앞사람 이름을 씀 %s' % sent[-1])
+    if errs: fail('page errors: %s' % errs)
+    c.close()
+    print('R2 F80 ok')
+
+
+# F81: 로그아웃 뒤 같은 사람이 같은 창에서 다시 로그인하면 알림을 다시 등록한다
+PUSH_STUB = """(()=>{const ep=%s;const sub={endpoint:ep,options:{applicationServerKey:null},toJSON(){return {endpoint:ep,keys:{p256dh:'k',auth:'a'}}},unsubscribe:async()=>true};
+  const pm={getSubscription:async()=>sub,subscribe:async()=>sub};
+  Object.defineProperty(navigator,'serviceWorker',{configurable:true,value:{ready:Promise.resolve({pushManager:pm}),register:async()=>({}),addEventListener(){},getRegistration:async()=>null,getRegistrations:async()=>[],controller:null}});
+  try{Object.defineProperty(Notification,'permission',{configurable:true,get:()=>'granted'})}catch(e){}})()"""
+
+
+def t_r2_push(b):
+    c = b.new_context(viewport=IPAD)
+    u = nid('pu')
+    must(c, 'POST', '/auth/signup', {'username': u, 'password': 'secret1', 'name': '알림', 'agreedAt': '2026-09-24T00:00:00Z'})
+    must(c, 'POST', '/teams', {'name': '알림팀' + TAG, 'myName': '알림', 'session': '인도자'})
+    ep = 'https://push.example/' + nid('re')
+    pg = c.new_page(); pg._errs = []; pg.on('pageerror', lambda e: pg._errs.append(str(e)[:300]))
+    pg.on('dialog', lambda d: d.accept())
+    pg.add_init_script(PUSH_STUB % json.dumps(ep))
+    subs = []
+    pg.on('request', lambda r: subs.append(1) if r.url.endswith('/api/push/subscribe') else None)
+    pg.goto(URL + '#/home'); pg.wait_for_function("window.CONTI&&CONTI.S.team.id", timeout=15000)
+
+    def wait_subs(n0):
+        t0 = time.time()
+        while len(subs) <= n0 and time.time() - t0 < 10: pg.wait_for_timeout(200)
+        return len(subs) > n0
+
+    def rows():
+        r = subprocess.run(['docker', 'exec', 'conti-pg', 'psql', '-U', 'postgres', '-tAc', "select count(*) from push_subs where endpoint='%s'" % ep], capture_output=True, text=True)
+        return r.stdout.strip() if r.returncode == 0 else None
+    if not wait_subs(0): fail('전제 실패: 홈에서 알림을 등록하지 않음')
+    pg.wait_for_timeout(500)
+    if rows() not in (None, '1'): fail('전제 실패: 구독 줄 %s' % rows())
+    pg.goto(URL + '#/settings'); pg.wait_for_selector('.setpane', timeout=10000)
+    pg.click('[data-act="set-tab"][data-t="app"]'); pg.wait_for_selector('#sLogout', timeout=10000)
+    pg.click('#sLogout'); pg.wait_for_selector('#lgUser', timeout=10000)
+    if rows() not in (None, '0'): fail('F81: 로그아웃 뒤 구독이 남음 %s' % rows())
+    n0 = len(subs)
+    pg.fill('#lgUser', u); pg.fill('#lgPass', 'secret1'); pg.click('[data-act="lg-submit"]')
+    pg.wait_for_function("window.CONTI&&CONTI.NET.user", timeout=10000)
+    if not wait_subs(n0): fail('F81: 같은 사람이 다시 로그인했는데 알림을 다시 등록하지 않음')
+    pg.wait_for_timeout(500)
+    if rows() not in (None, '1'): fail('F81: 다시 로그인한 뒤 구독 줄 %s' % rows())
+    if pg._errs: fail('page errors: %s' % pg._errs)
+    c.close()
+    print('R2 F81 ok')
+
+
+# G15: 받는 대로 다시 그릴 때 목록이 깜빡이지 않고(떠오르는 효과 없음), 누르고 있는 동안에는 다시 그리지 않는다
+def t_r2_g15(b):
+    L = leader(b)
+    ids = [nid('g') for _ in range(14)]
+    for k, i in enumerate(ids):
+        publish(L, i, 1, [item(nid('i'), '곡 %d' % k)], name='예배 %d' % k, date='2099-10-%02d' % (k + 1))
+    M = member(b, L, viewport={'width': 430, 'height': 900})
+    pm = M.new_page(); pm._errs = []; pm.on('pageerror', lambda e: pm._errs.append(str(e)[:300]))
+    pm.add_init_script("""(()=>{const f=window.fetch;window.fetch=function(u,o){const p=f.apply(this,arguments);
+      if(/\\/api\\/services\\/[^/?]+\\?team=/.test(String(u)))return p.then(r=>new Promise(ok=>setTimeout(()=>ok(r),500)));return p}})()""")
+    pm.goto(URL)
+    t0 = time.time(); st = None
+    while time.time() - t0 < 20:
+        st = pm.evaluate("()=>({rows:document.querySelectorAll('.svcrow').length,n:window.CONTI?CONTI.S.services.length:0})")
+        if st['rows'] > 0: break
+        pm.wait_for_timeout(100)
+    if not st or not st['rows'] or st['n'] >= len(ids): fail('전제 실패: 받는 중에 목록이 안 보임 %s' % st)
+    if pm.evaluate("document.querySelectorAll('#app .svcrow.rise').length"): fail('G15: 받는 중 다시 그린 목록이 떠오르는 효과로 깜빡임')
+    # 누르고 있는 동안에는 그 줄을 바꾸지 않는다
+    pm.evaluate("()=>{const r=document.querySelector('.svcrow');r.__held=1;window.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}))}")
+    n1 = pm.evaluate("CONTI.S.services.length")
+    pm.wait_for_timeout(2500)
+    held = pm.evaluate("!!(document.querySelector('.svcrow')||{}).__held")
+    n2 = pm.evaluate("CONTI.S.services.length")
+    pm.evaluate("()=>window.dispatchEvent(new PointerEvent('pointerup',{bubbles:true}))")
+    if n2 == n1: fail('전제 실패: 누르는 동안 받은 것이 없음 (%d)' % n1)
+    if not held: fail('G15: 누르고 있는 동안 목록을 다시 그림')
+    until(pm, "CONTI.S.services.length>=%d&&document.querySelectorAll('.svcrow').length>=%d" % (len(ids), len(ids)), timeout=20000, what='결국 전부 보임')
+    if pm._errs: fail('page errors: %s' % pm._errs)
+    L.close(); M.close()
+    print('R2 G15 ok')
+
+
 # api/index.js 를 이 프로세스 안에서 띄우고, 구글 공개키만 가짜로 바꿔 서명한 ID 토큰으로 /auth/social 을 부른다
 # (개발 서버는 진짜 구글 키로만 검증하므로 가짜 토큰을 받지 않는다). DB 는 로컬 도커
 SOCIAL_JS = r"""
@@ -560,6 +970,11 @@ r = await call('POST', '/auth/social', { provider: 'google', idToken: await toke
 if (r.status !== 200 || r.j.user.id !== u1.j.user.id) fail('계정 연결이 안 됨 ' + r.status);
 links = await call('GET', '/auth/social', null, u1.cookie);
 if ((links.j.linked || []).length !== 1) fail('계정 연결 목록 ' + JSON.stringify(links.j));
+// 이미 깔린 예전 앱: 로그아웃 상태에서 login 표시 없이 늘 지금 시각을 agreedAt 으로 보낸다(동의 창을 본 적 없음)
+// → 계정은 만들되 동의는 남기지 않는다 (그 앱의 약관 동의 창이 뜬다)
+r = await call('POST', '/auth/social', { provider: 'google', idToken: await token('s4' + tag), agreedAt: new Date().toISOString() });
+if (r.status !== 200) fail('예전 앱 소셜 가입이 ' + r.status + ' ' + JSON.stringify(r.j));
+if (r.j.user.agreedVer) fail('예전 앱 가입에 동의 버전이 남음 ' + JSON.stringify(r.j.user));
 console.log('  social server ok');
 process.exit(0);
 """
@@ -568,7 +983,9 @@ process.exit(0);
 def run():
     only = set(sys.argv[1:])
     tests = [('f20', t_f20), ('notes', t_notes), ('f21', t_f21), ('pull', t_pull), ('f75', t_f75), ('f76', t_f76),
-             ('draft', t_draft), ('g31', t_g31), ('f80', t_f80), ('logout', t_logout)]
+             ('draft', t_draft), ('g31', t_g31), ('f80', t_f80), ('logout', t_logout),
+             ('r2f20', t_r2_f20), ('r2notes', t_r2_notes), ('r2team', t_r2_team), ('r2draft', t_r2_draft), ('r2blobs', t_r2_blobs), ('r2f76', t_r2_f76),
+             ('r2g31', t_r2_g31), ('r2f80', t_r2_f80), ('r2push', t_r2_push), ('r2g15', t_r2_g15)]
     with sync_playwright() as p:
         b = p.chromium.launch()
         for name, fn in tests:

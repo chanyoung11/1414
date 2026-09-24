@@ -365,10 +365,13 @@ on('POST', '/auth/social', async ({ req, uid, body }) => {
   // 동의를 보여 주지 않고 만든 계정에 '동의함'을 남기면 안 된다 → 동의가 없으면 만들지 않고, 앱이 동의 창을 띄운 뒤 다시 부른다
   const agreedAt = agreedAtOf(body);
   if (!agreedAt) throw new HttpError(428, 'needs_consent', '처음 오셨네요. 이용약관과 개인정보처리방침에 동의한 뒤 가입할 수 있어요');
+  // 이미 깔린 예전 앱은 로그아웃 상태면 로그인 탭에서도 늘 지금 시각을 agreedAt 으로 보낸다 — 동의 창을 보여 준 적이 없다.
+  // 지금 앱은 로그인 화면에서 늘 login 표시를 붙이므로, 표시 없이 온 가입은 동의를 남기지 않고 만든다 → 그 앱의 약관 동의 창(agreeModal)이 뜬다
+  const seen = !!body.login;
   const name = str(body.name, 40) || claim.name || (claim.email ? claim.email.split('@')[0] : SOCIAL[provider] + ' 사용자');
   const username = await freeUsername(claim.email ? claim.email.split('@')[0] : provider);
   const u = await one(`insert into users(username, password_hash, display_name, last_login_at, agreed_at, agreed_ver)
-                       values($1,'',$2,now(),$3,$4) returning id`, [username, name, agreedAt, LEGAL_VERSION]);
+                       values($1,'',$2,now(),$3,$4) returning id`, [username, name, seen ? agreedAt : null, seen ? LEGAL_VERSION : null]);
   await q('insert into identities(provider, subject, user_id, email) values($1,$2,$3,$4)', [provider, claim.sub, u.id, claim.email]);
   return { data: withAppToken(req, await meView(u.id), u.id), headers: { 'Set-Cookie': sessionCookie(req, u.id) } };
 });
