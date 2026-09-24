@@ -2486,7 +2486,9 @@ function publishModal(svc){
  if(!svc.items.length){toast('곡이 없어요');return}
  // 제목만 적고 곧장 발행해도 라이브러리 곡에 이어진 채로 발행되게 민다. 제목 칸에 커서가 남아 있으면(폰에서 자판을 안 내리고 누름)
  // 아직 쓰는 중으로 보고 곡을 안 만들므로 먼저 뗀다
- if(isLeader()&&online()){const ae=document.activeElement;if(ae&&ae.dataset&&ae.dataset.f==='item.title')ae.blur();pushSongs()}
+ // 발행을 누르면 그 밀기가 끝나기를 기다렸다가 담는다 — 안 기다리면 곡 만들기 응답보다 먼저 담아, 곡에 안 이어진 채 발행되고 부른 기록도 안 남았다
+ let songsP=null;
+ if(isLeader()&&online()){const ae=document.activeElement;if(ae&&ae.dataset&&ae.dataset.f==='item.title')ae.blur();songsP=pushSongsNow().catch(()=>false)}
  // 버전은 실제로 발행할 때 올린다. 창을 열기만 해도 올려 두면 고친 게 없어도 '발행 뒤 고친 초안'으로 보여
  // 다른 기기의 새 발행본을 받지 않았다
  const nextV=(svc.published?svc.published.version:0)+1;
@@ -2497,7 +2499,12 @@ function publishModal(svc){
   <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" id="kkCopy">텍스트 복사</button>${online()?`<button class="btn pri" id="pubOnly">${ic('send')}발행하고 팀에 공유</button>`:`<button class="btn" id="pubOnly">${ic('check')}발행만</button><button class="btn pri" id="pubOk">${ic('send')}발행 + 파일 내보내기</button>`}</div>`);
  $('#modal').onclick=async e=>{
   if(e.target.closest('#kkCopy')){try{await navigator.clipboard.writeText($('#kk').value);toast('복사됨')}catch{$('#kk').select();document.execCommand('copy');toast('복사됨')}}
-  const only=e.target.closest('#pubOnly'),withFile=e.target.closest('#pubOk');if(only||withFile){if(WORD_DIRTY){clearTimeout(WORD_T);await saveWord(svc)}if(!(svc.name||'').trim()){svc.name=svcName(svc);const ti=$('.titlein');if(ti)ti.value=svc.name}const prevPub=svc.published,prevVer=svc.version,prevRev=svc.messageRev;svc.version=nextV;const msg=(svc.message||'').trim();const prevMsg=svc.published?(svc.published.message||''):'';const wk=w=>w?[w.passage,w.title,w.line,w.memo,w.memoPublic?1:0].map(x=>String(x==null?'':x)).join(''):'';if(msg!==prevMsg||wk(svc.word)!==wk(svc.published&&svc.published.word))svc.messageRev=(svc.messageRev||0)+1;
+  const only=e.target.closest('#pubOnly'),withFile=e.target.closest('#pubOk');if(only||withFile){
+   if(songsP){const btn=only||withFile;if(btn.disabled)return;btn.disabled=true;   // 기다리는 사이 또 눌러 두 번 발행하지 않게
+    const slow=setTimeout(()=>toast('라이브러리 곡에 잇는 중…'),600);
+    await Promise.race([songsP,new Promise(r=>setTimeout(r,10000))]);clearTimeout(slow);songsP=null;   // 느린 망에서도 발행을 막아 두지는 않는다
+    if(!btn.isConnected)return}   // 기다리는 사이 창을 닫았으면 발행하지 않는다
+   if(WORD_DIRTY){clearTimeout(WORD_T);await saveWord(svc)}if(!(svc.name||'').trim()){svc.name=svcName(svc);const ti=$('.titlein');if(ti)ti.value=svc.name}const prevPub=svc.published,prevVer=svc.version,prevRev=svc.messageRev;svc.version=nextV;const msg=(svc.message||'').trim();const prevMsg=svc.published?(svc.published.message||''):'';const wk=w=>w?[w.passage,w.title,w.line,w.memo,w.memoPublic?1:0].map(x=>String(x==null?'':x)).join(''):'';if(msg!==prevMsg||wk(svc.word)!==wk(svc.published&&svc.published.word))svc.messageRev=(svc.messageRev||0)+1;
    // 발행본에는 개인·세션 메모를 담지 않는다(메모는 서버에서 권한대로 따로 내려감). 말씀 메모도 뺀다
    const pubWord=svc.word?{...clone(svc.word),memo:svc.word.memoPublic?(svc.word.memo||''):''}:null;
    svc.published={version:nextV,at:Date.now(),name:svc.name,date:svc.date,folder:svc.folder||'',notice:svc.notice,message:msg,messageRev:svc.messageRev||0,word:pubWord,author:me().name||'인도자',items:clone(svc.items).map(it=>({...it,notes:undefined,fixedNotes:frozenFixed(it),media:(it.media||[]).map(m=>({...m,notes:undefined}))})),
@@ -3136,8 +3143,14 @@ let PRACTICE=null;   // 라이브러리에서 곡 하나만 연습할 때 쓰는
 const svcById=id=>S.services.find(s=>s.id===id)||(PRACTICE&&PRACTICE.id===id?PRACTICE:null);
 // 예전에 동기화가 겹쳐 돌며 같은 id 의 콘티가 두 번 저장된 기기가 있다. 앞의 것(화면이 고치던 것)만 남긴다
 function uniqSvcs(a){const seen=new Set();return (a||[]).filter(x=>x&&!seen.has(x.id)&&seen.add(x.id))}
-function practiceArr(song,a){
+async function practiceArr(song,a){
  if(!a||!a.id){toast('편곡이 없어요');return}
+ // 팀원 기기는 라이브러리 녹음을 미리 받지 않는다(libAudioSkip) → 목록에서 바로 연습을 눌러도 이 편곡의 파일만 여기서 받는다
+ if(online()&&S.team.id){const ids=SYNC.blobIds([a]),miss=[];
+  for(const id of ids)if(!await IDB.get('blobs',id).catch(()=>null))miss.push(id);
+  if(miss.length){const slow=setTimeout(()=>toast('녹음 받는 중…'),400);
+   try{const r=await api('/blobs?team='+S.team.id+'&ids='+miss.join(',')+'&urls=1');await SYNC.fetchBlobs(r.urls||{})}catch(e){}
+   clearTimeout(slow);if(route().name!=='library')return}}   // 받는 사이 다른 화면으로 갔으면 끌고 가지 않는다
  const it=newItem();
  Object.assign(it,{title:song.title,key:a.key||'',mod:a.mod||'',form:a.form||'',songNote:a.songNote||'',
   pieces:clone(a.pieces||[]),media:clone(a.media||[]),chart:a.chart?clone(a.chart):undefined,
@@ -3304,9 +3317,11 @@ async function applyMembership(t){const next=scopeKey(NET.user&&NET.user.id,t.te
   if(typeof SYNC!=='undefined'&&online())setTimeout(()=>{SYNC.pullLibrary();if(typeof pullSongs!=='undefined')pullSongs(true)},0)}   // 팀이 바뀌면 그 팀 라이브러리를 받아온다
  // 역할·세션이 바뀌면 받을 수 있는 고정 메모가 달라진다(세션 메모는 그 세션과 인도자만). since 로는 안 오니 곡 목록을 통째로 다시 받게
  {const pm=S.team.me||{};if(S.songsAt&&S.team.id===t.teamId&&(pm.role!==t.me.role||String(pm.mySessions||[])!==String(t.me.mySessions||[])))S.songsAt=''}
- const wasLead=!!(S.team.me&&S.team.me.role==='leader');
  S.team.id=t.teamId;S.team.name=t.teamName;S.team.plan=t.plan||'free';S.team.planUntil=t.planUntil||null;S.team.invite=t.invite||'';S.team.sessions=t.sessions.slice();S.team.phrases=t.phrases.slice();S.team.settings=t.settings||S.team.settings||{};S.team.me={userId:t.me.userId,name:t.me.name,session:t.me.session,mySessions:t.me.mySessions||[],role:t.me.role,capo:+t.me.capo||0};
- if(wasLead&&t.me.role!=='leader')dropUnsentLib();
+ // 내려오는 순간만 보지 않고 지금 모습을 본다 — 예전 앱(웹 배포 전·스토어 업데이트 전 앱)이 역할을 먼저 바꿔 둔 기기는
+ // 이미 인도자가 아니라 '내려오는 순간'이 다시 오지 않아 영영 굳어 있었다. 인도자가 아니면 곡에 수정 표시를 세울 수 없으니(saveSong·saveArr)
+ // 남아 있는 것은 모두 못 올린 옛 수정이다
+ if(t.me.role!=='leader')dropUnsentLib();
  save()}
 // 인도자에서 내려오면 이 기기에 쌓아 둔 라이브러리 수정은 더 올릴 수 없다 (서버는 인도자 것만 받는다).
 // 들고 있으면 그 곡은 '안 올린 수정'이라 서버 소식도 안 받아서 이 기기에서만 옛 모습으로 굳었다. 버리고 서버 것을 다시 받는다
@@ -3316,6 +3331,7 @@ function dropUnsentLib(){let n=0,lib=0;
  if((S.libDeleted||[]).length){lib+=S.libDeleted.length;S.libDeleted=[]}
  if(!n&&!lib)return;
  if(lib)S.libAt='';   // 처음부터 다시 받아야 안 올린 것이 서버 모습으로 돌아온다
+ if(n)S.songsAt='';   // 곡도 — 굳어 있던 동안 받은 since 목록은 그 곡을 건너뛰었으니 since 로는 다시 안 온다
  toast(`인도자가 아니라서 못 올린 라이브러리 수정 ${n+lib}건은 버렸어요`);
  if(typeof SYNC!=='undefined'&&online())setTimeout(()=>{SYNC.pullLibrary();if(typeof pullSongs!=='undefined')pullSongs(true).then(ch=>{if(ch)render()})},0)}
 // 로그인(로그아웃 뒤 다시·세션이 끊긴 뒤 다시·다른 사람)이면 알림 등록을 다시 한다. 로그아웃·비밀번호 변경 때 서버가 이 기기의
@@ -3604,9 +3620,13 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),getting:new Map(),notePut:{},no
   const hasMedia=(it,mid)=>!!(it&&(it.media||[]).some(m=>m.id===mid));
   // 초안을 고치는 사람은 인도자뿐이다. 멤버 화면에서 메모가 없어진 것은 진짜 삭제다 — 그 메모가 달린 영상·녹음이 화면에 있을 때만.
   // 초안의 곡이 라이브러리 편곡을 따라 영상이 바뀌면 옛 영상의 메모가 초안에서 빠지는데, 발행본에는 그 영상이 남아 팀원이 보고 있다
+  // 업데이트 전 코드가 세운 그림자({id,itemId} — mediaId 칸이 없다)는 어느 영상의 메모인지 모른다. 발행본의 그 곡에 초안에 없는
+  // 영상이 있으면 그 영상의 메모일 수 있으니 이번에는 지우지 않는다 — 바로 뒤 pullNotes 가 mediaId 를 담아 그림자를 다시 세운다
+  const pubOnlyMedia=id=>(pubItems.get(id).media||[]).some(m=>!hasMedia(draftItems.get(id),m.id));
   const shielded=x=>!!(x.itemId&&pubItems.has(x.itemId)&&(
    (isLeader()&&!inDraft.has(x.itemId))||
-   (x.mediaId&&!hasMedia(draftItems.get(x.itemId),x.mediaId)&&hasMedia(pubItems.get(x.itemId),x.mediaId))));
+   (x.mediaId&&!hasMedia(draftItems.get(x.itemId),x.mediaId)&&hasMedia(pubItems.get(x.itemId),x.mediaId))||
+   (!('mediaId' in x)&&pubOnlyMedia(x.itemId))));
   // 지우는 것은 이 기기에 있는 곡의 메모뿐이다. 이 기기에 없는 곡(다른 기기가 받은 새 버전에 더해진 곡 등)의
   // 메모는 여기서 지운 게 아니다 → 서버는 두고 그림자에서만 뺀다. 곡을 모르는 옛 그림자(문자열)는 예전처럼 지운다
   // 가려 둔 메모(shielded)는 지우지도 그림자에서 빼지도 않는다
@@ -3633,7 +3653,19 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),getting:new Map(),notePut:{},no
    const now=Date.now();sent.forEach(n=>{SYNC.notePut[n.id]=now});del.forEach(id=>SYNC.noteGone.add(id));   // pullNotes 가 늦게 온 목록과 견줄 때 쓴다
    S.noteShadow[svc.id]=next;save();return true}
   catch(e){console.warn('notes push',e.message);return false}},
+ // 팀원 기기: 업데이트 전 코드는 라이브러리를 따라 발행본 사본(svc.items)의 영상·악보·키까지 바꿨다. 팀원은 곡을 고치지 않으니
+ // 발행본과 다른 곡은 발행본 것으로 되돌린다 (메모는 id 가 같은 자리에 그대로). 바꿀 때 빠진 메모는 이 기기에 없으므로
+ // 그 곡에서 이 기기에 없는 메모는 그림자에서 뺀다 — 안 빼면 다음 전송이 '지운 메모'로 보고 서버에서 지운다 (받을 때 다시 붙는다)
+ unswap(svc){const pub=svc.published;if(isLeader()||!pub||!Array.isArray(pub.items)||(svc.version||0)>(pub.version||0))return;
+  const sig=it=>JSON.stringify(OV_FIELDS.map(k=>k==='media'?(it.media||[]).map(({notes,...m})=>m):(it[k]==null?null:it[k])));
+  const byId=new Map(pub.items.map(p=>[p.id,p]));const fixed=new Set();
+  (svc.items||[]).forEach((it,i)=>{const p=byId.get(it.id);if(!p||sig(p)===sig(it))return;fixed.add(it.id);
+   const o=clone(p);o.notes=it.notes||[];o.media=(o.media||[]).map(m=>{const om=(it.media||[]).find(x=>x.id===m.id);return {...m,notes:om?(om.notes||[]):[]}});svc.items[i]=o});
+  if(!fixed.size)return;
+  const loc=new Set(SYNC.localNotes(svc).map(n=>n.id));const sh=SYNC.shadow(svc.id);
+  S.noteShadow[svc.id]=sh.filter(x=>!(fixed.has(x.itemId)&&!loc.has(x.id)));save()},
  async pullNotes(svc){if(!online()||!svc||!S.team.id)return;
+  SYNC.unswap(svc);
   const pushed=await SYNC.pushNotes(svc);
   if(!pushed){toast('메모를 아직 못 올렸어요. 잠시 뒤 다시 시도해요');SYNC.schedulePush();return}   // 못 올린 메모를 서버 목록으로 덮지 않는다
   const scope=CUR_SCOPE,t0=Date.now();
@@ -4123,7 +4155,14 @@ const LIB={at:0,q:'',key:'',tempo:'',tag:'',folder:'',last:'',sort:'recent',arch
 // 안 그러면 전에 받아 둔 곡은 since 로 다시 오지 않아 옛 날짜가 그대로 남고('작년 이맘때'가 계속 빔), 배포 전에 옛 서버가
 // updated_at 을 안 올리고 바꾼 것(발행 통계·새 편곡)도 영영 못 받는다
 const SONGS_V=2;
+// 'fresh' 는 같은 팀의 통째 받기가 벌써 돌고 있으면 그것을 같이 기다린다 — 켤 때 라이브러리 화면으로 열면 화면의 첫 받기와
+// 부팅의 따라잡기가 겹쳐, 서버가 팀 곡 목록 전체를 두 번 만들었다. true(합치기·가져오기 직후)는 방금 바뀐 것을 봐야 하니 따로 받는다
 async function pullSongs(force){if(!online()||!S.team.id)return false;
+ const cur=pullSongs.cur;if(force==='fresh'&&cur&&cur.scope===CUR_SCOPE)return cur.p;
+ const full=force===true||!S.songsAt||S.songsV!==SONGS_V;const p=pullSongsRun(force);   // 옛 꼴(SONGS_V)이라 통째로 받는 것도 같이 기다리게
+ if(full){const c={scope:CUR_SCOPE,p},done=()=>{if(pullSongs.cur===c)pullSongs.cur=null};pullSongs.cur=c;p.then(done,done)}
+ return p}
+async function pullSongsRun(force){
  if(!force&&Date.now()-LIB.at<8000)return false;
  const tid=S.team.id,scope=CUR_SCOPE;   // 받는 사이에 팀을 바꿨으면 그 응답은 버린다
  const moved=()=>tid!==S.team.id||scope!==CUR_SCOPE;
@@ -4131,7 +4170,8 @@ async function pullSongs(force){if(!online()||!S.team.id)return false;
  let r;try{r=await api('/songs?team='+tid+(full?'':'&since='+encodeURIComponent(S.songsAt)))}catch(e){return false}
  if(moved())return false;
  let changed=false;
- await SYNC.fetchBlobs(r.blobs);
+ const skip=libAudioSkip(r.songs);
+ await SYNC.fetchBlobs(skip?Object.keys(r.blobs||{}).reduce((o,id)=>{if(!skip.has(id))o[id]=r.blobs[id];return o},{}):r.blobs);
  if(moved())return false;   // 파일을 받는 동안 바꿨을 수도 있다 (전에는 여기서 옛 팀 곡이 새 팀 라이브러리에 들어갔다)
  // 통째로 다시 받아도(force) 바뀐 곡만 바꾼 것으로 친다. 전에는 라이브러리에 들어갈 때마다 전체 저장·다시 그리기가 돌았다
  (r.songs||[]).forEach(s=>{scrubIds(s);const i=(S.songs||[]).findIndex(x=>x.id===s.id);
@@ -4148,8 +4188,15 @@ async function pullSongs(force){if(!online()||!S.team.id)return false;
   const arrs=(S.songs||[]).map(x=>defArr(x)).filter(a=>a&&((a.pieces||[]).length||(a.media||[]).length));
   SYNC.healBlobs(arrs).then(n=>{if(n)console.log('악보 파일 보수',n)}).catch(()=>{})}
  return changed}
+// 팀원 기기는 라이브러리 녹음(오디오)을 미리 받지 않는다. 라이브러리는 온라인에서만 열리고, 곡을 열 때(pullSong)·
+// 연습을 누를 때(practiceArr) 그 곡 것만 받는다. 콘티에 쓰인 녹음은 콘티를 받을 때(pullService) 따로 온다.
+// 예전에는 새 기기의 첫 동기화 때 라이브러리를 열지도 않은 팀원까지 팀 녹음을 전부(큰 팀은 몇 GB) 받았다
+function libAudioSkip(songs){if(isLeader())return null;
+ const aud=new Set((songs||[]).flatMap(s=>(s.arrangements||[]).flatMap(a=>(a.media||[]).filter(m=>m&&m.blob).map(m=>m.blob))));
+ return aud.size?aud:null}
 async function fillSongBlobs(){const tid=S.team.id;
- const ids=SYNC.blobIds((S.songs||[]).flatMap(s=>s.arrangements||[]));const miss=[];
+ const skip=libAudioSkip(S.songs);
+ const ids=SYNC.blobIds((S.songs||[]).flatMap(s=>s.arrangements||[])).filter(id=>!skip||!skip.has(id));const miss=[];
  for(let i=0;i<ids.length;i+=50){const part=ids.slice(i,i+50);
   const have=await Promise.all(part.map(id=>IDB.get('blobs',id).catch(()=>null)));part.forEach((id,k)=>{if(!have[k])miss.push(id)})}
  for(let i=0;i<miss.length&&tid===S.team.id;i+=40){
@@ -4245,7 +4292,9 @@ function keepIds(cur,next,kind){
   }
   return out})}
 // 값 하나의 짧은 지문. 마지막으로 맞춰 둔 편곡 값을 기억해 두려고 (it.bs)
-function ovSig(v){const t=JSON.stringify(ovClean(v==null?null:v));let h=2166136261;
+// 글자 칸(키·전조·송폼·메모)은 앞뒤 공백을 빼고 본다. 서버는 편곡에 공백을 떼고 담으므로, 폰 자판이 끝에 남긴 공백 하나로
+// '라이브러리 편곡과 다름'이 뜨고 그 칸이 라이브러리를 더는 안 따라갔다
+function ovSig(v){if(typeof v==='string')v=v.trim();const t=JSON.stringify(ovClean(v==null?null:v));let h=2166136261;
  for(let i=0;i<t.length;i++){h^=t.charCodeAt(i);h=Math.imul(h,16777619)}
  return (h>>>0).toString(36)}
 const arrVal=(a,k)=>k==='pieces'||k==='media'?(a[k]||[]):(a[k]||(k==='chart'||k==='score'?null:''));
@@ -4272,7 +4321,7 @@ function refreshFromArr(){let changed=false;if(!isLeader())return false;
    const nv=(k==='pieces'||k==='media')?keepIds(it[k],clone(av),k):clone(av);
    it[k]=nv;it.bs[k]=sArr;delete it.ov[k];changed=true}
   // 손으로 되돌려 값이 같아졌으면 표시도 지운다
-  for(const k of ovKeys(it))if(ovSig(it[k])===ovSig(arrVal(a,k))){delete it.ov[k];changed=true}
+  for(const k of ovKeys(it))if(ovSig(it[k])===ovSig(arrVal(a,k))){delete it.ov[k];it.bs[k]=ovSig(arrVal(a,k));changed=true}
   it.arrAt=a.updatedAt}}
  if(changed)save();
  return changed}
@@ -4388,6 +4437,11 @@ async function pushSongs(){
  }finally{PUSH_SONGS=false}
  if(relink){clearTimeout(pushSongs.retry);pushSongs.retry=setTimeout(pushSongs,1200)}
  return changed}
+// 발행 직전: 돌고 있는 밀기가 있으면(제목 칸에 커서가 있어 그 곡을 건너뛰었을 수 있다) 끝나기를 기다렸다가 한 번 더 민다.
+// 그냥 부르면 '이미 미는 중'이라 곧바로 돌아와, 발행이 곡 만들기를 기다리지 못했다
+async function pushSongsNow(){const t0=Date.now();
+ while(PUSH_SONGS&&Date.now()-t0<15000)await new Promise(r=>setTimeout(r,100));
+ return pushSongs()}
 
 /* ---------- 라이브러리 홈 ---------- */
 const KEYS7=['C','D','E','F','G','A','B'];
@@ -5159,6 +5213,8 @@ function transferModal(pre){const ms=(TM.data.members||[]).filter(m=>m.active!==
   if(e.target.closest('#trOk')){if(!pick){toast('넘길 사람을 골라 주세요');return}
    const who=ms.find(m=>m.userId===pick);
    if(!confirm(`${who.name}에게 인도자를 넘길까요?`))return;
+   // 넘기면 이 기기의 못 올린 라이브러리 수정은 더 올릴 수 없어 버려진다 — 넘기기 전에 한 번 올려 둔다
+   try{await SYNC.pushLibrary();await pushDirtySongs()}catch(e){}
    try{await api('/teams/'+S.team.id+'/transfer',{method:'POST',body:{userId:pick}});closeModal();await refreshMe();await pullTeam(true);render();toast(`${who.name}이(가) 인도자가 됐어요`)}catch(err){toast(err.message)}}}}
 // 초대 링크 만들기
 function inviteModal(){let role='member',days=30,once=false;
