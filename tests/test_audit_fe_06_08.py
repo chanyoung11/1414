@@ -153,7 +153,62 @@ def run():
     # 예전 데이터(offset 만 있고 기준 키가 없음)는 예전처럼 그 값 그대로
     old = L.evaluate("CONTI.chordOffset({key:'C'},{sheetKey:'G',offset:2})")
     if old != 2: bad('F88 예전 데이터의 offset 이 달라짐: %s' % old)
-    # 악보 키를 다시 고르면 보정이 풀린다
+    # 섞인 버전 — 새 앱이 A 에서 ▲ (offset 3 · offKey A), 키가 C 로 바뀐 뒤 예전 번들의 앱이 ▲ 를 누르면
+    # offKey 는 그대로 두고 offset 만 절대값 4 로 바꾼다. 새 앱도 옛 앱처럼 +4 여야 한다 (예전엔 키 차이까지 더해 -5)
+    pc_js = "(()=>{const p=CONTI.S.services[0].items[0].pieces[0];return [p.offset,p.offKey===undefined?null:p.offKey,p.offAt===undefined?null:p.offAt]})()"
+    shown_js = """(()=>{const it=CONTI.S.services[0].items[0];const o=CONTI.chordOffset(it,it.pieces[0]);
+      const b=document.querySelector('[data-act="chord-off"][data-d="-1"]');return [o,b?b.previousElementSibling.textContent.trim():null,CONTI.transposeChord('G',o,it.key)]})()"""
+    def rerender():
+        L.evaluate("()=>CONTI.render()"); L.wait_for_selector('[data-act="chord-off"][data-d="1"]', timeout=6000)
+    L.evaluate("""()=>{const it=CONTI.S.services[0].items[0];const p=it.pieces[0];p.offset=null;delete p.offKey;delete p.offAt;it.key='A';CONTI.save();CONTI.render()}""")
+    L.wait_for_selector('[data-act="chord-off"][data-d="1"]', timeout=6000)
+    L.click('[data-act="chord-off"][data-d="1"]'); L.wait_for_timeout(300)
+    pc = L.evaluate(pc_js)
+    if pc != [3, 'A', 3]: bad('F88 ▲ 가 offKey 와 그때 값(offAt)을 같이 적지 않음: %s' % pc)
+    L.fill('[data-f="item.key"]', 'C'); L.wait_for_timeout(400); rerender()
+    got = L.evaluate(shown_js)
+    if got[:2] != [-6, '-6']: bad('F88 새 앱끼리는 키를 따라가야 함 (A→C, +3 보정 → -6): %s' % got)
+    # 예전 번들의 chord-off 그대로: offset=chordOffset(예전: offset 그대로)+1, offKey·offAt 은 모른다
+    L.evaluate("""()=>{const it=CONTI.S.services[0].items[0];const p=it.pieces[0];p.offset=p.offset+1;if(p.offset>6)p.offset-=12;if(p.offset<-6)p.offset+=12;CONTI.save();CONTI.render()}""")
+    L.wait_for_selector('[data-act="chord-off"][data-d="1"]', timeout=6000)
+    got = L.evaluate(shown_js)
+    if got[:2] != [4, '+4']: bad('F88 예전 앱이 +4 로 맞춘 걸 새 앱이 다르게 보임: %s' % got)
+    # 이어서 새 앱이 ▲ 하면 +5 에서 다시 C 기준이 되고, 키를 D 로 바꾸면 그만큼 따라간다 (5+2 → -5)
+    L.click('[data-act="chord-off"][data-d="1"]'); L.wait_for_timeout(300)
+    pc = L.evaluate(pc_js)
+    if pc != [5, 'C', 5]: bad('F88 옛 앱 값 위에서 ▲ 가 이어지지 않음: %s' % pc)
+    L.fill('[data-f="item.key"]', 'D'); L.wait_for_timeout(400); rerender()
+    got = L.evaluate(shown_js)
+    if got[:2] != [-5, '-5']: bad('F88 다시 맞춘 뒤 키를 따라가지 않음: %s' % got)
+    # 서버(초안)를 거쳐도 offKey·offAt 이 남는다 — 다른 기기도 같은 값을 본다
+    doc = None
+    for _ in range(20):
+        L.wait_for_timeout(500)
+        r = ctx.request.get(URL + 'api/services/%s/draft?team=%s' % (svc, team))
+        if r.status == 200:
+            dp = (((r.json().get('doc') or {}).get('items') or [{}])[0].get('pieces') or [{}])[0]
+            if dp.get('offAt') == 5: doc = dp; break
+    if not doc: bad('F88 초안에 offKey·offAt 이 안 올라감')
+    elif doc.get('offKey') != 'C' or doc.get('offset') != 5: bad('F88 초안의 보정 값이 다름: %s' % {k: doc.get(k) for k in ('offset', 'offKey', 'offAt')})
+    # 문서에 터무니없이 큰 offset 이 와도(팀원이 만든 JSON·가져온 파일) 화면이 멈추지 않는다 — 예전엔 12씩 빼는 반복이 끝나지 않았다.
+    # 멈추면 이 창이 죽으니 시간 안에 끝나는지만 본다
+    L.evaluate("""()=>{window.__r=undefined;setTimeout(()=>{window.__r=[1e20,-1e20,1e300,'5'].map(v=>CONTI.chordOffset({key:'C'},{sheetKey:'G',offset:v,offKey:'A',offAt:v}))},0)}""")
+    try:
+        L.wait_for_function("window.__r!==undefined", timeout=4000)
+        r2 = L.evaluate("window.__r")
+        if any((not isinstance(v, (int, float))) or v < -6 or v > 6 for v in r2): bad('F88 큰 offset 이 -6~6 으로 줄지 않음: %s' % r2)
+        L.evaluate("""()=>{window.__r=undefined;const p=CONTI.S.services[0].items[0].pieces[0];p.offset=1e20;p.offAt=1e20;setTimeout(()=>{CONTI.render();window.__r=1},0)}""")
+        L.wait_for_function("window.__r===1", timeout=4000)
+        L.wait_for_selector('[data-act="chord-off"][data-d="1"]', timeout=4000)
+        got = L.evaluate(shown_js)
+        if not (-6 <= got[0] <= 6): bad('F88 큰 offset 으로 그린 보정 값이 -6~6 이 아님: %s' % got)
+    except Exception as e:
+        bad('F88 큰 offset 에 화면이 멈춤: %s' % str(e)[:80]); raise
+    # 악보 키를 다시 고르면 보정이 풀리고 기준 키 짝도 지운다
+    L.click('[data-act="sheet-key"]'); L.wait_for_selector('#modal [data-k="G"]', timeout=5000)
+    L.click('#modal [data-k="G"]'); L.wait_for_timeout(400)
+    pc = L.evaluate(pc_js)
+    if pc != [None, None, None]: bad('F88 악보 키를 다시 골랐는데 보정이 남음: %s' % pc)
     L.evaluate("""()=>{const it=CONTI.S.services[0].items[0];const p=it.pieces[0];p.offset=null;it.key='A';CONTI.save();CONTI.render()}""")
     print('F88 checked')
 
