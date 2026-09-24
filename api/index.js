@@ -14,7 +14,7 @@ import { rcAuthOk, rcConfigured, planFromEvent } from '../lib/iap.js';
 import { transcribeSheet, transcribeScore, geminiConfigured, geminiModel, estimateUSD, ocrChordsGemini } from '../lib/gemini.js';
 import { norm as normSong, cho as choSong } from '../lib/song.js';
 import { safeDoc, safeItem } from '../lib/docsafe.js';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, createHash } from 'node:crypto';
 import { gzip } from 'node:zlib';
 
 class HttpError extends Error { constructor(status, code, message) { super(message || code); this.status = status; this.code = code; } }
@@ -2564,9 +2564,11 @@ on('DELETE', '/rehearsals/:id/notes/:noteId', async ({ uid, params, url }) => {
   if (!uid) throw noAuth();
   const teamId = str(url.searchParams.get('team'), 64);
   const m = await requireMember(uid, teamId);
+  // id 가 없는 것·객체가 아닌 것·지은이 칸이 없는 옛 메모는 비교가 NULL 이 된다 → 지우지 않는다 (JS 로 거르던 때와 같이).
+  // coalesce 가 없으면 NULL 이 '지울 것'으로 읽혀, 메모 하나를 지울 때 그런 원소가 같이 사라졌다
   const rows = await q(`update rehearsals set notes = (
       select coalesce(jsonb_agg(x order by k), '[]'::jsonb) from jsonb_array_elements(${REH_NOTES}) with ordinality o(x, k)
-      where not (x->>'id' = $3 and ($4::boolean or x->>'authorId' = $5)))
+      where not coalesce(x->>'id' = $3 and ($4::boolean or x->>'authorId' = $5), false))
     where id=$1 and team_id=$2 returning id`, [params.id, teamId, params.noteId, m.role === 'leader', uid]);
   if (!rows.length) throw notFound('녹음이 없어요');
   return { ok: true };
@@ -2636,7 +2638,8 @@ on('POST', '/notes', async ({ uid, body }) => {
   const pastorOk = m.role !== 'pastor' || (await teamSettings(teamId)).pastorCanMemo;
   // 받지 않은 메모는 id 와 까닭을 돌려준다. 전에는 조용히 건너뛰고 200 을 줘서, 클라이언트가
   // 올린 것으로 알고 있다가 다음 동기화 때 메모가 사라졌다 (목회자 메모가 꺼진 팀에서 '메모 저장' 뒤 증발)
-  let n = 0; const refused = [];
+  let n = 0; const refused = [], taken = [], renamed = [];
+  const inSvc = async (nid) => !!(await one('select 1 from notes where id=$1 and team_id=$2 and service_id=$3', [nid, teamId, svcId]));
   for (const x of list) {
     const id = str(x && x.id, 40), itemId = str(x && x.itemId, 40), layer = str(x && x.layer, 10), text = str(x && x.text, 200);
     const why = !/^[A-Za-z0-9_-]{4,40}$/.test(id) || !itemId || !text || !['leader', 'session', 'mine'].includes(layer) ? 'bad'
@@ -2647,15 +2650,23 @@ on('POST', '/notes', async ({ uid, body }) => {
     const want = str(x.session, 40);
     const session = layer === 'session' ? (mySessions(m).includes(want) ? want : m.session)
       : layer === 'leader' ? (want || null) : null;
-    await q(`insert into notes(id, team_id, service_id, item_id, marker_id, media_id, t, layer, session, text, author_id, author_name, created_at)
-             values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) on conflict (id) do nothing`,
-      [id, teamId, svcId, itemId, str(x.markerId, 40) || null, str(x.mediaId, 40) || null, x.t == null ? null : +x.t, layer, session, text, uid, layer === 'leader' ? '인도자' : m.mname, x.at ? new Date(+x.at) : new Date()]);
-    n++;
+    const put = (nid) => q(`insert into notes(id, team_id, service_id, item_id, marker_id, media_id, t, layer, session, text, author_id, author_name, created_at)
+             values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) on conflict (id) do nothing returning id`,
+      [nid, teamId, svcId, itemId, str(x.markerId, 40) || null, str(x.mediaId, 40) || null, x.t == null ? null : +x.t, layer, session, text, uid, layer === 'leader' ? '인도자' : m.mname, x.at ? new Date(+x.at) : new Date()]);
+    // 이 콘티에 이미 있는 같은 메모(다시 보낸 것)면 그대로 둔다
+    if ((await put(id)).length || await inSvc(id)) { n++; continue; }
+    // notes.id 는 모든 팀을 통틀어 하나다. 다른 팀·다른 콘티의 메모와 id 가 겹쳤다 — 다른 팀이 내보낸 파일에서 가져온
+    // 인도자 메모는 원래 id 를 지닌다. 전에는 넣지 못하고도 저장했다고 세어, 클라이언트가 그림자에 넣었다가
+    // 다음 동기화 때 메모가 말없이 사라졌다. 팀·콘티·id 로 정해지는 새 id 로 넣고 알린다
+    // (같은 메모를 다시 보내도 같은 새 id 라 두 번 들어가지 않는다. 옛 앱은 renamed 를 몰라도 다음 받기 때 새 id 로 바뀐다)
+    const alt = 'm' + createHash('sha256').update(`${teamId}/${svcId}/${id}`).digest('base64url').slice(0, 23);
+    if ((await put(alt)).length || await inSvc(alt)) { n++; renamed.push({ id, to: alt }); continue; }
+    taken.push({ id, why: 'taken' });
   }
   // 이미 서버에 있는 메모는 거절로 치지 않는다. 그림자를 잃은 기기는 받아 둔 남의 메모(인도자 메모 등)까지
   // 다시 올리는데, 그건 서버에 그대로 있으니 클라이언트가 지우면 안 된다
   const there = refused.length ? new Set((await q('select id from notes where team_id=$1 and id = any($2::text[])', [teamId, refused.map((r) => r.id)])).map((r) => r.id)) : new Set();
-  return { ok: true, saved: n, rejected: refused.filter((r) => !there.has(r.id)) };
+  return { ok: true, saved: n, rejected: refused.filter((r) => !there.has(r.id)).concat(taken), renamed };
 });
 
 on('DELETE', '/notes', async ({ uid, body }) => {
@@ -2797,7 +2808,8 @@ on('POST', '/ocr', async ({ uid, body }) => {
 
 /* ---------- 결제 · 프로모션 코드 ---------- */
 // RevenueCat 웹훅. 결제·갱신·환불이 일어나면 여기로 온다.
-// 사용자 id 로 그 사람이 결제 담당인 팀을 찾아 플랜을 바꾼다
+// 구독은 산 사람(app_user_id)의 것이라, 처음 반영할 때 그 팀에 적어 두고(teams.iap_user_id)
+// 갱신·만료·환불은 그 기록으로 팀을 찾는다
 on('POST', '/iap/webhook', async ({ req, body }) => {
   if (!rcConfigured()) throw new HttpError(503, 'no_iap', '결제가 아직 연결되지 않았어요');
   if (!rcAuthOk(req)) throw new HttpError(401, 'bad_sig', '인증 실패');
@@ -2807,14 +2819,43 @@ on('POST', '/iap/webhook', async ({ req, body }) => {
   // appUserID 는 앱이 우리 사용자 id 로 정한다
   const u = await one('select id from users where id=$1', [act.appUserId]).catch(() => null);
   if (!u) return { ok: true, skipped: '모르는 사용자' };
-  // 산 사람 = 결제 담당. 인도자를 넘기면 created_by 는 새 인도자로 가지만 결제 담당은 남는다 (B.6.1).
-  // created_by 로 찾으면 넘긴 뒤의 갱신이 팀을 못 찾아 유료 팀이 무료로 떨어진다.
-  // 결제 담당인 팀이 여럿이면 이미 결제로 유료인 팀을 먼저 (갱신·만료는 그 팀 것이다)
-  const t = await one(`select id from teams where coalesce(billing_user_id, created_by)=$1 and deleted_at is null
-                       order by (plan_source = 'iap') desc nulls last, created_at limit 1`, [u.id]);
-  if (!t) return { ok: true, skipped: '이 사용자가 결제 담당인 팀이 없음' };
+  // 어느 팀의 구독인가. 인도자(created_by)나 결제 담당(billing_user_id)으로 찾으면 넘길 때마다 바뀌어서,
+  // 결제 담당을 넘긴 뒤의 갱신은 팀을 못 찾아 돈은 나가는데 무료로 떨어졌고, 인도자를 넘기고 새 팀을 만들어 산 것은
+  // 옛 팀에 들어갔고, 넘겨받은 새 인도자가 산 것은 버려졌다 (F52)
+  const cols = 'id, iap_user_id, plan, plan_until, plan_source';
+  // 다른 사람의 스토어 구독이 살아 있는 팀은 새로 고르지 않는다 (그 사람의 갱신·만료가 팀을 잃는다). 크레딧 팩은 상관없다
+  const notTaken = act.kind === 'grant' ? `and not (iap_user_id is not null and iap_user_id <> $1 and plan_source = 'iap'
+                and plan <> 'free' and (plan_until is null or plan_until > now()))` : '';
+  const find = {
+    // 이 사람의 구독이 이미 적힌 팀
+    map: () => one(`select ${cols} from teams where iap_user_id=$1 and deleted_at is null order by created_at limit 1`, [u.id]),
+    // 앱이 알려 준 팀 — 산 사람이 그 팀의 인도자이거나 결제 담당일 때만
+    attr: () => one(`select ${cols} from teams where id=$2::uuid and deleted_at is null
+                   and (created_by=$1 or billing_user_id=$1) ${notTaken}`, [u.id, act.teamId]),
+    // 팀을 알려 주지 않는 앱: 산 사람이 지금 인도자인 팀, 그다음 결제 담당인 팀 (오래된 것부터)
+    buyer: () => one(`select ${cols} from teams where deleted_at is null and (created_by=$1 or billing_user_id=$1) ${notTaken}
+                      order by (created_by=$1) desc, created_at limit 1`, [u.id]),
+  };
+  // 새로 산 것(INITIAL_PURCHASE·크레딧 팩)은 앱이 알려 준 팀에만 — 그 팀에 넣을 수 없다고(남의 구독이 살아 있는 등)
+  // 산 사람의 다른 팀으로 돌리면 그 팀이 이 구독의 팀으로 적혀 갱신까지 엉뚱한 팀에 들어간다.
+  // 갱신은 적힌 팀이 먼저 (속성은 사람마다 하나라 다른 팀 결제 화면을 열었다 닫기만 해도 바뀐다).
+  // 그 밖의 사건(변경·해지 취소·연장·만료·환불)은 적힌 팀에만 — 아무 팀에나 붙이면 남의 팀 플랜을 끊거나 준다
+  const hint = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(act.teamId || '') ? 'attr' : 'buyer';
+  const order = act.pick === 'new' ? (hint === 'attr' ? ['attr'] : ['map', 'buyer']) : act.pick === 'renew' ? ['map', hint] : ['map'];
+  let t = null;
+  for (const k of order) if (!t) t = await find[k]();
+  if (!t) return { ok: true, skipped: '이 구독이 반영될 팀이 없음' };
 
   if (act.kind === 'grant') {
+    // 손으로 준 기한 없는 플랜이 이 상품만큼 높으면 덮지 않는다 — 덮으면 결제 기간이 끝날 때(EXPIRATION) 무료로 떨어졌다
+    if (!t.plan_until && t.plan_source !== 'iap' && PLAN_RANK[planName(t)] >= (PLAN_RANK[act.plan] || 0))
+      return { ok: true, skipped: '기한 없는 플랜이 이미 있음' };
+    // 이 구독을 이 팀에 적는다. 한 사람의 구독은 한 팀 몫이라 다른 팀에 적혀 있던 것은 지운다.
+    // 새로 적을 때는 돈을 내는 사람이 결제 담당이 된다 (넘겨받은 새 인도자가 산 경우 등)
+    if (t.iap_user_id !== u.id)
+      await q(`update teams set iap_user_id = case when id=$1 then $2::uuid end,
+                 billing_user_id = case when id=$1 then $2::uuid else billing_user_id end
+               where id=$1 or iap_user_id=$2`, [t.id, u.id]);
     await q('update teams set plan=$2, plan_until=$3, plan_source=$4 where id=$1', [t.id, act.plan, act.until, 'iap']);
     await audit(t.id, u.id, 'iap.grant', act.product, { plan: act.plan, until: act.until });
   } else if (act.kind === 'revoke') {

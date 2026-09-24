@@ -6,6 +6,10 @@
 #  F52 F107 결제 웹훅: 결제 담당의 팀 · RevenueCat 사건의 뜻 · 크레딧 중복 없음
 #  F118 녹음 파일: 남의 녹음 id 앞부분으로 등록 불가 · 이미 있는 별칭을 지워도 원본은 남음
 #  G21 채보: 고친 마디의 가사가 제자리에
+# 다시 고친 것 (검증에서 돌아온 것)
+#  F48 옛 자료(객체가 아닌 것·id·지은이 없는 것)는 녹음 메모 지우기에 안 걸림
+#  F50 다른 팀 메모와 id 가 겹친 메모(다른 팀 파일에서 가져온 인도자 메모)는 새 id 로 넣고 알림 → 앱도 id 를 바꿈
+#  F52 구독을 처음 반영한 팀에 적어 두고 그 팀으로 갱신·만료 (결제 담당을 넘겨도 · 새 팀 · 새 인도자 · 앱이 고른 팀)
 # 사용: CONTI_URL=http://localhost:8817/ .venv/bin/python tests/test_audit_api_ai_billing.py
 # (AI 는 가짜. 웹훅·코드 인식 실패는 서버 코드를 이 프로세스 안에서 fetch 를 막고 직접 부른다 — 밖으로 나가는 호출 없음)
 # 준비(프로모션 코드·옛 별칭 행)는 로컬 DB 에 바로 쓴다: CONTI_DB (기본 localhost:54329, 서버와 같은 DB 여야 한다)
@@ -137,6 +141,23 @@ if any(('mix%05d' % i) not in ids for i in range(10)): fail('F48 지우는 동�
 if len(ids) != len(after) - 5 + 10: fail('F48 개수가 맞지 않음: %d' % len(ids))
 print('F48 ok — 동시에 20개 모두 남음 · 지우기와 달기가 겹쳐도 안 잃음')
 
+# 옛 자료(객체가 아닌 것·null·id 없는 것·지은이 칸 없는 것)는 지우기가 건드리지 않는다 (JS 로 거르던 때와 같이).
+# SQL 비교가 NULL 이 되면 '지울 것'으로 읽혀, 인도자가 메모 하나를 지울 때 이런 원소가 같이 사라졌다
+_, R3 = upload_rehearsal(L, TEAM, 'svcR3')
+db('update rehearsals set notes = $2::jsonb where id=$1', [R3['id'], json.dumps(
+  ['옛 글자', None, {'t': 1, 'text': 'id 없음'}, {'id': 'legacy01', 't': 2, 'text': '지은이 없음'},
+   {'id': 'lead0003', 't': 3, 'text': '인도자', 'layer': 'leader', 'authorId': L.uid}])])
+st, _ = L.req('DELETE', '/rehearsals/%s/notes/lead0003?team=%s' % (R3['id'], TEAM))
+n3 = reh_notes(R3['id'])
+if st != 200 or n3 != ['옛 글자', None, {'t': 1, 'text': 'id 없음'}, {'id': 'legacy01', 't': 2, 'text': '지은이 없음'}]:
+  fail('F48 인도자가 메모 하나를 지우다 옛 자료까지 지움: %s %s' % (st, n3))
+A.req('DELETE', '/rehearsals/%s/notes/legacy01?team=%s' % (R3['id'], TEAM))
+if len(reh_notes(R3['id'])) != 4: fail('F48 멤버가 지은이 없는 옛 메모를 지움: %s' % reh_notes(R3['id']))
+L.req('DELETE', '/rehearsals/%s/notes/legacy01?team=%s' % (R3['id'], TEAM))
+if [n for n in reh_notes(R3['id']) if isinstance(n, dict) and n.get('id') == 'legacy01'] or len(reh_notes(R3['id'])) != 3:
+  fail('F48 인도자가 지은이 없는 옛 메모를 못 지우거나 다른 것까지 지움: %s' % reh_notes(R3['id']))
+print('F48 ok — 옛 자료는 지우기에 안 걸림 (인도자는 그 메모만 지움)')
+
 # ---------- F49 · F50 콘티 메모 (API) ----------
 SV = 'svcN' + tag
 NID = {k: k + tag for k in ['bsing001', 'lnote001', 'pnote001', 'cfake001', 'lsvc0001', 'pold0001']}   # notes.id 는 전역 기본키
@@ -157,6 +178,31 @@ if NID['lnote001'] in rj: fail('F50 서버에 이미 있는 인도자 메모를 
 st, j = C.req('POST', '/notes', {'teamId': TEAM, 'serviceId': SV, 'notes': [{'id': NID['cfake001'], 'itemId': 'it1', 'layer': 'leader', 'text': '가짜 전체'}]})
 if [r for r in j.get('rejected', []) if r['id'] == NID['cfake001']] != [{'id': NID['cfake001'], 'why': 'leader'}]: fail('F50 멤버의 전체 메모 거절이 안 알려짐: %s' % j)
 print('F50 서버 ok — 받지 않은 메모를 id·까닭으로 돌려줌 (서버에 있는 것은 빼고)')
+
+# notes.id 는 모든 팀을 통틀어 하나다. 다른 팀 파일에서 가져온 인도자 메모는 원래 id 를 지녀 그 팀 메모와 겹친다.
+# 전에는 넣지 못하고도 saved:1 로 답해 앱이 그림자에 넣었고, 다음 받기 때 메모가 말없이 사라졌다
+LX = signup('ax' + tag, '다른팀')
+st, tx = LX.req('POST', '/teams', {'name': '다른팀' + tag, 'myName': '인도'})
+if st != 200: fail('다른 팀 만들기 실패 %s %s' % (st, tx))
+TX = tx['teamId']
+XID = 'xnote001' + tag
+LX.req('POST', '/notes', {'teamId': TX, 'serviceId': 'svcX' + tag, 'notes': [{'id': XID, 'itemId': 'it1', 'layer': 'leader', 'text': '다른 팀 메모'}]})
+imp = {'teamId': TEAM, 'serviceId': SV, 'notes': [{'id': XID, 'itemId': 'it1', 'layer': 'leader', 'text': '가져온 메모'}]}
+st, j = L.req('POST', '/notes', imp)
+ren = j.get('renamed') or []
+if st != 200 or j.get('rejected') or j.get('saved') != 1 or len(ren) != 1 or ren[0].get('id') != XID or not ren[0].get('to'):
+  fail('F50 다른 팀 메모와 id 가 겹친 메모를 새 id 로 넣고 알리지 않음: %s %s' % (st, j))
+ALT = ren[0]['to']
+st, j2 = L.req('POST', '/notes', imp)   # 다시 보내도(renamed 를 모르는 옛 앱) 같은 새 id — 두 번 들어가지 않는다
+if j2.get('renamed') != ren or j2.get('saved') != 1: fail('F50 같은 메모를 다시 보냈더니 다른 답: %s' % j2)
+st, g = L.req('GET', '/notes?team=%s&service=%s' % (TEAM, SV))
+if [n['id'] for n in g.get('notes', []) if n['text'] == '가져온 메모'] != [ALT]: fail('F50 가져온 메모가 서버에 새 id 로 하나만 있지 않음: %s' % g)
+st, gx = LX.req('GET', '/notes?team=%s&service=%s' % (TX, 'svcX' + tag))
+if [(n['id'], n['text']) for n in gx.get('notes', [])] != [(XID, '다른 팀 메모')]: fail('F50 원래 팀의 메모가 바뀜: %s' % gx)
+# 이 콘티에 이미 있는 남의 메모를 다시 보낸 것(그림자를 잃은 기기)은 저장으로 친다 — 거절·새 id 없음
+st, j = A.req('POST', '/notes', {'teamId': TEAM, 'serviceId': SV, 'notes': [{'id': NID['bsing001'], 'itemId': 'it1', 'layer': 'session', 'session': '싱어', 'text': '싱어 공유'}]})
+if st != 200 or j.get('rejected') or j.get('renamed') or j.get('saved') != 1: fail('F50 이 콘티에 있는 메모를 다시 보낸 것을 달리 답함: %s' % j)
+print('F50 서버 ok — 다른 팀과 id 가 겹친 메모는 새 id 로 넣고 renamed 로 알림 (다시 보내도 하나)')
 
 # ---------- F118 녹음 파일 별칭 ----------
 L.req('PATCH', '/rehearsals/%s' % RID, {'teamId': TEAM, 'keep': True})
@@ -278,7 +324,55 @@ out.afterRefund = await plan(team.teamId);
 await q("update teams set plan='pro', plan_until=null, plan_source='manual' where id=$1", [team.teamId]);
 out.expireManual = (await hook({ type: 'EXPIRATION', product_id: 'pro_monthly', id: 'b9' + T })).body;
 out.afterExpireManual = await plan(team.teamId);
-out.otherUser = (await call('POST', '/iap/webhook', { event: { type: 'RENEWAL', product_id: 'pro_monthly', app_user_id: b.id } }, { authorization: 'audit-secret' })).body;
+// 새 인도자가 사도 손으로 준 기한 없는 플랜은 덮지 않는다 (덮으면 결제 기간이 끝날 때 무료로 떨어진다). 그 뒤 만료도 그 플랜을 안 건드린다
+const hookAs = (who, ev) => call('POST', '/iap/webhook', { event: { app_user_id: who.id, ...ev } }, { authorization: 'audit-secret' }).then((r) => r.body);
+const attr = (teamId) => ({ subscriber_attributes: { teamId: { value: teamId, updated_at_ms: Date.now() } } });
+const row = (id) => one('select plan, plan_source, plan_until, iap_user_id, billing_user_id, extract(epoch from plan_until - now())/86400 as d from teams where id=$1', [id]);
+out.bBuysOverManual = await hookAs(b, { type: 'INITIAL_PURCHASE', product_id: 'pro_monthly', expiration_at_ms: Date.now() + 30 * day, id: 'b10' + T });
+out.bExpire = await hookAs(b, { type: 'EXPIRATION', product_id: 'pro_monthly', id: 'b11' + T });
+out.afterB = await row(team.teamId);
+
+// S2 결제 담당을 넘긴 뒤에도 산 사람의 갱신·만료는 그 팀으로 간다. 넘겨받은 결제 담당이 따로 사도 살아 있는 구독을 빼앗지 않는다
+const c2 = await user('wc'), d2 = await user('wd');
+const team2 = (await call('POST', '/teams', { name: '결제팀2', myName: '다' }, as(c2))).body;
+await call('POST', `/invite/${team2.invite}/join`, { name: '라', sessions: ['드럼'] }, as(d2));
+out.s2buy = await hookAs(c2, { type: 'INITIAL_PURCHASE', product_id: 'pro_monthly', expiration_at_ms: Date.now() + 30 * day, id: 's2a' + T });
+out.billingMove = (await call('POST', `/teams/${team2.teamId}/billing`, { userId: d2.id }, as(c2))).status;
+out.s2renew = await hookAs(c2, { type: 'RENEWAL', product_id: 'pro_monthly', expiration_at_ms: Date.now() + 60 * day, id: 's2b' + T });
+out.s2 = await row(team2.teamId);
+out.s2steal = await hookAs(d2, { type: 'INITIAL_PURCHASE', product_id: 'pro_monthly', expiration_at_ms: Date.now() + 30 * day, id: 's2c' + T, ...attr(team2.teamId) });
+out.s2stealRenew = await hookAs(d2, { type: 'RENEWAL', product_id: 'pro_monthly', expiration_at_ms: Date.now() + 30 * day, id: 's2d' + T });
+out.s2kept = await row(team2.teamId);
+out.s2exp = await hookAs(c2, { type: 'EXPIRATION', product_id: 'pro_monthly', id: 's2e' + T });
+out.s2after = await row(team2.teamId);
+
+// S3 인도자를 넘기고 새 팀을 만든 뒤 산 것은 새 팀으로. S7 넘겨받은 새 인도자가 산 것은 옛 팀으로 (결제 담당도 그 사람이 된다).
+// 그 뒤 옛 인도자의 만료는 제 구독이 적힌 새 팀만 끊는다
+const e3 = await user('we'), f3 = await user('wf');
+const x3 = (await call('POST', '/teams', { name: '옛팀', myName: '마' }, as(e3))).body;
+await call('POST', `/invite/${x3.invite}/join`, { name: '바', sessions: ['드럼'] }, as(f3));
+await call('POST', `/teams/${x3.teamId}/transfer`, { userId: f3.id }, as(e3));
+const y3 = (await call('POST', '/teams', { name: '새팀', myName: '마' }, as(e3))).body;
+out.s3buy = await hookAs(e3, { type: 'INITIAL_PURCHASE', product_id: 'pro_monthly', expiration_at_ms: Date.now() + 30 * day, id: 's3a' + T });
+out.s3x = await row(x3.teamId); out.s3y = await row(y3.teamId);
+out.s7buy = await hookAs(f3, { type: 'INITIAL_PURCHASE', product_id: 'pro_monthly', expiration_at_ms: Date.now() + 30 * day, id: 's7a' + T });
+out.s7x = await row(x3.teamId);
+out.s3exp = await hookAs(e3, { type: 'EXPIRATION', product_id: 'pro_monthly', id: 's3e' + T });
+out.s3xAfter = await row(x3.teamId); out.s3yAfter = await row(y3.teamId);
+out.ids = { e3: e3.id, f3: f3.id, c2: c2.id };
+
+// 여러 팀의 인도자는 앱이 알려 준 팀(사용자 속성 teamId)으로 산다. 제 팀이 아닌 id 를 보내면 어디에도 넣지 않는다
+const g = await user('wg');
+const g1 = (await call('POST', '/teams', { name: '첫팀', myName: '사' }, as(g))).body;
+// 무료로는 팀을 하나만 만들 수 있어(ENFORCE_PLAN) 둘째 팀은 DB 에 바로 만든다
+const g2 = { teamId: (await one(`insert into teams(name, invite_token, created_by) values('둘째팀', $2, $1) returning id`, [g.id, 'g2' + T])).id };
+await q(`insert into members(user_id, team_id, name, session, sessions, role) values($1, $2, '사', '인도자', $3, 'leader')`, [g.id, g2.teamId, ['인도자']]);
+out.gBuy = await hookAs(g, { type: 'INITIAL_PURCHASE', product_id: 'pro_monthly', expiration_at_ms: Date.now() + 30 * day, id: 'g1' + T, ...attr(g2.teamId) });
+out.g1 = await row(g1.teamId); out.g2 = await row(g2.teamId);
+const h = await user('wh');
+const h1 = (await call('POST', '/teams', { name: '셋째팀', myName: '아' }, as(h))).body;
+out.hBuy = await hookAs(h, { type: 'INITIAL_PURCHASE', product_id: 'pro_monthly', expiration_at_ms: Date.now() + 30 * day, id: 'h1' + T, ...attr(g1.teamId) });
+out.g1after = await row(g1.teamId); out.h1 = await row(h1.teamId);
 
 // F106 · F51 코드 인식: Gemini 가 과부하면 502, 이번 달 곡 한도를 돌려주고, 하루 호출 수도 세지 않는다
 const c = await user('oc');
@@ -305,8 +399,22 @@ if o['afterCreditRefund']['plan'] != ('plus' if PLUS else 'pro'): fail('F107 크
 if o['afterSupportCancel']['plan'] == 'free': fail('F107 환불 없는 고객센터 해지(만료가 남음)에 바로 끊김: %s' % o['afterSupportCancel'])
 if o['afterRefund']['plan'] != 'free': fail('F107 환불(CUSTOMER_SUPPORT)인데 유료가 남음: %s %s' % (o['refund'], o['afterRefund']))
 if o['afterExpireManual']['plan'] != 'pro' or o['afterExpireManual']['plan_source'] != 'manual': fail('F107 손으로 준 플랜을 결제 만료가 지움: %s' % o['afterExpireManual'])
-if 'skipped' not in o['otherUser']: fail('F52 결제 담당이 아닌 새 인도자의 사건이 팀에 들어감: %s' % o['otherUser'])
-print('F52·F107 ok — 넘긴 뒤 갱신 · 멈춤·해지·환불 · 올림/내림 · 크레딧 중복 없음 · 수동 플랜 보호')
+ab = o['afterB']
+if 'skipped' not in o['bBuysOverManual'] or 'skipped' not in o['bExpire'] or ab['plan'] != 'pro' or ab['plan_source'] != 'manual' or ab['plan_until'] is not None:
+  fail('F52 새 인도자의 결제·만료가 손으로 준 기한 없는 플랜을 덮거나 끊음: %s %s %s' % (o['bBuysOverManual'], o['bExpire'], ab))
+ids = o['ids']
+if o['s2buy'].get('kind') != 'grant' or o['billingMove'] != 200: fail('S2 준비 실패: %s %s' % (o['s2buy'], o['billingMove']))
+if o['s2renew'].get('kind') != 'grant' or not (59 < float(o['s2']['d']) < 61): fail('F52 결제 담당을 넘긴 뒤 산 사람의 갱신이 팀을 못 찾음: %s %s' % (o['s2renew'], o['s2']))
+if 'skipped' not in o['s2steal'] or 'skipped' not in o['s2stealRenew']: fail('F52 남의 구독이 살아 있는 팀에 다른 사람의 결제가 들어감: %s %s' % (o['s2steal'], o['s2stealRenew']))
+if o['s2kept']['iap_user_id'] != ids['c2'] or not (59 < float(o['s2kept']['d']) < 61): fail('F52 산 사람의 구독이 다른 사람 결제로 바뀜: %s' % o['s2kept'])
+if o['s2exp'].get('kind') != 'revoke' or o['s2after']['plan'] != 'free': fail('F52 결제 담당을 넘긴 뒤 산 사람의 만료가 팀을 못 찾음: %s %s' % (o['s2exp'], o['s2after']))
+if o['s3y']['plan'] != 'pro' or o['s3x']['plan'] != 'free' or o['s3y']['iap_user_id'] != ids['e3']: fail('F52 인도자를 넘기고 새 팀에서 산 것이 옛 팀에 들어감: 옛 %s 새 %s' % (o['s3x'], o['s3y']))
+s7 = o['s7x']
+if o['s7buy'].get('kind') != 'grant' or s7['plan'] != 'pro' or s7['iap_user_id'] != ids['f3'] or s7['billing_user_id'] != ids['f3']: fail('F52 넘겨받은 새 인도자가 산 것이 안 들어감: %s %s' % (o['s7buy'], s7))
+if o['s3yAfter']['plan'] != 'free' or o['s3xAfter']['plan'] != 'pro': fail('F52 옛 인도자의 만료가 새 인도자가 산 팀을 끊음: 옛 %s 새 %s' % (o['s3xAfter'], o['s3yAfter']))
+if o['gBuy'].get('kind') != 'grant' or o['g2']['plan'] != 'pro' or o['g1']['plan'] != 'free': fail('F52 앱이 알려 준 팀(teamId)이 아닌 곳에 들어감: %s %s %s' % (o['gBuy'], o['g1'], o['g2']))
+if 'skipped' not in o['hBuy'] or o['g1after']['plan'] != 'free' or o['h1']['plan'] != 'free': fail('F52 제 팀이 아닌 teamId 로 산 것이 어딘가에 들어감: %s %s %s' % (o['hBuy'], o['g1after'], o['h1']))
+print('F52·F107 ok — 구독은 처음 반영한 팀으로 (인도자·결제 담당을 넘겨도) · 새 팀·새 인도자 · 앱이 고른 팀 · 남의 구독 안 빼앗음 · 멈춤·해지·환불 · 크레딧 중복 없음 · 수동 플랜 보호')
 if o['ocr'] != {'status': 502, 'error': 'ocr_failed'}: fail('F106 Gemini 과부하인데 %s' % o['ocr'])
 if o['ocrSongs'] != 0: fail('F106 실패했는데 이번 달 곡 한도가 빠짐')
 if o['ocrRefunds'] != 0: fail('F106 엔진 실패를 월 3회 환불로 셈')
@@ -402,6 +510,22 @@ def ui():
     pm.reload(); pm.wait_for_selector('#sheet [data-marker]', timeout=20000)
     pm.wait_for_function("!!(CONTI.S.team.settings||{}).pastorCanMemo", timeout=15000); pm.wait_for_timeout(500)
     pm.click('#sheet [data-marker]'); pm.wait_for_selector('#cText', timeout=5000)
+    # 다른 팀 파일에서 가져온 인도자 메모(원래 id 가 그 팀 메모와 겹침)는 서버가 새 id 로 넣는다 → 이 기기의 id 도 바꿔
+    # 그림자와 서버가 맞는다. 전에는 저장된 줄 알다가 다음 받기 때 말없이 사라졌다
+    YID = 'ynote001' + tag
+    LX.req('POST', '/notes', {'teamId': TX, 'serviceId': 'svcY' + tag, 'notes': [{'id': YID, 'itemId': 'it1', 'layer': 'leader', 'text': '원래 팀 메모'}]})
+    got = pg.evaluate("""(async()=>{const s=CONTI.S.services.find(x=>x.id==='%s');await CONTI.SYNC.pullNotes(s);const it=s.items[0];
+      it.notes.push({id:'%s',marker:(it.markers||[])[0]&&it.markers[0].id,layer:'leader',text:'가져온 인도자 메모',author:'인도자',at:Date.now()});
+      const ok=await CONTI.SYNC.pushNotes(s);const mine=()=>s.items[0].notes.filter(n=>n.text==='가져온 인도자 메모').map(n=>n.id);
+      const pushed=mine(),shadow=(CONTI.S.noteShadow[s.id]||[]).map(x=>x.id);
+      await new Promise(r=>setTimeout(r,50));   // 올린 직후와 같은 밀리초면 받기가 '방금 올린 것'으로 보고 남겨 둔다
+      await CONTI.SYNC.pullNotes(s);return {ok,pushed,shadow,after:mine()}})()""" % (svc, YID))
+    st, gl = L.req('GET', '/notes?team=%s&service=%s' % (TEAM, svc))
+    srv = [n['id'] for n in gl.get('notes', []) if n['text'] == '가져온 인도자 메모']
+    if not got['ok'] or len(srv) != 1 or srv[0] == YID: fail('F50 다른 팀과 id 가 겹친 가져온 메모가 서버에 새 id 로 안 들어감: %s %s' % (got, srv))
+    if got['pushed'] != srv or srv[0] not in got['shadow'] or YID in got['shadow']: fail('F50 서버가 바꾼 id 를 이 기기가 안 따름: %s %s' % (got, srv))
+    if got['after'] != srv: fail('F50 다음 받기 때 가져온 메모가 사라지거나 늘어남: %s %s' % (got, srv))
+    print('F50 화면 ok — 다른 팀과 id 가 겹친 가져온 메모는 새 id 로 바뀌어 남음')
     print('F50 화면 ok — 꺼져 있으면 창을 안 열고 알림 · 거절된 메모는 빼고 알림 · 켜면 열림')
     if errs: fail('JS 오류: %s' % errs[:3])
     b.close()

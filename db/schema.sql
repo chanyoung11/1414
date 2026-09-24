@@ -511,6 +511,11 @@ create table if not exists iap_events (
   kind       text not null,
   created_at timestamptz not null default now()
 );
+-- 이 팀을 유료로 두는 스토어 구독을 낸 사람 (RevenueCat app_user_id = 우리 사용자 id). 처음 반영할 때 적고
+-- 갱신·만료·환불은 이것으로 팀을 찾는다. 인도자(created_by)·결제 담당(billing_user_id)은 넘기면 바뀌어서,
+-- 그걸로 찾으면 넘긴 뒤의 갱신이 팀을 못 찾거나 엉뚱한 팀에 들어갔다 (F52). 배포 전 코드는 이 칸을 모른다
+alter table teams add column if not exists iap_user_id uuid references users(id) on delete set null;
+create index if not exists teams_iap_user_idx on teams(iap_user_id) where iap_user_id is not null;
 
 -- 라이브러리 폴더. 곡 하나는 폴더 하나에만 들어간다 (태그는 여러 개 가능, 성격 표시용)
 alter table songs add column if not exists folder text not null default '';

@@ -3657,22 +3657,26 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),getting:new Map(),notePut:{},no
   const del=sh.filter(x=>!localIds.has(x.id)&&!away(x)&&!shielded(x)).map(x=>x.id);
   const drop=new Set(sh.filter(x=>!localIds.has(x.id)&&away(x)&&!shielded(x)).map(x=>x.id));
   if(!add.length&&!del.length){if(drop.size){S.noteShadow[svc.id]=sh.filter(x=>!drop.has(x.id));save()}return true}   // 그림자에서만 뺀 것도 저장한다
-  try{let rej=[];if(add.length){const r=await api('/notes',{method:'POST',keepalive:!!keep,body:{teamId:S.team.id,serviceId:svc.id,notes:add.map(n=>({id:n.id,itemId:n.itemId,markerId:n.markerId,mediaId:n.mediaId,t:n.t,layer:n.layer,session:n.session,text:n.text,at:n.at}))}});rej=(r&&Array.isArray(r.rejected))?r.rejected:[]}
+  try{let rej=[],ren=[];if(add.length){const r=await api('/notes',{method:'POST',keepalive:!!keep,body:{teamId:S.team.id,serviceId:svc.id,notes:add.map(n=>({id:n.id,itemId:n.itemId,markerId:n.markerId,mediaId:n.mediaId,t:n.t,layer:n.layer,session:n.session,text:n.text,at:n.at}))}});rej=(r&&Array.isArray(r.rejected))?r.rejected:[];ren=(r&&Array.isArray(r.renamed))?r.renamed:[]}
    if(del.length)await api('/notes',{method:'DELETE',keepalive:!!keep,body:{teamId:S.team.id,ids:del}});
    if(scope!==CUR_SCOPE)return true;   // 보내는 사이 팀을 바꿨으면 새 팀의 그림자를 건드리지 않는다
    // 서버가 받지 않은 메모(권한 없음 등)는 그림자에 넣지 않고 이 기기에서도 지운 뒤 알린다.
    // 그림자에 넣으면 올린 줄 알다가 다음 동기화 때 말없이 사라진다
    const no=new Set(rej.map(x=>x.id));
    if(no.size){svc.items.forEach(it=>{it.notes=(it.notes||[]).filter(n=>!no.has(n.id));(it.media||[]).forEach(m=>{m.notes=(m.notes||[]).filter(n=>!no.has(n.id))})});
-    const why=rej[0].why;toast((why==='pastor'?'목회자 메모는 팀 설정에서 켜야 해요':why==='leader'?'전체 메모는 인도자만 남길 수 있어요':'형식이 맞지 않아요')+` — 메모 ${no.size}개를 저장하지 못했어요`);
+    const why=rej[0].why;toast((why==='pastor'?'목회자 메모는 팀 설정에서 켜야 해요':why==='leader'?'전체 메모는 인도자만 남길 수 있어요':why==='taken'?'다른 메모와 id 가 겹쳐요':'형식이 맞지 않아요')+` — 메모 ${no.size}개를 저장하지 못했어요`);
     setTimeout(()=>{const rn=route().name;if(rn==='play')redrawPlay();else if(rn==='view')render()},0)}
+   // 다른 팀·콘티의 메모와 id 가 겹쳐 서버가 새 id 로 넣은 것(다른 팀 파일에서 가져온 인도자 메모 등) → 이 기기의 id 도 바꾼다.
+   // 옛 id 를 그림자에 넣으면 서버 목록과 어긋나 다음 받기 때 이 기기의 메모가 지워지고 새 id 로 다시 내려왔다
+   const to=new Map(ren.filter(x=>x&&typeof x.to==='string'&&ID_RE.test(x.to)).map(x=>[x.id,x.to]));const idOf=n=>to.get(n.id)||n.id;
+   if(to.size)svc.items.forEach(it=>{(it.notes||[]).concat(...(it.media||[]).map(m=>m.notes||[])).forEach(n=>{if(to.has(n.id))n.id=to.get(n.id)})});
    // 보내는 사이 pullNotes 가 그림자를 새로 세웠을 수 있다. 시작할 때 본 목록으로 통째로 덮으면
    // 그 사이 받은 것·지운 것이 어긋나 다음 전송 때 멀쩡한 메모를 지웠다 → 이번에 보낸 만큼만 고친다
    const gone=new Set(del);drop.forEach(id=>gone.add(id));
    const next=SYNC.shadow(svc.id).filter(x=>!gone.has(x.id));const have=new Set(next.map(x=>x.id));
    const sent=add.filter(n=>!no.has(n.id));
-   sent.forEach(n=>{if(!have.has(n.id))next.push({id:n.id,itemId:n.itemId,mediaId:n.mediaId||null})});
-   const now=Date.now();sent.forEach(n=>{SYNC.notePut[n.id]=now});del.forEach(id=>SYNC.noteGone.add(id));   // pullNotes 가 늦게 온 목록과 견줄 때 쓴다
+   sent.forEach(n=>{if(!have.has(idOf(n)))next.push({id:idOf(n),itemId:n.itemId,mediaId:n.mediaId||null})});
+   const now=Date.now();sent.forEach(n=>{SYNC.notePut[idOf(n)]=now});del.forEach(id=>SYNC.noteGone.add(id));   // pullNotes 가 늦게 온 목록과 견줄 때 쓴다
    S.noteShadow[svc.id]=next;save();return true}
   catch(e){console.warn('notes push',e.message);return false}},
  // 팀원 기기: 업데이트 전 코드는 라이브러리를 따라 발행본 사본(svc.items)의 영상·악보·키까지 바꿨다. 팀원은 곡을 고치지 않으니
