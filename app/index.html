@@ -3911,7 +3911,11 @@ async function providerToken(pv){
     const opt={ google:{ webClientId:cfg.google||undefined, iOSClientId:cfg.googleIos||undefined } };
     if(ios&&cfg.appleBundle)opt.apple={ clientId:cfg.appleBundle };
     await SL.initialize(opt);
-    const r=await SL.login({provider:pv, options:{}});
+    // 구글은 늘 화면을 띄워 새로 로그인한다 (forcePrompt). 없으면 아이폰에서 전에 로그인한 적이 있을 때 구글 화면 없이
+    // 저장된 로그인을 되살려 그때 받은 토큰(만료 10분 전까지 안 바꿔 50분쯤 된 것)을 줘서 서버가 '확인한 지 오래됐어요'로
+    // 막았다 — 구글로만 가입한 사람이 계정 삭제·복구 코드·비밀번호·애플 연결을 못 했다. 이 기기에 남은 다른 사람의
+    // 구글 계정이 고를 틈 없이 붙거나 확인에 쓰이지도 않는다. 안드로이드 기본 화면은 원래 늘 뜬다
+    const r=await SL.login({provider:pv, options:pv==='google'?{forcePrompt:true}:{}});
     return r&&r.result&&r.result.idToken;
   }
   if(pv==='google')return googleToken(cfg.google);

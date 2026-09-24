@@ -17,6 +17,8 @@
 #  G02  아직 옮기지 않은 옛 조판이 크면 PATCH /me/prefs 가 413 이던 것 (연산자 우선순위)
 #  F02  악보 다시 묻기 · Vision 으로 다시 읽기를 부른 뒤에 세어, 동시에 보내면 한도를 넘겨 부르던 것
 #  G01  주소당 가입 제한이 동시 가입·IPv6 주소 바꾸기로 뚫리던 것 · 새 계정 몇 개로 전체 AI 한도를 채워 모두 멈추던 것
+#  F37  (아이폰 앱) 구글로 다시 확인하면 구글 화면 없이 되살린 옛 토큰(최대 50분 전)이 가 '확인한 지 오래됐어요'로 막혀
+#       구글로만 가입한 사람이 계정 삭제·복구 코드·비밀번호·애플 연결을 못 하던 것 → 구글은 늘 화면을 띄운다 (forcePrompt)
 # 준비: sh scripts/dev-local.sh (로컬 DB). DB 를 직접 보는 곳이 있어 psql(또는 docker exec conti-pg)이 필요하다
 import os, sys, time, json, random, subprocess, threading, urllib.request, urllib.error, shutil
 from playwright.sync_api import sync_playwright
@@ -694,6 +696,104 @@ def t_social_ui(b):
     c.close()
     print('F37 화면 (소셜 전용 다시 확인) ok')
 
+# ---------- F37 (아이폰 앱): 구글로 다시 확인할 때 화면 없이 되살린 옛 토큰을 보내던 것 ----------
+# Capgo SocialLogin(8.5.x)은 iOS 에서 전에 구글로 로그인한 적이 있으면(GIDSignIn.hasPreviousSignIn, 앱은 로그아웃을 부르지 않아
+# 늘 참) forcePrompt 없이는 구글 화면 없이 저장된 로그인을 되살려 그때 받은 ID 토큰을 준다. GoogleSignIn 은 만료 10분 전까지
+# 새로 받지 않아 50분쯤 된 토큰일 수 있다 → 서버의 '10분 안' 기준에 막혀, 구글로만 가입한 사람이 계정 삭제·복구 코드·
+# 비밀번호·애플 연결을 못 했다. 전에 쓴 다른 구글 계정도 고를 틈 없이 그대로 왔다.
+# 아래 가짜 플러그인이 그 동작을 흉내 낸다: forcePrompt 가 없으면 앞서 로그인한 계정의 50분 된 토큰, 있으면 고른 계정의 새 토큰
+SL_MOCK = r"""
+(() => {
+  const st = { prev: null };
+  const tok = async (pv, sub, age) => (await fetch('/__tok?pv=' + pv + '&sub=' + encodeURIComponent(sub) + '&age=' + age)).text();
+  // 부른 기록은 새로고침(계정 삭제 뒤 로그인 화면)에도 남게 sessionStorage 에
+  const calls = () => { try { return JSON.parse(sessionStorage.getItem('__slCalls') || '[]'); } catch (e) { return []; } };
+  window.__slCalls = calls;
+  window.__slReset = () => sessionStorage.removeItem('__slCalls');
+  window.__slPrev = (s) => { st.prev = s; };
+  window.__pick = {};   // 구글·애플 화면에서 고를 계정
+  window.Capacitor = { getPlatform: () => 'ios', isNativePlatform: () => true, isPluginAvailable: () => false,
+    Plugins: { SocialLogin: {
+      initialize: () => Promise.resolve(),
+      async login({ provider, options }) {
+        sessionStorage.setItem('__slCalls', JSON.stringify([...calls(), { provider, options: options || {} }]));
+        // restorePreviousSignIn + refreshTokensIfNeeded: 화면 없이, 만료가 먼 옛 토큰을 그대로
+        if (provider === 'google' && st.prev && !(options && options.forcePrompt))
+          return { provider, result: { idToken: await tok('google', st.prev, 50 * 60) } };
+        const sub = window.__pick[provider] || '';
+        if (provider === 'google') st.prev = sub;
+        return { provider, result: { idToken: await tok(provider, sub, 0) } };
+      },
+      logout: () => { st.prev = null; return Promise.resolve(); },
+    } } };
+})();
+"""
+IPAD_UA = 'Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148'
+def t_social_native_ui(b):
+    from urllib.parse import urlparse
+    H = hx(); hb = urlparse(H.base)
+    c = b.new_context(viewport={'width': 1180, 'height': 820}, service_workers='block', user_agent=IPAD_UA)
+    # 앱은 https://localhost 에서 돌고 API 는 https://lets1414.com 을 부른다 → 둘 다 가짜 서버로
+    def handler(route):
+        u = urlparse(route.request.url)
+        if (u.scheme == 'https' and u.hostname == 'localhost' and u.port is None) or u.hostname in ('lets1414.com', 'www.lets1414.com'):
+            try: return route.fulfill(response=route.fetch(url=H.base + u.path.lstrip('/') + ('?' + u.query if u.query else '')))
+            except Exception:
+                try: return route.abort()
+                except Exception: return
+        if u.hostname == hb.hostname and u.port == hb.port: return route.continue_()
+        return route.abort()
+    c.route('**/*', handler)
+    c.add_init_script(SL_MOCK)
+    pg = c.new_page(); errs = []
+    pg.on('pageerror', lambda e: errs.append(str(e)[:150])); pg.on('dialog', lambda d: d.accept())
+    toast = lambda: pg.evaluate("(document.querySelector('#toast')||{}).textContent||''")
+    def open_as(acc, prev, name):
+        pg.goto('https://localhost/')
+        pg.evaluate("t=>{localStorage.clear();localStorage.setItem('conti-app-token',t)}", acc['t'])
+        pg.reload(); pg.wait_for_selector('#gtTeam', timeout=15000)
+        if not pg.evaluate('/^(capacitor|ionic):/.test(location.protocol)||(location.hostname==="localhost"&&!location.port&&location.protocol==="https:")'):
+            fail('앱 흉내가 안 됨 (NATIVE 아님)')
+        pg.evaluate("p=>{window.__slPrev(p);window.__slReset()}", prev)
+        pg.fill('#gtTeam', name); pg.click('[data-act="team-create"]'); pg.wait_for_selector('.shell[data-page]', timeout=15000)
+        pg.goto('https://localhost/#/settings'); pg.wait_for_selector('.setpane', timeout=10000)
+        pg.evaluate("p=>window.__slPrev(p)", prev)
+        pg.click('[data-act="set-tab"][data-t="account"]'); pg.wait_for_selector('#sRc', timeout=5000)
+        pg.wait_for_function("()=>{const b=document.querySelector('#linkList');return b&&!/불러오는 중/.test(b.textContent)}", timeout=15000)
+    def forced(what):
+        calls = pg.evaluate("window.__slCalls().filter(x=>x.provider==='google')")
+        if not calls or not all(x['options'].get('forcePrompt') is True for x in calls):
+            fail('F37 앱: %s — 구글을 forcePrompt 없이 부름 %s' % (what, calls))
+    # 구글로 가입한 아이폰에서 바로 복구 코드 (그 구글 계정이 이 기기에 저장돼 있다)
+    S = social_account(H, 'sn1-' + tag)
+    open_as(S, S['sub'], '앱확인팀')
+    pg.evaluate("s=>window.__pick={google:s}", S['sub'])
+    pg.click('#sRc')
+    try: pg.wait_for_selector('.linkbox', timeout=8000)
+    except Exception: fail('F37 앱(iOS): 구글 다시 확인이 화면 없이 되살린 옛 토큰을 보내 복구 코드가 막힘 — %r' % toast())
+    forced('복구 코드')
+    pg.click('#rcClose'); pg.wait_for_timeout(300)
+    # 애플 연결: 이 기기에 저장된 구글이 다른 사람 것이어도, 구글 화면에서 제 계정을 골라 확인한다
+    pg.evaluate("([s,a])=>{window.__slPrev('stranger-'+s);window.__slReset();window.__pick={google:s,apple:a}}", [S['sub'], 'na1-' + tag])
+    pg.click('[data-link="apple"]')
+    try: pg.wait_for_selector('[data-unlink="apple"]', timeout=8000)
+    except Exception: fail('F37 앱(iOS): 이 기기에 남은 다른 구글 계정의 옛 토큰으로 확인해 애플 연결이 막힘 — %r' % toast())
+    forced('애플 연결')
+    if sql("select string_agg(provider, ',' order by provider) from identities where user_id=%s" % lit(S['id'])) != 'apple,google': fail('F37 앱: 애플이 안 붙음')
+    # 계정 삭제 (앱 심사가 가입 직후에 해 보는 것)
+    D = social_account(H, 'sn2-' + tag)
+    open_as(D, D['sub'], '앱지울팀')
+    pg.evaluate("s=>window.__pick={google:s}", D['sub'])
+    pg.click('#sDel'); pg.wait_for_selector('#daUser', timeout=5000)
+    pg.fill('#daUser', D['u']); pg.click('#daGo')
+    try: pg.wait_for_selector('#lgUser', timeout=20000)
+    except Exception: fail('F37 앱(iOS): 구글 다시 확인이 옛 토큰이라 계정 삭제가 막힘 — %r' % toast())
+    forced('계정 삭제')
+    if sql("select count(*) from users where id=%s" % lit(D['id'])) != '0': fail('F37 앱: 구글로 확인했는데 계정이 남음')
+    if errs: fail('F37 앱 화면 오류 %s' % errs[:2])
+    c.close()
+    print('F37 앱(iOS) 구글 다시 확인은 새로 로그인한 토큰 ok')
+
 # ---------- F02 · G01: 악보 다시 묻기 · Vision 으로 다시 읽기도 부르기 전에 한도에서 자리를 잡는다 ----------
 def t_ai_fanout():
     H = hx()
@@ -735,7 +835,7 @@ def run():
         with sync_playwright() as p:
             b = p.chromium.launch()
             section(lambda: t_f04_ui(b), 't_f04_ui'); section(lambda: t_f37_ui(b), 't_f37_ui'); section(lambda: t_logout_ui(b), 't_logout_ui')
-            section(lambda: t_social_ui(b), 't_social_ui')
+            section(lambda: t_social_ui(b), 't_social_ui'); section(lambda: t_social_native_ui(b), 't_social_native_ui')
             b.close()
     finally:
         if HX[0]: HX[0].close()
