@@ -32,15 +32,16 @@ def run():
         sid = pg.evaluate("CONTI.S.services[0].id")
         pg.goto(URL + '#/view/' + sid); pg.wait_for_selector('[data-act="print"]', timeout=10000); pg.wait_for_timeout(1500)
         # 마커 + 메모 + 하이라이트를 심는다 (엔진이 띠·오버레이를 짜는지 보려고).
-        # 메모는 서버와 맞추므로 화면에 들어온 뒤에 넣는다
-        pg.evaluate("""(()=>{const s=CONTI.S.services[0];const it=s.items[0];const p=it.pieces[0];
+        # 메모는 서버와 맞추므로 화면에 들어온 뒤에 넣는다.
+        # 메모 id 는 서버가 받는 꼴(4~40자)로 — 'n1' 처럼 짧으면 서버가 거절하고, 앱은 거절된 메모를 이 기기에서도 뺀다 (F50)
+        pg.evaluate("""(tag)=>{const s=CONTI.S.services[0];const it=s.items[0];const p=it.pieces[0];
           p.markers=[{id:'m1',label:'A',x:Math.round(p.w*0.08),y:Math.round(p.h*0.35),cut:null},
                      {id:'m2',label:'B',x:Math.round(p.w*0.08),y:Math.round(p.h*0.62),cut:null}];
           p.hls=[{id:'h1',x:Math.round(p.w*0.1),y:Math.round(p.h*0.4),w:Math.round(p.w*0.3),h:30,kind:'hl'}];
-          it.notes=[{id:'n1',marker:'m1',layer:'leader',text:'여기부터 천천히'},
-                    {id:'n2',marker:'m2',layer:'session',session:'건반',text:'패드 깔기'},
-                    {id:'n3',marker:'m2',layer:'session',session:'드럼',text:'드럼만 보는 메모'}];
-          CONTI.save()})()""")
+          it.notes=[{id:'npr1'+tag,marker:'m1',layer:'leader',text:'여기부터 천천히'},
+                    {id:'npr2'+tag,marker:'m2',layer:'session',session:'건반',text:'패드 깔기'},
+                    {id:'npr3'+tag,marker:'m2',layer:'session',session:'드럼',text:'드럼만 보는 메모'}];
+          CONTI.save()}""", tag)
         pg.wait_for_timeout(400)
 
         # ---- 인쇄 시트 → 미리보기 ----
