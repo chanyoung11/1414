@@ -3441,8 +3441,9 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),getting:new Map(),notePut:{},no
     if(dd.doc.auto&&!(dd.doc.items||[]).length&&S.services.some(x=>x.date===dd.doc.date)){S.dropped=(S.dropped||[]).concat(d.id);continue} // 자동 생성 초안인데 그 날짜 콘티가 이미 있으면 받지 않음
     await SYNC.fetchBlobs(dd.blobs);if(moved())return false;
     if(svcById(d.id))continue;   // 받는 사이 다른 길(콘티 열기 등)로 이미 들어왔다
-    const cur={id:d.id,name:'',date:today(),notice:'',version:0,items:[],published:null};S.services.push(cur);SYNC.applyDraft(cur,dd.doc);changed=true;show()}}catch(e){console.warn('draft',d.id,e.message)}}
-  for(const r of list){const cur=svcById(r.id);const localV=cur&&cur.published?cur.published.version:0;
+    const cur={id:d.id,name:'',date:today(),notice:'',version:0,items:[],published:null};S.services.push(cur);SYNC.applyDraft(cur,dd.doc);changed=true;show()}}catch(e){console.warn('draft',d.id,e.message);if(moved())return false}}
+  // 실패(catch)·합치기에서 넘어온 길도 팀이 바뀌었으면 멈춘다 (pullService 는 부르는 순간의 팀으로 받는다)
+  for(const r of list){if(moved())return false;const cur=svcById(r.id);const localV=cur&&cur.published?cur.published.version:0;
    if(cur&&localV>=r.version)continue;
    if(!cur&&(S.dropped||[]).includes(r.id))continue;
    if(!cur){const twin=S.services.find(x=>!x.published&&(r.name||'').trim()&&x.name===r.name&&x.date===r.date); // §9 같은 이름·날짜의 내 초안 → 합칠지 묻기
@@ -3452,6 +3453,9 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),getting:new Map(),notePut:{},no
   // 서버에서 사라진 콘티는 이 기기에서도 지운다. 안 그러면 다른 기기에서 지워도
   // 여기에는 영원히 남아, 같은 이름이 두 번씩 보이거나 지운 예배가 살아 있는 것처럼 보인다.
   // 아직 서버에 못 올린 내 초안(발행 전·발행 대기)은 건드리지 않는다
+  // 여기까지 오는 사이 팀을 바꿨으면 멈춘다 — 초안 받기가 실패(catch)한 뒤 옛 팀에 발행본이 없으면 그 뒤로 await 가 없어
+  // 검사를 한 번도 안 거치고 왔고, 옛 팀 서버 목록에 없다며 새 팀의 발행 콘티를 지웠다 (고쳐 두고 못 올린 것은 사라졌다)
+  if(moved())return false;
   const onServer=new Set(list.map(r=>r.id).concat(drafts.map(d=>d.id)));
   const sig=x=>(x.date||'')+'|'+(x.items||[]).map(it=>(it.title||'').trim()).join('|');
   const serverSigs=new Set(S.services.filter(x=>onServer.has(x.id)).map(sig));

@@ -975,6 +975,56 @@ def t_r3_dirty(b):
     print('R3 F73 ok')
 
 
+# ======== 4차 ========
+# F73: 옛 팀(A)의 받기에서 초안 받기가 실패(catch)했고 A 에 발행본이 없으면, 그 사이 바꾼 새 팀(B)의 목록에서
+# 'A 서버 목록에 없다'며 B 의 발행 콘티를 지우던 것 (고쳐 두고 아직 못 올린 것은 사라졌다)
+def t_r4_pull(b):
+    L = leader(b, '에이팀')
+    tA = L._team
+    tB = must(L, 'POST', '/teams', {'name': '비팀' + TAG, 'myName': '인도', 'session': '인도자'})['teamId']
+    sB = nid('sB'); d = nid('dA')
+    must(L, 'PUT', '/services/' + sB, {'teamId': tB, 'doc': {'id': sB, 'name': 'B 예배', 'date': '2099-02-01', 'notice': '', 'version': 1, 'items': [item(nid('i'), 'B곡')]}})
+    pl = page(L)
+    # A 의 초안 받기(draft=1)는 2.5초 붙잡았다가 500 으로 돌려준다 · A 에서 시작한 받기가 어떻게 끝나는지 적는다
+    pl.evaluate("""(d)=>{window.__failN=0;const f=window.fetch;window.fetch=function(u,o){const s=String(u);
+       if(s.includes('/api/services/'+d+'?')&&s.includes('draft=1'))return new Promise(ok=>setTimeout(()=>{window.__failN++;
+        ok(new Response(JSON.stringify({error:'x',message:'boom'}),{status:500,headers:{'content-type':'application/json'}}))},2500));
+       return f.apply(this,arguments)};
+      window.__log=[];const o=CONTI.SYNC.pullServicesOnce;CONTI.SYNC.pullServicesOnce=async function(){const tid=CONTI.S.team.id;
+       const r=await o.apply(this,arguments);window.__log.push({tid,endTid:CONTI.S.team.id,r,n:CONTI.S.services.length});return r}}""", d)
+    if pl.evaluate("CONTI.S.team.id") != tB: team_switch(pl, tB)
+    until(pl, svc_js(sB) + "&&" + svc_js(sB) + ".published", what='B 콘티 받음')
+    pl.wait_for_timeout(1000)
+    # A 에는 발행본 없이 다른 기기의 초안만 있다
+    must(L, 'PUT', '/services/%s/draft' % d, {'teamId': tA, 'doc': {'id': d, 'name': 'A 초안', 'date': '2099-02-08', 'notice': '', 'version': 0, 'items': [item(nid('i'), 'A곡')], 'editedAt': int(time.time() * 1000)}})
+    team_switch(pl, tA)
+    pl.evaluate("()=>{window.__pa=CONTI.SYNC.pullServices()}")   # 전환이 부른 받기와 겹치면 같은 것을 돌려받는다
+    pl.wait_for_timeout(700)
+    team_switch(pl, tB)
+    # B 에서 발행 뒤 고쳐 둔 것 (A 받기가 실패로 끝나기 전)
+    pl.evaluate("(id)=>{const s=CONTI.S.services.find(x=>x.id===id);if(!s)return;s.name='B 고침';s.version=s.published.version+1;s.editedAt=Date.now();CONTI.save()}", sB)
+    pl.wait_for_timeout(3500)
+    log = pl.evaluate("window.__log")
+    fromA = [x for x in log if x['tid'] == tA]
+    if not pl.evaluate("window.__failN") or not fromA: fail('전제 실패: A 의 초안 받기가 실패하지 않음 (%s, %s)' % (pl.evaluate("window.__failN"), log))
+    if pl.evaluate("CONTI.S.team.id") != tB: fail('전제 실패: B 로 안 돌아옴')
+    if not pl.evaluate("!!" + svc_js(sB)): fail('F73: 초안 받기가 실패한 A 팀 받기가 B 팀 발행 콘티를 지움 %s' % fromA)
+    if pl.evaluate(svc_js(sB) + ".name") != 'B 고침': fail('F73: B 팀 콘티의 고친 것이 사라짐')
+    if any(x['r'] for x in fromA): fail('F73: A 에서 시작한 받기가 팀이 바뀐 뒤에도 끝까지 돌아 바뀌었다고 함 %s' % fromA)
+    if pl.evaluate("CONTI.S.services.some(x=>x.id===%s)" % json.dumps(d)): fail('F73: A 팀 초안이 B 팀 목록에')
+    # 같은 조건에서 팀을 바꾸지 않으면 실패한 초안은 건너뛰고 받기는 끝까지 돈다 (다음에 다시 받는다)
+    team_switch(pl, tA)
+    pl.evaluate("()=>{window.__log=[]}")
+    r = pl.evaluate("CONTI.SYNC.pullServices()")
+    if pl.evaluate("CONTI.S.team.id") != tA or pl.evaluate("CONTI.S.services.some(x=>x.id===%s)" % json.dumps(d)): fail('초안 받기 실패 뒤 A 목록 %s' % r)
+    team_switch(pl, tB)
+    pl.wait_for_timeout(800)
+    if not pl.evaluate("!!" + svc_js(sB)) or pl.evaluate(svc_js(sB) + ".name") != 'B 고침': fail('F73: B 로 돌아온 뒤 고친 B 콘티가 없음')
+    if pl._errs: fail('page errors: %s' % pl._errs)
+    L.close()
+    print('R4 F73 ok')
+
+
 # api/index.js 를 이 프로세스 안에서 띄우고, 구글 공개키만 가짜로 바꿔 서명한 ID 토큰으로 /auth/social 을 부른다
 # (개발 서버는 진짜 구글 키로만 검증하므로 가짜 토큰을 받지 않는다). DB 는 로컬 도커
 SOCIAL_JS = r"""
@@ -1047,7 +1097,7 @@ def run():
              ('draft', t_draft), ('g31', t_g31), ('f80', t_f80), ('logout', t_logout),
              ('r2f20', t_r2_f20), ('r2notes', t_r2_notes), ('r2team', t_r2_team), ('r2draft', t_r2_draft), ('r2blobs', t_r2_blobs), ('r2f76', t_r2_f76),
              ('r2g31', t_r2_g31), ('r2f80', t_r2_f80), ('r2push', t_r2_push), ('r2g15', t_r2_g15),
-             ('r3f76', t_r3_f76), ('r3dirty', t_r3_dirty)]
+             ('r3f76', t_r3_f76), ('r3dirty', t_r3_dirty), ('r4pull', t_r4_pull)]
     with sync_playwright() as p:
         b = p.chromium.launch()
         for name, fn in tests:
