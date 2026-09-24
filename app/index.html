@@ -1839,7 +1839,7 @@ function chartOffset(item,forPlay){const a=keySemi(item.key),b=keySemi(item.char
 const chartBars=sec=>(sec&&sec.bars)||[];
 function chartHTML(item,opts){const ch=item.chart;if(!ch||!ch.sections||!ch.sections.length)return '';
  const o=opts||{};const off=chartOffset(item,o.play);const showKey=item.key||ch.key||'';
- const spellKey=keyShiftName(keySemi(ch.key)!=null?ch.key:showKey,off,item.key);   // 카포 모양이면 그 모양의 키로 적는다
+ const sk=keyName(ch.key)||keyName(showKey);const spellKey=sk?keyShiftName(sk,off,item.key):'';   // 카포 모양이면 그 모양의 키로 적는다
  const tr=c=>off?transposeChord(c,off,spellKey):c;
  const secs=ch.sections.map((sec,si)=>{const bars=chartBars(sec);
   return `<div class="csec"><div class="cshd"><b>${esc(sec.name||'?')}</b>${sec.repeat?`<span class="pill">x${esc(String(sec.repeat))}</span>`:''}</div>
@@ -2966,9 +2966,9 @@ function afterSettings(){
    $$('#sSess2 .q').forEach(b=>b.classList.toggle('on2',extra.includes(b.dataset.s2)));return}
   const rb=e.target.closest('[data-r]');if(rb){role=rb.dataset.r;$$('#sRole .q').forEach(b=>b.classList.toggle('on',b.dataset.r===role));return}
   if(e.target.closest('#sPushOn')){markAskedPush();setPushOff(false);appPushRegister.asked=true;
-   if(NATIVE){const ok=await appPushRegister();toast(ok?'알림을 켰어요':'알림을 켜지 못했어요 · 휴대폰 설정에서 켤 수 있어요');render();return}
+   if(NATIVE){const ok=await appPushRegister();if(ok&&NET.user)PUSH.auto=NET.user.id;toast(ok?'알림을 켰어요':'알림을 켜지 못했어요 · 휴대폰 설정에서 켤 수 있어요');render();return}
    let perm='denied';try{perm=await Notification.requestPermission()}catch(err){}
-   if(perm==='granted'){const ok=await pushRegister();toast(ok?'알림을 켰어요':'알림을 켜지 못했어요')}
+   if(perm==='granted'){const ok=await pushRegister();if(ok&&NET.user)PUSH.auto=NET.user.id;toast(ok?'알림을 켰어요':'알림을 켜지 못했어요')}   // 방금 등록했으니 홈이 또 보내지 않게
    else toast('브라우저에서 알림을 막았어요');render();return}
   if(e.target.closest('#sPushOff')){setPushOff(true);markAskedPush();if(NATIVE)await appPushUnregister();else await pushUnregister();toast('이 기기에서 알림을 껐어요');render();return}
   if(e.target.closest('#sPushTest')){try{const r=await api('/push/test',{method:'POST'});
@@ -3354,7 +3354,7 @@ function dropUnsentLib(){let n=0,lib=0;
  if(n)S.songsAt='';   // 곡도 — 굳어 있던 동안 받은 since 목록은 그 곡을 건너뛰었으니 since 로는 다시 안 온다
  toast(`인도자가 아니라서 못 올린 라이브러리 수정 ${n+lib}건은 버렸어요`);
  if(typeof SYNC!=='undefined'&&online())setTimeout(()=>{SYNC.pullLibrary();if(typeof pullSongs!=='undefined')pullSongs(true).then(ch=>{if(ch)render()})},0)}
-// 로그인(로그아웃 뒤 다시·세션이 끊긴 뒤 다시·다른 사람)이면 알림 등록을 다시 한다. 로그아웃·비밀번호 변경 때 서버가 이 기기의
+// 로그인(로그아웃 뒤 다시·세션이 끊긴 뒤(401: 다른 기기에서 모두 로그아웃·비밀번호 변경) 다시·다른 사람)이면 알림 등록을 다시 한다. 로그아웃·비밀번호 변경 때 서버가 이 기기의
 // 구독·토큰을 지우는데, 같은 사람이 같은 실행에서 다시 들어오면 pushAuto 가 '이미 했다'며 건너뛰어 알림이 말없이 끊겼다
 async function takeMe(m){if(!NET.user||!m.user||NET.user.id!==m.user.id)try{PUSH.auto=''}catch(e){}NET.user=m.user;NET.teams=m.teams||[];NET.blocked=m.blocked||null;const cur=NET.teams.find(x=>x.teamId===S.team.id)||m.team;
  if(cur){if(S.team.id&&cur.teamId!==S.team.id)toast((cur.teamName||'다른')+' 팀으로 전환했어요');await applyMembership(cur)}
@@ -3715,7 +3715,7 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),getting:new Map(),notePut:{},no
   const here=new Set();svc.items.forEach(it=>{here.add(it.id+'|');(it.media||[]).forEach(m=>here.add(it.id+'|'+m.id))});
   S.noteShadow=S.noteShadow||{};S.noteShadow[svc.id]=d.notes.filter(n=>here.has(n.itemId+'|'+(n.mediaId||''))).map(n=>({id:n.id,itemId:n.itemId||'',mediaId:n.mediaId||null}))
    .concat(loc.filter(n=>fresh.has(n.id)&&shNow.has(n.id)).map(n=>({id:n.id,itemId:n.itemId,mediaId:n.mediaId||null})));   // 이미 올린 새 메모는 그림자에 그대로
-  SYNC.pulledAt[svc.id]=Date.now();if(sig()!==sig0)save()},
+  SYNC.pulledAt[svc.id]=Date.now();if(sig()!==sig0){save();return true}return false},
  flush(){const r=route();const svc=svcById(r.a);if(online()&&svc&&/^(edit|view|play)$/.test(r.name)){clearTimeout(SYNC.t);SYNC.pushNotes(svc,true);if(r.name==='edit'&&isLeader()){clearTimeout(SYNC.td);SYNC.pushDraft(svc)}}},
  schedulePush(){if(!online())return;clearTimeout(SYNC.tl);SYNC.tl=setTimeout(()=>{SYNC.pushLibrary();pushDirtySongs();pushSongs()},3000);clearTimeout(SYNC.t);SYNC.t=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&/^(edit|view|play)$/.test(r.name))SYNC.pushNotes(svc)},700);clearTimeout(SYNC.td);SYNC.td=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&r.name==='edit'&&isLeader())SYNC.pushDraft(svc);
   // 에디터를 거치지 않고 만든 새 콘티(라이브러리 '넣고 계속 고르기')도 올려 둔다. 안 올리면 다른 기기에 안 보이고 서버에도 없다
@@ -5404,17 +5404,30 @@ const CHORD_RE=/^([A-G])(#|b)?((?:maj|min|dim|aug|sus|add|m|M|\+|°|º|o|ø|-|#|
 function parseChord(t){const m=normAcc(t).match(CHORD_RE);if(!m)return null;return {root:m[1]+(m[2]||''),suffix:m[3]||'',bass:m[4]?m[4]+(m[5]||''):null}}
 const isChordText=t=>{t=normAcc(t);const c=parseChord(t);return !!c&&!/^[A-G]\d{2,}$/.test(t)&&t.length<=12};
 function keySemi(k){const m=normAcc(k).match(/^([A-G])(#|b)?/);if(!m)return null;const v=NOTE_SEMI[m[1]+(m[2]||'')];return v==null?null:v}
+// 느슨하게 적힌 키(B♭·Bbmajor·E minor·E단조)를 keyShiftName 이 읽는 꼴(Bb·Em)로. 못 읽으면 ''.
+// keySemi 는 읽는데 keyShiftName 은 못 읽어 키를 안 옮긴 채 돌려주면 A 로 치는 B♭ 악보가 Gbm·Dbm 으로 적혔다
+const keyMinor=k=>/^[A-G][#b]?\s*(?:m|[Mm]in(?:or)?|단조)$/.test(normAcc(k));
+function keyName(k){const m=normAcc(k).match(/^([A-G])(#|b)?/);return m&&keySemi(k)!=null?m[1]+(m[2]||'')+(keyMinor(k)?'m':''):''}
 function spell(semi,key){const k=normAcc(key).replace(/\s/g,'');const flat=FLAT_KEYS.includes(k)||FLAT_KEYS.includes(k.replace(/m(in)?$/,''))||/^[A-G]b/.test(k);return (flat?FLAT_NAMES:SHARP_NAMES)[((semi%12)+12)%12]}
 // 장조에서 빌려 오는 bIII·bVI·bVII 코드(C 키의 Eb·Ab·Bb)는 조표가 #이어도 b 로 적는다 — C 에서 A# 은 틀린 이름이다.
-// 베이스는 bVII(C/Bb)만. E/G#·B/D# 처럼 부속화음의 3음은 올림이 맞다. 감화음(G#dim → Am 경과)도 올림으로 둔다
+// 감화음·반감화음(G#dim·G#m7b5·G#ø → Am)은 이끔음 코드라 올림으로 둔다
 function spellIn(semi,key,degs){const k=normAcc(key).replace(/\s/g,''),t=keySemi(k);
  if(t!=null&&!/m$/.test(k)&&degs.includes((((semi-t)%12)+12)%12))return FLAT_NAMES[((semi%12)+12)%12];
  return spell(semi,key)}
-function transposeChord(text,semis,key){const c=parseChord(text);if(!c)return text;const r=NOTE_SEMI[c.root];if(r==null)return text;let out=spellIn(r+semis,key,/^(dim|°|º|o)/.test(c.suffix)?[]:[3,8,10])+c.suffix;if(c.bass){const b=NOTE_SEMI[c.bass];out+='/'+(b==null?c.bass:spellIn(b+semis,key,[10]))}return out}
+const LEAD_RE=/^(?:dim|°|º|o|ø|(?:m|min|-)7\(?[b-]5)/;
+// 베이스는 적은 근음 글자에서 음정만큼 떨어진 글자로 적는다 — D/F#·E/G#(3음), Ab/Eb(5음), C/Bb(7음), Fm/Ab.
+// 조의 #·b 표로만 적으면 b 조(카포로 F 모양)에서 D/F# 이 D/Gb, 빌려 온 Ab 코드의 베이스가 Ab/D# 로 섞였다.
+// 이상한 이름(E#·B#·Cb·Fb, 겹올림)이 되면 조의 표로 적는다
+function bassName(root,semi){const L='CDEFGAB',li=L.indexOf(root[0]),iv=(((semi-NOTE_SEMI[root])%12)+12)%12;
+ const l=L[(li+[0,1,1,2,2,3,3,4,5,5,6,6][iv])%7];let d=(((semi-NOTE_SEMI[l])%12)+12)%12;if(d>6)d-=12;
+ const n=d===0?l:d===1?l+'#':d===-1?l+'b':'';return /^(E#|B#|Cb|Fb)$/.test(n)?'':n}
+function transposeChord(text,semis,key){const c=parseChord(text);if(!c)return text;const r=NOTE_SEMI[c.root];if(r==null)return text;const rn=spellIn(r+semis,key,LEAD_RE.test(c.suffix)?[]:[3,8,10]);let out=rn+c.suffix;if(c.bass){const b=NOTE_SEMI[c.bass];out+='/'+(b==null?c.bass:(bassName(rn,b+semis)||spellIn(b+semis,key,[10])))}return out}
 function shiftAt(item,pi,y){let best=null;(item.pieces||[]).forEach((p,i)=>{if(i>pi)return;(p.markers||[]).forEach(m=>{if(m.keyShift==null)return;if(i<pi||m.y<=y){if(!best||i>best.i||(i===best.i&&m.y>best.y))best={i,y:m.y,v:m.keyShift}}})});return best?best.v:0}
 // 조각의 코드를 off 만큼 옮겼을 때 그 코드가 속한 키 — 카포·'여기부터 전조'까지 반영한 실제로 치는 키다.
 // 원래 연주 키의 #·b 로 적으면 G 에서 +1 전조한 Ab 에 G#·C#·D# 이, F 카포 3(D 모양)에 Gbm·D/Gb 가 나왔다
-function chordKeyAt(item,piece,off){if(keySemi(piece&&piece.sheetKey)!=null)return keyShiftName(piece.sheetKey,off,item.key);return keyShiftName(item.key||'',off-chordOffset(item,piece),item.key)}
+// 악보 키도 연주 키도 모르면 '' — 예전처럼 # 으로 적는다 (C 로 치면 카포 2 에서 G#m 이 Gbm 이 됐다)
+function chordKeyAt(item,piece,off){const sk=keyName(piece&&piece.sheetKey);if(sk)return keyShiftName(sk,off,item.key);
+ const pk=keyName(item.key);return pk?keyShiftName(pk,off-chordOffset(item,piece),item.key):''}
 // ▲▼ 로 고친 offset 은 그때의 연주 키(offKey) 기준이다. 연주 키를 바꾸면 그만큼 따라간다 —
 // 예전엔 한 번 누르면 절대값으로 굳어 키를 바꿔도(다른 예배로 옮겨도) 옛 키 코드가 나왔다 (F88).
 // offKey 가 없는 예전 데이터·연주 키 없이 고친 값은 어디에 맞춘 건지 모르니 그대로 쓴다
@@ -5613,10 +5626,13 @@ async function rebuildRun(svc,it,piece,blob,append){const tok=aiTok();
 /* ---------- 악보 화면 ---------- */
 const SC={semi:0,edit:false,editable:false,osmd:null,k:10,zoom:1,at:'',seq:0};
 // 악보 화면은 콘티의 연주 키(it.key)에서 시작한다 — 코드 띠·차트와 같은 기준. 예전에는 악보에 적힌 키로 그려
-// A 콘티에서 G 악보가 떴고 카포 모양도 G 에서 셌다. 장·단조만 다르면(C ↔ Am) 조표가 같으니 옮기지 않는다
-function scorePlayOff(it){const sc=it&&it.score;if(!sc)return 0;let a=keySemi(it.key),b=keySemi(sc.key);if(a==null||b==null)return 0;
- const mi=k=>/m$/.test(normAcc(k).replace(/\s/g,''));if(mi(it.key)!==mi(sc.key)){if(mi(it.key))a+=3;if(mi(sc.key))b+=3}
- let d=a-b;while(d>6)d-=12;while(d<-6)d+=12;return d}
+// A 콘티에서 G 악보가 떴고 카포 모양도 G 에서 셌다. 코드 띠·차트처럼 으뜸음끼리 비교하고(E 콘티 ↔ Em 악보는 그대로),
+// 나란한조(C ↔ Am, G ↔ Em)만 조표가 같으니 옮기지 않는다. 예전 규칙은 끝 글자 'm' 만 단조로 보고 조표 차이로 옮겨
+// Em 악보를 E·Emin·E minor·E단조 콘티에서 C#m 으로(연주 키도 코드 띠도 아닌 키로) 그렸다
+function scorePlayOff(it){const sc=it&&it.score;if(!sc)return 0;const a=keySemi(it.key),b=keySemi(sc.key);if(a==null||b==null)return 0;
+ const wrap=d=>{while(d>6)d-=12;while(d<-6)d+=12;return d};const ma=keyMinor(it.key),mb=keyMinor(sc.key);
+ if(ma!==mb&&wrap((a+(ma?3:0))-(b+(mb?3:0)))===0)return 0;
+ return wrap(a-b)}
 // 화면·인쇄·내보내기가 같은 만큼 옮긴다. 다만 고치는 동안의 화면은 적힌 그대로 — 마디 창이 적힌 값을 고치므로
 // (옮긴 악보를 보고 Dm 을 적으면 원래 키의 Dm 으로 저장돼 엉뚱한 코드가 됐다)
 const scoreSemis=(it,screen)=>screen&&SC.edit?0:scorePlayOff(it)+SC.semi-(+me().capo||0);
@@ -6062,12 +6078,22 @@ const SCROLL={};function keepScroll(){SCROLL.sheet=($('#sheetwrap')||{}).scrollT
 function restoreScroll(){const sw=$('#sheetwrap');if(sw&&SCROLL.sheet)sw.scrollTop=SCROLL.sheet;$$('.pbody').forEach((b,i)=>{if(SCROLL.bodies&&SCROLL.bodies[i])b.scrollTop=SCROLL.bodies[i]})}
 let lastRoute='';
 // 서버를 기다리되 오래 걸리면 가진 것으로 먼저 그린다 (online() 은 켤 때 한 번 정해져 약한 망에서도 참이다).
-// 늦게 끝나면 같은 화면일 때 한 번 다시 그린다 — 보기 화면만. 연습·편집은 다시 그리면 재생·입력이 끊긴다
+// 늦게 끝나 받은 게 바뀌었으면 같은 화면일 때 한 번 다시 그린다 — 보기 화면만. 연습·편집은 다시 그리면 재생·입력이 끊긴다.
+// 실패하거나 그대로여도 다시 그리면, 약한 망에서 다시 그리기 → 또 받기 → 또 늦게 실패 → 또 다시 그리기가 계속 돌았다
 function netCap(p,ms){let late=false;const h=location.hash;
- p.then(()=>{if(late&&location.hash===h&&route().name==='view')render()}).catch(()=>{});
+ p.then(ch=>{if(ch)redrawView(h,late)}).catch(()=>{});
  return Promise.race([p.catch(()=>{}),new Promise(res=>setTimeout(()=>{late=true;res()},ms||2500))])}
-const NOTES_Q={};   // 늦게 끝나는 메모 받기를 기다리지 않고 넘어간 사이 같은 콘티를 또 받지 않게
+function redrawView(h,ok){if(ok&&location.hash===h&&route().name==='view')render()}
+const NOTES_Q={},WORD_Q={};   // 늦게 끝나는 받기를 기다리지 않고 넘어간 사이 같은 콘티를 또 받지 않게
 function pullNotesOnce(svc){return NOTES_Q[svc.id]||(NOTES_Q[svc.id]=SYNC.pullNotes(svc).finally(()=>{delete NOTES_Q[svc.id]}))}
+// 말씀(목회자)과 읽음 표시. 바뀌었으면 true
+function pullWordOnce(svc){return WORD_Q[svc.id]||(WORD_Q[svc.id]=(async()=>{try{const wd=await api('/services/'+svc.id+'/word?team='+S.team.id);
+  const was=JSON.stringify(svc.word||null),rv0=(S.readRev||{})[svc.id]||0;
+  if(!WORD_DIRTY)svc.word=wd.word||null;   // 편집 중이면 덮어쓰지 않는다
+  if(wd.readRev){S.readRev=S.readRev||{};S.readRev[svc.id]=Math.max(S.readRev[svc.id]||0,wd.readRev)}
+  // 바뀌었으면 저장한다. 전에는 같이 받던 메모가 늘 저장해 줬는데, 메모가 그대로면 저장을 건너뛰게 되며(G07) 받은 말씀이 기기에 안 남았다
+  const ch=JSON.stringify(svc.word||null)!==was;if(ch||((S.readRev||{})[svc.id]||0)!==rv0)save();
+  return ch}catch(e){return false}})().finally(()=>{delete WORD_Q[svc.id]}))}
 // 화면 그리기는 중간에 서버를 기다린다. 그 사이 다른 화면으로 옮겨갔으면 늦게 끝난 쪽이 덮어쓰지 않도록 표를 확인한다
 let RENDER_SEQ=0;
 async function render(){
@@ -6097,17 +6123,14 @@ async function render(){
    toast(e.message)}}
   if(stale())return;
   if(!svc)return go('home');
-  // 같은 콘티 안에서 곡만 넘기거나(연습 화면 다음·이전) 보기·연습·편집을 오갈 때는 서버를 다시 기다리지 않는다 — 들어올 때 받았다.
-  // 예전에는 곡을 넘길 때마다 메모·말씀을 받은 뒤에야 그려, 느린 망에서는 탭마다 몇 초씩 옛 곡에 멈춰 있었다
+  // 같은 콘티 안에서 곡만 넘기거나(연습 화면 다음·이전) 보기·연습을 오갈 때는 서버를 기다리지 않고 가진 것으로 바로 그린다.
+  // 메모·말씀은 뒤에서 새로 받는다 (다른 기기의 메모·목회자가 쓴 말씀이 들어오게). 예전에는 곡을 넘길 때마다 받은 뒤에야 그려,
+  // 느린 망에서는 탭마다 몇 초씩 옛 곡에 멈춰 있었다. 들어올 때와 편집으로 갈 때만 최대 2.5초 기다린다 —
+  // 편집은 나중에 다시 그리면 입력이 끊겨, 받기 전에 그리면 목사님이 보낸 말씀 대신 빈 말씀 카드가 남는다
   const pr=prevHash.replace(/^#\/?/,'').split('/');const enter=!same&&!(pr[1]===r.a&&/^(edit|view|play)$/.test(pr[0]));
-  const notesP=online()&&(enter||!SYNC.pulledAt[svc.id])?pullNotesOnce(svc):null;
-  const wordP=online()&&enter?(async()=>{try{const wd=await api('/services/'+svc.id+'/word?team='+S.team.id);
-   const w0=JSON.stringify([svc.word||null,(S.readRev||{})[svc.id]||0]);
-   if(!WORD_DIRTY)svc.word=wd.word||null;   // 편집 중이면 덮어쓰지 않는다
-   if(wd.readRev){S.readRev=S.readRev||{};S.readRev[svc.id]=Math.max(S.readRev[svc.id]||0,wd.readRev)}
-   // 바뀌었으면 저장한다. 전에는 같이 받던 메모가 늘 저장해 줬는데, 메모가 그대로면 저장을 건너뛰게 되며(G07) 받은 말씀이 기기에 안 남았다
-   if(JSON.stringify([svc.word||null,(S.readRev||{})[svc.id]||0])!==w0)save()}catch(e){}})():null;
-  if(notesP||wordP)await netCap(Promise.all([notesP,wordP]));   // 둘은 서로 기다릴 까닭이 없다
+  if(online()&&!same){const h=location.hash;
+   const p=Promise.all([pullNotesOnce(svc),pullWordOnce(svc)]).then(a=>a.some(Boolean));   // 둘은 서로 기다릴 까닭이 없다
+   if(enter||r.name==='edit')await netCap(p);else p.then(ch=>redrawView(h,ch)).catch(()=>{})}
   if(stale())return;
   if(online()&&r.name==='view'&&!REH.at[svc.id])await pullRehearsals(svc.id);
   else if(online()&&r.name==='view'&&!same)pullRehearsals(svc.id).then(ch=>{if(ch&&route().name==='view')render()});
@@ -6900,9 +6923,9 @@ async function pushOnboard(){
    markAskedPush();setPushOff(false);closeModal();
    await savePrefs({quiet:{on:!night}});
    appPushRegister.asked=true;
-   if(NATIVE){const ok=await appPushRegister();toast(ok?'알림을 켰어요':'알림을 켜지 못했어요 · 휴대폰 설정에서 켤 수 있어요');render();return}
+   if(NATIVE){const ok=await appPushRegister();if(ok&&NET.user)PUSH.auto=NET.user.id;toast(ok?'알림을 켰어요':'알림을 켜지 못했어요 · 휴대폰 설정에서 켤 수 있어요');render();return}
    let perm='denied';try{perm=await Notification.requestPermission()}catch(err){}
-   if(perm==='granted'){const ok=await pushRegister();toast(ok?'알림을 켰어요':'알림을 켜지 못했어요')}
+   if(perm==='granted'){const ok=await pushRegister();if(ok&&NET.user)PUSH.auto=NET.user.id;toast(ok?'알림을 켰어요':'알림을 켜지 못했어요')}
    else toast('브라우저에서 알림을 막았어요 · 설정에서 다시 켤 수 있어요');
    render();return}}}
 

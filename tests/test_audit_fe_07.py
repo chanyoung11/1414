@@ -8,6 +8,11 @@
 #  F90 AI 호출 중에 팀을 바꾸면 곡이 다른 팀 라이브러리로 복사되던 것
 #  F91 연습 화면에서 다음 곡으로 넘길 때마다 서버 응답을 기다리던 것
 #  G20 스스로 나간 멤버가 '인도자가 비활성으로 뒀다' 화면에 갇히던 것
+# 되돌림 바로잡기:
+#  F25 로그아웃·401 뒤 같은 계정으로 다시 들어오면 구독을 다시 안 보내던 것 (F25R)
+#  G08 Em 악보를 E·Emin·E minor·E단조 콘티에서 C#m 으로 그리던 것 (SCMODE)
+#  G19 B♭ 같은 느슨한 키·키 모를 때 카포·반감화음·베이스 글자 (CHORD2)
+#  F91 들어올 때 받기가 늦게 실패하면 다시 그리기를 되풀이·곡마다 2.5초 기다림·옮겨도 메모·말씀을 안 받음 (F91B)
 import os, sys, time, json
 from playwright.sync_api import sync_playwright
 
@@ -89,6 +94,64 @@ def t_push_off(b, errs):
     if len(log) != n2 + 1: fail('F25 다시 켰는데 구독을 안 보냄: %d' % (len(log) - n2))
     if pg.evaluate('CONTI.pushState()') != 'granted': fail('F25 다시 켠 뒤 상태가 granted 가 아님')
     print('F25 다시 켜기 ok')
+    pg.goto(URL + '#/'); pg.wait_for_timeout(2500)
+    if len(log) != n2 + 1: fail('F25 설정에서 켠 뒤 홈에 오자 구독을 또 보냄: %d' % (len(log) - n2))
+    c.close()
+
+def db_count(sql):
+    import subprocess
+    try:
+        r = subprocess.run(['docker', 'exec', 'conti-pg', 'psql', '-U', 'postgres', '-tAc', sql], capture_output=True, text=True, timeout=20)
+    except Exception:
+        return None
+    return int(r.stdout.strip()) if r.returncode == 0 and r.stdout.strip().isdigit() else None
+
+def login(pg, user):
+    pg.wait_for_selector('#lgUser', timeout=10000)
+    if pg.locator('#lgName').count(): pg.click('[data-act="lg-mode"][data-m="login"]'); pg.wait_for_timeout(200)   # 가입하던 창이면 로그인으로
+    pg.fill('#lgUser', user); pg.fill('#lgPass', 'secret1'); pg.click('[data-act="lg-submit"]')
+    pg.wait_for_selector('.shell[data-page]', timeout=10000)
+
+# 로그아웃하면 서버가 이 기기 구독을 지운다. 새로 열지 않고 같은 계정으로 다시 들어오면 다시 구독해야 한다
+# (한 세션 한 번 가드가 계정 id 로만 걸려 있어 다시 안 보냈다 — 설정은 '켜져 있어요' 인데 알림은 안 옴)
+def t_push_relogin(b, errs):
+    c, pg = new_page(b, errs, 'push2', permissions=['notifications'])
+    c.add_init_script(PUSH_STUB)
+    log = []
+    pg.on('request', lambda r: log.append(r.url) if '/api/push/subscribe' in r.url else None)
+    user = 'pl' + tag
+    signup(pg, user); make_team(pg, '다시팀')
+    pg.wait_for_timeout(4000)
+    if len(log) != 1: fail('F25 준비: 처음 홈에서 구독 %d번' % len(log))
+    uid = pg.evaluate('CONTI.NET.user.id')
+    rows = lambda: db_count("select count(*) from push_subs where user_id='%s'" % uid)
+    if rows() not in (None, 1): fail('F25 준비: 서버 구독이 1개가 아님 %s' % rows())
+
+    # 1) 로그아웃 → 같은 계정으로 다시 로그인 (새로 열지 않음)
+    pg.goto(URL + '#/settings'); pg.wait_for_selector('.setpane', timeout=8000)
+    pg.click('[data-act="set-tab"][data-t="app"]'); pg.wait_for_selector('#sLogout', timeout=8000)
+    pg.click('#sLogout'); pg.wait_for_selector('#lgUser', timeout=10000)
+    if rows() not in (None, 0): fail('F25 로그아웃했는데 서버 구독이 남음 %s' % rows())
+    login(pg, user); pg.wait_for_timeout(4000)
+    if len(log) != 2: fail('F25 로그아웃 뒤 다시 로그인했는데 구독을 %d번 보냄 (1번이어야)' % (len(log) - 1))
+    if rows() not in (None, 1): fail('F25 다시 로그인 뒤 서버 구독이 %s개' % rows())
+    print('F25 로그아웃 → 다시 로그인하면 다시 구독 ok')
+
+    # 2) 다른 기기에서 '모든 기기에서 로그아웃' → 이 화면은 401 로 로그인 창 → 다시 로그인
+    c2 = b.new_context(); r = c2.request.post(URL + 'api/auth/login', headers=H, data={'username': user, 'password': 'secret1'})
+    if r.status != 200: fail('F25 준비: 다른 기기 로그인 실패 %s' % r.status)
+    r = c2.request.post(URL + 'api/auth/logout', headers=H, data={'all': True}); c2.close()
+    if r.status != 200: fail('F25 준비: 모든 기기 로그아웃 실패 %s' % r.status)
+    if rows() not in (None, 0): fail('F25 준비: 모든 기기 로그아웃인데 서버 구독이 남음')
+    pg.evaluate("CONTI.NET.server=null;dispatchEvent(new Event('online'))")   # 다시 붙으며 /me 가 401
+    pg.wait_for_selector('#lgUser', timeout=10000)
+    n = len(log); login(pg, user); pg.wait_for_timeout(4000)
+    if len(log) != n + 1: fail('F25 401 뒤 다시 로그인했는데 구독을 %d번 보냄 (1번이어야)' % (len(log) - n))
+    if rows() not in (None, 1): fail('F25 401 뒤 다시 로그인한 뒤 서버 구독이 %s개' % rows())
+    # 로그인한 채로 /me 를 다시 받는 것(팀 전환 등)으로는 또 보내지 않는다
+    pg.goto(URL + '#/settings'); pg.wait_for_selector('.setpane', timeout=8000); pg.goto(URL + '#/'); pg.wait_for_timeout(1500)
+    if len(log) != n + 1: fail('F25 다시 로그인한 뒤 홈을 오가자 구독을 또 보냄')
+    print('F25 다른 기기에서 모두 로그아웃 → 다시 로그인하면 다시 구독 ok' + ('' if rows() is not None else ' (DB 확인은 건너뜀)'))
     c.close()
 
 # ---------------------------------------------------------------- 악보 화면 (G08 · G33 · F89)
@@ -202,6 +265,41 @@ def t_score(b, errs):
     print('F89 폰 폭 문서 스크롤 유지 ok (%d)' % d0)
     c.close()
 
+# G08 장·단조가 다른 콘티 키: 으뜸음이 같으면(E ↔ Em) 그대로, 나란한조(G ↔ Em)도 그대로, 나머지는 코드 띠처럼 으뜸음 차이.
+# 예전 규칙은 끝 글자 'm' 만 단조로 봐 Em 악보를 E·Emin·E minor·E단조 콘티에서 C#m 으로 그렸다
+def t_score_mode(b, errs):
+    c, pg = new_page(b, errs, 'scmode')
+    signup(pg, 'sm' + tag); make_team(pg, '단조팀')
+    pg.click('[data-act="new-svc"]'); pg.wait_for_selector('[data-f="svc.name"]'); pg.fill('[data-f="svc.name"]', '단조 예배')
+    pg.click('[data-act="add-item"]'); pg.wait_for_selector('[data-f="item.title"]')
+    pg.fill('[data-f="item.title"]', '단조곡'); pg.fill('[data-f="item.key"]', 'E'); pg.wait_for_timeout(400)
+    svc = pg.evaluate('CONTI.S.services[0].id'); item = pg.evaluate('CONTI.S.services[0].items[0].id')
+    sc = {'at': 1, 'model': 'test', 'lines': 2, 'title': '단조곡', 'key': 'Em', 'time': '4/4', 'verses': 1, 'pickup': False,
+          'measures': [{'c': [{'b': 0, 't': t}], 'n': [{'p': 'E4', 'd': 1}]} for t in ['Em', 'Am', 'B7', 'C']]}
+    pg.evaluate("(sc)=>{const it=CONTI.S.services[0].items[0];it.score=sc;it.key='E';CONTI.save()}", sc)
+    pg.goto(URL + '#/score/%s/%s' % (svc, item)); wait_draw(pg)
+    def show(key):
+        seq = pg.evaluate('CONTI.SC.seq')
+        pg.evaluate("(k)=>{CONTI.S.services[0].items[0].key=k;CONTI.render()}", key); wait_draw(pg, seq)
+        return pg.locator('.top .pill.key').first.inner_text(), svg_text(pg), pg.locator('.top h1').inner_text()
+    for key in ['E', 'Emin', 'E minor', 'E단조', 'Em', 'G']:
+        pill, s, h1 = show(key)
+        if pill != 'Em': fail('G08 Em 악보를 %r 콘티에서 %r 로 옮김 (그대로 Em 이어야)' % (key, pill))
+        if 'B7' not in s or 'G#7' in s or 'C#m' in s: fail('G08 Em 악보를 %r 콘티에서 옮겨 그림' % key)
+        if '연주 ' + key in h1: fail('G08 %r 콘티인데 옮김 안내가 뜸' % key)
+    # 으뜸음이 다르면 코드 띠·차트처럼 으뜸음 차이만큼 (A 콘티 → Am, 조표 차이 +2 인 F#m 이 아니라)
+    pill, s, h1 = show('A')
+    if pill != 'Am' or 'E7' not in s: fail('G08 A 콘티의 Em 악보가 Am 으로 안 옮겨짐: %r' % pill)
+    if '악보 Em' not in h1 or '연주 A' not in h1: fail('G08 A 콘티에서 옮김 안내가 없음')
+    # 장조 악보를 나란한 단조 콘티 키로 적어도 그대로 (G ↔ Em)
+    pg.evaluate("()=>{const it=CONTI.S.services[0].items[0];it.score.key='G';CONTI.save()}")
+    pill, s, h1 = show('Em')
+    if pill != 'G' or 'B7' not in s: fail('G08 G 악보를 Em 콘티에서 옮김: %r' % pill)
+    pill, s, h1 = show('E minor')
+    if pill != 'G': fail('G08 G 악보를 "E minor" 콘티에서 옮김: %r' % pill)
+    print('G08 장·단조가 다른 콘티 키 ok')
+    c.close()
+
 # ---------------------------------------------------------------- G19 · G34 코드 적기
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHEET = os.path.join(ROOT, 'docs', 'sample_sheet.jpg')
@@ -275,6 +373,49 @@ def t_chords(b, errs):
     got = pg.evaluate("CONTI.S.services[0].items[0].score.measures[1].c[0].t")
     if got != 'Bm7': fail('G34 마디 창에 친 bm7 이 Bm7 로 안 들어감: %r' % got)
     print('G34 코드 칸 대소문자 ok')
+    c.close()
+
+# G19 되돌림: 느슨하게 적힌 악보 키(B♭), 키를 모를 때의 카포, 반감화음, 베이스 글자
+def t_chords_more(b, errs):
+    c, pg = new_page(b, errs, 'chord2')
+    signup(pg, 'cm' + tag); make_team(pg, '코드둘팀')
+    pg.click('[data-act="new-svc"]'); pg.wait_for_selector('[data-f="svc.name"]'); pg.fill('[data-f="svc.name"]', '코드 예배2')
+    pg.click('[data-act="add-item"]'); pg.wait_for_selector('[data-f="item.title"]')
+    pg.fill('[data-f="item.title"]', '베이스곡'); pg.fill('[data-f="item.key"]', 'C'); pg.wait_for_timeout(300)
+    pg.set_input_files('#pieceFile', [SHEET])
+    pg.wait_for_function("(()=>{const it=CONTI.S.services[0].items[0];return it&&(it.pieces||[]).length>0})()", timeout=30000)
+    svc = pg.evaluate('CONTI.S.services[0].id')
+    def put(key, sheet_key, chords, capo=0):
+        pg.evaluate("""([k,sk,ch,capo])=>{const it=CONTI.S.services[0].items[0];const p=it.pieces[0];it.key=k;p.sheetKey=sk;p.keyConfirmed=true;p.ocr='done';
+          p.offset=null;p.markers=[];p.chords=ch.map((t,i)=>({id:'x'+i,text:t,x:100+i*120,y:300,w:40,h:30,conf:100,fixed:true}));
+          CONTI.S.team.me.capo=capo;CONTI.save()}""", [key, sheet_key, chords, capo])
+    def play():
+        pg.goto(URL + '#/'); pg.wait_for_timeout(300)
+        pg.goto(URL + '#/play/%s/0' % svc); pg.wait_for_selector('#sheet .chd', timeout=10000); pg.wait_for_timeout(500)
+        return red_chords(pg)
+    # D 악보를 C 로: 반감화음(이끔음)은 올림, 빌려 온 Bb 의 베이스는 Eb (예전: Abm7b5 · Abø · Ab/D#)
+    put('C', 'D', ['A#m7b5', 'A#ø', 'Bb/F', 'E/G#'])
+    got = play()
+    if got != ['G#m7b5', 'G#ø', 'Ab/Eb', 'D/F#']: fail('G19 반감화음·베이스 이름이 틀림: %s' % got)
+    # B♭ 처럼 느슨하게 적힌 악보 키를 A 로 (예전: Gbm · Dbm · E/Ab)
+    put('A', 'B♭', ['Gm', 'Dm', 'F/A'])
+    got = play()
+    if got != ['F#m', 'C#m', 'E/G#']: fail('G19 B♭ 악보를 A 로 옮긴 코드가 b 로 적힘: %s' % got)
+    # G 를 카포 2 로 치면 F 모양. 부속화음의 3음 베이스는 올림 (예전: D/Gb)
+    put('G', 'G', ['E/G#', 'C', 'D', 'B7/D#'], capo=2)
+    got = play()
+    if got != ['D/F#', 'Bb', 'C', 'A7/C#']: fail('G19 카포로 F 모양일 때 베이스가 b 로 적힘: %s' % got)
+    # 악보 키도 연주 키도 모르면 예전처럼 # (C 로 쳐서 카포 2 에 Gbm 이 나왔다)
+    put('', '', ['G#m', 'E', 'C#m'], capo=2)
+    got = play()
+    if got != ['F#m', 'D', 'Bm']: fail('G19 키를 모를 때 카포 코드가 b 로 적힘: %s' % got)
+    # 차트: B♭ 로 적힌 차트를 A 로
+    pg.evaluate("""(()=>{const it=CONTI.S.services[0].items[0];it.key='A';it.chart={key:'B♭',sections:[{name:'V',bars:[{chords:['Bb','Gm']},{chords:['Eb','F/A']}]}]};
+      CONTI.S.team.me.capo=0;CONTI.save()})()""")
+    pg.goto(URL + '#/view/%s' % svc); pg.wait_for_selector('.chart .cc', state='attached', timeout=10000)
+    ch = pg.evaluate("[...document.querySelectorAll('.chart .cc')].map(e=>e.textContent)")
+    if ch != ['A', 'F#m', 'D', 'E/G#']: fail('G19 B♭ 차트를 A 로 옮긴 코드가 틀림: %s' % ch)
+    print('G19 느슨한 키·키 모를 때·반감화음·베이스 글자 ok')
     c.close()
 
 # ---------------------------------------------------------------- F90 AI 중 팀 전환
@@ -447,6 +588,64 @@ def t_nav(b, errs):
     print('F91 늦게 온 메모도 화면에 ok')
     c.close()
 
+# F91 되돌림: 들어올 때 받기가 늦게 실패하면 (1) 보기 화면이 다시 그리기 → 또 받기를 되풀이했고 (2) 곡을 넘길 때마다 또 2.5초씩 기다렸다.
+# (3) 콘티 안에서 옮기면 메모·말씀을 다시 안 받아, 보기에 있다 편집으로 가면 목회자가 쓴 말씀이 비어 보였다(쓰면 덮어씀)
+NOTES_FAIL = r"""
+(()=>{window.__nf=0;const F=window.fetch;
+ window.fetch=function(u,o){const s=String((u&&u.url)||u);
+  if(sessionStorage.getItem('failNotes')==='1'&&/\/api\/notes\?/.test(s)&&!(o&&o.method&&o.method!=='GET')){window.__nf++;
+   return new Promise((_,rej)=>setTimeout(()=>rej(new TypeError('Failed to fetch')),3500))}
+  return F.apply(this,arguments)}})();
+"""
+def t_nav_more(b, errs):
+    c, pg = new_page(b, errs, 'nav2')
+    c.add_init_script(NOTES_FAIL)
+    signup(pg, 'nw' + tag); make_team(pg, '넘김둘팀')
+    pg.click('[data-act="new-svc"]'); pg.wait_for_selector('[data-f="svc.name"]'); pg.fill('[data-f="svc.name"]', '넘김 예배2')
+    for t in ['첫곡', '둘째곡', '셋째곡']:
+        pg.click('[data-act="add-item"]'); pg.wait_for_selector('[data-f="item.title"]'); pg.fill('[data-f="item.title"]', t); pg.wait_for_timeout(300)
+    svc = pg.evaluate('CONTI.S.services[0].id')
+    pg.goto(URL + '#/view/%s' % svc); pg.wait_for_function("document.body.innerText.indexOf('둘째곡')>=0", timeout=10000); pg.wait_for_timeout(800)
+    put_word = """(p)=>fetch('/api/services/'+CONTI.S.services[0].id+'/word',{method:'PUT',headers:{'content-type':'application/json','x-conti':'1'},
+      body:JSON.stringify({teamId:CONTI.S.team.id,word:{passage:p,title:'',line:'',memo:''}})}).then(r=>r.status)"""
+    post_note = """(t)=>fetch('/api/notes',{method:'POST',headers:{'content-type':'application/json','x-conti':'1'},
+      body:JSON.stringify({teamId:CONTI.S.team.id,serviceId:CONTI.S.services[0].id,notes:[{id:'nt'+Date.now().toString(36)+Math.random().toString(36).slice(2,8),itemId:CONTI.S.services[0].items[0].id,layer:'leader',text:t,at:Date.now()}]})}).then(r=>r.status)"""
+    # (3) 다른 기기에서 쓴 메모 · 말씀이 콘티 안에서 옮길 때 들어온다
+    if pg.evaluate(post_note, '다른 기기 메모') != 200: fail('F91 준비: 메모 올리기 실패')
+    pg.goto(URL + '#/play/%s/0' % svc); pg.wait_for_function('CONTI.pl().idx===0&&!!document.querySelector(".songnav")', timeout=10000)
+    try: pg.wait_for_function("CONTI.S.services[0].items[0].notes.some(n=>n.text==='다른 기기 메모')", timeout=6000)
+    except Exception: fail('F91 보기에서 연습으로 옮겼는데 다른 기기의 메모를 안 받음')
+    if pg.evaluate(put_word, '로마서 8:28') != 200: fail('F91 준비: 말씀 올리기 실패')
+    pg.goto(URL + '#/edit/%s' % svc); pg.wait_for_selector('[data-f="svc.name"]', timeout=10000)
+    w = pg.evaluate("(CONTI.S.services[0].word||{}).passage||''")
+    if w != '로마서 8:28': fail('F91 보기·연습에서 편집으로 옮겼는데 서버의 말씀을 안 받음: %r' % w)
+    print('F91 콘티 안에서 옮길 때 메모·말씀 새로 받음 ok')
+
+    # (1) 들어올 때 받기가 늦게 실패해도 보기 화면을 되풀이해 다시 그리지 않는다
+    pg.goto(URL + '#/'); pg.wait_for_timeout(500)
+    pg.evaluate("sessionStorage.setItem('failNotes','1')"); pg.reload(); pg.wait_for_selector('.shell[data-page]', timeout=10000); pg.wait_for_timeout(800)
+    pg.goto(URL + '#/view/%s' % svc)
+    pg.wait_for_function("location.hash.indexOf('view/')>=0&&document.body.innerText.indexOf('둘째곡')>=0", timeout=10000)
+    pg.wait_for_timeout(300)
+    pg.evaluate("document.querySelector('#app').firstElementChild.__mark=1")
+    pg.wait_for_timeout(9000)
+    n = pg.evaluate('window.__nf'); kept = pg.evaluate("!!(document.querySelector('#app').firstElementChild||{}).__mark")
+    if n != 1: fail('F91 받기가 실패하자 메모를 %d번 다시 받음 (1번이어야)' % n)
+    if not kept: fail('F91 받기가 늦게 실패했는데 보기 화면을 다시 그림')
+    print('F91 늦게 실패해도 다시 그리기·다시 받기를 되풀이 안 함 ok')
+
+    # (2) 받기가 실패한 채로 연습으로 옮겨 곡을 넘겨도 기다리지 않는다
+    t0 = time.time(); pg.goto(URL + '#/play/%s/0' % svc)
+    pg.wait_for_function('CONTI.pl().idx===0&&!!document.querySelector(".songnav")', timeout=10000); dt0 = time.time() - t0
+    t0 = time.time(); pg.click('.songnav [data-act="pn"][data-d="1"]')
+    pg.wait_for_function('CONTI.pl().idx===1', timeout=12000); dt1 = time.time() - t0
+    t0 = time.time(); pg.click('.songnav [data-act="pn"][data-d="1"]')
+    pg.wait_for_function('CONTI.pl().idx===2', timeout=12000); dt2 = time.time() - t0
+    if max(dt0, dt1, dt2) > 1.5: fail('F91 받기가 실패한 뒤 옮길 때마다 기다림: %.2f %.2f %.2f' % (dt0, dt1, dt2))
+    print('F91 받기가 실패한 채로도 곡 넘기기 즉시 ok (%.2f, %.2f, %.2f)' % (dt0, dt1, dt2))
+    pg.evaluate("sessionStorage.removeItem('failNotes')")
+    c.close()
+
 # ---------------------------------------------------------------- G20 스스로 나간 사람
 def t_leave(b, errs):
     cl, L = new_page(b, errs, 'leader')
@@ -489,7 +688,7 @@ def t_leave(b, errs):
     print('G20 비활성 화면에서도 팀 만들기 ok')
     cl.close(); cm.close()
 
-TESTS = [('F25', t_push_off), ('SCORE', t_score), ('CHORD', t_chords), ('F90', t_ai_switch), ('F91', t_nav), ('G20', t_leave)]
+TESTS = [('F25', t_push_off), ('F25R', t_push_relogin), ('SCORE', t_score), ('SCMODE', t_score_mode), ('CHORD', t_chords), ('CHORD2', t_chords_more), ('F90', t_ai_switch), ('F91', t_nav), ('F91B', t_nav_more), ('G20', t_leave)]
 
 def run():
     only = set(sys.argv[1:])
