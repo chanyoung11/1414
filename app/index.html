@@ -6720,9 +6720,11 @@ function pgPagesHTML(pages){
   const pub=p.pub||{};
   const blks=p.blocks.map(b=>pgBlockHTML(b,p.stage?{...box,left:b.px,cw:b.pw,fullW:b.pw,gutter:0,stage:true}:box,p)).join('');
   // 무대 조판은 블록을 화면 밖으로 걸쳐 둘 수 있다. 무대에서는 화면 테두리가 잘라 주지만 종이에는
-  // 테두리가 없어 숨긴 부분이 여백·쪽번호 위로 찍혔다 → 화면(캔버스) 크기 칸에 담아 자른다
+  // 테두리가 없어 숨긴 부분이 여백·쪽번호 위로 찍혔다 → 화면(캔버스) 크기 칸에 담아 자른다.
+  // 칸 안은 무대 화면(W×H) 그대로 그리고 통째로 r 배 — 글자까지 같은 비율이라 무대에서 보이던 것만 정확히 남는다
+  const cv=p.canvas;
   return `<div class="ppage ${p.stage?'pstage':''}" style="width:${PG.pw}px;height:${PG.ph}px"><div class="pinner">
-   ${p.stage?`<div class="pclip" style="position:absolute;overflow:hidden;left:${PG.margin}px;top:${PG.margin}px;width:${p.clip.w}px;height:${p.clip.h}px">${blks}</div>`:blks}
+   ${p.stage?`<div class="pclip" style="position:absolute;overflow:hidden;left:${PG.margin}px;top:${PG.margin}px;width:${cv.W*cv.r}px;height:${cv.H*cv.r}px"><div class="pcanvas" style="position:absolute;left:0;top:0;width:${cv.W}px;height:${cv.H}px;transform:scale(${cv.r});transform-origin:0 0">${blks}</div></div>`:blks}
    <div class="pfoot2" style="left:${PG.margin}px;right:${PG.margin}px;bottom:${PG.margin-6}px">
     <span>${esc(pub.name||'예배')} · v${esc(pub.version||0)} · ${esc(p.session||'')}</span>
     ${p.nextText?`<span class="nx">${esc(p.nextText)} ›</span>`:''}
@@ -8004,14 +8006,15 @@ function stgPrintPages(svc){
  // 보통 쪽과 같은 본문 칸 — 사방 여백 안, 아래 쪽번호 줄 위
  const pw=PG.pw-PG.margin*2, ph=PG.ph-PG.margin*2-PG.foot;
  const r=Math.min(pw/W,ph/H);
+ // 블록은 무대 화면 좌표 그대로 두고 화면 전체를 r 배로 줄여(키워) 찍는다 (pgPagesHTML 의 .pcanvas).
+ // 자리·폭·악보만 r 배로 옮기고 송폼 상자·글 상자·메모 띠의 글자와 안쪽 여백은 그대로 두면,
+ // r<1(아이패드 프로·데스크톱)일 때 종이에서 글이 좁은 폭에 다시 감겨 상자가 무대보다 길어졌다 →
+ // 무대에서 다 보이던 맨 아래 상자가 화면 칸에서 잘리고, 쌓인 송폼 상자끼리 겹쳤다
  return (SL.screens||[]).map(sc=>({pub,svc,session:PRT.session,stage:true,
-  box:{cw:pw,gutter:0,cols:1},clip:{w:W*r,h:H*r},
+  box:{cw:pw,gutter:0,cols:1},canvas:{W,H,r},
   blocks:sc.blocks.filter(b=>!b.hidden).map(b=>{
    const {nb,w,left}=stgBlockAt(b,{cw},W,H);
-   const out={...nb,top:nb.top*r,px:left*r,pw:w*r};
-   if(out.type==='slice'||out.type==='strip'){out.height=nb.height*r}
-   if(out.type==='slice')out.scale=nb.scale*r;
-   return out})}))}
+   return {...nb,px:left,pw:w}})}))}
 
 function printPreview(svc){
  const pages=stgPrintPages(svc)||pgCompose(svc);

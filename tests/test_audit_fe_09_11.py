@@ -7,6 +7,7 @@
 #  F140 송폼 모드를 한 바퀴 돌리면 손으로 옮긴 송폼 블록 자리가 사라지던 것 · 송폼 블록뿐인 조판이 편집 불가
 #  F141 여러 곡 화면에서 다른 곡 조각을 탭하면 첫 탭이 먹히던 것
 #  G36  화면 밖으로 걸친 무대 블록이 인쇄에서는 여백·쪽번호 위로 찍히던 것
+#       + 그 고침 뒤, 큰 화면(r<1)에서 무대에 다 보이던 아래끝 송폼·글 상자가 종이에서 잘리던 것
 #   CONTI_URL=http://localhost:8808/ .venv/bin/python tests/test_audit_fe_09_11.py
 import os, sys, time, base64
 from playwright.sync_api import sync_playwright
@@ -288,6 +289,54 @@ def run():
         if not pg.locator('.sblk .ptext').count(): fail('F140 숨김 모드에서 글 블록을 더할 수 없음')
         print('F140 ok — 송폼 블록뿐인 조판도 숨김 모드에서 편집됨')
         pg.keyboard.press('Escape'); pg.wait_for_timeout(300)
+
+        # ---- G36 (되돌려진 수정): 무대에서 다 보이는 송폼·글 상자는 종이에서도 다 나온다 ----
+        # 큰 화면(아이패드 프로 1366×1024 → 종이 배율 r≈0.7)에서 자리·폭만 r 배로 줄이고 글자·안쪽 여백은 그대로 두면
+        # 종이의 상자가 무대보다 길어져, 화면 아래에 붙여 둔 송폼 상자(20px)·글 상자(12px)가 화면 칸에서 잘렸다
+        pg.goto(URL); pg.wait_for_selector('.shell[data-page]', timeout=10000)   # 앞의 무대·편집 상태를 털어 낸다
+        pg.set_viewport_size({'width': 1366, 'height': 1024})
+        pg.evaluate("()=>{location.hash='#/home'}"); pg.wait_for_timeout(500)
+        pg.click('[data-act="new-svc"]'); pg.wait_for_selector('[data-f="svc.name"]', timeout=8000)
+        pg.fill('[data-f="svc.name"]', '큰 화면 예배')
+        for title in ['첫 곡', '둘째 곡']:
+            pg.click('[data-act="add-item"]'); pg.wait_for_timeout(400)
+            pg.fill('[data-f="item.title"]', title); pg.fill('[data-f="item.key"]', 'G')
+            pg.fill('[data-f="item.form"]', 'I – V1 – C – V2 – C – B – C – C – O')
+        pg.wait_for_timeout(800)
+        sid5 = pg.evaluate("CONTI.S.services.find(x=>x.name==='큰 화면 예배').id")
+        open_stage(pg, sid5)
+        pg.click('[data-stg="edit"]'); pg.wait_for_timeout(500)
+        pg.click('[data-sc="text"]'); pg.wait_for_timeout(400)
+        placed = pg.evaluate("""()=>{const bs=%s.filter(b=>!b.hidden);const t=bs.find(b=>b.type==='text'),hs=bs.filter(b=>b.type==='head');
+          if(!t||hs.length<2)return null;
+          t.text='맨 아래 글 — 여기까지 보여야 한다';t.x=0.02;t.w=0.3;hs[0].x=0.34;hs[0].w=0.3;hs[1].x=0.66;hs[1].w=0.32;
+          window.dispatchEvent(new Event('resize'));return bs.length}""" % BLK)
+        if not placed: fail('준비가 잘못됨 — 글 블록·송폼 블록이 없음')
+        pg.wait_for_timeout(600)
+        # 그려진 높이를 재서 화면 아래끝에 붙인다 (편집 중에는 화면이 ek 배로 줄어 있다)
+        pg.evaluate("""()=>{const pe=document.querySelector('#stageWrap .stgpage');const H=pe.offsetHeight,ek=pe.getBoundingClientRect().height/H;
+          for(const b of %s.filter(b=>!b.hidden&&(b.type==='text'||b.type==='head'))){
+            const el=document.querySelector('.sblk[data-sid="'+CSS.escape(b.id)+'"] .blk');if(!el)continue;
+            b.y=(H-el.getBoundingClientRect().height/ek-1)/H}
+          window.dispatchEvent(new Event('resize'))}""" % BLK); pg.wait_for_timeout(600)
+        pg.click('[data-stg="edit"]'); pg.wait_for_timeout(600)   # 편집 끝 — 무대 그대로 보기
+        # 상자마다 화면 안 자리(화면 크기에 대한 비율). 종이에서는 화면 칸에 대한 비율이 같아야 한다
+        REL = """([sel,box])=>{const B=document.querySelector(box).getBoundingClientRect();
+          return [...document.querySelectorAll(sel)].map(e=>{const r=e.getBoundingClientRect();
+            return {c:e.className,l:(r.left-B.left)/B.width,t:(r.top-B.top)/B.height,r:(r.right-B.left)/B.width,b:(r.bottom-B.top)/B.height,px:B.bottom-r.bottom}})}"""
+        on_stage = pg.evaluate(REL, ['#stageWrap .stgpage .songhead,#stageWrap .stgpage .ptext', '#stageWrap .stgpage'])
+        if len(on_stage) != 3 or any(x['b'] > 1.0005 or x['b'] < 0.95 for x in on_stage): fail('준비가 잘못됨 — 무대에서 상자가 아래끝에 다 보이지 않음: %s' % on_stage)
+        pg.click('[data-stg="export"]'); pg.wait_for_selector('#pvGo', timeout=8000)
+        pg.click('#pvGo'); pg.wait_for_selector('#printArea.pv .ppage.pstage', timeout=15000); pg.wait_for_timeout(600)
+        on_paper = pg.evaluate(REL, ['#printArea .ppage.pstage .pclip .songhead,#printArea .ppage.pstage .pclip .ptext', '#printArea .ppage.pstage .pclip'])
+        print('무대:', [(x['c'], round(x['t'], 3), round(x['b'], 3)) for x in on_stage])
+        print('종이:', [(x['c'], round(x['t'], 3), round(x['b'], 3), round(x['px'], 1)) for x in on_paper])
+        if len(on_paper) != len(on_stage): fail('G36 종이의 상자 수가 무대와 다름: %s' % on_paper)
+        for s, q in zip(on_stage, on_paper):
+            if q['px'] < -0.5: fail('G36 무대에서 다 보이던 %s 상자가 종이에서 %.1fpx 잘림' % (q['c'], -q['px']))
+            if max(abs(s[k] - q[k]) for k in 'ltrb') > 0.004: fail('G36 종이의 상자 자리·크기가 무대와 다름: 무대 %s · 종이 %s' % (s, q))
+        pg.click('#printArea [data-pv="close"]'); pg.wait_for_timeout(300)
+        print('G36 ok — 큰 화면에서도 종이가 무대와 같은 비율 · 아래끝 상자가 잘리지 않음')
 
         if errs: fail('콘솔 오류: %s' % errs[:3])
         b.close()
