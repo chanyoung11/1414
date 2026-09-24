@@ -3005,14 +3005,11 @@ function afterSettings(){
   if(e.target.closest('#sRefetch')){const btn=e.target.closest('#sRefetch');btn.disabled=true;btn.textContent='불러오는 중…';
    try{const n=await SYNC.refetchBlobs();toast(n?`악보 ${n}개를 다시 받았어요`:'다시 받을 악보가 없어요');render()}
    catch(err){toast(err.message);btn.disabled=false}return}
-  if(e.target.closest('#sLogout')){const btn=e.target.closest('#sLogout');btn.disabled=true;
-   const warn=await unsyncedWarning().finally(()=>{btn.disabled=false});
-   if(!confirm('로그아웃할까요?\n이 기기에 받아 둔 콘티·악보도 함께 지워져요. 다시 로그인하면 서버에서 다시 받습니다.'+warn))return;
+  if(e.target.closest('#sLogout')){if(!await confirmLogout(e.target.closest('#sLogout')))return;
    doGate('logout');return}
   // 다른 기기의 로그인까지 서버에서 끊는다 (비밀번호를 바꿀 때와 같은 방식)
-  if(e.target.closest('#sLogoutAll')){const btn=e.target.closest('#sLogoutAll');btn.disabled=true;
-   const warn=await unsyncedWarning().finally(()=>{btn.disabled=false});
-   if(!confirm('모든 기기에서 로그아웃할까요?\n이 기기를 포함해 로그인한 모든 곳에서 다시 로그인해야 해요. 이 기기에 받아 둔 콘티·악보도 지워져요.'+warn))return;
+  if(e.target.closest('#sLogoutAll')){
+   if(!await confirmLogout(e.target.closest('#sLogoutAll'),'모든 기기에서 로그아웃할까요?\n이 기기를 포함해 로그인한 모든 곳에서 다시 로그인해야 해요. 이 기기에 받아 둔 콘티·악보도 지워져요.'))return;
    try{await api('/auth/logout',{method:'POST',body:{all:true}})}catch(err){toast(err.message);return}
    doGate('logout');return}
   if(e.target.closest('#sReset')){if(confirm(on?'이 기기에 저장된 콘티·악보·메모를 지웁니다. 계정은 그대로예요. 계속할까요?':'모든 데이터를 지웁니다. 계속할까요?')){dropJournals('');indexedDB.deleteDatabase('conti-v1');location.reload()}return}
@@ -4141,6 +4138,12 @@ async function otherTeamsUnsynced(){const uid0=NET.user&&NET.user.id,out=[];if(!
 async function unsyncedWarning(){const un=await flushUnsynced();let oth=[];try{oth=await otherTeamsUnsynced()}catch(e){console.warn('unsynced',e)}
  return (un?`\n\n아직 서버에 못 올린 수정이 ${un}개 있어요. 지금 로그아웃하면 사라져요.`:'')
   +(oth.length?`\n\n다른 팀에도 서버에 못 올린 수정이 있어요 (${oth.map(o=>o.name+' '+o.n+'개').join(', ')}). 그 팀으로 바꾼 뒤 인터넷에 연결된 채 로그아웃하면 먼저 올려요. 지금 로그아웃하면 사라져요.`:'')}
+// 로그아웃 단추는 모두 여기를 거친다 (설정의 두 단추 · 팀 없는/비활성/초대 화면의 로그아웃). 못 올린 것을 먼저 올려 보고 남은 것을 알린 뒤 묻는다.
+// 초대 화면의 로그아웃은 doGate('logout') 로 바로 가, 다른 팀 초대 링크를 연 인도자가 누르면 묻지도 올리지도 않고 오프라인 메모를 지웠다
+const LOGOUT_ASK='로그아웃할까요?\n이 기기에 받아 둔 콘티·악보도 함께 지워져요. 다시 로그인하면 서버에서 다시 받습니다.';
+async function confirmLogout(btn,ask){if(btn)btn.disabled=true;
+ const warn=await unsyncedWarning().finally(()=>{if(btn)btn.disabled=false});
+ return confirm((ask||LOGOUT_ASK)+warn)}
 // 구글·애플로 처음 오는 사람: 계정을 만들기 전에 약관·개인정보처리방침과 만 14세 안내를 보여 주고 동의를 받는다
 function socialConsent(provider,idToken,name){
  modal(`<b style="font-size:17px">처음 오셨네요</b>
@@ -8754,7 +8757,9 @@ document.addEventListener('click',async e=>{
    if(!n.readAt){n.readAt=new Date().toISOString();NOTI.unread=Math.max(0,NOTI.unread-1);NOTI.sig='';api('/notifications/read',{method:'POST',body:{teamId:S.team.id,ids:[n.id]}}).catch(()=>{})}
    const h=String(n.link||'').replace(/^#\/?/,'');go(h||'home');break}
   case 'go-home':go('home');break;
-  case 'lg-mode':case 'lg-submit':case 'rc-submit':case 'logout':case 'join-go':case 'team-create':case 'team-join':e.preventDefault();doGate(act,el);break;
+  case 'lg-mode':case 'lg-submit':case 'rc-submit':case 'join-go':case 'team-create':case 'team-join':e.preventDefault();doGate(act,el);break;
+  // 팀 없는·비활성·초대 화면의 로그아웃도 설정과 같이 먼저 올려 보고 묻는다 (지금 팀·다른 팀의 못 올린 메모가 함께 지워진다)
+  case 'logout':e.preventDefault();if(await confirmLogout(el))doGate('logout');break;
   case 'new-svc':{const s=newService();if(el.dataset.date)s.date=el.dataset.date;S.services.push(s);save();go('edit/'+s.id);break}
   case 'open-svc':if(!e.target.closest('button'))go(isLeader()?'edit/'+svc.id:'view/'+svc.id);break;
   case 'edit-svc':go('edit/'+svc.id);break;

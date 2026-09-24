@@ -23,6 +23,8 @@
 #  F66    기다리던 자리 수를 뒤 고르기가 버리지 않음 · 자리 수 저장이 실패하면 칸도 되돌림
 #  F131   다른 팀에 남은 못 올린 메모도 로그아웃 확인이 팀 이름과 함께 알림
 #  G07    보기 화면에서 쓰고·지운 메모(editedAt 그대로)도 저널에 적힘
+#  검토 회귀:
+#  F131   초대·팀 없는 화면의 로그아웃 단추도 먼저 올려 보고 남은 것을 알리며 묻는다 (초대 화면은 묻지도 올리지도 않고 지웠다)
 import os, sys, time, re, json, datetime, subprocess
 from playwright.sync_api import sync_playwright
 
@@ -898,6 +900,59 @@ def sec_r_logout(b):
     print('F131 로그아웃: 다른 팀의 못 올린 메모도 팀 이름과 함께 알림 · 그 팀으로 바꿔 로그아웃하면 올라감 ok')
     c3.close()
 
+# F131 (검토 회귀): 초대 화면·팀 없는 화면의 로그아웃 단추도 설정과 같이 먼저 올려 보고, 남은 것을 알리며 묻는다.
+# 초대 화면의 단추는 doGate('logout') 로 바로 가, 다른 팀 초대 링크를 연 인도자의 오프라인 메모를 묻지도 올리지도 않고 지웠다
+def sec_r_logout_gate(b):
+    cX, uX, uidX, tX = leader(b, 'gx', team_name='초대팀')
+    code = invite_code(cX, tX)
+    c, u, uid, tA = leader(b, 'gl', team_name='내팀', service_workers='block')
+    pg = c.new_page(); msgs = []; ans = {'ok': False}; pg.errs = []
+    pg.on('pageerror', lambda e: pg.errs.append(str(e)[:200]))
+    pg.on('dialog', lambda dl: (msgs.append(dl.message), dl.accept() if ans['ok'] else dl.dismiss()))
+    pg.goto(URL + '#/home'); pg.wait_for_selector('.shell[data-page]', timeout=15000)
+    sid = new_service_ui(pg, '초대 화면 예배', '곡1'); publish_ui(pg, sid)
+    if not wait_until(pg, "(id)=>{const s=CONTI.S.services.find(x=>x.id===id);return s&&s.published&&!s.pubPending}", arg=sid): fail('발행 실패 (초대 화면)')
+    pg.goto(URL + '#/home'); pg.wait_for_timeout(500)
+    pg.route('**/api/notes', lambda r: r.abort('failed'))
+    pg.evaluate("""(id)=>{CONTI.NET.server=false;const s=CONTI.S.services.find(x=>x.id===id);
+      s.items[0].notes=(s.items[0].notes||[]).concat({id:'njoin'+Date.now().toString(36),layer:'mine',text:'초대 화면 메모',at:Date.now()});CONTI.save();CONTI.NET.server=true}""", sid)
+    pg.wait_for_timeout(1500)
+    in_idb = "(k)=>CONTI.IDB.get('kv',k).then(r=>!!r&&r.includes('초대 화면 메모'))"
+    if not pg.evaluate(in_idb, 'state:%s:%s' % (uid, tA)): fail('준비: 메모가 IndexedDB 에 없음 (초대 화면)')
+    pg.goto(URL + '#/join/' + code); pg.wait_for_selector('[data-act="team-join"]', timeout=10000); pg.wait_for_timeout(500)
+    # 올릴 수 없으면 확인 창이 알리고, 취소하면 그대로다
+    pg.click('[data-act="logout"]'); pg.wait_for_timeout(2500)
+    if not msgs: fail('초대 화면의 로그아웃이 묻지 않고 이 기기의 콘티·메모를 지움')
+    if '못 올린' not in msgs[-1]: fail('못 올린 메모가 있는데 초대 화면의 로그아웃 확인에 경고가 없음: %s' % msgs[-1:])
+    if pg.locator('#lgUser').count(): fail('취소했는데 로그아웃됨 (초대 화면)')
+    if not pg.evaluate(in_idb, 'state:%s:%s' % (uid, tA)): fail('취소했는데 메모가 기기에서 지워짐 (초대 화면)')
+    # 연결되면 먼저 올리고 로그아웃한다 (메모가 서버에 남는다)
+    pg.unroute('**/api/notes'); ans['ok'] = True; n0 = len(msgs)
+    pg.click('[data-act="logout"]'); pg.wait_for_selector('#lgUser', timeout=15000); pg.wait_for_timeout(800)
+    if len(msgs) <= n0: fail('초대 화면의 로그아웃이 두 번째에는 묻지 않음')
+    if '못 올린' in msgs[-1]: fail('올릴 수 있는데 못 올렸다는 경고가 남음: %s' % msgs[-1])
+    if any('초대 화면 메모' in v for v in pg.evaluate(IDB_DUMP)['kv'].values()): fail('초대 화면에서 로그아웃했는데 메모가 IndexedDB 에 남음')
+    ok(c.request.post(URL + 'api/auth/login', headers=H, data={'username': u, 'password': 'secret1'}))
+    if not any(n.get('text') == '초대 화면 메모' for n in ok(c.request.get(URL + 'api/notes?team=%s&service=%s' % (tA, sid)))['notes']):
+        fail('초대 화면에서 로그아웃하자 못 올린 메모가 올라가지도 않고 지워짐')
+    if pg.errs: fail('JS 오류: %s' % pg.errs[:3])
+    print('F131 초대 화면 로그아웃: 먼저 올려 보고 남은 것을 알리며 묻는다 ok')
+    cX.close(); c.close()
+    # 팀 없는 화면(팀 만들기)의 로그아웃도 묻는다
+    c2, u2, uid2 = account(b, 'gn', '민수', service_workers='block')
+    p2 = c2.new_page(); m2 = []; a2 = {'ok': False}; p2.errs = []
+    p2.on('pageerror', lambda e: p2.errs.append(str(e)[:200]))
+    p2.on('dialog', lambda dl: (m2.append(dl.message), dl.accept() if a2['ok'] else dl.dismiss()))
+    p2.goto(URL + '#/home'); p2.wait_for_selector('#gtTeam', timeout=15000)
+    p2.click('[data-act="logout"]'); p2.wait_for_timeout(1500)
+    if not m2 or '로그아웃할까요' not in m2[-1]: fail('팀 없는 화면의 로그아웃이 묻지 않음: %s' % m2[-1:])
+    if p2.locator('#lgUser').count() or not p2.locator('#gtTeam').count(): fail('취소했는데 로그아웃됨 (팀 없는 화면)')
+    a2['ok'] = True
+    p2.click('[data-act="logout"]'); p2.wait_for_selector('#lgUser', timeout=15000)
+    if p2.errs: fail('JS 오류: %s' % p2.errs[:3])
+    print('F131 팀 없는 화면 로그아웃: 묻고, 취소하면 그대로 ok')
+    c2.close()
+
 # G07: 쓰기 간격 안에 새로고침·닫기 해도 고친 것이 남는다 · 간격이 끝없이 밀리지 않는다 · 안 쓰던 저장 되살림
 def sec_r_save(b):
     c, u, uid, team = leader(b, 'rs', service_workers='block')
@@ -1044,7 +1099,7 @@ def run():
     secs = [('publish', sec_publish), ('native', sec_native_token), ('hero', sec_hero_lineup), ('fixed', sec_fixed_notes),
             ('prefs', sec_prefs), ('todo', sec_todo), ('logout', sec_logout), ('yt', sec_yt), ('save', sec_save_cost), ('legal', sec_legal),
             ('r-pub', sec_r_pub), ('r-pub2', sec_r_pub2), ('r-hero', sec_r_hero), ('r-prefs', sec_r_prefs), ('r-lineup', sec_r_lineup),
-            ('r-logout', sec_r_logout), ('r-save', sec_r_save), ('r-save-note', sec_r_save_note)]
+            ('r-logout', sec_r_logout), ('r-logout-gate', sec_r_logout_gate), ('r-save', sec_r_save), ('r-save-note', sec_r_save_note)]
     with sync_playwright() as p:
         b = p.chromium.launch()
         for name, fn in secs:
