@@ -4771,7 +4771,9 @@ function addToServiceSheet(songIds,arrPick,into){
   if(sel.first)svc.items.unshift(...added);else svc.items.push(...added);
   SEL[svc.id]=SEL[svc.id]||{};SEL[svc.id].item=(added[added.length-1]||{}).id;
   touch(svc);save();closeModal();
-  if(goEditor)go('edit/'+svc.id);else{LIB.sel=[];LIB.pick=null;toast(`${ids.length}곡을 ${svc.name}에 넣었어요`);render()}};
+  // 에디터에서 연 창이면 이미 그 주소다 — 주소를 같은 값으로 바꾸면 hashchange 가 안 일어나 넣은 곡이 화면에 안 나왔다(두 번 넣게 된다)
+  if(goEditor){const r=route();if(r.name==='edit'&&r.a===svc.id)render();else go('edit/'+svc.id)}
+  else{LIB.sel=[];LIB.pick=null;toast(`${ids.length}곡을 ${svc.name}에 넣었어요`);render()}};
  const wire=()=>{$('#modal').onclick=async e=>{
   if(e.target.closest('[data-close]')){closeModal();return}
   const b=e.target.closest('[data-ats]');if(b){sel.svc=b.dataset.ats;closeModal();show();return}
