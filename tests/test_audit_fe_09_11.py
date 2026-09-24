@@ -338,6 +338,30 @@ def run():
         pg.click('#printArea [data-pv="close"]'); pg.wait_for_timeout(300)
         print('G36 ok — 큰 화면에서도 종이가 무대와 같은 비율 · 아래끝 상자가 잘리지 않음')
 
+        # 자동 조판도 같다 — 악보 없는 12곡을 큰 화면에 자동으로 쌓으면 맨 아래 송폼 상자가 종이에서 잘리고(8px),
+        # 높이가 안 줄어든 송폼 상자끼리 종이에서 더 겹쳤다
+        pg.evaluate("()=>{location.hash='#/home'}"); pg.wait_for_timeout(500)
+        pg.click('[data-act="new-svc"]'); pg.wait_for_selector('[data-f="svc.name"]', timeout=8000)
+        pg.fill('[data-f="svc.name"]', '열두 곡 예배')
+        for i in range(12):
+            pg.click('[data-act="add-item"]'); pg.wait_for_timeout(300)
+            pg.fill('[data-f="item.title"]', '곡 %d' % (i + 1)); pg.fill('[data-f="item.key"]', 'A')
+            pg.fill('[data-f="item.form"]', 'I – V1 – C – V2 – C – B – C – O')
+        pg.wait_for_timeout(800)
+        sid6 = pg.evaluate("CONTI.S.services.find(x=>x.name==='열두 곡 예배').id")
+        open_stage(pg, sid6)
+        on_stage = pg.evaluate(REL, ['#stageWrap .stgpage .songhead', '#stageWrap .stgpage'])
+        if len(on_stage) < 6 or max(x['b'] for x in on_stage) < 0.9: fail('준비가 잘못됨 — 자동 조판이 화면 아래까지 차지 않음: %s' % on_stage)
+        pg.click('[data-stg="export"]'); pg.wait_for_selector('#pvGo', timeout=8000)
+        pg.click('#pvGo'); pg.wait_for_selector('#printArea.pv .ppage.pstage', timeout=15000); pg.wait_for_timeout(600)
+        on_paper = pg.evaluate(REL, ['#printArea .ppage.pstage:first-child .pclip .songhead', '#printArea .ppage.pstage:first-child .pclip'])
+        if len(on_paper) != len(on_stage): fail('G36 자동 조판 — 종이 첫 쪽의 송폼 상자 수가 무대 첫 화면과 다름: %d · %d' % (len(on_paper), len(on_stage)))
+        for s, q in zip(on_stage, on_paper):
+            if s['b'] <= 1.0005 and q['px'] < -0.5: fail('G36 자동 조판 — 무대에서 다 보이던 송폼 상자가 종이에서 %.1fpx 잘림' % -q['px'])
+            if max(abs(s[k] - q[k]) for k in 'ltrb') > 0.004: fail('G36 자동 조판 — 종이의 송폼 상자 자리·크기가 무대와 다름: 무대 %s · 종이 %s' % (s, q))
+        pg.click('#printArea [data-pv="close"]'); pg.wait_for_timeout(300)
+        print('G36 ok — 자동 조판(12곡) 송폼 상자도 무대와 같은 비율 · %d개 · 맨 아래 %.3f' % (len(on_paper), max(x['b'] for x in on_paper)))
+
         if errs: fail('콘솔 오류: %s' % errs[:3])
         b.close()
     print('OK — fe-09-11')
