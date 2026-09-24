@@ -1546,7 +1546,13 @@ on('PUT', '/services/:id', async ({ uid, params, body }) => {
            where services.version < excluded.version
            returning version`,
     [teamId, params.id, docJson, +doc.version || 0, str(doc.name, 120), str(doc.date, 20), uid]);
-  if (!wrote.length) throw conflict(((await one('select version from services where team_id=$1 and id=$2', [teamId, params.id])) || { version: +doc.version || 0 }).version);
+  if (!wrote.length) {
+    // 같은 판을 동시에 두 번 받으면(켤 때 다시 올리기 + 단추, 두 기기의 같은 되올림) 위의 같은-판 검사를 둘 다 지나
+    // 늦은 쪽이 가짜 409 를 받았다. 막힌 뒤 지금 서버 것이 바로 이 판이면 이미 된 것으로 받는다 (알림은 먼저 쓴 쪽이 보냈다)
+    const now = await one(`select version, (doc - 'stageLayouts') = ($3::jsonb - 'stageLayouts') as same from services where team_id=$1 and id=$2`, [teamId, params.id, docJson]);
+    if (now && now.version === (+doc.version || 0) && now.same) return { ok: true, version: now.version, same: true };
+    throw conflict((now || { version: +doc.version || 0 }).version);
+  }
   // §1 알림: publish(팀 전원, 발행자 제외) · note.updated(인도자의 글이 이전 발행과 다를 때)
   try {
     const version = +doc.version || 0, md = mdOf(doc.date), name = str(doc.name, 60) || '예배';

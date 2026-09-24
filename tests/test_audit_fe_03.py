@@ -13,6 +13,12 @@
 #  G30    유튜브: 늦게 준비돼도(중계) '재생할 수 없어요'가 남지 않는다
 #  G07    큰 상태에서 글자마다 전체 저장이 돌지 않는다 · 바뀐 것 없는 곡 받기는 저장하지 않는다
 #  F70    개인정보처리방침 처리위탁 표 (Cloud Run·R2)
+#  검증에서 되돌려진 것 (r-*):
+#  F69·F18 다시 올리기 409 뒤에도 못 보낸 곡은 '수정 중'으로 남음 · 같은 판을 겹쳐 올려도 가짜 충돌 없음 ·
+#          켤 때 온라인이었다가 끊긴 발행도 다시 연결·화면 복귀에 올림 · 올리는 중 표시 · 올린 뒤 홈이 바로 바뀜
+#  F67    초안에서만 날짜를 옮긴 콘티의 히어로 · F71 알림 탭을 느린 받기 없이 바로 그림 · 받는 사이 끈 것 유지
+#  F66    편성 저장 줄 (닫기·다시 그리기·비우기·자리 수·두 날짜·통보) · F131 로그아웃 전에 못 올린 메모 올리기·경고 · 안 쓰는 파일 지우기
+#  G07    쓰기 간격 안의 새로고침·닫기(저널) · 간격이 끝없이 밀리지 않음 · 초기화·팀 전환과 저널
 import os, sys, time, re, json, datetime, subprocess
 from playwright.sync_api import sync_playwright
 
@@ -486,6 +492,8 @@ def sec_save_cost(b):
     c, u, uid, team = leader(b, 'sv', service_workers='block')
     ok(c.request.post(URL + 'api/songs', headers=H, data={'teamId': team, 'title': '저장곡'}))
     pg = page(c)
+    # 켤 때의 목록 받기가 끝난 뒤에 넣는다 — 늦게 끝나면 서버에 없는 지난 예배를 '서버에서 지워진 것'으로 치워 상태가 작아진다
+    pg.evaluate('CONTI.SYNC.pullServices()'); pg.wait_for_timeout(300)
     # 몇 년 치가 쌓인 팀처럼 상태를 크게 만든다
     pg.evaluate("""()=>{const big='가'.repeat(2000);for(let i=0;i<400;i++){const items=[];for(let k=0;k<6;k++)items.push({id:'i'+i+'_'+k,title:'곡'+k,pieces:[{id:'p',blob:'',markers:[],chords:Array.from({length:40},(_,j)=>({t:big.slice(0,40),x:j}))}],media:[],notes:[{id:'n'+k,text:big}]});
       CONTI.S.services.push({id:'old'+i,name:'지난 예배 '+i,date:'2024-01-01',notice:'',version:1,items,published:{version:1,items:JSON.parse(JSON.stringify(items))}})}}""")
@@ -529,10 +537,395 @@ def sec_legal(b):
     print('F70 처리위탁 표: Cloud Run·Neon(싱가포르)·Cloudflare R2 · 시행일 = 서버 버전 ok')
     c.close(); c2.close()
 
+# ================================================================ 검증에서 되돌려진 것 바로잡기
+def toasts_on(pg):
+    pg.evaluate("""()=>{if(window.__toasts)return;window.__toasts=[];const t=document.getElementById('toast');
+      new MutationObserver(()=>window.__toasts.push(t.textContent)).observe(t,{childList:true,characterData:true,subtree:true})}""")
+
+def delay_put(pg, suffix, ms, times=1):
+    # 페이지 안에서 PUT 하나(또는 여러 번)를 늦게 보낸다 (파이썬 route 에서 자면 브라우저 전체가 멈춘다)
+    pg.evaluate("""([sfx,ms,times])=>{const of=window.fetch;let n=0;window.fetch=(u,o)=>{if(String(u).endsWith(sfx)&&o&&o.method==='PUT'&&n++<times)
+      return new Promise(r=>setTimeout(r,ms)).then(()=>of(u,o));return of(u,o)}}""", [suffix, ms, times])
+
+def svc_of(pg, sid):
+    return pg.evaluate("(id)=>{const s=CONTI.S.services.find(x=>x.id===id);return s?{items:s.items.map(i=>i.title),pub:s.published&&s.published.items.map(i=>i.title),v:s.version,pv:s.published&&s.published.version,pending:!!s.pubPending}:null}", sid)
+
+# F69 · F18(1): 다시 올리기가 409 를 받아도 보내지 못한 내 곡은 '수정 중' 초안으로 남는다 · 겹쳐 올려도 가짜 충돌이 없다
+def sec_r_pub(b):
+    c, u, uid, team = leader(b, 'rq', service_workers='block')
+    pg = page(c)
+    sid = new_service_ui(pg, '충돌 예배', '곡1')
+    publish_ui(pg, sid)
+    if not wait_until(pg, "(id)=>{const s=CONTI.S.services.find(x=>x.id===id);return s&&s.published&&!s.pubPending}", arg=sid): fail('v1 발행 실패')
+    date = pg.evaluate("(id)=>CONTI.S.services.find(x=>x.id===id).date", sid)
+    rx = re.compile(r'.*/api/services/%s$' % re.escape(sid))
+    hit = {'n': 0}
+    def cut(route):
+        if route.request.method == 'PUT' and hit['n'] == 0: hit['n'] += 1; return route.abort('failed')
+        route.continue_()
+    pg.route(rx, cut)
+    publish_ui(pg, sid, add_song='내곡2'); pg.wait_for_timeout(1500)
+    st = svc_of(pg, sid)
+    if not (st['pending'] and st['pv'] == 2): fail('준비: 실패한 v2 가 발행 대기가 아님: %s' % st)
+    pg.unroute(rx, cut)
+    other = [{'id': 'o1', 'title': '곡1', 'key': '', 'pieces': [], 'media': []}, {'id': 'o2', 'title': '남의곡2', 'key': '', 'pieces': [], 'media': []}]
+    ok(c.request.put(URL + 'api/services/' + sid, headers=H, data={'teamId': team, 'doc': {'id': sid, 'name': '충돌 예배', 'date': date, 'version': 2, 'items': other}}), '다른 기기 v2')
+    pg.goto(URL + '#/home'); pg.wait_for_selector('[data-act="repub"]', timeout=8000)
+    pg.click('[data-act="repub"]')
+    if not wait_until(pg, "(id)=>{const s=CONTI.S.services.find(x=>x.id===id);return s&&!s.pubPending&&s.published.items.some(i=>i.title==='남의곡2')}", 10000, sid):
+        fail('충돌 뒤 서버 발행본을 받지 않음: %s' % svc_of(pg, sid))
+    st = svc_of(pg, sid)
+    if '내곡2' not in st['items']: fail('충돌 뒤 보내지 못한 내 곡이 사라짐 (다시 발행할 게 없음): %s' % st)
+    if not st['v'] > st['pv']: fail("충돌 뒤 내 초안이 '수정 중'으로 안 남음: %s" % st)
+    pg.wait_for_timeout(400)
+    if '수정 중' not in pg.locator('#app').inner_text(): fail("홈에 '수정 중' 표시가 없음")
+    publish_ui(pg, sid)
+    if not wait_until(pg, "(id)=>{const s=CONTI.S.services.find(x=>x.id===id);return s&&!s.pubPending&&s.published.version===3}", 10000, sid): fail('충돌 뒤 다시 발행이 안 됨: %s' % svc_of(pg, sid))
+    doc = ok(c.request.get(URL + 'api/services/%s?team=%s' % (sid, team)))['doc']
+    if doc['version'] != 3 or '내곡2' not in [i['title'] for i in doc['items']]: fail('다시 발행한 v3 에 내 곡이 없음: %s' % [i['title'] for i in doc['items']])
+    print("F69·F18 다시 올리기 충돌: 못 보낸 내 곡은 '수정 중'으로 남고 v3 으로 다시 발행됨 ok")
+
+    # 켤 때 올리기와 다시 올리기 단추가 겹쳐도(같은 판을 동시에) 가짜 '이미 발행' 충돌이 없다
+    toasts_on(pg)
+    hit['n'] = 0; pg.route(rx, cut)
+    publish_ui(pg, sid, add_song='곡4'); pg.wait_for_timeout(1500)
+    if not svc_of(pg, sid)['pending']: fail('준비: 실패한 v4 가 발행 대기가 아님')
+    pg.unroute(rx, cut)
+    pg.goto(URL + '#/home'); pg.wait_for_timeout(300)
+    pg.evaluate("window.__toasts.length=0")
+    pg.evaluate("(id)=>Promise.all([CONTI.SYNC.pushPending(),CONTI.SYNC.pushPending(id),CONTI.SYNC.pushPending(id)])", sid)
+    pg.wait_for_timeout(300)
+    if svc_of(pg, sid)['pending'] or server_version(c, team, sid) != 4: fail('겹친 다시 올리기 뒤 v4 가 안 올라감: %s' % svc_of(pg, sid))
+    bad_t = [t for t in pg.evaluate('window.__toasts') if '이미 발행' in t]
+    if bad_t: fail('같은 판을 겹쳐 올렸는데 충돌 안내가 뜸: %s' % bad_t)
+    # 서버: 같은 판을 동시에 여러 번 받아도 모두 받아 준다 (하나만 쓰이고 나머지는 같은 판으로 본다)
+    res = pg.evaluate("""async ([id,team,date])=>{const doc={id,name:'충돌 예배',date,version:9,items:[{id:'z',title:'동시'}]};
+      const f=()=>fetch('/api/services/'+id,{method:'PUT',headers:{'x-conti':'1','content-type':'application/json'},body:JSON.stringify({teamId:team,doc})}).then(r=>r.status);
+      return Promise.all([f(),f(),f(),f()])}""", [sid, team, date])
+    if res != [200, 200, 200, 200]: fail('같은 판을 동시에 보냈는데 가짜 409: %s' % res)
+    r = c.request.put(URL + 'api/services/' + sid, headers=H, data={'teamId': team, 'doc': {'id': sid, 'name': 'x', 'date': date, 'version': 9, 'items': []}})
+    if r.status != 409: fail('다른 내용의 같은 판은 여전히 409 여야 함: %s' % r.status)
+    if pg.errs: fail('JS 오류: %s' % pg.errs[:3])
+    print('F69 겹친 다시 올리기·동시에 같은 판: 가짜 충돌 없음 · 다른 판은 409 ok')
+    c.close()
+
+# F18(2·3): 켤 때 온라인이었다가 올리다 끊긴 발행도 다시 연결·화면 복귀에 올린다 · 올린 뒤 홈이 바로 바뀐다 · 올리는 중 표시
+def sec_r_pub2(b):
+    c, u, uid, team = leader(b, 'rr', service_workers='block')
+    pg = page(c)
+    sid = new_service_ui(pg, '재시도 예배', '곡1')
+    publish_ui(pg, sid)
+    if not wait_until(pg, "(id)=>{const s=CONTI.S.services.find(x=>x.id===id);return s&&s.published&&!s.pubPending}", arg=sid): fail('v1 발행 실패')
+    # 올리는 중에 홈으로 가도 '서버에 못 올림'이 아니다
+    delay_put(pg, '/api/services/' + sid, 2500)
+    publish_ui(pg, sid, add_song='곡2'); pg.wait_for_timeout(300)
+    pg.goto(URL + '#/home'); pg.wait_for_timeout(700)
+    t = pg.locator('#app').inner_text()
+    if '서버에 못 올림' in t or pg.locator('[data-act="repub"]').count(): fail("올리는 중인데 홈에 '서버에 못 올림'·다시 올리기")
+    if '올리는 중' not in t: fail("올리는 중 표시가 없음")
+    if not wait_until(pg, "(id)=>{const s=CONTI.S.services.find(x=>x.id===id);return s&&!s.pubPending}", 8000, sid): fail('늦은 발행이 안 끝남')
+    pg.wait_for_timeout(500)
+    if '서버에 못 올림' in pg.locator('#app').inner_text(): fail("올린 뒤에도 '서버에 못 올림'")
+    print("F18 올리는 중에는 '올리는 중' (서버에 못 올림 아님) ok")
+
+    rx = re.compile(r'.*/api/services/%s$' % re.escape(sid))
+    hit = {'n': 0}
+    def cut(route):
+        if route.request.method == 'PUT' and hit['n'] == 0: hit['n'] += 1; return route.abort('failed')
+        route.continue_()
+    for v, how in ((3, 'online'), (4, 'visible')):
+        hit['n'] = 0; pg.route(rx, cut)
+        publish_ui(pg, sid, add_song='곡%d' % v); pg.wait_for_timeout(1500)
+        if not svc_of(pg, sid)['pending']: fail('준비: 올리다 끊긴 v%d 가 발행 대기가 아님' % v)
+        if pg.evaluate('CONTI.NET.server') is not True: fail('준비: 켤 때 온라인이어야 함')
+        pg.unroute(rx, cut)
+        pg.goto(URL + '#/home'); pg.wait_for_timeout(400)
+        if how == 'online': pg.evaluate("window.dispatchEvent(new Event('online'))")
+        else: pg.evaluate("document.dispatchEvent(new Event('visibilitychange'))")
+        if not wait_until(pg, "(id)=>{const s=CONTI.S.services.find(x=>x.id===id);return s&&!s.pubPending}", 8000, sid):
+            fail("온라인으로 켠 뒤 끊긴 발행이 '%s' 에도 다시 안 올라감" % how)
+        if server_version(c, team, sid) != v: fail('v%d 가 서버에 없음: %s' % (v, server_version(c, team, sid)))
+        pg.wait_for_timeout(600)
+        if '서버에 못 올림' in pg.locator('#app').inner_text(): fail("다시 올린 뒤에도 홈에 '서버에 못 올림'이 남음 (%s)" % how)
+    print('F18 켤 때 온라인 → 올리다 끊긴 발행: 다시 연결·화면 복귀에 올리고 홈이 바로 바뀜 ok')
+
+    # 오프라인으로 켠 뒤 다시 연결 → 올린 뒤 홈이 다른 화면으로 옮기지 않아도 바뀐다
+    off = lambda r: r.abort('internetdisconnected')
+    pg.route('**/api/**', off)
+    pg.goto(URL + '#/home'); pg.reload(); pg.wait_for_selector('.shell', timeout=15000); pg.wait_for_timeout(500)
+    publish_ui(pg, sid, add_song='곡5'); pg.wait_for_timeout(600)
+    pg.goto(URL + '#/home'); pg.wait_for_timeout(500)
+    if '서버에 못 올림' not in pg.locator('#app').inner_text(): fail("준비: 오프라인 발행이 홈에 '서버에 못 올림'으로 안 보임")
+    pg.unroute('**/api/**', off)
+    pg.evaluate("window.dispatchEvent(new Event('online'))")
+    if not wait_until(pg, "(id)=>{const s=CONTI.S.services.find(x=>x.id===id);return CONTI.NET.server===true&&s&&!s.pubPending}", 15000, sid): fail('다시 연결됐는데 안 올라감')
+    pg.wait_for_timeout(1500)
+    if '서버에 못 올림' in pg.locator('#app').inner_text(): fail("다시 연결돼 올렸는데 홈에 '서버에 못 올림'이 그대로")
+    if pg.errs: fail('JS 오류: %s' % pg.errs[:3])
+    print("F18 오프라인 → 다시 연결해 올리면 홈 표시가 바로 바뀜 ok")
+    c.close()
+
+# F67: 초안에서만 날짜를 옮긴 콘티 — 히어로는 보여 주는 날의 날짜 행을 쓴다
+def sec_r_hero(b):
+    cL, _, uidL, team = leader(b, 'rh', service_workers='block')
+    code = invite_code(cL, team)
+    cM, _, uidM = join(b, 'ri', '민수', team, code, session='드럼')
+    d7, d6 = day(7), day(6)
+    idA = ok(cL.request.post(URL + 'api/teams/%s/dates' % team, headers=H, data={'date': d7, 'label': '주일예배', 'time': '11:00'}))['date']['id']
+    ok(cL.request.get(URL + 'api/services?team=' + team))
+    sid = {x['id']: x['serviceId'] for x in ok(cL.request.get(URL + 'api/teams/%s/schedule' % team))['dates']}[idA]
+    if not sid: fail('준비: 날짜에 콘티가 안 이어짐')
+    ok(cL.request.put(URL + 'api/teams/%s/dates/%s/lineup' % (team, idA), headers=H, data={'lineup': [{'session': '드럼', 'memberId': uidM}]}))
+    ok(cL.request.put(URL + 'api/services/' + sid, headers=H, data={'teamId': team, 'doc': {'id': sid, 'name': '주일예배', 'date': d7, 'notice': '', 'message': '', 'messageRev': 0, 'version': 1, 'items': []}}))
+    ok(cL.request.put(URL + 'api/services/%s/draft' % sid, headers=H, data={'teamId': team, 'doc': {'id': sid, 'name': '주일예배', 'date': d6, 'version': 2, 'items': []}}))
+    dates = ok(cL.request.get(URL + 'api/teams/%s/schedule' % team))['dates']
+    if not any(x['serviceId'] == sid and x['date'] == d6 for x in dates): fail('준비: 초안 날짜로 연결이 안 옮겨짐 %s' % dates)
+    pm = page(cM)
+    if not wait_until(pm, "(id)=>CONTI.S.services.some(s=>s.id===id)&&CONTI.SCH.dates.some(d=>d.serviceId===id)", 12000, sid): fail('멤버가 콘티·일정을 못 받음')
+    pm.evaluate('CONTI.render()'); pm.wait_for_timeout(700)
+    hero = pm.locator('.hero').inner_text().replace('\n', ' | ')
+    if not ('11:00' in hero and '내 자리' in hero): fail('히어로가 보여 주는 날(%s)이 아닌 다른 날의 빈 날짜 행을 붙임: %s' % (d7, hero))
+    if pm.errs: fail('JS 오류: %s' % pm.errs[:3])
+    print('F67 초안에서만 날짜를 옮긴 콘티: 멤버 히어로가 그날의 시간·내 자리 ok')
+    cL.close(); cM.close()
+
+# F71: 알림 탭은 느린 설정 받기를 기다리지 않고 그린다 · 받는 사이 바꾼 것을 옛 값으로 되돌리지 않는다
+def sec_r_prefs(b):
+    cP, u, uid = account(b, 'rn', '하은', service_workers='block')
+    ok(cP.request.post(URL + 'api/teams', headers=H, data={'name': '알림팀2', 'myName': '하은'}))
+    pg = page(cP)
+    pg.goto(URL + '#/settings'); pg.wait_for_selector('.setpane', timeout=8000)
+    pg.click('[data-act="set-tab"][data-t="noti"]'); pg.wait_for_selector('[data-noti="publish"]', timeout=8000)
+    pg.click('[data-act="set-tab"][data-t="app"]'); pg.wait_for_timeout(300)
+    pg.evaluate("""()=>{const of=window.fetch;window.fetch=(u,o)=>{if(/\\/api\\/me\\/prefs$/.test(String(u))&&!(o&&o.method&&o.method!=='GET'))
+      return new Promise(r=>setTimeout(r,4000)).then(()=>of(u,o));return of(u,o)}}""")
+    t0 = time.time()
+    pg.click('[data-act="set-tab"][data-t="noti"]'); pg.wait_for_selector('[data-noti="publish"]', timeout=9000)
+    dt = time.time() - t0
+    if dt > 2: fail('알림 탭이 느린 설정 받기(4초)를 기다린 뒤에야 그려짐: %.1f초' % dt)
+    pg.uncheck('[data-noti="word.request"]')
+    pg.wait_for_timeout(5000)   # 늦은 받기가 돌아온 뒤
+    if pg.is_checked('[data-noti="word.request"]'): fail('받는 사이 끈 알림이 늦게 온 옛 값으로 다시 켜져 보임')
+    if (ok(cP.request.get(URL + 'api/me/prefs'))['prefs'].get('notiOff') or {}).get('word.request') is not True: fail('끈 알림이 저장 안 됨')
+    # 다른 기기에서 바꾼 것은 늦게 와도 받아서 다시 그린다
+    ok(cP.request.patch(URL + 'api/me/prefs', headers=H, data={'prefs': {'notiOff': {'publish': True}}}))
+    pg.click('[data-act="set-tab"][data-t="app"]'); pg.wait_for_timeout(200)
+    pg.click('[data-act="set-tab"][data-t="noti"]'); pg.wait_for_selector('[data-noti="publish"]', timeout=9000)
+    if not wait_until(pg, "()=>{const e=document.querySelector('[data-noti=\"publish\"]');return e&&!e.checked}", 7000): fail('다른 기기에서 끈 알림이 늦은 받기 뒤에도 켜져 보임')
+    if pg.is_checked('[data-noti="word.request"]'): fail('다시 그렸더니 끈 알림이 켜짐')
+    if pg.errs: fail('JS 오류: %s' % pg.errs[:3])
+    print('F71 알림 탭: 느린 받기를 안 기다리고 그림 · 받는 사이 끈 것 유지 · 늦게 온 다른 기기 값 반영 ok')
+    cP.close()
+
+# F66: 편성 저장 줄 — 고른 그때의 편성을 보낸다 (닫아도·다시 그려도·비우기·자리 수·두 날짜·통보)
+def lineup_of(c, team, date_id):
+    row = next(x for x in ok(c.request.get(URL + 'api/teams/%s/schedule' % team))['dates'] if x['id'] == date_id)
+    return sorted((r['session'], r['memberId']) for r in (row['lineup'] or []) if r.get('memberId')), (row.get('slots') or {}), row.get('notified') or []
+
+def sec_r_lineup(b):
+    cL, _, uidL, team = leader(b, 'rk', service_workers='block')
+    code = invite_code(cL, team)
+    cM, _, uidM = join(b, 'rj', '민수', team, code, session='드럼')
+    pl = page(cL)
+    both = sorted([('드럼', uidM), ('인도자', uidL)])
+    mk = lambda n: ok(cL.request.post(URL + 'api/teams/%s/dates' % team, headers=H, data={'date': day(20 + n), 'label': '예배%d' % n, 'time': '19:30'}))['date']['id']
+    def open_(did):
+        pl.goto(URL + '#/lineup/' + did); pl.wait_for_selector('[data-lsel="드럼"]', timeout=12000); pl.wait_for_timeout(400)
+    delay_put(pl, '/lineup', 800, 1000)   # 모든 편성 저장이 0.8초씩 걸린다 (순서는 그대로)
+    # S3 둘 고르고 바로 닫는다
+    d = mk(1); open_(d)
+    pl.select_option('[data-lsel="드럼"]', uidM); pl.wait_for_timeout(100)
+    pl.select_option('[data-lsel="인도자"]', uidL); pl.wait_for_timeout(100)
+    pl.click('.lnpanel [data-act="lclose"].icon'); pl.wait_for_timeout(3000)
+    if lineup_of(cL, team, d)[0] != both: fail('둘 고르고 바로 닫았더니 뒤 선택이 저장 안 됨: %s' % (lineup_of(cL, team, d)[0],))
+    # S9 저장 중에 다른 이유로 다시 그려진다
+    d = mk(2); open_(d)
+    pl.select_option('[data-lsel="드럼"]', uidM); pl.wait_for_timeout(100)
+    pl.select_option('[data-lsel="인도자"]', uidL); pl.wait_for_timeout(50)
+    pl.evaluate('CONTI.render()'); pl.wait_for_timeout(3000)
+    if lineup_of(cL, team, d)[0] != both: fail('저장 중에 다시 그려졌더니 편성이 되돌아감: %s' % (lineup_of(cL, team, d)[0],))
+    if pl.locator('[data-lsel="드럼"]').input_value() != uidM or pl.locator('[data-lsel="인도자"]').input_value() != uidL: fail('다시 그린 화면에서 고른 사람이 빠짐')
+    # S5 고르고 바로 비우기
+    d = mk(3); open_(d)
+    pl.select_option('[data-lsel="드럼"]', uidM); pl.wait_for_timeout(100)
+    pl.click('[data-act="lclear"][data-s="드럼"]'); pl.wait_for_timeout(3000)
+    if lineup_of(cL, team, d)[0] != []: fail('고르고 바로 비웠는데 서버에 남음: %s' % (lineup_of(cL, team, d)[0],))
+    # S6 자리 + 를 빨리 두 번
+    d = mk(4); open_(d)
+    pl.click('[data-act="lslots"][data-s="드럼"][data-d="1"]'); pl.wait_for_timeout(120)
+    pl.click('[data-act="lslots"][data-s="드럼"][data-d="1"]'); pl.wait_for_timeout(3000)
+    sl = lineup_of(cL, team, d)[1]
+    if sl.get('드럼') != 3: fail('자리 + 두 번이 서버에 %s 로 남음' % sl)
+    if pl.locator('[data-lsel="드럼"]').count() != 3: fail('자리 + 두 번 뒤 칸이 3개가 아님')
+    # S7b 한 날짜 저장 중에 다른 날짜로 가서 둘 고른다
+    dx, dy = mk(5), mk(6)
+    open_(dx); pl.select_option('[data-lsel="드럼"]', uidM); pl.wait_for_timeout(100)
+    open_(dy); pl.select_option('[data-lsel="드럼"]', uidM); pl.wait_for_timeout(100)
+    pl.select_option('[data-lsel="인도자"]', uidL); pl.wait_for_timeout(3500)
+    if lineup_of(cL, team, dx)[0] != [('드럼', uidM)]: fail('앞 날짜 편성이 저장 안 됨: %s' % (lineup_of(cL, team, dx)[0],))
+    if lineup_of(cL, team, dy)[0] != both: fail('앞 날짜 저장이 끝나며 뒤 날짜의 선택을 버림: %s' % (lineup_of(cL, team, dy)[0],))
+    # S8 둘 고르고 바로 통보
+    d = mk(7); open_(d)
+    pl.select_option('[data-lsel="드럼"]', uidM); pl.wait_for_timeout(100)
+    pl.select_option('[data-lsel="인도자"]', uidL); pl.wait_for_timeout(100)
+    pl.click('[data-act="lnotify"]'); pl.wait_for_timeout(4000)
+    lu, _, nt = lineup_of(cL, team, d)
+    if lu != both: fail('고르고 바로 통보했더니 편성이 빠짐: %s' % (lu,))
+    if uidM not in nt: fail('통보 기록에 고른 사람이 없음: %s' % nt)
+    if pl.errs: fail('JS 오류: %s' % pl.errs[:3])
+    print('F66 편성 저장 줄: 닫기·다시 그리기·비우기·자리 수·두 날짜·통보 모두 고른 대로 저장 ok')
+    cL.close(); cM.close()
+
+# F131: 로그아웃 — 못 올린 메모는 먼저 올리고, 못 올리면 알린다 · 어느 상태도 안 쓰는 파일도 지운다
+def sec_r_logout(b):
+    c, u, uid, team = leader(b, 'rl', service_workers='block')
+    pg = page(c)
+    sid = new_service_ui(pg, '메모 예배', '곡1'); publish_ui(pg, sid)
+    if not wait_until(pg, "(id)=>{const s=CONTI.S.services.find(x=>x.id===id);return s&&s.published&&!s.pubPending}", arg=sid): fail('발행 실패')
+    pg.goto(URL + '#/home'); pg.wait_for_timeout(500)
+    add_note = """(id)=>{CONTI.NET.server=false;const s=CONTI.S.services.find(x=>x.id===id);
+      s.items[0].notes=(s.items[0].notes||[]).concat({id:'nofl'+Date.now().toString(36),layer:'mine',text:'오프라인 메모',at:Date.now()});CONTI.save();CONTI.NET.server=true}"""
+    pg.evaluate(add_note, sid)
+    pg.evaluate("""async ()=>{await CONTI.IDB.put('blobs','bxorph1',new Blob(['o'.repeat(400)],{type:'image/png'}));
+      await CONTI.IDB.put('blobs','bxshare2',new Blob(['s'.repeat(400)],{type:'image/png'}));
+      await CONTI.IDB.put('kv','state:someoneelse2:none',JSON.stringify({services:[{id:'o',items:[{pieces:[{blob:'bxshare2'}]}]}]}))}""")
+    # 닫히기 전에 적어 둔 이 계정의 저널(다른 팀 것 포함)과 다른 계정의 저널
+    pg.evaluate("""([uid,team])=>{localStorage.setItem('conti-jr:state:'+uid+':'+team,JSON.stringify({at:1,ids:[],services:[{id:'j',items:[{notes:[{text:'저널 비밀메모'}]}]}]}));
+      localStorage.setItem('conti-jr:state:'+uid+':other',JSON.stringify({at:1,ids:[]}));localStorage.setItem('conti-jr:state:someoneelse2:none',JSON.stringify({at:1,ids:[]}))}""", [uid, team])
+    pg.goto(URL + '#/settings'); pg.wait_for_selector('.setpane', timeout=8000)
+    pg.click('[data-act="set-tab"][data-t="app"]'); pg.wait_for_selector('#sLogout', timeout=8000)
+    pg.click('#sLogout'); pg.wait_for_selector('#lgUser', timeout=15000); pg.wait_for_timeout(800)
+    d1 = pg.evaluate(IDB_DUMP)
+    if 'bxorph1' in d1['blobs']: fail('어느 상태도 쓰지 않는 파일(잘라 낸 원본·지운 조각)이 로그아웃 뒤에도 남음')
+    if 'bxshare2' not in d1['blobs']: fail('다른 계정이 쓰는 파일까지 지움')
+    jr = pg.evaluate("Object.keys(localStorage).filter(k=>k.startsWith('conti-jr:'))")
+    if any(k.startswith('conti-jr:state:%s:' % uid) for k in jr): fail('로그아웃 뒤에도 이 계정의 저널(메모)이 남음: %s' % jr)
+    if 'conti-jr:state:someoneelse2:none' not in jr: fail('다른 계정의 저널까지 지움')
+    ok(c.request.post(URL + 'api/auth/login', headers=H, data={'username': u, 'password': 'secret1'}))
+    notes = ok(c.request.get(URL + 'api/notes?team=%s&service=%s' % (team, sid)))['notes']
+    if not any(n.get('text') == '오프라인 메모' for n in notes): fail('못 올린 메모가 로그아웃 때 올라가지도 않고 지워짐')
+    if pg.errs: fail('JS 오류: %s' % pg.errs[:3])
+    print('F131 로그아웃: 못 올린 메모를 먼저 올림 · 안 쓰는 파일도 지움 ok')
+    c.close()
+    # 올릴 수 없으면(메모 전송 실패) 확인 창이 알린다
+    c2, u2, uid2, team2 = leader(b, 'rm', service_workers='block')
+    pg2 = c2.new_page(); msgs = []
+    pg2.on('dialog', lambda dl: (msgs.append(dl.message), dl.dismiss()))
+    pg2.goto(URL + '#/home'); pg2.wait_for_selector('.shell[data-page]', timeout=15000)
+    sid2 = new_service_ui(pg2, '메모 예배2', '곡1'); publish_ui(pg2, sid2)
+    if not wait_until(pg2, "(id)=>{const s=CONTI.S.services.find(x=>x.id===id);return s&&s.published&&!s.pubPending}", arg=sid2): fail('발행 실패 2')
+    pg2.goto(URL + '#/home'); pg2.wait_for_timeout(500)
+    pg2.route('**/api/notes', lambda r: r.abort('failed'))
+    pg2.evaluate(add_note, sid2)
+    pg2.goto(URL + '#/settings'); pg2.wait_for_selector('.setpane', timeout=8000)
+    pg2.click('[data-act="set-tab"][data-t="app"]'); pg2.wait_for_selector('#sLogout', timeout=8000)
+    pg2.click('#sLogout'); pg2.wait_for_timeout(2500)
+    if not msgs or '못 올린' not in msgs[-1]: fail('못 올린 메모가 있는데 로그아웃 확인에 경고가 없음: %s' % msgs[-1:])
+    if pg2.locator('#lgUser').count(): fail('취소했는데 로그아웃됨')
+    print('F131 로그아웃: 올리지 못한 메모가 있으면 확인 창이 알림 ok')
+    c2.close()
+
+# G07: 쓰기 간격 안에 새로고침·닫기 해도 고친 것이 남는다 · 간격이 끝없이 밀리지 않는다 · 안 쓰던 저장 되살림
+def sec_r_save(b):
+    c, u, uid, team = leader(b, 'rs', service_workers='block')
+    pg = page(c)
+    sid = new_service_ui(pg, '저널 예배', '첫 곡'); pg.wait_for_timeout(1500)
+    # 큰 상태처럼: 쓰기 한 번이 오래 걸려(0.12초 → 쉬는 간격 0.6초) 쉬는 사이 저널을 적고, 닫히는 페이지에서 시작한 큰 쓰기는
+    # 끝나지 못한다 (상태 쓰기가 끝나지 않는 것으로 흉내 — 간격 안의 쓰기도 pagehide 의 쓰기도)
+    stall = """()=>{const o=CONTI.IDB.put;CONTI.IDB.put=function(s,k,v){
+      if(s==='kv'){const t=performance.now();while(performance.now()-t<120);return new Promise(()=>{})}return o.apply(this,arguments)}}"""
+    title = "(id)=>{const s=CONTI.S.services.find(x=>x.id===id);return s&&s.items[0].title}"
+    for how, add in (('reload', 'Q0'), ('close', 'Q1')):
+        pg.goto(URL + '#/edit/' + sid); pg.wait_for_selector('[data-f="item.title"]', timeout=10000); pg.wait_for_timeout(400)
+        pg.evaluate(stall)
+        el = pg.locator('[data-f="item.title"]').first
+        el.click(); el.press('End'); el.type(add); pg.wait_for_timeout(1500)
+        if how == 'reload':
+            pg.reload(); pg.wait_for_function("()=>window.CONTI&&document.querySelector('#app').children.length", timeout=15000)
+        else:
+            pg.close(); pg = page(c, '#/home')
+        pg.wait_for_timeout(500)
+        want = '첫 곡Q0' if how == 'reload' else '첫 곡Q0Q1'
+        if pg.evaluate(title, sid) != want: fail('쓰기 간격 안에 %s 하자 고친 제목이 사라짐: %r' % (how, pg.evaluate(title, sid)))
+    pg.wait_for_timeout(1500)
+    if pg.evaluate("Object.keys(localStorage).filter(k=>k.startsWith('conti-jr')).length"): fail('되살린 뒤 다 쓴 저널이 남음')
+    print('G07 쓰기 간격 안의 새로고침·닫기: 고친 것이 남음 ok')
+    # 저장이 계속 불려도 쓰기가 끝없이 밀리지 않는다 (초안 올리기가 부르는 저장 등).
+    # 상태 쓰기 한 번이 0.8초 걸리는 큰 팀처럼 만든다 → 쓰기 간격 4초. 0.5초마다 저장을 불러도 첫 변경에서 8초 안에는 쓴다
+    pg.evaluate("""()=>{window.__p=0;window.__slow=true;const o=CONTI.IDB.put;CONTI.IDB.put=function(s,k,v){
+      if(s==='kv'&&k!=='scope'){window.__p++;const t=performance.now();while(window.__slow&&performance.now()-t<800);}return o.apply(this,arguments)}}""")
+    pg.evaluate('CONTI.save()'); pg.wait_for_timeout(1800)   # 한 번 써서 걸리는 시간을 잰다
+    pg.evaluate('window.__p=0')
+    for i in range(20):
+        pg.evaluate('CONTI.save()'); pg.wait_for_timeout(500)
+    n = pg.evaluate('window.__p')
+    if n < 1: fail('10초 동안 저장이 계속 밀려 한 번도 안 씀')
+    if n > 3: fail('큰 상태인데 저장을 부를 때마다 씀: %d번' % n)
+    pg.evaluate('window.__slow=false'); pg.evaluate('CONTI.save()'); pg.wait_for_timeout(4500)
+    # 메모 그림자만 줄인 것도 저장된다 (홈에서 — 콘티 화면이면 뒤따르는 메모 올리기가 먼저 줄여 버린다)
+    pg.goto(URL + '#/home'); pg.wait_for_timeout(1500)
+    pg.evaluate("(id)=>{CONTI.S.noteShadow=CONTI.S.noteShadow||{};CONTI.S.noteShadow[id]=[{id:'zz',itemId:'gone-item',mediaId:null}];return CONTI.save()}", sid)
+    shadow_saved = "(id)=>CONTI.IDB.get('kv',CONTI.scope()).then(r=>JSON.stringify((JSON.parse(r).noteShadow||{})[id]||[]))"
+    if not wait_until(pg, "(id)=>(%s)(id).then(s=>s.includes('zz'))" % shadow_saved, 9000, sid): fail('준비: 그림자가 저장 안 됨')
+    pg.wait_for_timeout(3500)   # 저장이 부른 뒤따르는 일(곡 올리기 등)이 다 끝난 뒤
+    pg.evaluate("(id)=>CONTI.SYNC.pushNotes(CONTI.S.services.find(x=>x.id===id))", sid); pg.wait_for_timeout(1200)
+    if 'zz' in pg.evaluate(shadow_saved, sid): fail('메모 그림자에서 뺀 것이 저장 안 됨')
+    # 콘티를 열 때 받은 말씀은 메모가 그대로여도 저장된다
+    publish_ui(pg, sid)
+    if not wait_until(pg, "(id)=>{const s=CONTI.S.services.find(x=>x.id===id);return s&&s.published&&!s.pubPending}", arg=sid): fail('발행 실패')
+    ok(c.request.put(URL + 'api/services/%s/word' % sid, headers=H, data={'teamId': team, 'word': {'passage': '요 3:16', 'title': '사랑'}}))
+    pg.goto(URL + '#/home'); pg.wait_for_timeout(300)
+    pg.evaluate("(id)=>{const s=CONTI.S.services.find(x=>x.id===id);s.word=null;return CONTI.save()}", sid); pg.wait_for_timeout(1500)
+    pg.goto(URL + '#/view/' + sid); pg.wait_for_timeout(2500)
+    w = pg.evaluate("(id)=>CONTI.IDB.get('kv',CONTI.scope()).then(r=>{const s=JSON.parse(r).services.find(x=>x.id===id);return s&&s.word&&s.word.passage})", sid)
+    if w != '요 3:16': fail('콘티를 열며 받은 말씀이 저장 안 됨: %r' % w)
+    if pg.errs: fail('JS 오류: %s' % pg.errs[:3])
+    print('G07 저장이 끝없이 밀리지 않음 · 그림자만 준 것·받은 말씀도 저장 ok')
+    # 이 기기 초기화: 저널이 남아 지운 콘티를 되살리지 않는다 (막 고친 것이 아직 안 쓰였어도)
+    pg.goto(URL + '#/edit/' + sid); pg.wait_for_selector('[data-f="item.title"]', timeout=10000); pg.wait_for_timeout(400)
+    pg.evaluate(stall); pg.evaluate('CONTI.save()'); pg.wait_for_timeout(600)   # 느린 쓰기를 한 번 재게 한다
+    el = pg.locator('[data-f="item.title"]').first
+    el.click(); el.press('End'); el.type('R'); pg.wait_for_timeout(800)
+    if not pg.evaluate("Object.keys(localStorage).some(k=>k.startsWith('conti-jr:'))"): fail('준비: 저널이 안 적힘')
+    pg.goto(URL + '#/settings'); pg.wait_for_selector('.setpane', timeout=8000)
+    pg.click('[data-act="set-tab"][data-t="app"]'); pg.wait_for_selector('#sReset', timeout=8000)
+    pg.click('#sReset'); pg.wait_for_timeout(2500)
+    pg.wait_for_function("()=>window.CONTI&&document.querySelector('#app').children.length", timeout=15000); pg.wait_for_timeout(800)
+    if pg.evaluate("(id)=>CONTI.S.services.some(x=>x.id===id&&x.items[0].title.endsWith('R'))", sid): fail('초기화했는데 저널이 고친 콘티를 되살림')
+    left = pg.evaluate("Object.keys(localStorage).filter(k=>k.startsWith('conti-jr:')).map(k=>localStorage.getItem(k)).join('')")
+    if sid in left: fail('초기화 뒤에도 지운 콘티가 저널에 남음')
+    print('G07 이 기기 초기화: 저널도 지워 되살리지 않음 ok')
+    c.close()
+    # 팀을 바꾸는 사이(새 팀 상태를 읽는 중) 저널이 적혀도 앞 팀 콘티를 새 팀 이름으로 적지 않는다 (켤 때 새 팀 콘티를 덮는다)
+    c3, u3, uid3, teamA = leader(b, 'rt', service_workers='block')
+    teamB = ok(c3.request.post(URL + 'api/teams', headers=H, data={'name': '둘째팀', 'myName': '하은', 'session': '인도자'}))['teamId']
+    p3 = page(c3)
+    cur = p3.evaluate('CONTI.S.team.id'); other = teamB if cur == teamA else teamA
+    sidA = new_service_ui(p3, '앞팀 예배', '앞곡'); p3.wait_for_timeout(1500)
+    # 큰 상태처럼 쓰기가 0.12초씩 걸려(쉬는 사이 저널을 적는다) 새 팀 상태 읽기가 0.9초 걸리고, 그사이 저장이 불린다
+    p3.evaluate("""([uid,other])=>{window.__jw=[];const ss=Storage.prototype.setItem;
+      Storage.prototype.setItem=function(k,v){if(String(k).startsWith('conti-jr:'))window.__jw.push([k,JSON.parse(v).ids]);return ss.apply(this,arguments)};
+      const o=CONTI.IDB.put;CONTI.IDB.put=function(s){if(s==='kv'){const t=performance.now();while(performance.now()-t<120);}return o.apply(this,arguments)};
+      const g=CONTI.IDB.get;CONTI.IDB.get=function(s,k){if(s==='kv'&&k==='state:'+uid+':'+other){setTimeout(()=>CONTI.save(),30);
+        const r0=g.apply(this,arguments);return new Promise(r=>setTimeout(()=>r(r0),900))}return g.apply(this,arguments)}}""", [uid3, other])
+    p3.evaluate('CONTI.save()'); p3.wait_for_timeout(700)   # 느린 쓰기를 한 번 재게 한다
+    p3.goto(URL + '#/team'); p3.wait_for_selector('[data-act="team-switch"]', timeout=10000)
+    p3.click('[data-act="team-switch"]'); p3.wait_for_selector('[data-switch="%s"]' % other)
+    p3.click('[data-switch="%s"]' % other)
+    if not wait_until(p3, '(t)=>CONTI.S.team.id===t', 10000, other): fail('준비: 팀 전환이 안 됨')
+    p3.wait_for_timeout(800)
+    bad = [k for k, ids in p3.evaluate('window.__jw') if k.endswith(':' + other) and sidA in (ids or [])]
+    if bad: fail('팀을 바꾸는 사이 앞 팀 콘티가 새 팀 저널로 적힘: %s' % bad)
+    if p3.errs: fail('JS 오류: %s' % p3.errs[:3])
+    print('G07 팀 전환 중 저널: 앞 팀 콘티를 새 팀 이름으로 적지 않음 ok')
+    c3.close()
+
 def run():
     only = set(sys.argv[1:])
     secs = [('publish', sec_publish), ('native', sec_native_token), ('hero', sec_hero_lineup), ('fixed', sec_fixed_notes),
-            ('prefs', sec_prefs), ('todo', sec_todo), ('logout', sec_logout), ('yt', sec_yt), ('save', sec_save_cost), ('legal', sec_legal)]
+            ('prefs', sec_prefs), ('todo', sec_todo), ('logout', sec_logout), ('yt', sec_yt), ('save', sec_save_cost), ('legal', sec_legal),
+            ('r-pub', sec_r_pub), ('r-pub2', sec_r_pub2), ('r-hero', sec_r_hero), ('r-prefs', sec_r_prefs), ('r-lineup', sec_r_lineup),
+            ('r-logout', sec_r_logout), ('r-save', sec_r_save)]
     with sync_playwright() as p:
         b = p.chromium.launch()
         for name, fn in secs:

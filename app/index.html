@@ -1176,7 +1176,7 @@ const lsGet=k=>{try{return localStorage.getItem(k)}catch(e){return null}}; // �
 const THEME={get(){try{return localStorage.getItem('conti-theme')||'system'}catch(e){return 'system'}},set(v){try{localStorage.setItem('conti-theme',v)}catch(e){}THEME.apply()},
  apply(){const v=THEME.get();const dark=v==='dark'||(v==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',dark);const mt=document.querySelector('meta[name=theme-color]');if(mt)mt.content=dark?'#0A0A0A':'#FAFAFA'},
 };
-window.addEventListener('pagehide',()=>{if(typeof SYNC!=='undefined'){SYNC.flush();if(SAVE_DUE)flushSave()}});document.addEventListener('visibilitychange',()=>{if(document.hidden&&typeof SYNC!=='undefined'){SYNC.flush();if(SAVE_DUE)flushSave()}});
+window.addEventListener('pagehide',()=>{if(typeof SYNC!=='undefined'){SYNC.flush();writeJournal();if(SAVE_DUE)flushSave()}});document.addEventListener('visibilitychange',()=>{if(document.hidden&&typeof SYNC!=='undefined'){SYNC.flush();writeJournal();if(SAVE_DUE)flushSave()}});
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{if(THEME.get()==='system')THEME.apply()});
 const fmtToday=()=>{const d=new Date();return `${d.getMonth()+1}월 ${d.getDate()}일 ${'일월화수목금토'[d.getDay()]}요일`};
 let toastT;function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),1800)}
@@ -1347,9 +1347,10 @@ function homeHTML(){
  const upcoming=svcs.filter(s=>(s.date||'')>=today()).length;const pubN=svcs.filter(s=>s.published).length;
  const pick=HOME.pick;
  const rows=svcs.map((s,i)=>{const d=fmtDate(s.date);const past=(s.date||'')<today();
-  const st=s.pubPending?`<span class="badge warn">서버에 못 올림</span>`:s.published?(s.version>s.published.version?`<span class="badge warn">v${esc(s.published.version)} 발행 · 수정 중</span>`:`<span class="badge ok">v${esc(s.published.version)} 발행됨</span>`):`<span class="badge neutral">미발행</span>`;
+  const up=s.pubPending&&SYNC.up.has(s.id);   // 지금 올리는 중 — 못 올린 것이 아니다
+  const st=s.pubPending?(up?`<span class="badge neutral">올리는 중…</span>`:`<span class="badge warn">서버에 못 올림</span>`):s.published?(s.version>s.published.version?`<span class="badge warn">v${esc(s.published.version)} 발행 · 수정 중</span>`:`<span class="badge ok">v${esc(s.published.version)} 발행됨</span>`):`<span class="badge neutral">미발행</span>`;
   return `<div class="svcrow ${past?'past':''} ${pick?'picking':''} ${pick&&HOME.sel.includes(s.id)?'picked':''} rise d${Math.min(i,3)}" data-act="${pick?'pick-svc':'open-svc'}" data-id="${esc(s.id)}">${pick?`<span class="pickbox">${HOME.sel.includes(s.id)?ic('check'):''}</span>`:''}<div class="date"><b>${esc(d.md)}</b><span>${esc(d.w)}</span></div><div class="grow"><div class="t">${esc(svcName(s))}</div><div class="s"><span>${s.items.length}곡</span>${st}</div></div>
-   ${pick?'':`<div class="row">${s.pubPending&&lead&&on?`<button class="btn sm pri" data-act="repub" data-id="${esc(s.id)}">${ic('send')}서버에 다시 올리기</button>`:''}${lead?`<button class="btn sm" data-act="edit-svc" data-id="${s.id}">${ic('pen')}편집</button>`:''}<button class="btn sm ${lead?'':'pri'}" data-act="view-svc" data-id="${s.id}">${ic('eye')}콘티</button>${lead?`<button class="icon sm ghost" data-act="del-svc" data-id="${s.id}" title="삭제">${ic('trash')}</button>`:''}</div>`}</div>`}).join('');
+   ${pick?'':`<div class="row">${s.pubPending&&!up&&lead&&on?`<button class="btn sm pri" data-act="repub" data-id="${esc(s.id)}">${ic('send')}서버에 다시 올리기</button>`:''}${lead?`<button class="btn sm" data-act="edit-svc" data-id="${s.id}">${ic('pen')}편집</button>`:''}<button class="btn sm ${lead?'':'pri'}" data-act="view-svc" data-id="${s.id}">${ic('eye')}콘티</button>${lead?`<button class="icon sm ghost" data-act="del-svc" data-id="${s.id}" title="삭제">${ic('trash')}</button>`:''}</div>`}</div>`}).join('');
  const body=`${heroHTML()}
     ${todoHTML()}
     <div class="metrics rise"><div class="metric"><div class="v">${S.services.length}</div><div class="l">전체 예배</div></div><div class="metric"><div class="v">${upcoming}</div><div class="l">다가오는 예배</div></div><div class="metric"><div class="v">${pubN}</div><div class="l">발행된 콘티</div></div></div>
@@ -2131,7 +2132,10 @@ async function pullSchedule(month,force){const k=month||SCH.month||monthKey();
  const seq=SCH.seq;   // 받는 동안 내가 뭔가 저장했으면, 오래된 응답으로 덮지 않는다
  try{const r=await api(`/teams/${S.team.id}/schedule?from=${a}&to=${b}`);
   if(seq!==SCH.seq)return false;
-  SCH.dates=r.dates||[];SCH.availability=r.availability||[];SCH.members=r.members||[];SCH.role=r.role||'';SCH.month=k;SCH.at=Date.now();return true}
+  SCH.dates=r.dates||[];
+  // 보내는 중인 편성은 받은 것(아직 옛것일 수 있다) 위에 그대로 둔다 — 다시 그린 화면을 읽어 다음 저장을 만들기 때문
+  for(const x of SCH.dates){const lq=LQ[x.id];if(lq&&lq.cur){x.lineup=lq.cur.lineup;if(lq.cur.slots)x.slots=lq.cur.slots}}
+  SCH.availability=r.availability||[];SCH.members=r.members||[];SCH.role=r.role||'';SCH.month=k;SCH.at=Date.now();return true}
  catch(e){toast(e.message);return false}}
 // 내 일정 달력 (§3.2). 이번 달 ~ +2개월, 사역 날짜만 활성
 // 내 일정 (§6.6): 세 달을 세로로 이어 본다. 사역 없는 날은 타일이 아니라 숫자만
@@ -2237,12 +2241,35 @@ function schListHTML(ds,ms){
     :`<i class="${AVN[mySt].cls}" title="내 답">${AVN[mySt].sym} ${AVN[mySt].label}</i>`}</span>
    ${ic('right')}</button>`}).join('')}</div>`}
 // 그날 편성 (§3.4)
-const LN={dateId:null,slots:null,busy:null,again:false};   // 그날만 바꾼 세션 인원 (저장 전 임시) · busy: 저장 중인 날짜
+// 편성 저장 줄 — 날짜마다 하나. 바꾼 그때의 편성(그날 자리 수 포함)을 d 에 바로 적어 두고, 보내는 중이면 마지막 것만
+// 남겨 두었다가 앞 저장이 끝나면 보낸다. 전에는 저장이 끝난 뒤 '그때의 화면'을 다시 읽어 보냈다 — 그사이 패널을 닫으면
+// 뒤 선택이 안 갔고, 다른 까닭으로 다시 그려지면 옛 편성을 다시 보내 이미 저장된 선택까지 지웠다. 날짜마다 따로라
+// 한 날짜의 저장이 끝나며 다른 날짜의 대기를 지우지 않는다. 비우기·자리 수·기본 편성도 같은 줄로 보낸다
+const LQ={};
+function queueLineup(d,lineup,slots){const id=d.id,team=S.team.id;
+ const q=LQ[id]||(LQ[id]={want:null,cur:null,run:null,ok:{lineup:d.lineup||[],slots:d.slots||null}});
+ // 통보 기록(notifiedAt)은 서버가 돌려줄 때까지 같은 자리 것을 그대로 보여 준다 (안 그러면 잠깐 '통보 후 변경'으로 보인다)
+ const prev=d.lineup||[];
+ lineup=lineup.map(r=>{const o=r.memberId&&prev.find(x=>x.session===r.session&&x.memberId===r.memberId);return o?{...o,...r}:r});
+ q.want=q.cur={lineup,slots:slots||null};d.lineup=lineup;if(slots)d.slots=slots;SCH.seq++;
+ if(!q.run)q.run=(async()=>{let ok=false;
+  try{while(q.want){const w=q.want;q.want=null;SCH.seq++;
+   try{const r=await api(`/teams/${team}/dates/${id}/lineup`,{method:'PUT',body:w.slots?{lineup:w.lineup,slots:w.slots}:{lineup:w.lineup}});
+    q.ok={lineup:r.lineup||w.lineup,slots:r.slots||q.ok.slots};ok=true}
+   catch(e){ok=false;toast(e.message)}}}
+  finally{delete LQ[id];SCH.seq++}   // 저장하는 동안 시작한 일정 받기의 옛 응답이 덮지 않게
+  // 다 보냈으면 서버가 정리해 돌려준 것으로, 끝내 못 보냈으면 서버에 있는 것으로 맞춘다 (일정을 다시 받았으면 새 행에)
+  const d2=S.team.id===team&&SCH.dates.find(x=>x.id===id);if(d2){d2.lineup=q.ok.lineup;if(q.ok.slots)d2.slots=q.ok.slots}
+  return ok})();
+ return q.run}
+// 저장이 다 끝나면 편성이 보이는 화면을 한 번 다시 그린다 (보고 있던 자리는 그대로)
+function lineupSaved(p){return p.then(ok=>{if(!/^(lineup|sched)$/.test(route().name))return ok;
+ const bd=$('.lnbody');const top=bd?bd.scrollTop:0;SCH.pending=false;render();const b2=$('.lnbody');if(b2)b2.scrollTop=top;return ok})}
 function lineupHTML(dateId){const d=SCH.dates.find(x=>x.id===dateId);
  if(!d)return `<div class="shell"><div class="main"><header class="hd"><div class="ttl"><h1>편성</h1></div><div class="acts"><button class="icon ghost" title="뒤로" aria-label="뒤로" data-act="sched">${ic('back')}</button></div></header><main><div class="empty">날짜를 찾지 못했어요</div></main></div></div>`;
  const st=S.team.settings||{};const base=st.slots||{};
  // 그날만 인원을 바꿨으면 그 값이 이긴다
- const slots={...base,...(LN.slots&&LN.dateId===dateId?LN.slots:(d.slots||{}))};
+ const slots={...base,...(d.slots||{})};
  const ms=SCH.members.filter(m=>m.role!=='pastor');
  const lineup=d.lineup||[];const nameOf=id=>{const m=ms.find(x=>x.userId===id);return m?m.name:''};
  const usedElsewhere=(mid,sess)=>lineup.some(r=>r.memberId===mid&&r.session!==sess);
@@ -2284,15 +2311,13 @@ function lineupHTML(dateId){const d=SCH.dates.find(x=>x.id===dateId);
    <button class="btn sm" data-act="lkakao">${ic('export')}카톡용 복사</button>
    <button class="btn pri" data-act="lnotify" ${notified&&!changed?'disabled':''}>${ic('send')}${notified?'변경 통보':'통보하기'}</button></footer>
  </aside></div>`}
-async function saveLineup(d){SCH.seq++;const sels=$$('[data-lsel]');const out=[];const seen=new Set();
- const slots=(LN.dateId===d.id&&LN.slots)?{...(S.team.settings||{}).slots||{},...(d.slots||{}),...LN.slots}:null;
- sels.forEach(s=>{const sess=s.dataset.lsel;const k=sess+':'+s.value;
+// 지금 화면의 고르는 칸들로 편성을 만든다 (바꾼 그때 읽는다)
+function lineupFromPage(){const out=[];const seen=new Set();
+ $$('[data-lsel]').forEach(s=>{const sess=s.dataset.lsel;const k=sess+':'+s.value;
   if(s.value&&seen.has(k)){s.value='';toast('같은 세션에 같은 사람을 두 번 넣을 수 없어요')}   // 한 세션에 중복 배정 방지
   else if(s.value)seen.add(k);
   out.push({session:sess,memberId:s.value||''})});
- try{const r=await api(`/teams/${S.team.id}/dates/${d.id}/lineup`,{method:'PUT',body:slots?{lineup:out,slots}:{lineup:out}});
-  d.lineup=r.lineup;if(r.slots){d.slots=r.slots;LN.slots=null;LN.dateId=null}return true}
- catch(e){toast(e.message);return false}}
+ return out}
 
 /* ---------- 홈 "지금 할 일" (§1.5) + 알림함 (§1.4) ---------- */
 // 콘티 보기 편성 줄 (§3.7): 편성된 사람을 세션 순으로 한 줄. 전원이 본다
@@ -2322,14 +2347,9 @@ function afterLineup(dateId){const d=SCH.dates.find(x=>x.id===dateId);if(!d)retu
  // 사람을 고르면 저장하고 다시 그린다. 패널이 통째로 새로 그려지므로 보고 있던 자리를
  // 그대로 되돌려 준다 — 안 그러면 폰에서 화면이 새로고침된 것처럼 튄다
  // 빨리 연달아 고르면 저장이 겹쳐, 늦게 닿은 앞 요청이 뒤에 고른 사람을 서버에서 지웠다(화면에는 남아 보임).
- // 저장 중에 또 고르면 표시만 해 두고, 앞 저장이 끝나면 그때의 화면 전체를 한 번 더 보낸다. 다시 그리기는 다 끝난 뒤 한 번
- $('#app').onchange=async e=>{if(!e.target.dataset.lsel)return;
-  if(LN.busy===d.id){LN.again=true;return}
-  LN.busy=d.id;const bd=$('.lnbody');const top=bd?bd.scrollTop:0;let ok=false;
-  // 그사이 다른 화면으로 갔으면 다시 보내지 않는다 (고르는 칸이 없는 화면을 읽으면 편성이 통째로 비워진다)
-  try{do{LN.again=false;ok=await saveLineup(d)}while(LN.again&&route().name==='lineup'&&route().a===d.id)}finally{LN.busy=null;LN.again=false}
-  if(ok){SCH.pending=false;render();
-   const b2=$('.lnbody');if(b2)b2.scrollTop=top}}}
+ // 고른 그때의 편성을 저장 줄(queueLineup)에 넣는다. 다시 그리기는 다 끝난 뒤 한 번
+ $('#app').onchange=e=>{if(!e.target.dataset.lsel)return;const d1=SCH.dates.find(x=>x.id===dateId)||d;
+  const p=LQ[dateId]&&LQ[dateId].run;const p2=queueLineup(d1,lineupFromPage());if(p!==p2)lineupSaved(p2)}}
 // 홈 히어로 (§3.7): 다음 예배 한 장. 인도자는 편성 진행, 멤버는 내 자리
 function heroHTML(){if(!online()||!S.team.id)return '';
  const t=today();
@@ -2340,8 +2360,10 @@ function heroHTML(){if(!online()||!S.team.id)return '';
  const useSvc=svc&&(!d0||svc.date<=d0.date)?svc:(d0&&d0.serviceId?svcById(d0.serviceId):null);
  const date=useSvc?(useSvc.date||''):(d0?d0.date:'');if(!date)return '';
  // 같은 날 예배가 둘일 수 있다(1부·2부). 날짜만으로 찾으면 이름은 2부인데 시간·편성은 1부가 나왔다 →
- // 이 콘티에 이어진 날짜를 먼저, 없으면 그날 아직 어느 콘티에도 안 이어진 날짜만 쓴다
- const d=useSvc?(SCH.dates.find(x=>x.open&&x.serviceId===useSvc.id)||SCH.dates.find(x=>x.open&&x.date===date&&!x.serviceId)||null):(d0&&d0.date===date?d0:null);
+ // 이 콘티에 이어진 날짜를 먼저, 없으면 그날 아직 어느 콘티에도 안 이어진 날짜만 쓴다.
+ // 이어진 날짜도 보여 주는 날과 같은 날이어야 한다 — 초안에서만 날짜를 옮기면(멤버는 옛 날짜의 발행본을 본다)·일정이 아직 옛것이면
+ // 이음이 다른 날 행에 가 있어, 9/27 이라고 쓰고 9/26 의 빈 편성·시간을 붙였다
+ const d=useSvc?(SCH.dates.find(x=>x.open&&x.serviceId===useSvc.id&&x.date===date)||SCH.dates.find(x=>x.open&&x.date===date&&!x.serviceId)||null):(d0&&d0.date===date?d0:null);
  // 날짜 이름에 이미 '9/20' 이 들어 있으면 또 붙이지 않는다 ('9/20 9/20 예배' 방지)
  const md0=d?fmtDate(d.date).md:'';
  const name=useSvc?svcName(useSvc):(d?((d.label||'').startsWith(md0)?d.label:`${md0} ${d.label}`):'');
@@ -2952,16 +2974,17 @@ function afterSettings(){
   if(e.target.closest('#sRefetch')){const btn=e.target.closest('#sRefetch');btn.disabled=true;btn.textContent='불러오는 중…';
    try{const n=await SYNC.refetchBlobs();toast(n?`악보 ${n}개를 다시 받았어요`:'다시 받을 악보가 없어요');render()}
    catch(err){toast(err.message);btn.disabled=false}return}
-  if(e.target.closest('#sLogout')){
-   const un=unsyncedCount();
+  if(e.target.closest('#sLogout')){const btn=e.target.closest('#sLogout');btn.disabled=true;
+   const un=await flushUnsynced().finally(()=>{btn.disabled=false});
    if(!confirm('로그아웃할까요?\n이 기기에 받아 둔 콘티·악보도 함께 지워져요. 다시 로그인하면 서버에서 다시 받습니다.'+(un?`\n\n아직 서버에 못 올린 수정이 ${un}개 있어요. 지금 로그아웃하면 사라져요.`:'')))return;
    doGate('logout');return}
   // 다른 기기의 로그인까지 서버에서 끊는다 (비밀번호를 바꿀 때와 같은 방식)
-  if(e.target.closest('#sLogoutAll')){
-   if(!confirm('모든 기기에서 로그아웃할까요?\n이 기기를 포함해 로그인한 모든 곳에서 다시 로그인해야 해요. 이 기기에 받아 둔 콘티·악보도 지워져요.'))return;
+  if(e.target.closest('#sLogoutAll')){const btn=e.target.closest('#sLogoutAll');btn.disabled=true;
+   const un=await flushUnsynced().finally(()=>{btn.disabled=false});
+   if(!confirm('모든 기기에서 로그아웃할까요?\n이 기기를 포함해 로그인한 모든 곳에서 다시 로그인해야 해요. 이 기기에 받아 둔 콘티·악보도 지워져요.'+(un?`\n\n아직 서버에 못 올린 수정이 ${un}개 있어요. 지금 로그아웃하면 사라져요.`:'')))return;
    try{await api('/auth/logout',{method:'POST',body:{all:true}})}catch(err){toast(err.message);return}
    doGate('logout');return}
-  if(e.target.closest('#sReset')){if(confirm(on?'이 기기에 저장된 콘티·악보·메모를 지웁니다. 계정은 그대로예요. 계속할까요?':'모든 데이터를 지웁니다. 계속할까요?')){indexedDB.deleteDatabase('conti-v1');location.reload()}return}
+  if(e.target.closest('#sReset')){if(confirm(on?'이 기기에 저장된 콘티·악보·메모를 지웁니다. 계정은 그대로예요. 계속할까요?':'모든 데이터를 지웁니다. 계속할까요?')){dropJournals('');indexedDB.deleteDatabase('conti-v1');location.reload()}return}
  }}
 // 서버 없이 쓰는 모드(정적 호스팅)에서는 곡·편곡을 받을 수 없다. 그때는 기기에 쌓인 옛 라이브러리를 쓴다
 const libSongs=()=>online()?(S.songs||[]).filter(x=>!x.archived)
@@ -3038,17 +3061,57 @@ const scopeKey=(userId,teamId)=>'state:'+(userId||'local')+':'+(teamId||'none');
 // 저장은 상태 전체를 한 덩어리로 쓴다. 몇 년 치 콘티가 쌓인 팀은 한 번 쓰는 데 0.5초가 넘어, 250ms 쉴 때마다 쓰면
 // 글자 칠 때마다 화면이 멈췄다 → 지난번 쓰기에 걸린 시간만큼 쉬는 간격을 늘린다(작은 팀은 그대로 250ms, 최대 4초).
 // 늘어난 사이에 앱이 가려지거나 닫히면 그때 바로 쓴다(pagehide·visibilitychange)
-let SAVE_MS=0,SAVE_DUE=false;
-function flushSave(){clearTimeout(saveT);SAVE_DUE=false;const t0=performance.now();
+// 다만 큰 상태를 닫히는 페이지에서 IndexedDB 에 쓰면 끝나기 전에 버려진다(40MB 쓰기가 pagehide 안에서 끝나지 않음) →
+// 아직 안 쓴 변경 중 작은 부분(최근 고친 콘티·지금 화면의 콘티·못 올린 곡과 목록)을 localStorage 저널에 바로 적어 두고,
+// 다음에 켤 때 상태보다 새것이면 덮어 되살린다. 전체 쓰기가 끝나면 지운다
+// SAVE_N: save() 를 부른 횟수 · SAVE_DONE: 끝까지 쓴 쓰기가 담은 횟수 (쓰기가 시작만 하고 안 끝났으면 아직 안 쓴 것이다)
+let SAVE_MS=0,SAVE_DUE=false,SAVE_FIRST=0,SAVE_N=0,SAVE_DONE=0,SAVED_AT=Date.now(),JR_T=null,JR_OFF=false,JR_HOLD=false;const JRS={};   // JRS: 스코프 → 적어 둔 저널의 시각 · JR_HOLD: 스코프를 바꾸는 중(S 는 아직 앞 팀 것)
+const JR_KEY=sc=>'conti-jr:'+sc;
+// 기기 저장을 지울 때(초기화·계정 삭제·로그아웃)는 저널도 지운다 — 남기면 다음에 켤 때 지운 콘티·메모가 되살아난다.
+// 다 지우면('') 이 페이지는 곧 다시 열리므로 닫히며 다시 적지도 않는다
+function dropJournals(pre){if(pre==='')JR_OFF=true;
+ try{Object.keys(localStorage).filter(k=>k.startsWith(JR_KEY(pre))).forEach(k=>{localStorage.removeItem(k);delete JRS[k.slice(9)]})}catch(e){}}
+function flushSave(){clearTimeout(saveT);SAVE_DUE=false;SAVE_FIRST=0;const t0=performance.now(),at=Date.now(),sc=CUR_SCOPE,n0=SAVE_N;
+ S.savedAt=at;   // 저널과 견줄 때 쓴다 (이 시각보다 늦게 적힌 저널만 되살린다)
  const p=IDB.put('kv',CUR_SCOPE==='legacy'?'state':CUR_SCOPE,JSON.stringify(S));SAVE_MS=performance.now()-t0;
- return p.then(()=>{if(CUR_SCOPE!=='legacy')return IDB.put('kv','scope',CUR_SCOPE)}).catch(e=>console.error(e))}
-function save(){clearTimeout(saveT);SAVE_DUE=true;saveT=setTimeout(flushSave,Math.min(4000,Math.max(250,SAVE_MS*5)));if(typeof SYNC!=='undefined')SYNC.schedulePush()}
+ return p.then(()=>{SAVED_AT=Math.max(SAVED_AT,at);SAVE_DONE=Math.max(SAVE_DONE,n0);
+  // 다 썼다 — 이 쓰기 뒤에 적힌 저널이라도 그사이 바뀐 게 없으면 필요 없다
+  if(JRS[sc]&&(JRS[sc]<=at||SAVE_N===n0)){try{localStorage.removeItem(JR_KEY(sc))}catch(e){}delete JRS[sc]}
+  if(CUR_SCOPE!=='legacy')return IDB.put('kv','scope',CUR_SCOPE)}).catch(e=>console.error(e))}
+function save(){SAVE_DUE=true;SAVE_N++;const now=Date.now();if(!SAVE_FIRST)SAVE_FIRST=now;clearTimeout(saveT);
+ const wait=Math.min(4000,Math.max(250,SAVE_MS*5));
+ // 쉬지 않고 불려도(글자 치기·초안 올리기 끝의 저장) 첫 변경에서 간격의 두 배 안에는 쓴다 — 전에는 부를 때마다 처음부터 다시 기다려 끝없이 밀렸다
+ saveT=setTimeout(flushSave,Math.max(0,Math.min(wait,SAVE_FIRST+2*wait-now)));
+ // 쓰기가 오래 걸려 간격이 늘어난 큰 상태만 쉬는 사이 저널을 적는다 (작은 상태는 곧 다 쓴다 · 닫힐 때는 pagehide 가 적는다)
+ clearTimeout(JR_T);if(wait>400)JR_T=setTimeout(writeJournal,200);
+ if(typeof SYNC!=='undefined')SYNC.schedulePush()}
+function writeJournal(){clearTimeout(JR_T);const sc=CUR_SCOPE;if(JR_OFF||JR_HOLD||sc==='legacy'||SAVE_DONE>=SAVE_N)return;
+ try{const on=route().a;const svcs=S.services.filter(x=>x.id===on||x.pubPending||(x.editedAt||0)>=SAVED_AT);const sh={};svcs.forEach(x=>{if(S.noteShadow&&S.noteShadow[x.id])sh[x.id]=S.noteShadow[x.id]});
+  const at=Date.now();
+  const txt=JSON.stringify({at,ids:S.services.map(x=>x.id),services:svcs,noteShadow:sh,
+   songs:(S.songs||[]).filter(x=>x.dirty),library:(S.library||[]).filter(x=>x.dirty),readRev:S.readRev||{},delPending:S.delPending||[],dropped:S.dropped||[],libDeleted:S.libDeleted||[]});
+  if(txt.length>2e6)throw new Error('journal too big');   // localStorage 를 꽉 채워 다른 설정 쓰기까지 막지 않게
+  localStorage.setItem(JR_KEY(sc),txt);JRS[sc]=at}
+ catch(e){try{localStorage.removeItem(JR_KEY(sc))}catch(e2){}delete JRS[sc]}}   // 너무 커서 못 적으면 옛 저널도 버린다
+// 불러온 상태(s)에 그 스코프의 저널을 덮는다. 저널이 더 옛것이면 지운다. 덮었으면 true
+function applyJournal(s,sc){let jr=null;try{jr=JSON.parse(localStorage.getItem(JR_KEY(sc))||'null')}catch(e){}
+ if(!jr||!s||!Array.isArray(jr.ids))return false;
+ if(!(jr.at>(s.savedAt||0))){try{localStorage.removeItem(JR_KEY(sc))}catch(e){}return false}
+ const by=new Map((jr.services||[]).map(x=>[x.id,x])),old=new Map((s.services||[]).map(x=>[x.id,x]));
+ s.services=jr.ids.map(id=>by.get(id)||old.get(id)).filter(Boolean);   // 그사이 지운 콘티는 빠지고 새로 만든 콘티는 들어온다
+ const put=(arr,list)=>{arr=(arr||[]).slice();(list||[]).forEach(x=>{const i=arr.findIndex(y=>y.id===x.id);if(i>=0)arr[i]=x;else arr.push(x)});return arr};
+ s.songs=put(s.songs,jr.songs);s.library=put(s.library,jr.library);s.noteShadow={...(s.noteShadow||{}),...(jr.noteShadow||{})};
+ ['readRev','delPending','dropped','libDeleted'].forEach(k=>{if(jr[k]!==undefined)s[k]=jr[k]});
+ JRS[sc]=jr.at;return true}
 const DEF_TEAM=()=>({sessions:DEF_SESS.slice(),phrases:DEF_PHR.slice(),settings:{},me:{name:'',session:'건반',role:'leader'}});
 // 스코프 전환: 지금 상태를 저장해 두고, 새 (계정,팀)의 콘티·라이브러리·메모 그림자를 불러온다. 팀 정보(S.team)는 호출자가 이어서 채운다
 async function switchScope(next){if(next===CUR_SCOPE)return;
  if(CUR_SCOPE==='legacy'){CUR_SCOPE=next;await flushSave();try{await IDB.del('kv','state')}catch(e){}return} // 예전 단일 저장소는 첫 스코프가 그대로 물려받음
- await flushSave();CUR_SCOPE=next;let s=null;try{const raw=await IDB.get('kv',next);if(raw)s=JSON.parse(raw)}catch(e){console.warn('scope',e)}
- S.services=uniqSvcs(s&&s.services);S.library=(s&&s.library)||[];S.songs=(s&&s.songs)||[];S.songsAt=(s&&s.songsAt)||'';S.seenVer=(s&&s.seenVer)||{};S.noteShadow=(s&&s.noteShadow)||{};S.seedAt=(s&&s.seedAt)||0;S.dropped=(s&&s.dropped)||[];S.delPending=(s&&s.delPending)||[];S.libAt=(s&&s.libAt)||'';S.libDeleted=(s&&s.libDeleted)||[];S.team=Object.assign(DEF_TEAM(),(s&&s.team)||{});
+ // 새 팀 것을 읽는 동안 저널을 적으면 앞 팀의 콘티가 새 팀 이름으로 적혀, 켤 때 새 팀 콘티를 덮는다 → 다 바꿀 때까지 멈춘다
+ await flushSave();JR_HOLD=true;CUR_SCOPE=next;let s=null;try{const raw=await IDB.get('kv',next);if(raw)s=JSON.parse(raw)}catch(e){console.warn('scope',e)}
+ SAVED_AT=(s&&s.savedAt)||Date.now();   // 이 뒤에 고친 콘티가 저널에 들어간다 (되살린 것도 다 쓰기 전까지는 다시 적는다)
+ if(applyJournal(s||(s={}),next))setTimeout(save,0);   // 이 팀에서 닫히기 전에 못 쓴 변경을 되살리고 곧 다 쓴다
+ S.services=uniqSvcs(s&&s.services);S.library=(s&&s.library)||[];S.songs=(s&&s.songs)||[];S.songsAt=(s&&s.songsAt)||'';S.seenVer=(s&&s.seenVer)||{};S.noteShadow=(s&&s.noteShadow)||{};S.seedAt=(s&&s.seedAt)||0;S.dropped=(s&&s.dropped)||[];S.delPending=(s&&s.delPending)||[];S.libAt=(s&&s.libAt)||'';S.libDeleted=(s&&s.libDeleted)||[];S.team=Object.assign(DEF_TEAM(),(s&&s.team)||{});JR_HOLD=false;
  S.songsV=(s&&s.songsV)||0;   // 이 스코프의 곡 목록을 받은 꼴 (SONGS_V)
  if(typeof SYNC!=='undefined')Object.keys(SYNC.pulledAt).forEach(k=>delete SYNC.pulledAt[k]);
  // 팀·계정이 바뀌면 화면 캐시도 모두 비운다 (이전 팀 일정·말씀·녹음이 남지 않게)
@@ -3150,7 +3213,7 @@ async function deleteAccountModal(){
    try{const who=needPw?{password:$('#daPw').value}:await socialReauth();
     await api('/auth/delete',{method:'POST',body:{username:$('#daUser').value.trim(),...who}});
     NET.user=null;NET.teams=[];await switchScope(scopeKey('',''));S.team=Object.assign(DEF_TEAM(),{id:'',invite:''});save();
-    try{indexedDB.deleteDatabase('conti-v1')}catch(e2){}
+    dropJournals('');try{indexedDB.deleteDatabase('conti-v1')}catch(e2){}
     closeModal();location.hash='#/home';location.reload()}
    catch(e2){err.textContent=reauthCancelled(e2)?'':msgOf(e2)}}}}
 // 조사 붙이기: 한글 받침과 숫자 읽는 소리를 보고 은/는, 이/가, 으로/로 를 고른다
@@ -3177,16 +3240,23 @@ function recheckServer(){return RECHECK||(RECHECK=(async()=>{
   try{await takeMe(await api('/me',{timeout:10000}))}catch(e){if(e.status===401)NET.user=null;else{NET.server=null;return}}
   toast('서버에 다시 연결됐어요');
   // 못 올린 발행을 먼저 올리고 나서 목록을 받는다 (거꾸로면 방금 올린 것을 '서버에서 지워진 것'으로 볼 수 있다)
-  if(S.team.id){SYNC.pushPending().catch(()=>0).then(()=>SYNC.pullServices()).then(ch=>{if(ch)render()});pullSongs('fresh').catch(()=>{})}
+  if(S.team.id){retryPending().then(()=>SYNC.pullServices()).then(ch=>{if(ch)render()});pullSongs('fresh').catch(()=>{})}
   SYNC.schedulePush();render()}})().finally(()=>{RECHECK=null}))}
-window.addEventListener('online',()=>{clearTimeout(RECONNECT_T);RECONNECT_T=setTimeout(recheckServer,800)});
+// 못 올린 발행(pubPending)을 올린다. 끝나면 홈 표시('서버에 못 올림'·'올리는 중')를 바로 맞춘다 — 전에는 다시 연결돼
+// 올리고도 다른 화면으로 갈 때까지 '서버에 못 올림'·다시 올리기 단추가 남았다
+function retryPending(){if(!online()||!S.team.id||!S.services.some(x=>x.pubPending))return Promise.resolve(0);
+ return SYNC.pushPending().catch(()=>0).then(n=>{if(n||route().name==='home')render();return n})}
+// 켤 때는 온라인이었는데(NET.server===true) 발행하다 끊긴 것은 recheckServer 가 그냥 돌아가 다시 안 올라갔다 —
+// 다시 연결되면(online)·화면이 다시 보이면 그대로 올린다
+window.addEventListener('online',()=>{clearTimeout(RECONNECT_T);RECONNECT_T=setTimeout(()=>NET.server===true?retryPending():recheckServer(),800)});
 // 켤 때 건강검진이 한 번 실패하면(503·잠깐 끊김·와이파이 로그인 화면) 앱을 끌 때까지 '이 기기 전용'이었다.
 // 서버를 못 찾는 동안(null)은 간격을 늘려 가며(5초→1분) 다시 묻고, 화면이 다시 보일 때도 바로 묻는다.
 // false(여기엔 서버가 없다 · 정적 호스팅의 404)는 타이머로 두드리지 않는다
 const REPROBE={t:null,n:0};
 function scheduleReprobe(){clearTimeout(REPROBE.t);if(NET.server!==null){REPROBE.n=0;return}
  REPROBE.t=setTimeout(async()=>{if(!document.hidden)await recheckServer();scheduleReprobe()},Math.min(60000,5000*2**Math.min(REPROBE.n++,4)))}
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&NET.server!==true){REPROBE.n=0;recheckServer().then(scheduleReprobe)}});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&NET.server!==true){REPROBE.n=0;recheckServer().then(scheduleReprobe)}
+ else if(!document.hidden)retryPending()});
 const RL={leader:'인도자',session_lead:'세션리더',member:'멤버',pastor:'목회자'};
 const isPastor=()=>me().role==='pastor';   // 목회자: 세션 없음, 편성·라이브러리 편집 없음, 말씀을 쓴다 (§0)
 // 목회자 메모는 팀 설정(pastorCanMemo)으로 켠다. 꺼져 있으면 서버가 받지 않으니 쓰는 창부터 열지 않는다
@@ -3257,7 +3327,7 @@ function scrubVer(d){if(d&&typeof d==='object'){d.version=+d.version||0;if(d.pub
 // 콘티 한 벌(초안·발행본)을 올릴 수 있는 크기. 서버(api/index.js readBody)와 같은 값. AI 악보·코드가 많은 곡이 수십 곡이면 넘는다
 const DOC_MAX=4e6;
 function tooBig(n){const e=new Error(`콘티가 너무 커서(${(n/1e6).toFixed(1)}MB · 한도 ${DOC_MAX/1e6}MB) 서버에 올리지 못했어요. 곡이나 악보 조각을 줄여 주세요`);e.code='too_large';e.status=413;return e}
-const SYNC={t:null,pulledAt:{},missing:new Set(),getting:new Map(),notePut:{},noteGone:new Set(),
+const SYNC={t:null,pulledAt:{},missing:new Set(),getting:new Map(),notePut:{},noteGone:new Set(),up:new Set(),
  blobIds(items){const ids=[];(items||[]).forEach(it=>{(it.pieces||[]).forEach(p=>p.blob&&ids.push(p.blob));(it.media||[]).forEach(m=>m.type==='audio'&&m.blob&&ids.push(m.blob))});return [...new Set(ids)]},
  // 팀의 발행본 목록을 받아 새 것·새 버전만 내려받음. 바뀐 게 있으면 true
  // 켤 때·홈·팀 전환·로그인이 겹쳐 부르면 하나만 돈다. 둘이 같이 돌면 같은 초안이 두 번 들어가
@@ -3431,15 +3501,22 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),getting:new Map(),notePut:{},no
  async pushPublish(svc){if(!online()||!isLeader())return false;const pub=svc.published;
   const body={teamId:S.team.id,doc:{id:svc.id,name:pub.name,date:pub.date,folder:pub.folder||'',notice:pub.notice,message:pub.message||'',messageRev:pub.messageRev||0,word:pub.word||null,author:pub.author||'',version:pub.version,items:pub.items,changes:pub.changes||[]}};
   const n=JSON.stringify(body).length;if(n>DOC_MAX)throw tooBig(n);   // 파일부터 다 올리고 나서야 거절당하지 않게 먼저 잰다
-  await SYNC.ensureBlobs(pub.items);
-  await api('/services/'+svc.id,{method:'PUT',body});return true},
+  // 올리는 동안은 홈에 '서버에 못 올림' 대신 '올리는 중' (발행 대기 표시는 올리기 전에 먼저 적어 둔다)
+  SYNC.up.add(svc.id);try{await SYNC.ensureBlobs(pub.items);await api('/services/'+svc.id,{method:'PUT',body})}finally{SYNC.up.delete(svc.id)}return true},
  // 발행 대기(pubPending)를 서버에 올린다 — 오프라인 발행, 올리다 끊긴 발행. 켤 때·다시 연결될 때·'서버에 다시 올리기'.
  // 응답만 못 받고 서버에는 들어간 경우도 서버가 같은 판이면 받아 준다. 다른 기기가 같은·더 새 버전을 냈으면 서버 것을 받는다
- async pushPending(only){if(!online()||!isLeader()||!S.team.id)return 0;let n=0;
-  for(const svc of S.services.filter(x=>x.pubPending&&x.published&&(!only||x.id===only))){
+ // 켤 때·다시 연결·화면 복귀·단추가 겹쳐 불려도 한 줄로 돈다 — 같은 판을 동시에 두 번 보내면 하나가 가짜 409('이미 발행')를 받았다
+ pushPending(only){const run=()=>SYNC.pushPendingNow(only);const p=(SYNC.ppQ||Promise.resolve()).then(run,run);SYNC.ppQ=p.catch(()=>0);return p},
+ async pushPendingNow(only){if(!online()||!isLeader()||!S.team.id)return 0;let n=0;
+  // 발행 창이 지금 올리고 있는 것은 건너뛴다 (그 올리기가 끝나며 대기 표시를 지운다)
+  for(const svc of S.services.filter(x=>x.pubPending&&x.published&&!SYNC.up.has(x.id)&&(!only||x.id===only))){
    // 올리는 사이에 또 발행했으면(새 판) 대기 표시는 그 판 몫이다 — 지우지 않는다
    const pub=svc.published;try{if(!await SYNC.pushPublish(svc))continue;if(svc.published===pub)delete svc.pubPending;n++}
-   catch(e){if(e.code==='version_conflict'){delete svc.pubPending;save();toast(e.message);try{await SYNC.pullService(svc.id)}catch(e2){}}
+   catch(e){if(e.code==='version_conflict'){delete svc.pubPending;
+     // 다른 기기가 먼저 같은·더 새 판을 냈다. 못 보낸 이 판은 초안으로 남겨 둔다 — 버전을 발행본 위로 올려 두면 pullService 가
+     // '고친 초안'으로 보고 곡을 덮지 않아 '수정 중'으로 남는다 (전에는 서버 것으로 덮여 다시 발행할 것이 없었다)
+     if(svc.published===pub&&svc.version<=pub.version)svc.version=pub.version+1;
+     save();toast(e.message);try{await SYNC.pullService(svc.id)}catch(e2){}}
     else{console.warn('pub retry',svc.id,e.message);if(only)throw e}}}
   if(n)save();return n},
  // 못 지운 것(오프라인·끊김·5xx)은 S.delPending 에 남겨 두고 다시 연결되면 보낸다 (flushDeletes). 확인창이 그렇게 약속한다.
@@ -3478,7 +3555,7 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),getting:new Map(),notePut:{},no
   // 가려 둔 메모(shielded)는 지우지도 그림자에서 빼지도 않는다
   const del=sh.filter(x=>!localIds.has(x.id)&&(!x.itemId||inDraft.has(x.itemId))&&!shielded(x)).map(x=>x.id);
   const drop=new Set(sh.filter(x=>!localIds.has(x.id)&&x.itemId&&!inDraft.has(x.itemId)&&!shielded(x)).map(x=>x.id));
-  if(!add.length&&!del.length){if(drop.size)S.noteShadow[svc.id]=sh.filter(x=>!drop.has(x.id));return true}
+  if(!add.length&&!del.length){if(drop.size){S.noteShadow[svc.id]=sh.filter(x=>!drop.has(x.id));save()}return true}   // 그림자에서만 뺀 것도 저장한다
   try{let rej=[];if(add.length){const r=await api('/notes',{method:'POST',keepalive:!!keep,body:{teamId:S.team.id,serviceId:svc.id,notes:add.map(n=>({id:n.id,itemId:n.itemId,markerId:n.markerId,mediaId:n.mediaId,t:n.t,layer:n.layer,session:n.session,text:n.text,at:n.at}))}});rej=(r&&Array.isArray(r.rejected))?r.rejected:[]}
    if(del.length)await api('/notes',{method:'DELETE',keepalive:!!keep,body:{teamId:S.team.id,ids:del}});
    if(scope!==CUR_SCOPE)return true;   // 보내는 사이 팀을 바꿨으면 새 팀의 그림자를 건드리지 않는다
@@ -3864,15 +3941,33 @@ async function socialLogin(provider, idToken, name, agreedAt){
 // 확인 창은 '함께 지워져요'라고 했는데 실제로는 IndexedDB 에 그대로 남아, 공용 PC 의 다음 사람이 읽을 수 있었다.
 // 다른 계정·로그아웃 상태가 쓰는 파일은 남긴다 (파일 id 는 상태 안의 "blob" 값으로 찾는다)
 async function wipeAccountData(userId){if(!userId)return;
- try{const keys=(await IDB.tx('kv','readonly',s=>s.getAllKeys())).filter(k=>typeof k==='string'&&k.startsWith('state:'));
+ dropJournals('state:'+userId+':');   // 닫히기 전에 적어 둔 이 계정의 저널(메모·콘티)도
+ try{const keys=(await IDB.tx('kv','readonly',s=>s.getAllKeys())).filter(k=>typeof k==='string'&&k!=='scope');
   const mine=keys.filter(k=>k.startsWith('state:'+userId+':'));if(!mine.length)return;
-  const refs=async ks=>{const ids=new Set();for(const k of ks){try{const raw=await IDB.get('kv',k);if(raw)for(const m of String(raw).matchAll(/"blob":"([A-Za-z0-9_-]{1,64})"/g))ids.add(m[1])}catch(e){}}return ids};
-  const drop=await refs(mine),keep=await refs(keys.filter(k=>!mine.includes(k)));
-  for(const id of drop){if(keep.has(id))continue;try{await IDB.del('blobs',id)}catch(e){}const u=urlCache.get(id);if(u){try{URL.revokeObjectURL(u)}catch(e){}urlCache.delete(id)}}
+  let readOk=true;
+  const refs=async ks=>{const ids=new Set();for(const k of ks){try{const raw=await IDB.get('kv',k);const txt=raw==null?'':typeof raw==='string'?raw:JSON.stringify(raw);
+   for(const m of txt.matchAll(/"blob":"([A-Za-z0-9_-]{1,64})"/g))ids.add(m[1])}catch(e){readOk=false}}return ids};
+  const drop=await refs(mine);readOk=true;const keep=await refs(keys.filter(k=>!mine.includes(k)));
+  // 이 계정 상태가 가리키는 파일만이 아니라 어느 상태도 가리키지 않는 파일도 지운다 — 자르기 전 원본·나눈 조각·지운 곡과 콘티의
+  // 악보는 평소에 치우지 않아 이 계정의 악보 사진이 로그아웃 뒤에도 남았다. 남은 상태를 하나라도 못 읽었으면 가리키는 것만 지운다
+  const all=readOk?await IDB.tx('blobs','readonly',s=>s.getAllKeys()):[...drop];
+  for(const id of all){if(keep.has(id))continue;try{await IDB.del('blobs',id)}catch(e){}const u=urlCache.get(id);if(u){try{URL.revokeObjectURL(u)}catch(e){}urlCache.delete(id)}}
   for(const k of mine){try{await IDB.del('kv',k)}catch(e){}}
  }catch(e){console.warn('wipe',e)}}
-// 아직 서버에 못 올린 것 (로그아웃하면 사라진다)
-const unsyncedCount=()=>S.services.filter(x=>x.pubPending).length+(S.library||[]).filter(x=>x.dirty).length+(S.songs||[]).filter(x=>x.dirty).length;
+// 아직 서버에 못 올린 것 (로그아웃하면 사라진다) — 발행 대기·서버에 없는 초안 수정·그림자(서버에 올린 메모)에 없는 메모·못 보낸 삭제·라이브러리
+const draftUnsent=x=>isLeader()&&x.editedAt&&x.draftPushedAt!==x.editedAt&&(!x.published||x.version>x.published.version);
+const notesUnsent=x=>{const sh=new Set(((S.noteShadow||{})[x.id]||[]).map(y=>typeof y==='string'?y:y.id));return SYNC.localNotes(x).some(n=>!sh.has(n.id))};
+const unsyncedCount=()=>S.services.filter(x=>x.pubPending||draftUnsent(x)||notesUnsent(x)).length
+ +(S.delPending||[]).length+(S.library||[]).filter(x=>x.dirty).length+(S.songs||[]).filter(x=>x.dirty).length;
+// 로그아웃 전에 이 기기에만 있는 것(메모·초안·발행·삭제·곡)을 먼저 올려 보고, 그래도 남은 수를 돌려준다.
+// 다시 연결된 뒤에도 메모·초안은 열어 둔 콘티 것만 올라가, 홈에서 로그아웃하면 경고 없이 지워졌다
+async function flushUnsynced(){
+ if(online()&&S.team.id){
+  try{await SYNC.pushPending()}catch(e){}
+  for(const svc of S.services.filter(draftUnsent)){try{await SYNC.pushDraft(svc)}catch(e){}}   // 서버에 콘티가 있어야 메모도 받는다
+  for(const svc of S.services.filter(notesUnsent)){try{await SYNC.pushNotes(svc)}catch(e){}}   // 못 올린 메모는 그림자에 안 들어가 아래 수에 남는다
+  if(isLeader()){try{await SYNC.flushDeletes()}catch(e){}try{await SYNC.pushLibrary()}catch(e){}try{await pushDirtySongs()}catch(e){}}}
+ return unsyncedCount()}
 // 구글·애플로 처음 오는 사람: 계정을 만들기 전에 약관·개인정보처리방침과 만 14세 안내를 보여 주고 동의를 받는다
 function socialConsent(provider,idToken,name){
  modal(`<b style="font-size:17px">처음 오셨네요</b>
@@ -5857,8 +5952,11 @@ async function render(){
   const pr=prevHash.replace(/^#\/?/,'').split('/');const enter=!same&&!(pr[1]===r.a&&/^(edit|view|play)$/.test(pr[0]));
   const notesP=online()&&(enter||!SYNC.pulledAt[svc.id])?pullNotesOnce(svc):null;
   const wordP=online()&&enter?(async()=>{try{const wd=await api('/services/'+svc.id+'/word?team='+S.team.id);
+   const w0=JSON.stringify([svc.word||null,(S.readRev||{})[svc.id]||0]);
    if(!WORD_DIRTY)svc.word=wd.word||null;   // 편집 중이면 덮어쓰지 않는다
-   if(wd.readRev){S.readRev=S.readRev||{};S.readRev[svc.id]=Math.max(S.readRev[svc.id]||0,wd.readRev)}}catch(e){}})():null;
+   if(wd.readRev){S.readRev=S.readRev||{};S.readRev[svc.id]=Math.max(S.readRev[svc.id]||0,wd.readRev)}
+   // 바뀌었으면 저장한다. 전에는 같이 받던 메모가 늘 저장해 줬는데, 메모가 그대로면 저장을 건너뛰게 되며(G07) 받은 말씀이 기기에 안 남았다
+   if(JSON.stringify([svc.word||null,(S.readRev||{})[svc.id]||0])!==w0)save()}catch(e){}})():null;
   if(notesP||wordP)await netCap(Promise.all([notesP,wordP]));   // 둘은 서로 기다릴 까닭이 없다
   if(stale())return;
   if(online()&&r.name==='view'&&!REH.at[svc.id])await pullRehearsals(svc.id);
@@ -5912,9 +6010,11 @@ async function render(){
   restoreScroll();return}
  // 설정 페이지 (§6.8)
  if(r.name==='settings'){if(SET.tab==='plan'&&online()&&isLeader()&&S.team.id){await pullUsage();if(stale())return}
-  // 알림 탭은 계정 설정을 받아 온 뒤 그린다 (다른 기기에서 바꾼 것이 보이게)
-  // 올리는 중인 변경이 있으면 끝난 뒤에 받는다 (먼저 받으면 방금 끈 것이 켜진 채로 그려진다)
-  if(SET.tab==='noti'&&online()&&NET.user){await PREFS_Q;await pullPrefs(true);if(stale())return}
+  // 알림 탭은 받아 둔 값(없으면 이 기기에 적어 둔 것)으로 바로 그리고, 계정 설정을 뒤에서 받아 바뀌었으면 다시 그린다
+  // (다른 기기에서 바꾼 것이 보이게). 전에는 받기가 끝날 때까지 기다려 느린 연결에서는 탭을 눌러도 한참 아무 일이 없었다.
+  // 올리는 중인 변경이 있으면 끝난 뒤에 받는다 (먼저 받으면 방금 끈 것이 켜진 채로 그려진다 — pullPrefs 도 막는다)
+  if(SET.tab==='noti'&&online()&&NET.user){const was=JSON.stringify(PREFS.data);
+   PREFS_Q.then(()=>pullPrefs(true)).then(()=>{if(route().name==='settings'&&SET.tab==='noti'&&JSON.stringify(PREFS.data)!==was)render()})}
   app.innerHTML=settingsHTML();afterSettings();restoreScroll();return}
  // 알림 페이지 (§6.7)
  if(r.name==='inbox'){
@@ -6502,11 +6602,17 @@ function pgPagesHTML(pages){
 
 /* ---------- 개인 설정 · 푸시 알림 ----------
    앱 안 알림은 전부 푸시로도 나간다. 조용한 시간에는 알림함에만 쌓인다 */
-const PREFS={data:null,at:0,saving:null};
+// seq: 이 기기에서 바꾸거나(savePrefs) 그 저장이 끝날 때마다 오른다. 받는 사이 바뀌었으면 받은 것(더 옛것일 수 있다)으로 덮지 않는다
+// wait: 아직 서버가 받았다고 답하지 않은 변경 — 받은 값 위에 다시 얹는다
+const PREFS={data:null,at:0,saving:null,seq:0,wait:[]};
 async function pullPrefs(force){if(!online()||!NET.user)return null;
  if(!force&&PREFS.data&&Date.now()-PREFS.at<30000)return PREFS.data;
- try{const r=await api('/me/prefs');PREFS.data=r.prefs||{};PREFS.at=Date.now();
+ const seq=PREFS.seq;
+ try{const r=await api('/me/prefs');
   if(r.push)PUSH.key=r.push.key||'',PUSH.configured=!!r.push.configured;
+  // 받는 사이 이 기기에서 바꿨다 — 그 저장의 응답(서버가 합친 전체)이 더 새것이다. 켜 둔 상자를 옛 값으로 되돌리지 않는다
+  if(seq!==PREFS.seq)return PREFS.data;
+  PREFS.data=PREFS.wait.reduce(prefsMerge,r.prefs||{});PREFS.at=Date.now();
   // 꺼 둔 알림 종류를 이 기기에도 적어 둔다 — 오프라인으로 켜도 홈 카드가 계정 설정대로 걸러진다
   const off=PREFS.data.notiOff||{},p={};Object.keys(off).forEach(k=>{if(off[k]===true)p[k]=false});try{localStorage.setItem('conti-noti',JSON.stringify(p))}catch(e){}
   return PREFS.data}catch(e){return PREFS.data}}
@@ -6516,11 +6622,14 @@ const prefsMerge=(a,b)=>{const o={...(a||{})};for(const k in b){const v=b[k],w=o
 // 요청은 줄 세워 보낸다 — 두 개가 동시에 날아가면 먼저 보낸 것이 늦게 닿아 값이 되돌아간다
 let PREFS_Q=Promise.resolve();
 function savePrefs(patch){
- PREFS.data=prefsMerge(PREFS.data,patch);
+ PREFS.data=prefsMerge(PREFS.data,patch);PREFS.seq++;
  if(!online()||!NET.user)return PREFS_Q;
+ PREFS.wait.push(patch);
  PREFS_Q=PREFS_Q.then(async()=>{
   try{const r=await api('/me/prefs',{method:'PATCH',body:{prefs:patch}});PREFS.data=r.prefs||PREFS.data;PREFS.at=Date.now()}
-  catch(e){}});
+  catch(e){}
+  // 뒤에 줄 선 변경은 아직 서버에 없다 — 응답 위에 다시 얹어야 방금 바꾼 것이 잠깐 되돌아가 보이지 않는다
+  PREFS.wait.splice(PREFS.wait.indexOf(patch),1);PREFS.data=PREFS.wait.reduce(prefsMerge,PREFS.data||{});PREFS.seq++});
  return PREFS_Q}
 const QUIET_DEF={on:true,from:22,to:8};
 const quietOf=()=>Object.assign({},QUIET_DEF,((PREFS.data||{}).quiet)||{});
@@ -6673,7 +6782,7 @@ async function nativeSetup(){
  // 앱이 다시 앞으로 오면 알림·콘티를 새로 받는다
  try{P.App&&P.App.addListener('appStateChange',({isActive})=>{
   if(isActive&&online()&&NET.user){refreshNoti&&refreshNoti();
-   if(S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()}).catch(()=>{})}
+   if(S.team.id)retryPending().then(()=>SYNC.pullServices()).then(ch=>{if(ch)render()}).catch(()=>{})}   // 못 올린 발행을 먼저 올린다
   else if(isActive&&!online())recheckServer()})}catch(e){}
  // 앱 링크: 초대·콘티·말씀 링크(lets1414.com/#/…)를 누르면 앱이 열린다. 그 주소의 # 뒤로 간다
  // (안 읽으면 앱이 홈으로만 열려 초대 코드·콘티가 조용히 사라졌다).
@@ -8267,27 +8376,29 @@ document.addEventListener('click',async e=>{
    try{await api('/notifications/ask',{method:'POST',body:{teamId:S.team.id,userId:el.dataset.id,month:SCH.month||monthKey()}});toast((m2?m2.name:'그 멤버')+'에게 다시 요청했어요')}catch(e){toast(e.message)}break}
   case 'lslots':{const d=SCH.dates.find(x=>x.id===route().a);if(!d)break;
    const st=(S.team.settings||{}).slots||{};const sess=el.dataset.s;
-   const cur={...st,...(d.slots||{}),...(LN.dateId===route().a&&LN.slots?LN.slots:{})};
+   const cur={...st,...(d.slots||{})};   // d.slots 는 저장 줄이 바로 적어 둔 값 — 빨리 두 번 눌러도 두 칸 늘어난다
    const now=cur[sess]!=null?+cur[sess]:(sess==='싱어'?3:1);
    const next=Math.max(0,Math.min(9,now+(+el.dataset.d)));
    if(next===now)break;
-   LN.dateId=route().a;LN.slots={...(LN.slots&&LN.dateId===route().a?LN.slots:{}),[sess]:next};
-   await saveLineup(d);render();break}
+   const bd=$('.lnbody');const top=bd?bd.scrollTop:0;
+   const p=LQ[d.id]&&LQ[d.id].run;const p2=queueLineup(d,lineupFromPage(),{...cur,[sess]:next});render();
+   const b2=$('.lnbody');if(b2)b2.scrollTop=top;if(p!==p2)lineupSaved(p2);break}
   // 패널 안 빈 곳·사람 고르는 칸을 눌러도 바깥 가림막(.lnov)의 lclose 까지 올라온다.
   // 눌린 것(e.target)으로 봐야 한다 — el 은 가림막이라 늘 패널 밖이어서 칸을 누르자마자 패널이 닫혔다
-  case 'lclose':{if(e.target.closest('.lnpanel')&&!el.closest('[data-act="lclose"].icon'))break;LN.slots=null;LN.dateId=null;go('sched');break}
+  case 'lclose':{if(e.target.closest('.lnpanel')&&!el.closest('[data-act="lclose"].icon'))break;go('sched');break}   // 보내는 중인 편성은 닫아도 끝까지 간다 (queueLineup)
   case 'lclear':{const d=SCH.dates.find(x=>x.id===route().a);if(!d)break;
-   const bd=$('.lnbody');const top=bd?bd.scrollTop:0;
-   $$(`[data-lsel="${el.dataset.s}"]`).forEach(s=>s.value='');await saveLineup(d);render();
-   const b2=$('.lnbody');if(b2)b2.scrollTop=top;break}
+   $$(`[data-lsel="${el.dataset.s}"]`).forEach(s=>s.value='');
+   const p=LQ[d.id]&&LQ[d.id].run;const p2=queueLineup(d,lineupFromPage());if(p!==p2)lineupSaved(p2);break}
   case 'ldefault':{const d=SCH.dates.find(x=>x.id===route().a);if(!d)break;if(!confirm('기본 편성으로 되돌릴까요? 지금 배정은 사라져요.'))return;
    const def=(S.team.settings&&S.team.settings.defaultLineup)||{};const out=[];
    S.team.sessions.forEach(s=>{(def[s]||[]).forEach(mid=>{out.push({session:s,memberId:myAv(mid,d.date)==='no'?'':mid})})});
-   try{const r2=await api(`/teams/${S.team.id}/dates/${d.id}/lineup`,{method:'PUT',body:{lineup:out}});d.lineup=r2.lineup;render();toast('기본 편성으로 되돌렸어요')}catch(e){toast(e.message)}break}
+   const p=LQ[d.id]&&LQ[d.id].run;const p2=queueLineup(d,out);render();if(p!==p2)lineupSaved(p2);if(await p2)toast('기본 편성으로 되돌렸어요');break}
   case 'lkakao':{const d=SCH.dates.find(x=>x.id===route().a);if(!d)break;try{const r2=await api(`/teams/${S.team.id}/dates/${d.id}/text`);await copyText(r2.text);toast('카톡용 문구를 복사했어요')}catch(e){toast(e.message)}break}
   case 'lnotify':{const d=SCH.dates.find(x=>x.id===route().a);if(!d)break;
    const ms=SCH.members;const names=[...new Set((d.lineup||[]).filter(x=>x.memberId).map(x=>{const m3=ms.find(y=>y.userId===x.memberId);return m3?m3.name:''}))].filter(Boolean);
    if(!confirm(`${names.join(', ')} 에게 편성을 알릴까요?`))return;
+   // 보내는 중인 편성이 있으면 다 저장된 뒤에 알린다 (먼저 알리면 방금 고른 사람이 빠진 편성으로 통보된다)
+   if(LQ[d.id]&&!await LQ[d.id].run)break;
    try{const r2=await api(`/teams/${S.team.id}/dates/${d.id}/notify`,{method:'POST',body:{}});await pullSchedule(SCH.month,true);render();toast(r2.sent?`${r2.sent}명에게 알렸어요`:'바뀐 사람이 없어요')}catch(e){toast(e.message)}break}
   case 'word-req':{const svc2=svcById(route().a);if(!svc2)break;
    try{const r2=await api('/services/'+svc2.id+'/word-request',{method:'POST',body:{teamId:S.team.id}});toast(`목사님 ${r2.sent}분께 수정 요청을 보냈어요`)}
@@ -8434,7 +8545,10 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
 
 /* ---------- boot ---------- */
 (async function boot(){
- try{await IDB.open();const sc=await IDB.get('kv','scope');if(sc)CUR_SCOPE=sc;const raw=await IDB.get('kv',sc||'state');if(raw){const s=JSON.parse(raw);S=Object.assign(S,s);S.services=uniqSvcs(S.services);S.team=Object.assign({sessions:DEF_SESS.slice(),phrases:DEF_PHR.slice(),me:{name:'',session:'건반',role:'leader'}},S.team||{});
+ try{await IDB.open();const sc=await IDB.get('kv','scope');if(sc)CUR_SCOPE=sc;const raw=await IDB.get('kv',sc||'state');
+  let s=raw?JSON.parse(raw):null;if(s&&s.savedAt)SAVED_AT=s.savedAt;
+  if(sc&&applyJournal(s||(s={}),sc))setTimeout(save,0);   // 닫히기 전에 못 쓴 변경을 되살리고 곧 다 쓴다
+  if(s){S=Object.assign(S,s);S.services=uniqSvcs(S.services);S.team=Object.assign({sessions:DEF_SESS.slice(),phrases:DEF_PHR.slice(),me:{name:'',session:'건반',role:'leader'}},S.team||{});
   const mig=it=>{if(it&&it.keyNow!==undefined){it.mod=(it.keyNow&&it.keyNow!==it.key)?it.keyNow:(it.mod||'');delete it.keyNow}};
   // 예전 가져오기는 모양을 보지 않고 저장했다 — 곡 목록이 없는 예배 하나로 켤 때마다 백지(그리고 엉뚱한 '비공개 모드' 경고)가 됐다
   S.services=objs(S.services);S.services.forEach(s=>{s.items=objs(s.items);if(s.published&&!isObj(s.published))s.published=null;if(s.published)s.published.items=objs(s.published.items)});S.library=objs(S.library);
@@ -8465,7 +8579,7 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
    if(location.hash!==h)try{history.replaceState(null,'',location.pathname+h)}catch(e){}}}   // 팀을 바꾸면 홈으로 보내는 것을 되돌린다
  if(!online()&&!me().name){location.hash='#/settings';render()}else render();
  // 못 올린 발행(오프라인 발행·올리다 닫힌 앱)을 먼저 올리고 목록을 받는다
- if(online()&&S.team.id){SYNC.pushPending().then(n=>{if(n)render()}).catch(()=>0).then(()=>SYNC.pullServices()).then(ch=>{if(ch)render()});SYNC.pullLibrary();pullSongs('fresh').then(ch=>{if(ch&&/^(edit|view|play|library)$/.test(route().name))render()}).catch(()=>{});
+ if(online()&&S.team.id){retryPending().then(()=>SYNC.pullServices()).then(ch=>{if(ch)render()});SYNC.pullLibrary();pullSongs('fresh').then(ch=>{if(ch&&/^(edit|view|play|library)$/.test(route().name))render()}).catch(()=>{});
   SYNC.schedulePush()}   // 오프라인에서 고친 것. 예전에는 /me 뒤 save() 가 대신 불러 줬는데, 이제 그때는 아직 연결 전(NET.server)이다
  // 시간 초과로 오프라인이 됐어도 브라우저는 여전히 '온라인'이라 online 이벤트가 오지 않는다 → 간격을 늘려 가며 다시 묻고(scheduleReprobe),
  // 20초마다도 한 번 본다. 앱으로 돌아올 때는 위의 visibilitychange 가 바로 묻는다
