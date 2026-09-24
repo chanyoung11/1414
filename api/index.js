@@ -118,6 +118,16 @@ const AI_DAILY_USER = { omr: 80, score: 500, ocr: 400 };
 // 서비스 전체의 하루 총량. 가입은 누구나 공짜라 계정을 찍어 내면 사람당 한도도 그만큼 늘어난다 —
 // 그래도 이건 못 넘는다. 차면 모두 멈춘다 (선불 크레딧이 바닥나 전원이 못 쓰게 되는 것보다 낫다)
 const AI_DAILY_ALL = { omr: 1000, score: 1500, ocr: 3000 };
+// 가입한 지 며칠 안 된 계정은 전체 하루 총량을 따로(작게) 쓴다 (ai_usage_all 의 'omr:new' 같은 줄).
+// 한 통에 같이 쓰면 공짜 계정 몇 개(채보 80번씩 13개)로 아침에 전체 총량을 채워 모든 팀의 채보·코드 인식을
+// 날마다 멈출 수 있었다. 이제 그렇게 채워도 멈추는 것은 새로 만든 계정들뿐이고, 원래 쓰던 팀들은 그대로 쓴다
+const AI_NEW_DAYS = 3;
+const AI_DAILY_NEW = { omr: 300, score: 450, ocr: 900 };
+async function aiPool(kind, uid) {
+  if (!uid) return kind;
+  const r = await one('select created_at > now() - make_interval(days => $2::int) as young from users where id=$1', [uid, AI_NEW_DAYS]).catch(() => null);
+  return r && r.young ? kind + ':new' : kind;
+}
 const MAX_TEAMS_PER_USER = 20;   // 요금제가 아니라 스팸·비용 사고 방지선
 const KST_DAY = `(now() at time zone 'Asia/Seoul')::date`;
 const aiCap = (prefix, table, kind, dflt) => +process.env[prefix + kind.toUpperCase()] || table[kind] || dflt;
@@ -126,16 +136,18 @@ const aiCap = (prefix, table, kind, dflt) => +process.env[prefix + kind.toUpperC
 async function aiGuard(teamId, kind, uid, n = 1) {
   const label = kind === 'ocr' ? '코드 인식' : '채보';
   const take = (sql, params) => one(sql, params).then((r) => !!r);
-  const all = aiCap('AI_DAILY_ALL_', AI_DAILY_ALL, kind, 1000);
+  const pool = await aiPool(kind, uid), young = pool !== kind;
+  const all = young ? aiCap('AI_DAILY_NEW_', AI_DAILY_NEW, kind, 300) : aiCap('AI_DAILY_ALL_', AI_DAILY_ALL, kind, 1000);
   if (!await take(`insert into ai_usage_all(day, kind, calls) select ${KST_DAY}, $1::text, $2::int where $2::int <= $3::int
                    on conflict (day, kind) do update set calls = ai_usage_all.calls + excluded.calls
-                   where ai_usage_all.calls + excluded.calls <= $3::int returning calls`, [kind, n, all]))
-    throw new HttpError(429, 'ai_quota', `오늘은 ${label} 요청이 너무 많아 멈췄어요. 내일 다시 해 주세요`);
+                   where ai_usage_all.calls + excluded.calls <= $3::int returning calls`, [pool, n, all]))
+    throw new HttpError(429, 'ai_quota', young ? `오늘은 새로 가입한 계정들의 ${label} 요청이 너무 많아 멈췄어요. 내일 다시 해 주세요`
+      : `오늘은 ${label} 요청이 너무 많아 멈췄어요. 내일 다시 해 주세요`);
   const cap = aiCap('AI_DAILY_', AI_DAILY, kind, 100);
   if (!await take(`insert into ai_usage(team_id, day, kind, calls, tokens) select $1::uuid, ${KST_DAY}, $2::text, $3::int, 0 where $3::int <= $4::int
                    on conflict (team_id, day, kind) do update set calls = ai_usage.calls + excluded.calls
                    where ai_usage.calls + excluded.calls <= $4::int returning calls`, [teamId, kind, n, cap])) {
-    await aiRelease(null, kind, null, n);
+    await aiRelease(null, kind, null, n, pool);
     throw new HttpError(429, 'ai_quota', `오늘 ${label} 한도(${cap}회)를 다 썼어요. 내일 다시 해 주세요`);
   }
   if (!uid) return;
@@ -143,31 +155,24 @@ async function aiGuard(teamId, kind, uid, n = 1) {
   if (!await take(`insert into ai_usage_user(user_id, day, kind, calls) select $1::uuid, ${KST_DAY}, $2::text, $3::int where $3::int <= $4::int
                    on conflict (user_id, day, kind) do update set calls = ai_usage_user.calls + excluded.calls
                    where ai_usage_user.calls + excluded.calls <= $4::int returning calls`, [uid, kind, n, ucap])) {
-    await aiRelease(teamId, kind, null, n);
+    await aiRelease(teamId, kind, null, n, pool);
     throw new HttpError(429, 'ai_quota', `오늘 ${label}를 너무 많이 했어요. 내일 다시 해 주세요`);
   }
 }
 // 잡아 둔 자리를 돌려준다: 과금되지 않은 실패(Gemini 가 오류로 답함)나 월 한도(402)에 막혔을 때
-async function aiRelease(teamId, kind, uid, n = 1) {
+async function aiRelease(teamId, kind, uid, n = 1, pool) {
   const dec = (t, where, params) => q(`update ${t} set calls = greatest(0, calls - $${params.length + 1}::int) where day=${KST_DAY} and ${where}`,
     [...params, n]).catch((e) => console.error('aiRelease', e.message));
-  await dec('ai_usage_all', 'kind=$1', [kind]);
+  await dec('ai_usage_all', 'kind=$1', [pool || await aiPool(kind, uid)]);
   if (teamId) await dec('ai_usage', 'team_id=$1 and kind=$2', [teamId, kind]);
   if (uid) await dec('ai_usage_user', 'user_id=$1 and kind=$2', [uid, kind]);
 }
-// 부른 뒤: 토큰을 적고, 잡아 둔 것보다 더 부른 만큼(악보 다시 묻기 · Vision 으로 다시 읽기) 더 센다.
-// 이미 쓴 것이라 한도를 넘어도 센다 (다음 요청이 막힌다)
-async function aiCount(teamId, kind, tokens, uid, extra = 0) {
-  const more = Math.max(0, Math.round(+extra || 0));
-  if (more) {
-    await q(`insert into ai_usage_all(day, kind, calls) values(${KST_DAY}, $1, $2)
-             on conflict (day, kind) do update set calls = ai_usage_all.calls + excluded.calls`, [kind, more]).catch(() => {});
-    if (uid) await q(`insert into ai_usage_user(user_id, day, kind, calls) values($1, ${KST_DAY}, $2, $3)
-                      on conflict (user_id, day, kind) do update set calls = ai_usage_user.calls + excluded.calls`, [uid, kind, more]).catch(() => {});
-  }
-  await q(`insert into ai_usage(team_id, day, kind, calls, tokens) values($1, ${KST_DAY}, $2, $3, $4)
-           on conflict (team_id, day, kind) do update set calls = ai_usage.calls + excluded.calls, tokens = ai_usage.tokens + excluded.tokens`,
-    [teamId, kind, more, Math.max(0, +tokens || 0)]).catch((e) => console.error('aiCount', e.message));
+// 부른 뒤: 토큰만 적는다. 부른 횟수는 부르기 전에 aiGuard 가 셌다 — 악보 다시 묻기 · Vision 으로 다시 읽기도
+// 부르기 전에 따로 자리를 잡는다 (전에는 부른 뒤에 더해서, 동시에 보내면 한도를 넘겨 불렀다)
+async function aiCount(teamId, kind, tokens) {
+  await q(`insert into ai_usage(team_id, day, kind, calls, tokens) values($1, ${KST_DAY}, $2, 0, $3)
+           on conflict (team_id, day, kind) do update set tokens = ai_usage.tokens + excluded.tokens`,
+    [teamId, kind, Math.max(0, +tokens || 0)]).catch((e) => console.error('aiCount', e.message));
 }
 const teamSettings = async (teamId) => {
   const t = await one('select settings from teams where id=$1', [teamId]);
@@ -221,13 +226,13 @@ on('POST', '/auth/signup', async ({ req, body }) => {
   // 가입은 주소당 15분에 30개까지. 계정마다 AI 하루 한도가 따로라 스크립트로 계정을 찍어 내면 한도도 늘어났다.
   // 교회 와이파이에서 팀원이 한꺼번에 가입해도 걸리지 않게 넉넉히. 앞단 주소가 없는 로컬(개발·테스트)은 세지 않는다
   const ip = clientIp(req);
-  const keys = /^(-|127\.|::1$|::ffff:127\.)/.test(ip) ? [] : [[`signup:|${ip}`, 30]];
-  await assertNotLocked(keys).catch((e) => { throw e.code === 'locked' ? new HttpError(429, 'locked', '여기서 가입이 너무 많았어요. 15분 뒤에 다시 해 주세요') : e; });
+  const keys = /^(-|127\.|::1$|::ffff:127\.)/.test(ip) ? [] : [[`signup:|${ipBucket(ip)}`, 30]];
+  // 만들기 전에 한 자리를 먼저 잡는다 (다 만든 뒤에 세면 동시에 보낸 80개가 모두 통과했다)
+  await takeAttempt(keys, '여기서 가입이 너무 많았어요. 15분 뒤에 다시 해 주세요');
   // 가입 시 약관·개인정보처리방침 동의 시각을 남긴다 (나중에 증명이 필요할 수 있다)
   const agreedAt = /^\d{4}-\d{2}-\d{2}T/.test(String(body.agreedAt || '')) ? new Date(body.agreedAt) : new Date();
   const u = await one('insert into users(username, password_hash, display_name, last_login_at, agreed_at, agreed_ver) values($1,$2,$3,now(),$4,$5) returning id',
     [username, await hashPasswordAsync(password), name, agreedAt, LEGAL_VERSION]);
-  await noteFailure(keys);   // 이름은 '실패'지만 여기서는 가입 수를 센다 (같은 15분 창)
   return { data: withAppToken(req, await meView(u.id), u.id), headers: { 'Set-Cookie': sessionCookie(req, u.id) } };
 });
 
@@ -250,30 +255,39 @@ async function dropPushExcept(uid, keep) {
 // X-Forwarded-For 의 맨 앞은 클라이언트가 마음대로 적을 수 있다. Cloud Run 앞단은 받은 값을 지우지 않고
 // 진짜 주소를 맨 뒤에 붙인다 (Vercel 은 통째로 덮어써서 첫 값이 곧 진짜였다) → 맨 뒤 값을 쓴다
 const clientIp = (req) => String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',').pop().trim().slice(0, 45) || '-';
-// 로그인·복구 시도 제한. '아이디|주소' 로 8번, 주소를 바꿔 가며 두드리는 것까지 막으려고 '아이디|*' 로 30번
-const LOCK_MS = 15 * 60 * 1000;
-const lockKeys = (kind, username, req) => [[`${kind}${username}|${clientIp(req)}`, 8], [`${kind}${username}|*`, 30]];
-async function assertNotLocked(keys) {
-  try {
-    for (const [k, lim] of keys) {
-      const la = await one('select n, last from login_attempts where username=$1', [k]);
-      if (la && la.n >= lim && Date.now() - new Date(la.last).getTime() < LOCK_MS) throw new HttpError(429, 'locked', '시도가 너무 많아요. 15분 뒤에 다시 해 주세요');
-    }
-  } catch (e) { if (e instanceof HttpError) throw e; }
+// IPv6 는 한 집·한 서버가 /64 를 통째로 받아 뒤 64비트를 마음대로 바꿀 수 있다 → 앞 64비트로 센다
+// (주소 하나씩 세면 한 /64 안에서 주소를 바꿔 가며 가입이 끝없이 됐다). IPv4 는 그대로
+function ipBucket(ip) {
+  const v4 = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
+  if (v4) return v4[1];
+  if (!ip.includes(':')) return ip;
+  const [head, tail] = ip.split('%')[0].toLowerCase().split('::');
+  const h = head ? head.split(':') : [], t = tail ? tail.split(':') : [];
+  const full = tail === undefined ? h : [...h, ...Array(Math.max(0, 8 - h.length - t.length)).fill('0'), ...t];
+  return full.slice(0, 4).map((x) => x.replace(/^0+(?=.)/, '') || '0').join(':') + '::/64';
 }
-async function noteFailure(keys) {
-  for (const [k] of keys) {
-    try { await q(`insert into login_attempts(username, n, last) values($1, 1, now()) on conflict (username) do update set n = case when login_attempts.last < now() - interval '15 minutes' then 1 else login_attempts.n + 1 end, last = now()`, [k]); } catch (e) {}
+// 로그인·복구 시도 제한. '아이디|주소' 로 8번, 주소를 바꿔 가며 두드리는 것까지 막으려고 '아이디|*' 로 30번
+const lockKeys = (kind, username, req) => [[`${kind}${username}|${clientIp(req)}`, 8], [`${kind}${username}|*`, 30]];
+// 해 보기 전에 한 번 쓴 것으로 먼저 센다 (15분 창). 한도에 닿아 있으면 세지도 않고 막는다 (잠긴 동안 두드려도 창이 늘지 않게).
+// 전에는 세어 보고(select) 틀린 뒤에 더해서, 동시에 보낸 것은 모두 '아직 여유'를 보고 통과했다 (틀린 비밀번호 40개가 모두 401)
+async function takeAttempt(keys, msg) {
+  for (const [k, lim] of keys) {
+    let r;
+    try {
+      r = await one(`insert into login_attempts(username, n, last) values($1, 1, now())
+                     on conflict (username) do update set n = case when login_attempts.last < now() - interval '15 minutes' then 1 else login_attempts.n + 1 end, last = now()
+                     where login_attempts.last < now() - interval '15 minutes' or login_attempts.n < $2 returning n`, [k, lim]);
+    } catch (e) { continue; }   // 기록이 안 되면 막지는 않는다 (예전과 같이)
+    if (!r) throw new HttpError(429, 'locked', msg || '시도가 너무 많아요. 15분 뒤에 다시 해 주세요');
   }
 }
 async function clearFailures(keys) { try { await q('delete from login_attempts where username = any($1::text[])', [keys.map(([k]) => k)]); } catch (e) {} }
 on('POST', '/auth/login', async ({ req, body }) => {
   const username = str(body.username, 40).toLowerCase(), password = String(body.password || '');
   const keys = lockKeys('', username, req);
-  await assertNotLocked(keys);
+  await takeAttempt(keys);
   const u = await one('select id, password_hash from users where username=$1', [username]);
   if (!u || !(await verifyPasswordAsync(password, u.password_hash))) {
-    await noteFailure(keys);
     throw new HttpError(401, 'bad_login', '아이디 또는 비밀번호가 맞지 않아요');
   }
   await clearFailures(keys);
@@ -331,6 +345,10 @@ on('POST', '/auth/social', async ({ req, uid, body }) => {
   if (uid && !body.login) {
     if (found && found.user_id !== uid) throw new HttpError(409, 'taken', `이 ${SOCIAL[provider]} 계정은 다른 계정에 이미 연결돼 있어요`);
     if (!found) {
+      // 들어올 길을 하나 더 만드는 일이라 본인인지 확인한다. 세션만으로 붙이면 공용 PC 에 남은 세션으로
+      // 제 구글을 붙여 두고 언제든 들어오거나, 그 구글로 '다시 확인'을 통과해 주인을 내쫓을 수 있었다
+      const me = await one('select password_hash from users where id=$1', [uid]);
+      await recheckPassword(uid, me && me.password_hash, body.password, null, body);
       try {
         await q('insert into identities(provider, subject, user_id, email) values($1,$2,$3,$4)', [provider, claim.sub, uid, claim.email]);
       } catch (e) { throw new HttpError(409, 'taken', `이 계정에는 이미 ${SOCIAL[provider]} 계정이 연결돼 있어요`); }
@@ -361,12 +379,15 @@ on('GET', '/auth/social', async ({ uid }) => {
   const u = await one('select password_hash from users where id=$1', [uid]);
   return { linked: rows, hasPassword: !!(u && u.password_hash), available: { google: socialConfigured('google'), apple: socialConfigured('apple') } };
 });
-on('DELETE', '/auth/social/:provider', async ({ uid, params }) => {
+on('DELETE', '/auth/social/:provider', async ({ uid, params, body }) => {
   if (!uid) throw noAuth();
   const u = await one('select password_hash from users where id=$1', [uid]);
   const rows = await q('select provider from identities where user_id=$1', [uid]);
+  if (!rows.some((r) => r.provider === params.provider)) return { ok: true };   // 붙어 있지 않다
   // 들어올 길을 모두 없애면 안 된다
   if (!(u && u.password_hash) && rows.length <= 1) throw bad('이 방법 말고는 로그인할 길이 없어요. 먼저 비밀번호를 정해 주세요');
+  // 떼는 것도 본인 확인 — 구글로만 드나들고 비밀번호는 잊은 사람은 세션만 가진 사람이 구글을 떼면 못 들어온다
+  await recheckPassword(uid, u && u.password_hash, body && body.password, null, body);
   await q('delete from identities where user_id=$1 and provider=$2', [uid, params.provider]);
   return { ok: true };
 });
@@ -388,15 +409,36 @@ on('POST', '/auth/logout', async ({ req, uid, body }) => {
   return { data: { ok: true }, headers: { 'Set-Cookie': clearSessionCookie(req) } };
 });
 
-// 로그인한 채로 하는 되돌릴 수 없는 일(계정 삭제·복구 코드·비밀번호 바꾸기)은 현재 비밀번호를 다시 묻는다.
-// 소셜로만 가입한 계정은 비밀번호가 없다 → 로그인만으로 (비밀번호 만들기와 같은 기준).
-// 세션만 가진 사람(교회 공용 PC)이 비밀번호를 맞혀 보지 못하게 로그인처럼 횟수를 센다
-async function recheckPassword(uid, hash, password, msg) {
-  if (!hash) return;
+// 로그인한 채로 하는 되돌릴 수 없는 일(계정 삭제·복구 코드·비밀번호 만들기/바꾸기·구글/애플 연결과 해제)은 본인인지 다시 확인한다.
+// 비밀번호가 있으면 현재 비밀번호. 소셜로만 가입한 계정은 연결된 구글·애플로 방금 다시 로그인해 받은 ID 토큰(body.reauth) —
+// 전에는 세션만으로 넘겨서, 공용 PC 에 남은 세션으로 복구 코드·비밀번호를 만들고 구글 연결을 떼어 주인을 내쫓을 수 있었다.
+// 세션만 가진 사람이 비밀번호를 맞혀 보지 못하게 로그인처럼 횟수를 센다. 비밀번호를 아예 안 보낸 것(옛 앱)은 세지 않는다
+const REAUTH_FRESH_S = 10 * 60;
+async function recheckPassword(uid, hash, password, msg, body) {
+  const ra = body && body.reauth;
+  if (ra && typeof ra === 'object' && ra.idToken) return recheckSocial(uid, ra);
+  if (!hash) {
+    // 구글·애플 연결도 비밀번호도 없으면 이 세션이 유일한 길이다 (들어올 길을 만들 수 있게 둔다)
+    if (!await one('select 1 from identities where user_id=$1 limit 1', [uid])) return;
+    throw new HttpError(403, 'reauth_required', '연결된 구글·Apple 계정으로 한 번 더 로그인해 본인인지 확인해 주세요. 앱이 오래됐다면 업데이트해 주세요');
+  }
+  if (password === undefined || password === null || password === '')
+    throw new HttpError(403, 'reauth_required', '현재 비밀번호를 적어 주세요. 비밀번호 칸이 보이지 않으면 앱을 업데이트해 주세요');
   const keys = [[`reauth:${uid}`, 8]];
-  await assertNotLocked(keys);
-  if (!(await verifyPasswordAsync(String(password || ''), hash))) { await noteFailure(keys); throw new HttpError(401, 'bad_login', msg || '비밀번호가 맞지 않아요'); }
+  await takeAttempt(keys);
+  if (!(await verifyPasswordAsync(String(password), hash))) throw new HttpError(401, 'bad_login', msg || '비밀번호가 맞지 않아요');
   await clearFailures(keys);
+}
+// 토큰은 이 계정에 연결된 구글·애플 계정의 것이어야 하고, 방금(10분 안) 받은 것이어야 한다 (복사해 둔 옛 토큰은 안 된다)
+async function recheckSocial(uid, ra) {
+  const provider = str(ra.provider, 10);
+  if (!SOCIAL[provider] || !socialConfigured(provider)) throw bad('지원하지 않는 방식이에요');
+  let claim;
+  try { claim = await verifyIdToken(provider, String(ra.idToken || ''), audiencesOf(provider)); }
+  catch (e) { throw new HttpError(401, 'bad_token', `${SOCIAL[provider]} 확인에 실패했어요: ${e.message}`); }
+  if (!(claim.iat > nowSec() - REAUTH_FRESH_S)) throw new HttpError(401, 'bad_token', `${SOCIAL[provider]}로 한 번 더 로그인해 주세요 (확인한 지 오래됐어요)`);
+  if (!await one('select 1 from identities where provider=$1 and subject=$2 and user_id=$3', [provider, claim.sub, uid]))
+    throw new HttpError(401, 'bad_token', `이 계정에 연결된 ${SOCIAL[provider]} 계정이 아니에요`);
 }
 
 // 계정 삭제 (§7): 아이디·비밀번호로 두 번 확인. 인도자로 남아 있는 팀이 있으면 먼저 넘기게 한다
@@ -405,8 +447,8 @@ on('POST', '/auth/delete', async ({ req, uid, body }) => {
   const u = await one('select id, username, password_hash from users where id=$1', [uid]);
   if (!u) throw noAuth();
   if (str(body.username, 40).toLowerCase() !== u.username) throw bad('아이디가 맞지 않아요');
-  // 소셜로만 가입한 계정은 아이디 확인만으로 (전에는 비밀번호가 없어 영영 못 지웠다)
-  await recheckPassword(uid, u.password_hash, body.password);
+  // 소셜로만 가입한 계정은 아이디 + 연결된 구글·애플로 다시 로그인 (전에는 비밀번호가 없어 영영 못 지웠다)
+  await recheckPassword(uid, u.password_hash, body.password, null, body);
   // 넘길 사람이 있는 팀만 막는다. 삭제 예약한 팀(30일 유예)과 나머지가 모두 비활성인 팀은
   // 넘길 수도 없으니(비활성에게는 못 넘긴다) 막지 않고 아래에서 정리한다
   const stuck = await q(`select t.name from members m join teams t on t.id=m.team_id
@@ -460,8 +502,8 @@ on('POST', '/auth/password', async ({ req, uid, body }) => {
   const cur = String(body.current || ''), next = String(body.next || '');
   if (next.length < PASSWORD_MIN) throw bad(`비밀번호는 ${PASSWORD_MIN}자 이상이에요`);
   const u = await one('select password_hash from users where id=$1', [uid]);
-  // 소셜로만 가입한 계정은 현재 비밀번호가 없다. 그때는 확인을 건너뛰고 새로 정하게 한다
-  await recheckPassword(uid, u.password_hash, cur, '현재 비밀번호가 맞지 않아요');
+  // 소셜로만 가입한 계정은 현재 비밀번호가 없다. 그때는 연결된 구글·애플로 다시 로그인해 확인하고 새로 정하게 한다
+  await recheckPassword(uid, u.password_hash, cur, '현재 비밀번호가 맞지 않아요', body);
   // 다른 기기의 로그인은 끊고, 이 기기는 새 쿠키로 이어간다
   await q('update users set password_hash=$2, auth_epoch=to_timestamp($3) where id=$1', [uid, await hashPasswordAsync(next), nowSec()]);
   await dropPushExcept(uid, body);
@@ -520,10 +562,11 @@ on('PATCH', '/me/prefs', async ({ uid, body }) => {
       select jsonb_object_agg(e.key, case when jsonb_typeof(e.value)='object' and jsonb_typeof(users.prefs->e.key)='object'
                                           then (users.prefs->e.key) || e.value else e.value end)
       from jsonb_each($2::jsonb) e), '{}'::jsonb)`;
-  // 한 번에 보내는 양만 보던 것을 합친 결과까지 본다. 전에는 키를 바꿔 가며 보내면 한없이 커졌다
+  // 한 번에 보내는 양만 보던 것을 합친 결과까지 본다. 전에는 키를 바꿔 가며 보내면 한없이 커졌다.
+  // 합친 것을 괄호로 묶고 뺀다 — '-' 가 '||' 보다 먼저 묶여서, 안 묶으면 아직 옮기지 않은 옛 조판(prefs.stage)까지 세어 413 이 났다
   const u = Buffer.byteLength(txt) > PREFS_MAX ? null
     : await one(`update users set prefs = ${merged}
-                 where id=$1 and octet_length((${merged} - 'stage')::text) <= $3 returning id`,
+                 where id=$1 and octet_length(((${merged}) - 'stage')::text) <= $3 returning id`,
       [uid, txt, PREFS_MAX]);
   if (!u) throw new HttpError(413, 'too_big', '설정이 너무 큽니다');
   return { prefs: await prefsOf(uid) };
@@ -604,13 +647,13 @@ on('POST', '/push/test', async ({ uid }) => {
 });
 
 // 복구 코드 발급 (로그인 상태). 코드는 한 번만 보여주고 해시만 저장.
-// 코드가 있으면 비밀번호를 새로 정할 수 있으니 현재 비밀번호를 다시 묻는다 — 전에는 세션만으로 발급돼서
-// 공용 PC 에 로그인이 남아 있으면 누구든 코드를 받아 두었다가 비밀번호를 바꿔 주인을 내쫓을 수 있었다
+// 코드가 있으면 비밀번호를 새로 정할 수 있으니 현재 비밀번호(소셜 전용 계정은 구글·애플 다시 로그인)를 다시 묻는다 —
+// 전에는 세션만으로 발급돼서 공용 PC 에 로그인이 남아 있으면 누구든 코드를 받아 두었다가 비밀번호를 바꿔 주인을 내쫓을 수 있었다
 on('POST', '/auth/recovery', async ({ uid, body }) => {
   if (!uid) throw noAuth();
   const u = await one('select password_hash from users where id=$1', [uid]);
   if (!u) throw noAuth();
-  await recheckPassword(uid, u.password_hash, body && body.password);
+  await recheckPassword(uid, u.password_hash, body && body.password, null, body);
   const alphabet = 'abcdefghjkmnpqrstuvwxyz23456789'; const raw = randomToken(18); let code = '';
   for (let i = 0; i < 12; i++) { code += alphabet[raw.charCodeAt(i) % alphabet.length]; if (i === 3 || i === 7) code += '-'; }
   await q('update users set recovery_hash=$2 where id=$1', [uid, await hashPasswordAsync(code)]);
@@ -622,9 +665,9 @@ on('POST', '/auth/recover', async ({ req, body }) => {
   if (next.length < PASSWORD_MIN) throw bad(`비밀번호는 ${PASSWORD_MIN}자 이상이에요`);
   // 복구 코드도 로그인과 같이 시도 횟수를 센다 (전에는 제한이 없었다)
   const keys = lockKeys('recover:', username, req);
-  await assertNotLocked(keys);
+  await takeAttempt(keys);
   const u = await one('select id, recovery_hash from users where username=$1', [username]);
-  if (!u || !u.recovery_hash || !(await verifyPasswordAsync(code, u.recovery_hash))) { await noteFailure(keys); throw new HttpError(401, 'bad_recovery', '아이디 또는 복구 코드가 맞지 않아요'); }
+  if (!u || !u.recovery_hash || !(await verifyPasswordAsync(code, u.recovery_hash))) throw new HttpError(401, 'bad_recovery', '아이디 또는 복구 코드가 맞지 않아요');
   await clearFailures(keys);
   await q('update users set password_hash=$2, recovery_hash=null, last_login_at=now(), auth_epoch=to_timestamp($3) where id=$1', [u.id, await hashPasswordAsync(next), nowSec()]);
   await dropPushExcept(u.id, null);   // 이 기기는 홈에 들어가며 다시 등록한다
@@ -758,13 +801,15 @@ async function renameSessions(teamId, map) {
   const from = pairs.map(([a]) => a), to = pairs.map(([, b]) => b);
   for (const t of ['notes', 'arrangement_notes'])
     await q(`update ${t} n set session=m.b from unnest($2::text[], $3::text[]) as m(a, b) where n.team_id=$1 and n.session=m.a`, [teamId, from, to]);
-  // 녹음 타임라인 메모의 세션 태그 (세션 메모는 이름이 같아야 그 세션 사람에게 보인다)
-  for (const r of await q(`select id, notes from rehearsals where team_id=$1 and notes <> '[]'::jsonb`, [teamId])) {
-    const ns = Array.isArray(r.notes) ? r.notes : [];
-    if (!ns.some((n) => n && n.session && at(n.session) !== n.session)) continue;
-    await q('update rehearsals set notes=$2 where id=$1',
-      [r.id, JSON.stringify(ns.map((n) => (n && n.session && at(n.session) !== n.session ? { ...n, session: at(n.session) } : n)))]);
-  }
+  // 녹음 타임라인 메모의 세션 태그 (세션 메모는 이름이 같아야 그 세션 사람에게 보인다).
+  // 한 문장으로 배열을 그 자리에서 고친다 — 읽어서 JS 로 바꿔 다시 쓰면 그사이 단 메모가 사라졌다 (메모 달기·지우기와 같은 이유)
+  await q(`update rehearsals r set notes = coalesce((
+             select jsonb_agg(case when m.b is not null then jsonb_set(e.x, '{session}', to_jsonb(m.b)) else e.x end order by e.i)
+               from jsonb_array_elements(r.notes) with ordinality as e(x, i)
+               left join unnest($2::text[], $3::text[]) as m(a, b) on jsonb_typeof(e.x) = 'object' and e.x->>'session' = m.a), '[]'::jsonb)
+           where r.team_id=$1 and exists (select 1 from jsonb_array_elements(case when jsonb_typeof(r.notes) = 'array' then r.notes else '[]'::jsonb end) x
+                                          where jsonb_typeof(x) = 'object' and x->>'session' = any($2::text[]))`,
+    [teamId, from, to]);
   // 편곡 미디어의 대상 세션
   for (const r of await q(`select id, media from arrangements where team_id=$1 and deleted_at is null`, [teamId])) {
     const md = Array.isArray(r.media) ? r.media : [];
@@ -2608,14 +2653,17 @@ on('POST', '/score', async ({ uid, body }) => {
   if (b64.length > 9e6) throw new HttpError(413, 'too_large', '이미지가 너무 커요');
   await aiGuard(teamId, 'score', uid);
   let r;
-  try { r = await transcribeScore({ b64, mime }, { thinking: 'LOW', repair: body.repair !== false }); }
+  // 박자가 어긋난 마디를 다시 묻는 것(사진 한 장에 최대 12번 더)도 부르기 전에 한 번씩 자리를 잡는다.
+  // 다 부른 뒤에 세면 동시에 보낸 요청이 한도의 13배까지 불렀다. 자리가 없으면 더 묻지 않는다
+  const reserve = () => aiGuard(teamId, 'score', uid).then(() => true, () => false);
+  const release = () => aiRelease(teamId, 'score', uid);
+  try { r = await transcribeScore({ b64, mime }, { thinking: 'LOW', repair: body.repair !== false, reserve, release }); }
   catch (e) {
     if (e.status) await aiRelease(teamId, 'score', uid);   // Gemini 오류 응답은 과금되지 않는다
     if (e.status === 429) throw new HttpError(429, 'omr_quota', '채보 한도에 걸렸어요. 잠시 뒤 다시 해 주세요');
     throw new HttpError(502, 'omr_failed', '채보 실패: ' + (e.message || ''));
   }
-  // 박자가 어긋난 마디를 다시 물은 것도 한 번씩 센다 (사진 한 장에 최대 13번까지 부른다)
-  await aiCount(teamId, 'score', r.usage && r.usage.total, uid, (r.calls || 1) - 1);
+  await aiCount(teamId, 'score', r.usage && r.usage.total, uid);   // 다시 묻기는 부르기 전에 이미 셌다
   const usd = estimateUSD(r.model, r.usage);
   // 원화는 대략만 보여 준다 (환율은 USD_KRW 로 바꿀 수 있음)
   return { songs: r.songs, model: r.model, usage: r.usage, badMeasures: r.badMeasures, cost: usd, costKRW: Math.round(usd * (+process.env.USD_KRW || 1450) * 10) / 10 };
@@ -2666,6 +2714,7 @@ on('POST', '/ocr', async ({ uid, body }) => {
         if (e.status) await aiRelease(teamId, 'ocr', uid, calls);
         throw new HttpError(502, 'ocr_failed', '코드 인식 실패: ' + (e.message || ''));
       }
+      if (e.status) await aiRelease(teamId, 'ocr', uid, calls);   // 오류 응답은 과금되지 않는다 (Vision 장수는 아래에서 새로 잡는다)
       g = null;   // Gemini 가 실패하면 예전 방식으로라도 읽는다
     }
     if (g) {
@@ -2680,9 +2729,11 @@ on('POST', '/ocr', async ({ uid, body }) => {
                usage: g.usage, cost: usd, costKRW: Math.round(usd * (+process.env.USD_KRW || 1400) * 10) / 10 };
     }
   }
+  // Gemini 로 읽다 실패해 Vision 으로 다시 읽으면 그 장수만큼 부르기 전에 자리를 더 잡는다 (다 찼으면 부르지 않는다)
+  if (useGemini) {
+    try { await aiGuard(teamId, 'ocr', uid, images.length); } catch (e) { await aiUndo(teamId, 'ocr', quota); throw e; }
+  }
   const results = await ocrBands(images);
-  // Gemini 로 읽다 실패해 Vision 으로 다시 읽었으면 그 장수만큼 더 센다
-  await aiCount(teamId, 'ocr', 0, uid, useGemini ? images.length : 0);
   return { results, engine: 'vision', quota: { used: quota.used, cap: quota.cap } };
 });
 

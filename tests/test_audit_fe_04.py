@@ -555,8 +555,8 @@ if (r.status !== 200) fail('다음 사람 소셜 로그인 ' + r.status + ' ' + 
 if (r.j.user.id === u1.j.user.id) fail('로그인 화면의 소셜 로그인이 남은 세션의 계정으로 들어감');
 let links = await call('GET', '/auth/social', null, u1.cookie);
 if ((links.j.linked || []).length) fail('남은 세션 계정에 다음 사람의 구글 계정이 붙음 ' + JSON.stringify(links.j.linked));
-// 설정의 '계정 연결'(login 표시 없음)은 예전처럼 붙는다
-r = await call('POST', '/auth/social', { provider: 'google', idToken: await token('s3' + tag) }, u1.cookie);
+// 설정의 '계정 연결'(login 표시 없음)은 붙는다. 들어올 길을 더하는 일이라 현재 비밀번호로 본인 확인을 한다 (F37)
+r = await call('POST', '/auth/social', { provider: 'google', idToken: await token('s3' + tag), password: 'secret1' }, u1.cookie);
 if (r.status !== 200 || r.j.user.id !== u1.j.user.id) fail('계정 연결이 안 됨 ' + r.status);
 links = await call('GET', '/auth/social', null, u1.cookie);
 if ((links.j.linked || []).length !== 1) fail('계정 연결 목록 ' + JSON.stringify(links.j));

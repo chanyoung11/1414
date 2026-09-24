@@ -2932,17 +2932,21 @@ function afterSettings(){
     if(!S.team.sessions.includes(m.session))m.session=S.team.sessions[0]||''}
    save();toast('저장했어요');if(firstRun)go('home');else render();return}
   if(e.target.closest('#sPwOk')){const a=$('#sPw0'),b=$('#sPw1');if(!b.value){$('#sErr2').textContent='새 비밀번호를 적어 주세요';return}
-   try{await api('/auth/password',{method:'POST',body:{current:a?a.value:'',next:b.value,...await pushIdent()}});   // 이 기기 알림만 남기고 다른 기기 알림은 서버가 끊는다
+   // 비밀번호가 없는 소셜 전용 계정은 연결된 구글·애플로 본인 확인 (현재 비밀번호 칸 대신)
+   try{const who=a?{}:await socialReauth();
+    await api('/auth/password',{method:'POST',body:{current:a?a.value:'',next:b.value,...who,...await pushIdent()}});   // 이 기기 알림만 남기고 다른 기기 알림은 서버가 끊는다
     if(a)a.value='';b.value='';$('#sErr2').textContent='';
     if(LINK.hasPassword===false){LINK.hasPassword=true;toast('비밀번호를 정했어요');render()}else toast('비밀번호를 바꿨어요')}
-   catch(err){$('#sErr2').textContent=err.message}return}
+   catch(err){$('#sErr2').textContent=reauthCancelled(err)?'':msgOf(err)}return}
   const lnk=e.target.closest('[data-link]');
   if(lnk){await linkProvider(lnk.dataset.link);return}
   const unl=e.target.closest('[data-unlink]');
   if(unl){const pv=unl.dataset.unlink;
    if(!confirm(`${SOCNAME[pv]||pv} 계정 연결을 해제할까요?`))return;
-   try{await api('/auth/social/'+pv,{method:'DELETE'});toast('연결을 해제했어요');await loadLinks()}
-   catch(err){toast(err.message)}return}
+   // 들어올 길을 빼는 일이라 본인 확인 (비밀번호 · 소셜 전용이면 연결된 계정으로 다시 로그인)
+   try{const who=await reauthBody(`${SOCNAME[pv]||pv} 연결 해제`);if(!who)return;
+    await api('/auth/social/'+pv,{method:'DELETE',body:who});toast('연결을 해제했어요');await loadLinks()}
+   catch(err){if(!reauthCancelled(err))toast(msgOf(err))}return}
   if(e.target.closest('#sRc')){recoveryCodeModal();return}
   if(e.target.closest('#sDel')){deleteAccountModal();return}
   if(e.target.closest('#sRefetch')){const btn=e.target.closest('#sRefetch');btn.disabled=true;btn.textContent='불러오는 중…';
@@ -3118,7 +3122,8 @@ async function recoveryCodeModal(){
  const show=code=>{if(NET.user)NET.user.hasRecovery=true;
   modal(`<b style="font-size:17px">복구 코드</b><div class="hint" style="margin-top:4px">이 화면을 닫으면 다시 볼 수 없어요. 메모장이나 비밀번호 앱에 저장해 두세요. 비밀번호를 잊으면 로그인 화면의 "비밀번호를 잊었어요"에서 씁니다.</div><div class="linkbox" style="margin-top:12px;font-size:20px;letter-spacing:.08em;text-align:center">${esc(code)}</div><div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" id="rcCopy">복사</button><button class="btn pri" id="rcClose">저장했어요</button></div>`,{center:true});
   $('#modal').onclick=async ev=>{if(ev.target.closest('#rcCopy')){await copyText(code);toast('복사했어요')}if(ev.target.closest('#rcClose')){closeModal();render()}}};
- if(!await knowHasPassword()){try{show((await api('/auth/recovery',{method:'POST',body:{}})).code)}catch(err){toast(err.message)}return}
+ // 소셜로만 가입한 계정은 비밀번호 대신 연결된 구글·애플로 한 번 더 로그인해 확인한다
+ if(!await knowHasPassword()){try{show((await api('/auth/recovery',{method:'POST',body:await socialReauth()})).code)}catch(err){if(!reauthCancelled(err))toast(msgOf(err))}return}
  modal(`<b style="font-size:17px">복구 코드</b><div class="hint" style="margin-top:6px">본인인지 확인할게요. 현재 비밀번호를 적어 주세요.${again?'<br>새로 받으면 전에 받은 코드는 더 못 써요.':''}</div>
   <div class="lbl">현재 비밀번호</div><input class="field" id="rcPw" type="password" autocomplete="current-password">
   <div class="err" id="rcErr"></div>
@@ -3129,7 +3134,7 @@ async function recoveryCodeModal(){
  $('#modal').onclick=e=>{if(e.target.closest('[data-close]')){closeModal();return}if(e.target.closest('#rcGo'))go()};
  const pw=$('#rcPw');pw.onkeydown=e=>{if(e.key==='Enter')go()};pw.focus()}
 async function deleteAccountModal(){
- const needPw=await knowHasPassword();   // 소셜로만 가입한 계정은 아이디 확인만 (서버도 같은 기준)
+ const needPw=await knowHasPassword();   // 소셜로만 가입한 계정은 아이디 + 연결된 구글·애플로 다시 로그인 (서버도 같은 기준)
  modal(`<b style="font-size:17px">계정 삭제</b><div class="hint" style="margin-top:6px">이 계정과 내가 쓴 메모가 지워져요. 되돌릴 수 없습니다.<br>내가 인도자인 팀은 <b>먼저 다른 사람을 인도자로 지정</b>하거나 팀을 지워야 해요.</div>
   <div class="lbl">확인을 위해 아이디를 적어 주세요 <span class="hint">${esc((NET.user&&NET.user.username)||'')}</span></div>
   <input class="field" id="daUser" autocapitalize="none" spellcheck="false" placeholder="${esc((NET.user&&NET.user.username)||'')}">
@@ -3141,11 +3146,12 @@ async function deleteAccountModal(){
   if(e.target.closest('#daGo')){const err=$('#daErr');err.textContent='';
    if($('#daUser').value.trim()!==((NET.user&&NET.user.username)||'')){err.textContent='아이디가 맞지 않아요';return}
    if(!confirm('정말 지울까요? 되돌릴 수 없어요.'))return;
-   try{await api('/auth/delete',{method:'POST',body:{username:$('#daUser').value.trim(),password:needPw?$('#daPw').value:''}});
+   try{const who=needPw?{password:$('#daPw').value}:await socialReauth();
+    await api('/auth/delete',{method:'POST',body:{username:$('#daUser').value.trim(),...who}});
     NET.user=null;NET.teams=[];await switchScope(scopeKey('',''));S.team=Object.assign(DEF_TEAM(),{id:'',invite:''});save();
     try{indexedDB.deleteDatabase('conti-v1')}catch(e2){}
     closeModal();location.hash='#/home';location.reload()}
-   catch(e2){err.textContent=e2.message}}}}
+   catch(e2){err.textContent=reauthCancelled(e2)?'':msgOf(e2)}}}}
 // 조사 붙이기: 한글 받침과 숫자 읽는 소리를 보고 은/는, 이/가, 으로/로 를 고른다
 const DIGIT_BAT=[true,true,false,true,false,false,true,true,true,false];
 function hasBat(v){const t=String(v||'').trim();if(!t)return false;const c=t.charCodeAt(t.length-1);
@@ -3699,33 +3705,68 @@ function drawLinks(){
   box.innerHTML = rows.join('') + (!LINK.hasPassword&&LINK.linked.length<=1
     ? `<div class="hint" style="margin-top:8px">지금은 이 방법으로만 들어올 수 있어요. 해제하려면 먼저 아래에서 비밀번호를 정해 주세요.</div>` : '');
 }
-// 로그인할 때와 같은 흐름으로 토큰을 받아 계정에 붙인다
+// 로그인할 때와 같은 흐름으로 그 제공자의 ID 토큰을 받아 온다 (계정 연결 · 본인 다시 확인)
+async function providerToken(pv){
+  const cfg=await socialConfig();
+  if(NATIVE){
+    const SL=CapPlug().SocialLogin;
+    if(!SL)throw new Error('이 버전에서는 할 수 없어요. 앱을 업데이트해 주세요');
+    const ios=/iphone|ipad|ipod/i.test(navigator.userAgent||'');
+    const opt={ google:{ webClientId:cfg.google||undefined, iOSClientId:cfg.googleIos||undefined } };
+    if(ios&&cfg.appleBundle)opt.apple={ clientId:cfg.appleBundle };
+    await SL.initialize(opt);
+    const r=await SL.login({provider:pv, options:{}});
+    return r&&r.result&&r.result.idToken;
+  }
+  if(pv==='google')return googleToken(cfg.google);
+  await loadScript('https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/ko_KR/appleid.auth.js');
+  AppleID.auth.init({clientId:cfg.apple, scope:'name email', redirectURI:location.origin+'/api/auth/apple/callback', usePopup:true});
+  const r=await AppleID.auth.signIn();
+  return r&&r.authorization&&r.authorization.id_token;
+}
+// 로그인 방법을 바꾸는 일(복구 코드·비밀번호·연결·해제·계정 삭제)은 본인인지 다시 확인한다 (서버도 같은 기준).
+// 소셜로만 가입한 계정은 비밀번호가 없어 연결된 구글·애플로 한 번 더 로그인한다 — 세션만으로 되면
+// 공용 PC 에 남은 로그인으로 누구든 복구 코드·비밀번호를 만들어 주인을 내쫓을 수 있었다
+async function socialReauth(){
+  if(!LINK.linked)await knowHasPassword();
+  const ios=/iphone|ipad|ipod/i.test(navigator.userAgent||'');
+  const linked=(LINK.linked||[]).map(x=>x.provider);
+  if(!linked.length)return {};   // 들어올 길이 이 로그인뿐인 계정 (서버도 그대로 둔다)
+  const pv=linked.find(p=>LINK.available&&LINK.available[p]&&!(p==='apple'&&NATIVE&&!ios));
+  if(!pv)throw new Error(`이 기기에서는 ${linked.map(p=>SOCNAME[p]||p).join('·')}로 확인할 수 없어요. 웹이나 아이폰에서 해 주세요`);
+  toast(`본인인지 확인할게요 — ${SOCNAME[pv]}로 한 번 더 로그인해 주세요`);
+  const idToken=await providerToken(pv);
+  if(!idToken)throw new Error(`${SOCNAME[pv]} 확인을 받지 못했어요`);
+  return {reauth:{provider:pv, idToken}};
+}
+// 비밀번호가 있는 계정: 현재 비밀번호를 묻는 창. 취소하면 null
+function askPassword(title){
+  return new Promise(ok=>{
+    modal(`<b style="font-size:17px">${esc(title)}</b><div class="hint" style="margin-top:6px">본인인지 확인할게요. 현재 비밀번호를 적어 주세요.</div>
+     <div class="lbl">현재 비밀번호</div><input class="field" id="raPw" type="password" autocomplete="current-password">
+     <div class="err" id="raErr"></div>
+     <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" data-close="1">취소</button><button class="btn pri" id="raGo">확인</button></div>`,{center:true});
+    const go=()=>{const v=$('#raPw').value;if(!v){$('#raErr').textContent='비밀번호를 적어 주세요';return}closeModal();ok(v)};
+    $('#modal').onclick=e=>{if(e.target.closest('[data-close]')){closeModal();ok(null);return}if(e.target.closest('#raGo'))go()};
+    const pw=$('#raPw');pw.onkeydown=e=>{if(e.key==='Enter')go()};pw.focus();
+  });
+}
+async function reauthBody(title){
+  if(await knowHasPassword()){const pw=await askPassword(title);return pw==null?null:{password:pw}}
+  return socialReauth();
+}
+const reauthCancelled=e=>cancelled(e)||(e&&(e.error==='popup_closed_by_user'||e.error==='user_cancelled_authorize'));
+// 로그인할 때와 같은 흐름으로 토큰을 받아 계정에 붙인다. 들어올 길을 더하는 일이라 먼저 본인 확인
 async function linkProvider(pv){
   try{
-    const cfg=await socialConfig();
-    if(NATIVE){
-      const SL=CapPlug().SocialLogin;
-      if(!SL)throw new Error('이 버전에서는 연결할 수 없어요');
-      const ios=/iphone|ipad|ipod/i.test(navigator.userAgent||'');
-      const opt={ google:{ webClientId:cfg.google||undefined, iOSClientId:cfg.googleIos||undefined } };
-      if(ios&&cfg.appleBundle)opt.apple={ clientId:cfg.appleBundle };
-      await SL.initialize(opt);
-      const r=await SL.login({provider:pv, options:{}});
-      const res=r&&r.result;
-      await api('/auth/social',{method:'POST',body:{provider:pv, idToken:res&&res.idToken}});
-    }else if(pv==='google'){
-      const tok=await googleToken(cfg.google);
-      await api('/auth/social',{method:'POST',body:{provider:'google', idToken:tok}});
-    }else{
-      await loadScript('https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/ko_KR/appleid.auth.js');
-      AppleID.auth.init({clientId:cfg.apple, scope:'name email', redirectURI:location.origin+'/api/auth/apple/callback', usePopup:true});
-      const r=await AppleID.auth.signIn();
-      await api('/auth/social',{method:'POST',body:{provider:'apple', idToken:r&&r.authorization&&r.authorization.id_token}});
-    }
+    const who=await reauthBody(`${SOCNAME[pv]} 연결`);
+    if(!who)return;
+    const idToken=await providerToken(pv);
+    await api('/auth/social',{method:'POST',body:{provider:pv, idToken, ...who}});
     toast(`${SOCNAME[pv]} 계정을 연결했어요`);
     await loadLinks();
   }catch(e){
-    if(cancelled(e)||(e&&(e.error==='popup_closed_by_user'||e.error==='user_cancelled_authorize')))return;
+    if(reauthCancelled(e))return;
     toast(msgOf(e));
   }
 }
