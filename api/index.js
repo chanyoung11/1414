@@ -1810,15 +1810,19 @@ on('GET', '/songs', async ({ uid, url }) => {
   const teamId = str(url.searchParams.get('team'), 64);
   const me0 = await requireMember(uid, teamId);
   let since = str(url.searchParams.get('since'), 40);
-  if (since && isNaN(Date.parse(since))) since = '';
-  // 읽기 전에 잡아야 그 사이 바뀐 것을 다음에 받는다. 몇 초 앞당겨 둔다 — 지금 막 쓰는 중인(아직 커밋 전) 줄은
-  // updated_at 이 이 시각보다 앞선 채로 나중에 보이게 되어, 딱 지금으로 잡으면 다음 since 에서 영영 빠진다
-  const now0 = (await one(`select now() - interval '5 seconds' as t`)).t;
-  const songs = since
-    ? await q('select * from songs where team_id=$1 and (updated_at > $2 or touched_at > $2) order by updated_at asc', [teamId, since])
-    : await q('select * from songs where team_id=$1 order by updated_at asc', [teamId]);
-  const release = !since || songs.length > 50 ? await heavySlot() : null;
+  // 앱은 서버가 준 now(ISO 시각)를 그대로 돌려보낸다. '1'·'2026' 처럼 JS 는 날짜로 읽지만 DB 는 못 읽는 값은
+  // 전에 그대로 쿼리에 들어가 500 이었다 → ISO 꼴만 받아 다시 적고, 나머지는 통째로 준다
+  if (since) { const t = Date.parse(since); since = /^\d{4}-\d{2}-\d{2}T/.test(since) && t > 0 ? new Date(t).toISOString() : ''; }
+  // 통째 목록은 곡 줄을 읽기 전부터 자리를 잡는다 — 줄 선 요청마다 800곡 줄을 들고 기다리지 않게
+  let release = since ? null : await heavySlot();
   try {
+    // 읽기 전에 잡아야 그 사이 바뀐 것을 다음에 받는다. 몇 초 앞당겨 둔다 — 지금 막 쓰는 중인(아직 커밋 전) 줄은
+    // updated_at 이 이 시각보다 앞선 채로 나중에 보이게 되어, 딱 지금으로 잡으면 다음 since 에서 영영 빠진다
+    const now0 = (await one(`select now() - interval '5 seconds' as t`)).t;
+    const songs = since
+      ? await q('select * from songs where team_id=$1 and (updated_at > $2 or touched_at > $2) order by updated_at asc', [teamId, since])
+      : await q('select * from songs where team_id=$1 order by updated_at asc', [teamId]);
+    if (!release && songs.length > 50) release = await heavySlot();
     const sids = since ? songs.filter((s) => !s.deleted_at).map((s) => s.id) : null;
     const arrs = !sids ? await q('select * from arrangements where team_id=$1 and deleted_at is null order by is_default desc, created_at asc', [teamId])
       : sids.length ? await q('select * from arrangements where team_id=$1 and song_id = any($2::uuid[]) and deleted_at is null order by is_default desc, created_at asc', [teamId, sids])
@@ -1836,12 +1840,16 @@ on('GET', '/songs', async ({ uid, url }) => {
     for (const a of arrs) (byId[a.song_id] = byId[a.song_id] || []).push({ ...arrView(a), notes: notesBy[a.id] || [] });
     const ids = [...new Set(arrs.flatMap(arrBlobIds))];
     const blobs = ids.length ? await q('select id, url, pathname from blobs where team_id=$1 and id = any($2::text[])', [teamId, ids]) : [];
-    return {
+    const data = {
       songs: songs.filter((s) => !s.deleted_at).map((s) => songView(s, { arrangements: byId[s.id] || [], ...(stats[s.id] || { useCount: 0, lastUsed: null, firstUsed: null, keyStats: {} }) })),
       deleted: songs.filter((s) => s.deleted_at).map((s) => s.id),
       now: now0,
       blobs: await readUrls(blobs),
     };
+    // 자리는 응답을 글자로 만들고 gzip 한 뒤에 놓는다(handler 가 send 뒤에 done 을 부른다). 여기서 바로 놓으면
+    // 만든 객체·수 MB 글자·압축 버퍼를 든 요청이 자리 밖에 쌓여, 한꺼번에 50~80개면 그래도 힙이 넘쳤다
+    const done = release; release = null;
+    return { data, headers: {}, done };
   } finally { if (release) release(); }
 });
 
@@ -2179,21 +2187,27 @@ on('DELETE', '/share/:code', async ({ uid, params, url }) => {
   return { ok: true };
 });
 // 코드는 6자라 마구 넣어 보면 남의 팀 곡을 긁을 수 있다. 틀린 시도를 세어 막는다.
-// 미리보기와 담기가 같은 셈을 쓴다 — 전에는 담기(take)에 셈이 없어서 미리보기가 잠겨도 담기로 계속 두드릴 수 있었다
+// 미리보기와 담기가 같은 셈을 쓴다 — 전에는 담기(take)에 셈이 없어서 미리보기가 잠겨도 담기로 계속 두드릴 수 있었다.
+// 먼저 한 번을 세고(한 문장으로 세고 한도에서 멈춘다) 있는 코드였으면 돌려준 함수로 도로 뺀다. 전에는 읽어 보고
+// 틀린 뒤에 더해서, 한꺼번에 수백 개를 보내면 모두 '아직 여유'를 보고 지나갔다 (300개 중 170여 개가 셈 밖으로)
+const SHARE_MISS_MAX = 20;
 async function shareGuard(uid) {
   const key = 'share|' + uid;
-  const la = await one('select n, last from login_attempts where username=$1', [key]).catch(() => null);
-  if (la && la.n >= 20 && Date.now() - new Date(la.last).getTime() < 60 * 60 * 1000)
-    throw new HttpError(429, 'too_many', '코드를 너무 많이 시도했어요. 한 시간 뒤에 다시 해 주세요');
-  return async () => { await q(`insert into login_attempts(username, n, last) values($1,1,now())
-    on conflict (username) do update set n = case when login_attempts.last < now() - interval '1 hour' then 1 else login_attempts.n + 1 end, last = now()`, [key]).catch(() => {}); };
+  const r = await one(`insert into login_attempts(username, n, last) values($1, 1, now())
+    on conflict (username) do update set
+      n = case when login_attempts.last < now() - interval '1 hour' then 1 else login_attempts.n + 1 end, last = now()
+    where login_attempts.n < $2 or login_attempts.last < now() - interval '1 hour'
+    returning n`, [key, SHARE_MISS_MAX]).catch(() => ({ n: 0 }));   // 표를 못 쓰면 막지 않는다
+  if (!r) throw new HttpError(429, 'too_many', '코드를 너무 많이 시도했어요. 한 시간 뒤에 다시 해 주세요');
+  return async () => { await q('update login_attempts set n = greatest(n - 1, 0) where username=$1', [key]).catch(() => {}); };
 }
 // 미리보기 (받는 쪽). 담기 전에 무엇이 들어오는지 본다
 on('GET', '/share/:code', async ({ uid, params }) => {
   if (!uid) throw noAuth();
-  const miss = await shareGuard(uid);
+  const found = await shareGuard(uid);
   const r = await one('select * from share_codes where code=$1', [String(params.code || '').toUpperCase()]);
-  if (!r) { await miss(); throw notFound('그런 코드가 없어요'); }
+  if (!r) throw notFound('그런 코드가 없어요');
+  await found();   // 있는 코드(회수·기한·다 쓰임 포함)는 틀린 시도가 아니다
   if (r.revoked_at) throw notFound('이 코드는 회수됐어요');
   if (new Date(r.expires_at) < new Date()) throw notFound('이 코드는 기한이 지났어요');
   if (r.max_uses != null && r.uses >= r.max_uses) throw notFound('이 코드는 이미 다 쓰였어요');
@@ -2204,16 +2218,18 @@ on('POST', '/share/:code/take', async ({ uid, params, body }) => {
   if (!uid) throw noAuth();
   const teamId = str(body.teamId, 64);
   const m = await requireMember(uid, teamId, 'leader');
-  const miss = await shareGuard(uid);
+  const found = await shareGuard(uid);
   const code = String(params.code || '').toUpperCase();
   // 먼저 한 자리를 선점한다. 검사하고 나중에 세면 '한 팀만' 코드가 여러 팀에 나간다
   const claim = await one(`update share_codes set uses = uses + 1 where code=$1 and revoked_at is null
     and expires_at > now() and (max_uses is null or uses < max_uses) returning payload`, [code]);
   if (!claim) {
     const exists = await one('select code from share_codes where code=$1', [code]);
-    if (!exists) { await miss(); throw notFound('그런 코드가 없어요'); }
+    if (!exists) throw notFound('그런 코드가 없어요');
+    await found();
     throw notFound('이 코드는 더 쓸 수 없어요');
   }
+  await found();
   try { return await takeSharePayload(teamId, uid, m, claim.payload); }
   catch (e) { await q('update share_codes set uses = greatest(uses - 1, 0) where code=$1', [code]).catch(() => {}); throw e; }
 });
@@ -3547,7 +3563,8 @@ export default async function handler(req, res) {
     }
     const out = await route.fn({ req, uid, params, body, url });
     // await 해야 응답을 만들다 던진 것(JSON 으로 못 바꾸는 값 등)도 아래 catch 가 받아 500 으로 끝낸다
-    if (out && out.headers && 'data' in out) return await send(res, 200, out.data, out.headers);
+    // done: 응답을 다 만들어 보낸 뒤에 놓을 것 (무거운 곡 목록의 자리 — 글자로 만들고 압축하는 동안까지 쥐고 있어야 한다)
+    if (out && out.headers && 'data' in out) { try { return await send(res, 200, out.data, out.headers); } finally { if (out.done) out.done(); } }
     return await send(res, 200, out);
   } catch (e) {
     if (e instanceof HttpError) return send(res, e.status, { error: e.code, message: e.message });

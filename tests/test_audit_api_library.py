@@ -6,8 +6,13 @@
 #  G11 8자보다 긴 마커 라벨의 고정 메모가 잘려 저장되어 어디에도 안 보임
 #  F46 공유 코드 담기(take)에 틀린 시도 제한이 없음
 #  G04 곡 목록이 since 여도 팀 전체를 읽고, 앱은 늘 통째로 받음 → 한꺼번에 열면 서버 메모리가 넘침
+# 되돌려진 수정 바로잡기(r2)
+#  F44·G04 배포 전에 받아 둔 기기의 옛 꼴 캐시(연도 없는 날짜)는 since 로는 안 고쳐짐 → 한 번 통째로 받는다 (SONGS_V)
+#  G04 since=1·0·2026 처럼 JS 는 읽고 DB 는 못 읽는 값이 500
+#  G11 8자 라벨 그대로인 마커('Bridge 1')의 새 메모가 앞이 같은 긴 마커('Bridge 12')에도 붙음
+#  F46 틀린 시도를 읽고 나중에 더해, 한꺼번에 보내면 셈을 빠져나감 (300개 중 170여 개)
 # 사용: CONTI_URL=http://localhost:8802/ .venv/bin/python tests/test_audit_api_library.py
-import os, sys, time, datetime, random
+import os, sys, time, datetime, random, json, urllib.request, urllib.error, concurrent.futures
 from playwright.sync_api import sync_playwright
 
 URL = os.environ.get('CONTI_URL', 'http://localhost:8766/')
@@ -140,6 +145,40 @@ def run():
     if pg.evaluate('!!CONTI.S.songs.find(s=>s.id==="%s").dirty' % sid): fail('F45: 저장한 뒤에도 곡이 dirty')
     print('UI ok: 작년 이맘때 보임 · 메모 탭에 드럼 · 드럼만 보임 · 잘린 옛 라벨 복구 · 라벨 40자 · ♩=96.6→97')
 
+    # ---------------- G11 (r2): 8자 라벨 그대로인 마커가 있으면 그 마커에만 ----------------
+    lab2 = pg.evaluate('''()=>{const it=(l,ms)=>({fixedNotes:[{id:'n',markerLabel:l,layer:'all',text:'t'}],
+        pieces:[{markers:ms.slice(0,1).map((x)=>({id:'m0',label:x}))},{markers:ms.slice(1).map((x,i)=>({id:'m'+(i+1),label:x}))}]});
+      const B=['Bridge 1','Bridge 12','Bridge 1 (반복)'];
+      return [CONTI.fixedNotesOf(it('Bridge 1',B),'m0').length, CONTI.fixedNotesOf(it('Bridge 1',B),'m1').length,
+              CONTI.fixedNotesOf(it('Bridge 1',B),'m2').length, CONTI.fixedNotesOf(it('Pre-Chor',['Pre-Chorus']),'m0').length,
+              CONTI.fixedNotesOf(it('Pre-Chor',['Pre-Chor','Pre-Chorus']),'m0').length, CONTI.fixedNotesOf(it('Pre-Chor',['Pre-Chor','Pre-Chorus']),'m1').length]}''')
+    if lab2 != [1, 0, 0, 1, 1, 0]: fail('G11: 8자 라벨 마커의 메모가 긴 마커에도 붙음 %s (기대 [1,0,0,1,1,0])' % lab2)
+    print('G11 ok: Bridge 1 메모는 Bridge 12 에 안 붙고, 잘린 옛 Pre-Chor 는 같은 라벨 마커가 없을 때만 Pre-Chorus 에')
+
+    # ---------------- F44·G04 (r2): 배포 전에 받아 둔 기기 — 옛 꼴 캐시는 한 번 통째로 받는다 ----------------
+    # 옛 서버가 준 꼴(연도 없는 날짜·시각이 붙은 lastUsed)로 캐시를 되돌리고, 그 뒤로 바뀐 것이 없게 songsAt 을 지금으로 둔다.
+    # 옛 앱은 SONGS_V 를 몰랐다 → 지운다
+    pg.goto(URL + '#/library'); pg.wait_for_selector('.libpage', timeout=10000); pg.wait_for_timeout(800)
+    pg.evaluate('''async()=>{for(const s of CONTI.S.songs){if((s.usedDates||[]).length){
+        s.usedDates=s.usedDates.map(d=>new Date(d+'T00:00:00').toDateString().slice(0,10));
+        s.lastUsed=new Date(s.lastUsed+'T00:00:00+09:00').toISOString();s.firstUsed=s.lastUsed}}
+      CONTI.S.songsAt=new Date().toISOString();delete CONTI.S.songsV;await CONTI.save()}''')
+    pg.wait_for_timeout(1500)
+    old = pg.evaluate('''async(id)=>{const raw=await CONTI.IDB.get('kv',await CONTI.IDB.get('kv','scope'));const s=JSON.parse(raw);
+      return [s.songsV===undefined, (s.songs.find(x=>x.id===id)||{}).usedDates]}''', sid)
+    if not old[0] or not old[1] or old[1][0] == ly: fail('F44: 옛 꼴 캐시를 만들지 못함 %s' % old)
+    sreq = []
+    pg.on('request', lambda r: sreq.append(r.url) if '/api/songs?' in r.url else None)
+    pg.reload(); pg.wait_for_selector('.libpage', timeout=10000)
+    pg.wait_for_function('CONTI.S.songsV===2', timeout=10000); pg.wait_for_timeout(1200)
+    if not sreq or 'since=' in sreq[0]: fail('F44: 옛 꼴 캐시인데 통째로 안 받음 %s' % sreq)
+    got = pg.evaluate('(id)=>{const s=CONTI.S.songs.find(x=>x.id===id);return [s.usedDates,s.lastUsed]}', sid)
+    if got != [[ly], ly]: fail('F44: 다시 연 뒤에도 옛 날짜 %s' % got)
+    if '작년 이맘때' not in pg.locator('.libpage').inner_text(): fail('F44: 옛 캐시 기기에서 작년 이맘때가 안 보임')
+    sreq.clear(); pg.reload(); pg.wait_for_selector('.libpage', timeout=10000); pg.wait_for_timeout(2000)
+    if not sreq or any('since=' not in u for u in sreq): fail('F44: 한 번 통째로 받은 뒤에도 또 통째로 받음 %s' % sreq)
+    print('F44 ok: 옛 꼴 캐시는 한 번 통째로 받아 작년 이맘때가 보이고, 그 뒤로는 since')
+
     # ---------------- G04: since 는 바뀐 곡만, 통계·새 편곡·세션 이름도 since 로 ----------------
     c2, t2 = leader(b, 'syn')
     r2 = c2.request
@@ -187,6 +226,10 @@ def run():
     row = [x for x in list_of(r2, t2, t1)['songs'] if x['id'] == ids[0][0]]
     if not row or [n['session'] for a in row[0]['arrangements'] for n in a['notes']] != ['드럼1']: fail('G04: 세션 이름 바뀐 메모가 since 로 안 옴')
     print('G04 ok: since 는 바뀐 곡과 그 파일만 · 발행/삭제 통계 · 새 편곡 · 세션 이름도 since 로 온다')
+    for v in ('1', '0', '2026', 'abc', '275760-09-13'):
+        st, j = call(r2, 'GET', '/songs?team=%s&since=%s' % (t2, v))
+        if st != 200 or len(j['songs']) != 3: fail('G04: since=%s → %s %s (통째로 줘야 함)' % (v, st, j and len(j.get('songs') or [])))
+    print('G04 ok: since=1·0·2026 처럼 날짜가 아닌 값은 500 대신 통째로')
 
     # 한꺼번에 열어도 모두 받는다 (무거운 목록은 줄을 세워 만든다 — 자리가 안 풀리면 여기서 멈추거나 실패한다)
     pg2 = c2.new_page(); pg2.on('pageerror', lambda e: errs.append(str(e)))
@@ -222,6 +265,31 @@ def run():
     st, _ = call(c4.request, 'POST', '/share/%s/take' % code(), {'teamId': t4})
     if st != 429: fail('F46: 미리보기로 잠겼는데 담기가 %s' % st)
     print('F46 ok: 담기도 20번 틀리면 429, 미리보기와 같은 셈')
+
+    # r2: 한꺼번에 보내도 20번까지만 (전에는 먼저 읽고 나중에 더해 수백 개 중 백몇십 개가 셈 밖으로 나갔다)
+    def raw_take(cookie, cd, team):
+        rq_ = urllib.request.Request(URL + 'api/share/%s/take' % cd, data=json.dumps({'teamId': team}).encode(), method='POST',
+                                     headers={'x-conti': '1', 'content-type': 'application/json', 'cookie': cookie})
+        try: return urllib.request.urlopen(rq_, timeout=60).status
+        except urllib.error.HTTPError as e: return e.code
+    c5, t5 = leader(b, 'sh5')
+    ck = '; '.join('%s=%s' % (x['name'], x['value']) for x in c5.cookies())
+    with concurrent.futures.ThreadPoolExecutor(60) as ex:
+        sts = list(ex.map(lambda _: raw_take(ck, code(), t5), range(150)))
+    cnt = {k: sts.count(k) for k in set(sts)}
+    if cnt != {404: 20, 429: 130}: fail('F46: 한꺼번에 150번 담기 → %s (기대 404×20, 429×130)' % cnt)
+    # 있는 코드는 틀린 시도가 아니다 — 먼저 센 한 번을 도로 뺀다 (미리보기 25번·담기·다 쓴 코드 담기 5번 뒤에도 틀린 20번까지는 404)
+    c6, t6 = leader(b, 'sh6')
+    s6 = ok(c6.request, 'POST', '/songs', {'teamId': t6, 'title': '나눌 곡'})['song']
+    real = ok(c6.request, 'POST', '/share', {'teamId': t6, 'songIds': [s6['id']], 'maxUses': 1})['code']
+    st, _ = call(c5.request, 'GET', '/share/' + real)
+    if st != 429: fail('F46: 잠긴 계정이 진짜 코드 미리보기를 %s' % st)
+    sts = [call(c6.request, 'GET', '/share/' + real.lower())[0] for _ in range(25)]
+    sts += [call(c6.request, 'POST', '/share/%s/take' % real, {'teamId': t6})[0] for _ in range(6)]
+    if sts != [200] * 26 + [404] * 5: fail('F46: 있는 코드가 틀린 시도로 셈됨 %s' % sts)
+    sts = [call(c6.request, 'GET', '/share/' + code())[0] for _ in range(21)]
+    if sts != [404] * 20 + [429]: fail('F46: 있는 코드를 쓴 뒤 틀린 시도 셈이 이상함 %s' % sts)
+    print('F46 ok: 한꺼번에 150번이어도 틀린 시도는 20번까지, 있는 코드는 세지 않음')
 
     if errs: fail('페이지 오류: %s' % errs[:3])
     b.close()
