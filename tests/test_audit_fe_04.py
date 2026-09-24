@@ -914,6 +914,67 @@ def t_r2_g15(b):
     print('R2 G15 ok')
 
 
+# ======== 3차 ========
+# F76: 버전만 올라간 콘티인데 발행 뒤 곡이 라이브러리에 이어져(pushSongs) 초안 곡에만 songId·arrId·bs 등이 붙은 경우도
+# '고친 것'으로 보지 않고 다른 기기의 새 발행본을 받는다 (전에는 v3 '수정 중'으로 남아 PC 의 v2 를 영영 안 받았다)
+def t_r3_f76(b):
+    L = leader(b)
+    sid = nid('pl'); X = nid('iX'); title = '이을 곡 ' + TAG
+    publish(L, sid, 1, [item(X, title, 'G')])
+    pl = page(L)
+    until(pl, svc_js(sid) + "&&" + svc_js(sid) + ".published", what='v1 받음')
+    pl.evaluate("()=>{clearTimeout(CONTI.pushSongs.retry);return CONTI.pushSongs()}")
+    until(pl, svc_js(sid) + ".items[0].arrId", what='곡이 라이브러리에 이어짐')
+    if pl.evaluate(svc_js(sid) + ".published.items[0].arrId"): fail('전제 실패: 발행본에도 arrId 가 있음')
+    # 예전 앱이 발행 창을 열기만 해서 버전만 올라간 모양
+    pl.evaluate("(id)=>{const s=CONTI.S.services.find(x=>x.id===id);s.version=s.published.version+1;CONTI.save()}", sid)
+    publish(L, sid, 2, [item(X, title, 'C')], notice='PC 에서')
+    pl.evaluate("CONTI.SYNC.pullServices()")
+    until(pl, svc_js(sid) + ".published.version===2", what='v2 받음')
+    pl.wait_for_timeout(500)
+    st = pl.evaluate("(()=>{const s=%s;return {key:s.items[0].key,v:s.version,pv:s.published.version}})()" % svc_js(sid))
+    if st['key'] != 'C' or st['v'] != 2: fail('F76: 라이브러리에 이은 것만 다른 콘티가 새 발행본을 안 받음 %s' % st)
+    # 진짜로 고친 것(키)은 여전히 지킨다
+    pl.evaluate("(id)=>{const s=CONTI.S.services.find(x=>x.id===id);s.items[0].key='E';s.version=s.published.version+1;s.editedAt=Date.now();CONTI.save()}", sid)
+    publish(L, sid, 3, [item(X, title, 'F')], notice='PC 에서 또')
+    pl.evaluate("CONTI.SYNC.pullServices()")
+    until(pl, svc_js(sid) + ".published.version===3", what='v3 받음')
+    pl.wait_for_timeout(500)
+    st = pl.evaluate("(()=>{const s=%s;return {key:s.items[0].key,v:s.version}})()" % svc_js(sid))
+    if st['key'] != 'E' or st['v'] != 4: fail('F76: 고친 키가 새 발행본에 덮임 %s' % st)
+    if pl._errs: fail('page errors: %s' % pl._errs)
+    L.close()
+    print('R3 F76 ok')
+
+
+# F73: 쌓아 둔 곡 수정(pushDirtySongs)을 보내는 사이 팀을 바꿔도 남은 편곡 수정은 그 곡의 팀으로 간다 (새 팀 id 로 보내 404 로 헛돌던 것)
+def t_r3_dirty(b):
+    L = leader(b, '에이팀')
+    tA = L._team
+    tB = must(L, 'POST', '/teams', {'name': '비팀' + TAG, 'myName': '인도', 'session': '인도자'})['teamId']
+    title = '쌓인 곡 ' + TAG
+    sg = must(L, 'POST', '/songs', {'teamId': tA, 'title': title, 'origKey': 'G'})['song']
+    aid = sg['arrangements'][0]['id']
+    pl = page(L)
+    if pl.evaluate("CONTI.S.team.id") != tA: team_switch(pl, tA)
+    until(pl, "CONTI.S.songs.some(x=>x.id===%s)" % json.dumps(sg['id']), what='곡 받음')
+    arr_teams = []
+    pl.on('request', lambda r: arr_teams.append(json.loads(r.post_data or '{}').get('teamId')) if r.method == 'PATCH' and '/api/arrangements/' in r.url else None)
+    pl.evaluate("""([sid,aid])=>{const s=CONTI.S.songs.find(x=>x.id===sid);s.pend={songNote:'메모'};s.pendArr={[aid]:{key:'D'}};s.dirty=true;CONTI.save()}""", [sg['id'], aid])
+    pl.evaluate(SLOW, [{'re': '/api/songs/', 'method': 'PATCH', 'ms': 2500}])
+    pl.evaluate("CONTI.SYNC.schedulePush()")
+    pl.wait_for_timeout(3700)   # 3초 뒤 곡 PATCH 가 나가고 답을 기다리는 중
+    team_switch(pl, tB)
+    pl.wait_for_timeout(3500)
+    pl.evaluate("()=>{window.__slow=[]}")
+    if arr_teams != [tA]: fail('F73: 팀을 바꾼 뒤 편곡 수정이 다른 팀 id 로 감 %s' % arr_teams)
+    keys = [a.get('key') for s in must(L, 'GET', '/songs?team=' + tA)['songs'] if s['id'] == sg['id'] for a in (s.get('arrangements') or [])]
+    if 'D' not in keys: fail('F73: A 팀 편곡에 수정이 안 들어감 %s' % keys)
+    if pl._errs: fail('page errors: %s' % pl._errs)
+    L.close()
+    print('R3 F73 ok')
+
+
 # api/index.js 를 이 프로세스 안에서 띄우고, 구글 공개키만 가짜로 바꿔 서명한 ID 토큰으로 /auth/social 을 부른다
 # (개발 서버는 진짜 구글 키로만 검증하므로 가짜 토큰을 받지 않는다). DB 는 로컬 도커
 SOCIAL_JS = r"""
@@ -985,7 +1046,8 @@ def run():
     tests = [('f20', t_f20), ('notes', t_notes), ('f21', t_f21), ('pull', t_pull), ('f75', t_f75), ('f76', t_f76),
              ('draft', t_draft), ('g31', t_g31), ('f80', t_f80), ('logout', t_logout),
              ('r2f20', t_r2_f20), ('r2notes', t_r2_notes), ('r2team', t_r2_team), ('r2draft', t_r2_draft), ('r2blobs', t_r2_blobs), ('r2f76', t_r2_f76),
-             ('r2g31', t_r2_g31), ('r2f80', t_r2_f80), ('r2push', t_r2_push), ('r2g15', t_r2_g15)]
+             ('r2g31', t_r2_g31), ('r2f80', t_r2_f80), ('r2push', t_r2_push), ('r2g15', t_r2_g15),
+             ('r3f76', t_r3_f76), ('r3dirty', t_r3_dirty)]
     with sync_playwright() as p:
         b = p.chromium.launch()
         for name, fn in tests:

@@ -3355,8 +3355,11 @@ const DOC_MAX=4e6;
 // 앱은 통과시키고 서버는 413 — 파일을 다 올린 뒤 거절당했고, 알림은 '3.8MB · 한도 4MB' 처럼 앞뒤가 안 맞았다
 const jsonBytes=o=>new Blob([JSON.stringify(o)]).size;
 // 발행되는 내용의 모양 (메모는 따로 오가므로 뺀다). 초안과 발행본을 견줘 발행 뒤 실제로 고친 게 있는지 본다
+// 라이브러리와 잇는 장부 값(곡·편곡 id, 덮어쓰기 표시·기준 값)도 뺀다 — 발행 뒤 곡이 라이브러리에 이어지면(pushSongs) 초안 곡에만 붙어,
+// 버전만 올라간 콘티가 그것 때문에 '고친 것'으로 남아 다른 기기의 새 발행본을 계속 안 받았다
+const PUB_SKIP={notes:undefined,fixedNotes:undefined,songId:undefined,arrId:undefined,libId:undefined,ov:undefined,bs:undefined,arrAt:undefined,songReq:undefined};
 const pubSig=(o,items)=>JSON.stringify([o.name||'',o.date||'',o.folder||'',o.notice||'',String(o.message||'').trim(),
- (items||[]).map(it=>({...it,notes:undefined,fixedNotes:undefined,media:(it.media||[]).map(m=>({...m,notes:undefined}))}))]);
+ (items||[]).map(it=>({...it,...PUB_SKIP,media:(it.media||[]).map(m=>({...m,notes:undefined}))}))]);
 function tooBig(n){const e=new Error(`콘티가 너무 커서(${(n/1e6).toFixed(1)}MB · 한도 ${DOC_MAX/1e6}MB) 서버에 올리지 못했어요. 곡이나 악보 조각을 줄여 주세요`);e.code='too_large';e.status=413;return e}
 // 화면을 누르고 있는가 (받는 대로 홈을 다시 그리는 pullServices 가 누르는 중에는 기다린다). 떼는 것을 놓쳐도 5초면 푼다
 const PRESSING={at:0,get on(){return Date.now()-this.at<5000}};
@@ -4183,9 +4186,10 @@ async function pushDirtySongs(){if(!online()||!isLeader()||!S.team.id)return fal
   if(tid!==S.team.id)break;   // 팀을 바꿨으면 옛 팀 곡을 새 팀으로 보내 404 → 쌓아 둔 수정을 버리는 일이 없게
   if(!s.dirty)continue;
   try{
-   if(s.pend){await api('/songs/'+s.id,{method:'PATCH',body:{teamId:S.team.id,...s.pend}});delete s.pend;n++}
+   // 곡 하나 안에서도 기다리는 사이 팀을 바꿀 수 있다 — 그 곡의 팀(tid)으로 보낸다 (새 팀 id 로 보내면 404 로 헛돌았다)
+   if(s.pend){await api('/songs/'+s.id,{method:'PATCH',body:{teamId:tid,...s.pend}});delete s.pend;n++}
    for(const id of Object.keys(s.pendArr||{})){
-    await api('/arrangements/'+id,{method:'PATCH',body:{teamId:S.team.id,...s.pendArr[id]}});delete s.pendArr[id];n++}
+    await api('/arrangements/'+id,{method:'PATCH',body:{teamId:tid,...s.pendArr[id]}});delete s.pendArr[id];n++}
    songClean(s);
   }catch(e){if(e.status===404||songRejected(e)){delete s.pend;delete s.pendArr;songClean(s);save();if(e.status!==404)resync=true}else console.warn('song retry',e.message)}}
  if(n)save();
