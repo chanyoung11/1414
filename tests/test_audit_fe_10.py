@@ -9,7 +9,11 @@
 #   F93 건반·메트로놈 패널이 화면을 옮겨도 남아 하단 탭·창을 가리고 인쇄에도 찍힘
 #   F94 패널을 다시 열 때마다 클릭 처리가 쌓여 +5 가 +10, 옥타브가 두 칸
 #   F138 메트로놈 빠르기를 틱마다 PATCH, 새로고침하면 90 으로 돌아감
-import os, sys, time, base64
+# 되짚기 (검증에서 나온 것)
+#   F28 인도자 추천 조판(띠 포함)을 메모가 다른 멤버가 열면 띠를 번호로 찾아 A 메모가 B 줄 위에 섬
+#   F96 모든 블록 범위를 고정하니 화면비가 다른 캔버스에서 악보가 틀보다 길어져 화면 아래로 잘림
+#   F93 연습 화면을 떠나면 패널은 닫히는데 메트로놈은 멈출 단추 없이 계속 울림
+import os, sys, time, base64, json
 from playwright.sync_api import sync_playwright
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 URL = os.environ.get('CONTI_URL', 'http://localhost:8766/')
@@ -70,6 +74,44 @@ COV = """()=>{const S=CONTI.STG;const scr=S.layout?S.layout.screens:S.lay.screen
  return out}"""
 IDS = "(()=>{const S=CONTI.STG;return (S.layout?S.layout.screens:S.lay.screens).flatMap(s=>s.blocks.map(b=>b.id))})()"
 POS = "(id)=>{for(const s of CONTI.STG.layout.screens)for(const b of s.blocks)if(b.id===id)return [b.x,b.y];return null}"
+# 화면에서 캔버스 아래로 넘친 블록 (.stgpage 는 넘치는 것을 잘라, 잘린 줄은 어느 화면에도 안 나온다)
+CLIP = """()=>{const pg=document.querySelector('#stageWrap .stgpage');const pr=pg.getBoundingClientRect();const out=[];
+ pg.querySelectorAll('.blk').forEach(e=>{const r=e.getBoundingClientRect();const ov=Math.round(r.bottom-pr.bottom);
+  if(r.height>=1&&ov>1)out.push(ov)});return out}"""
+# 그려진 메모 띠마다: 구간 이름, 메모 글, 띠 아래 끝과 띠가 가리키는 줄(cut)이 실제로 그려진 y 의 차이 (DOM 에서 잰다)
+PLACE = """()=>{const S=CONTI.STG;const sc=(S.layout||S.lay).screens[S.screen];
+ const pg=document.querySelector('#stageWrap .stgpage');const pr=pg.getBoundingClientRect();
+ const vis=sc.blocks.filter(b=>!b.hidden);const els=[...pg.children];
+ const rect=b=>{const e=els[vis.indexOf(b)];return e?e.getBoundingClientRect():null};
+ const strips=vis.filter(b=>b.type==='strip').map(s=>{const cut=s.markers[0].cut;const sr=rect(s);
+  const sl=vis.find(b=>b.type==='slice'&&!/~/.test(b.id)&&b.ranges.some(r=>r[0]-1<=cut&&cut<r[1]));
+  let ly=null;if(sl){const r=rect(sl);const q=r.width/sl.pc.im.w;
+   ly=r.top-pr.top+sl.ranges.reduce((a,x)=>a+Math.max(0,Math.min(x[1],cut)-x[0])*q,0)}
+  return {label:s.markers.map(m=>m.label).join(''),texts:s.markers.flatMap(m=>m.vis.map(n=>n.text)).join(' '),
+   gap:ly==null?null:Math.round(ly-(sr.bottom-pr.top))}});
+ const st=[...pg.querySelectorAll('.pstrip')].map(e=>e.getBoundingClientRect());let ov=0;
+ for(let i=0;i<st.length;i++)for(let j=i+1;j<st.length;j++){const a=st[i],b=st[j];
+  if(Math.min(a.right,b.right)-Math.max(a.left,b.left)>2&&Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>2)ov++}
+ return {strips,overlap:ov}}"""
+
+def clipped(pg):
+    out = []
+    for s in range(pg.evaluate("CONTI.STG.nscreens||1")):
+        pg.evaluate("(s)=>{CONTI.STG.screen=s;window.dispatchEvent(new Event('resize'))}", s); pg.wait_for_timeout(350)
+        out += ['화면%d %dpx' % (s + 1, v) for v in pg.evaluate(CLIP)]
+    pg.evaluate("CONTI.STG.screen=0;window.dispatchEvent(new Event('resize'))"); pg.wait_for_timeout(350)
+    return out
+
+def strips_ok(pg, want, what):
+    # 띠마다 제 구간 메모를 달고, 띠 바로 밑(2px)이 그 줄이어야 한다. 띠끼리 겹치지 않는다
+    r = pg.evaluate(PLACE)
+    got = {s['label']: s for s in r['strips']}
+    if sorted(got) != sorted(want): fail('%s 띠 구간이 %s (기대 %s)' % (what, sorted(got), sorted(want)))
+    for lb, s in got.items():
+        if want[lb] not in s['texts']: fail('%s %s 띠에 다른 메모: %s' % (what, lb, s))
+        if s['gap'] is None or not -2 <= s['gap'] <= 6: fail('%s %s 띠가 제 줄 위에 없음 (띠 아래 끝과 줄 차이 %s px) %s' % (what, lb, s['gap'], r))
+    if r['overlap']: fail('%s 띠끼리 겹침 %s' % (what, r))
+    return r
 
 def tall_sheet(pg):
     # 악보 한 장을 세 번 이어 붙인 긴 조각 (한 열에 안 들어가 여러 블록으로 나뉜다)
@@ -208,6 +250,9 @@ def run():
         if cov: fail('F96 %dx%d 에서 줄이 빠지거나 두 번 나옴: %s' % (w, h, cov))
         ids = pg.evaluate(IDS)
         if len(ids) != len(set(ids)): fail('F96 %dx%d 이름표 겹침 %s' % (w, h, ids))
+        # 범위가 맞아도 악보가 틀보다 길어져 화면 아래로 잘리면 그 줄은 어느 화면에도 안 나온다 (되짚기)
+        cl = clipped(pg)
+        if cl: fail('F96 %dx%d 에서 악보가 화면 아래로 잘림: %s' % (w, h, cl))
     pg.evaluate("CONTI.STG.pref.bar=!CONTI.STG.pref.bar"); rerender(pg)
     if pg.evaluate(COV): fail('F96 바를 끄니 줄이 빠지거나 두 번 나옴: %s' % pg.evaluate(COV))
     pg.evaluate("CONTI.STG.pref.bar=!CONTI.STG.pref.bar"); rerender(pg)
@@ -219,6 +264,33 @@ def run():
     pg.set_viewport_size({'width': 1180, 'height': 820}); pg.wait_for_timeout(600)
     if pg.evaluate(COV): fail('F96 예전 저장본 복원 뒤 크기를 바꾸니 어긋남: %s' % pg.evaluate(COV))
     print('F96 자른 블록이 있어도 캔버스 크기·바·예전 저장본에서 줄이 빠지거나 겹치지 않음 ok')
+    # 되짚기 — 편집 중에도 잘리지 않고, 보이는 폭이 조판에 적힌 폭이다 (끌기·크기 조절이 이 폭으로 잰다)
+    pg.set_viewport_size({'width': 1180, 'height': 700}); pg.wait_for_timeout(600)
+    pg.click('[data-stg="edit"]'); pg.wait_for_timeout(600)
+    cl = clipped(pg)
+    if cl: fail('F96 편집 중 악보가 화면 아래로 잘림: %s' % cl)
+    bad = pg.evaluate("""()=>{const S=CONTI.STG;const W=document.querySelector('#stageWrap .stgpage').offsetWidth;const out=[];
+      S.layout.screens[S.screen].blocks.forEach(b=>{if(b.type!=='slice'||b.hidden)return;
+       const e=document.querySelector('.sblk[data-sid="'+CSS.escape(b.id)+'"]');
+       if(e&&Math.abs(e.offsetWidth-b.w*W)>1.5)out.push([b.id,e.offsetWidth,Math.round(b.w*W)])});return out}""")
+    if bad: fail('F96 편집 중 그린 폭과 조판에 적힌 폭이 다름 %s' % bad)
+    pg.click('[data-stg="edit"]'); pg.wait_for_timeout(600)
+    exit_stage(pg)
+    # 같은 기기 종류(tab-l)의 화면비가 다른 기기 — 1366x1024 에서 조금 옮겨 저장한 조판을 1180x820 에서 연다
+    pg.set_viewport_size({'width': 1366, 'height': 1024}); open_stage(pg, sid2)
+    pg.click('[data-stg="edit"]'); pg.wait_for_timeout(500)
+    pg.click('[data-stg="auto"]'); pg.wait_for_timeout(700)
+    pg.evaluate("(()=>{const S=CONTI.STG;S.sel=[S.layout.screens[0].blocks.find(b=>b.type==='slice').id]})()")
+    pg.keyboard.press('ArrowRight'); pg.wait_for_timeout(500)
+    pg.click('[data-stg="edit"]'); pg.wait_for_timeout(800)
+    if not pg.evaluate("!!CONTI.STG.layout"): fail('F96 준비: 손으로 고친 조판이 아님')
+    for (w, h) in [(1180, 820), (1180, 700)]:
+        pg.set_viewport_size({'width': w, 'height': h}); pg.wait_for_timeout(700)
+        cl = clipped(pg)
+        if cl: fail('F96 1366x1024 에서 저장한 조판을 %dx%d 에서 여니 악보가 화면 아래로 잘림: %s' % (w, h, cl))
+        if pg.evaluate(COV): fail('F96 1366x1024 조판을 %dx%d 에서 여니 줄이 빠지거나 두 번 나옴: %s' % (w, h, pg.evaluate(COV)))
+    pg.set_viewport_size({'width': 1180, 'height': 820}); pg.wait_for_timeout(500)
+    print('F96 되짚기 — 화면비가 다른 캔버스·다른 기기·편집 중에도 악보가 화면 아래로 잘리지 않음 ok')
     exit_stage(pg)
 
     # ---- G35 같은 곡 두 번 ----
@@ -291,7 +363,68 @@ def run():
     if pg.evaluate('CONTI.MET.bpm') != 140 or pg.inner_text('#metBpm').strip() != '140':
         fail('F138 새로고침 뒤 빠르기가 %s' % pg.evaluate('CONTI.MET.bpm'))
     print('F138 PATCH %d 번 · 새로고침 뒤 140 ok' % len(patches))
+    # F93 되짚기 — 메트로놈은 X 로 닫아도·곡을 넘겨도 계속 울리고(연습 중 도구), 연습 화면을 떠나면 멈춘다
+    pg.click('#metGo'); pg.wait_for_timeout(300)
+    if not pg.evaluate('CONTI.MET.on'): fail('F93 준비: 메트로놈이 안 켜짐')
     pg.click('[data-act="sidetool-close"]'); pg.wait_for_timeout(400)
+    if not pg.evaluate('CONTI.MET.on'): fail('F93 패널을 X 로 닫았는데 메트로놈이 멈춤')
+    pg.locator('[data-act="pn"][data-d="1"]').first.click(); pg.wait_for_timeout(600)
+    if not pg.evaluate('CONTI.MET.on'): fail('F93 연습 화면에서 곡만 넘겼는데 메트로놈이 멈춤')
+    pg.evaluate("location.hash='#/home'"); pg.wait_for_timeout(600)
+    if pg.evaluate('CONTI.MET.on'): fail('F93 연습 화면을 떠났는데 메트로놈이 멈출 단추 없이 계속 울림')
+    print('F93 되짚기 — 닫아도·곡을 넘겨도 계속, 연습 화면을 떠나면 메트로놈 멈춤 ok')
+
+    # ---- F28 되짚기: 인도자 추천 조판(띠 포함)을 메모가 다른 멤버가 연다 ----
+    # 띠를 조각 안 순서(번호)로 찾으면 인도자의 C 띠(첫 번째) 자리에 멤버의 B 메모 띠가 섰다
+    pg.set_viewport_size({'width': 1180, 'height': 820})
+    si4 = new_service(pg, '추천 조판 예배')
+    add_song(pg, si4, '세 구간 곡', [SHEET])
+    pg.evaluate("""(si)=>{const p=CONTI.S.services[si].items[0].pieces[0];
+      p.markers=['A','B','C'].map((l,i)=>({id:'mk'+l,label:l,x:40,y:Math.round(p.h*(0.22+i*0.24)),cut:null}));CONTI.save()}""", si4)
+    publish(pg)
+    team, sid4, it4 = pg.evaluate("(si)=>{const s=CONTI.S.services[si];return [CONTI.S.team.id,s.id,s.items[0].id]}", si4)
+    def note(c, nid, mk, layer, text):
+        r = c.request.post(URL + 'api/notes', headers={'x-conti': '1', 'content-type': 'application/json'}, data=json.dumps(
+            {'teamId': team, 'serviceId': sid4, 'notes': [{'id': nid, 'itemId': it4, 'markerId': mk, 'layer': layer,
+             'session': None, 'text': text, 'at': int(time.time() * 1000)}]}))
+        if r.status != 200: fail('F28 준비: 메모 올리기 %d' % r.status)
+    note(ctx, 'lc' + tag, 'mkC', 'leader', 'C크게')
+    pg.evaluate("""([si,id])=>{const it=CONTI.S.services[si].items[0];
+      it.notes=[{id,marker:'mkC',layer:'leader',session:null,text:'C크게',author:'하은',at:Date.now()}];CONTI.save()}""", [si4, 'lc' + tag])
+    open_stage(pg, sid4)
+    pg.click('[data-stg="edit"]'); pg.wait_for_timeout(500)
+    pg.evaluate("(()=>{const b=CONTI.STG.layout.screens[0].blocks.find(x=>x.type==='slice');b.x+=0.01})()")
+    pg.click('[data-sc="rec"]'); pg.wait_for_timeout(1500)
+    rec = pg.evaluate("(sid)=>{const r=(CONTI.S.services.find(s=>s.id===sid).published.stageLayouts||{})['tab-l'];return r?r.screens.flatMap(s=>s.blocks).filter(b=>b.type==='strip').length:-1}", sid4)
+    if rec != 1: fail('F28 준비: 추천 조판에 C 띠가 없음 (%s)' % rec)
+    exit_stage(pg)
+    invite = pg.evaluate("CONTI.S.team.invite")
+    ctx2 = b.new_context(viewport={'width': 1180, 'height': 820}); M = ctx2.new_page()
+    M.on('pageerror', lambda e: errs.append('멤버 ' + repr(e)[:300])); M.on('dialog', lambda d: d.accept())
+    signup(M, 'fm' + tag, '민수'); M.wait_for_selector('#gtTeam', timeout=10000)
+    M.goto(URL + '#/join/' + invite); M.wait_for_selector('#jnName', timeout=10000)
+    M.click('[data-act="team-join"]'); M.wait_for_selector('.shell[data-page]', timeout=15000); M.wait_for_timeout(1500)
+    note(ctx2, 'mb' + tag, 'mkB', 'mine', 'B내메모')
+    M.goto(URL + '#/home'); M.wait_for_timeout(1500)
+    open_stage(M, sid4)
+    if not M.evaluate("!!CONTI.STG.layout"): fail('F28 준비: 멤버 무대에 추천 조판이 안 불러와짐')
+    strips_ok(M, {'B': 'B내메모', 'C': 'C크게'}, 'F28 추천 조판을 연 멤버')
+    if M.evaluate(COV): fail('F28 추천 조판을 연 멤버 악보 줄이 빠지거나 두 번 나옴 %s' % M.evaluate(COV))
+    # 멤버가 제 조판으로 저장한 뒤 인도자가 앞 구간(A)에 메모를 더한다 — 새 띠도 제 줄 위에
+    M.click('[data-stg="edit"]'); M.wait_for_timeout(500); M.click('[data-stg="edit"]'); M.wait_for_timeout(1200)
+    exit_stage(M)
+    note(ctx, 'la' + tag, 'mkA', 'leader', 'A천천히')
+    M.goto(URL); M.wait_for_selector('.shell[data-page]', timeout=15000); M.wait_for_timeout(1500)   # 새로고침
+    open_stage(M, sid4)
+    if not M.evaluate("!!CONTI.STG.layout"): fail('F28 준비: 멤버가 저장한 조판이 안 불러와짐')
+    strips_ok(M, {'A': 'A천천히', 'B': 'B내메모', 'C': 'C크게'}, 'F28 멤버 조판 저장 뒤 앞 구간에 메모가 생김')
+    if M.evaluate(COV): fail('F28 새 띠를 넣은 뒤 악보 줄이 빠지거나 두 번 나옴 %s' % M.evaluate(COV))
+    # 예전 저장본의 띠(줄 cut 없음)는 버리고 지금 띠를 그 줄 위에 세운다
+    M.evaluate("(()=>{const S=CONTI.STG;S.layout.screens.forEach(sc=>sc.blocks.forEach(b=>{if(b.type==='strip')delete b.cut}))})()")
+    rerender(M)
+    strips_ok(M, {'A': 'A천천히', 'B': 'B내메모', 'C': 'C크게'}, 'F28 줄을 모르는 예전 띠')
+    print('F28 되짚기 — 추천 조판·제 조판을 메모가 다른 사람이 열어도 띠마다 제 줄 위에 ok')
+    ctx2.close()
 
     # ---- F97 여럿이 쓰는 기기: 다음 사람이 앞 사람 조판을 받지 않는다 ----
     open_stage(pg, sid)

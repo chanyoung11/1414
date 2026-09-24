@@ -7061,7 +7061,9 @@ function sideToolClose(){const el=$('#sidetool');if(!el)return;el.classList.remo
  setTimeout(()=>{if(el&&!el.classList.contains('on'))el.remove()},200)}
 // 패널은 body 에 붙어 있어 화면이 바뀌어도 남았다 — 홈에서 하단 탭·더보기를 가렸다. 다른 화면으로 가면 닫는다
 // (같은 연습 화면 안에서 곡만 넘길 때는 그대로 둔다. 메트로놈은 닫아도 계속 울린다)
-window.addEventListener('hashchange',()=>{const el=$('#sidetool');if(el&&el.dataset.r!==route().name)sideToolClose()});
+// 메트로놈은 연습 화면의 도구다. 연습 화면을 떠나면 멈출 단추가 어디에도 없어 계속 울렸다 — 떠나면 멈춘다
+window.addEventListener('hashchange',()=>{const el=$('#sidetool');if(el&&el.dataset.r!==route().name)sideToolClose();
+ if(MET.on&&route().name!=='play')metStop()});
 
 const AUD={ctx:null};
 function actx(){if(!AUD.ctx){const C=window.AudioContext||window.webkitAudioContext;if(!C)return null;AUD.ctx=new C()}
@@ -7284,7 +7286,8 @@ function stgCompose(pub,W,H,pref){
     let j=i,hSum=0;
     while(j<pc.units.length&&(j===i||!pc.units[j].strip)){const h=(pc.units[j].b-pc.units[j].a)*sc2;if(hSum+h>rem()-sh)break;hSum+=h;j++}
     if(j===i&&y>0){nextCol();continue}                // 한 조각도 안 들어간다 → 다음 열에서
-    if(u.strip)put({type:'strip',id:`t${idx}.${pi}.${stn++}`,pid:pc.pid,iid:it.id,idx,pi,height:STRIP_H,markers:u.strip,mods:pgMods(it.form),gap:2});
+    // cut = 띠가 선 줄 (저장한 조판에서 띠를 번호가 아니라 이 줄로 찾는다 — stgHydrate)
+    if(u.strip)put({type:'strip',id:`t${idx}.${pi}.${stn++}`,pid:pc.pid,iid:it.id,idx,pi,cut:u.a,height:STRIP_H,markers:u.strip,mods:pgMods(it.form),gap:2});
     if(j===i){
      const s3=Math.min(sc2,Math.max(rem(),1)/(u.b-u.a));
      put({type:'slice',id:`s${idx}.${pi}.${Math.round(u.a)}`,pid:pc.pid,iid:it.id,idx,pi,height:(u.b-u.a)*s3,pc,scale:s3,ranges:[[u.a,u.b]],gap:2});i++;continue}
@@ -7325,7 +7328,7 @@ function stgNatW(b,cw){
  return cw}
 // 저장해 둔 조판은 '어디에 얼마만큼'만 남아 있다. 지금 발행본으로 다시 짠 자동 조판에서
 // 그림·메모 같은 알맹이를 가져와 붙인다. 없어진 곡의 블록은 버리고, 새로 생긴 곡은 뒤에 붙인다
-function stgHydrate(autoL,saved){
+function stgHydrate(autoL,saved,g){
  const live=new Map(),byPid=new Map(),byKey=new Map(),pieces=new Map();
  // 블록 번호(s곡.조각.줄)는 순서로 매겨진다. 조각을 지우면 뒤 조각이 앞 번호를 물려받아
  // 지운 조각의 자리·크기·자른 범위를 그대로 입고 나왔다 (지워도 틀이 안 줄던 것).
@@ -7335,7 +7338,10 @@ function stgHydrate(autoL,saved){
  // 조각 id 도 같다. 그중 하나를 빼면 남은 곡 악보가 두 틀에 같은 이름표로 나왔다. 곡(iid)까지 함께 본다.
  // 악보 블록은 곡·조각까지만 맞추고(줄 번호는 캔버스 크기에 따라 바뀐다) 알맹이는 저장한 범위를 쓴다
  const T={head:'h',slice:'s',strip:'t'};
- const ipKey=b=>T[b.type]+':'+b.iid+':'+b.pid+(b.type==='strip'?':'+stgRoot(b.id).split('.')[2]:'');
+ // 메모 띠는 번호(조각 안에서 몇 번째 띠)가 아니라 띠가 선 줄(cut)로 찾는다. 메모는 사람마다 다르게 보인다 —
+ // 인도자 추천 조판의 B 띠(첫 번째 띠)를 A 에 내 메모가 있는 멤버가 열면 A 띠가 첫 번째라 B 자리에 A 메모가 섰다.
+ // 번호는 발행본을 받을 때 이름표 검사(scrubIds)에 걸려 아예 바뀌기도 한다
+ const ipKey=b=>T[b.type]+':'+b.iid+':'+b.pid+(b.type==='strip'?':'+Math.round(+b.cut):'');
  autoL.screens.forEach((sc,si)=>sc.blocks.forEach(b=>{live.set(b.id,b);if(b.pid)byPid.set(pidKey(b.id,b.pid),b);
   if(b.iid==null)return;const k=ipKey(b);if(!byKey.has(k))byKey.set(k,b);
   if(b.type==='slice'){if(!pieces.has(k))pieces.set(k,[]);pieces.get(k).push({b,si})}}));
@@ -7346,6 +7352,8 @@ function stgHydrate(autoL,saved){
   return !lv||(once&&used.has(lv.id))?null:lv};
  let screens=(saved.screens||[]).map(sc=>({blocks:(sc.blocks||[]).map(b=>{
   if(b.type==='text')return {...b,height:b.height||56};
+  // 줄(cut)을 모르는 예전 띠는 어느 구간 것인지 알 수 없다 — 버리고 지금 띠를 그 줄 위에 새로 세운다 (아래)
+  if(b.type==='strip'&&b.cut==null)return null;
   const sid=String(b.id),at=sid.search(/[#~]/);   // 자른 것(#) · 복사한 것(~) 은 원본에서 알맹이를 가져온다
   const suf=at>0?sid.slice(at):'';
   const lv=b.iid!=null?byKey.get(ipKey(b)):find(at>0?sid.slice(0,at):sid,b.pid,!suf);   // 곡 id 가 없으면 예전 저장본
@@ -7356,8 +7364,10 @@ function stgHydrate(autoL,saved){
    const fixed=!!(b.ranges&&b.ranges.length);
    const rs=fixed?stgClipR(b.ranges,lv.pc):lv.ranges;if(!rs.length)return null;
    if(!fixed)used.add(lv.id);
-   // 이름표의 곡·조각 번호는 지금 순서로 (시작 줄·자른 자리 표시는 그대로)
-   const id=fixed?`s${lv.idx}.${lv.pi}.`+stgRoot(sid).split('.').slice(2).join('.')+suf:lv.id+suf;
+   // 이름표의 곡·조각 번호는 지금 순서로 (시작 줄·자른 자리 표시는 그대로).
+   // 멤버가 받은 추천 조판은 이름표가 scrubIds 로 바뀌어 올 수 있다 — 그때는 시작 줄로 새로 단다
+   const tail=stgRoot(sid).split('.').slice(2).join('.')||Math.round(rs[0][0]);
+   const id=fixed?`s${lv.idx}.${lv.pi}.`+tail+suf:lv.id+suf;
    return {...lv,...pos,id,ranges:rs,height:stgRH(rs,lv.scale),fixed}}
   used.add(lv.id);
   return {...lv,...pos,id:lv.id+suf,compact:!!b.compact};
@@ -7379,8 +7389,27 @@ function stgHydrate(autoL,saved){
    while(screens.length<=si)screens.push({blocks:[]});
    screens[si].blocks.push({...ab,id:`s${ab.idx}.${ab.pi}.${Math.round(rs[0][0])}`,ranges:rs,height:h,y:ab.y+pre*px,h:h*px})})});
  screens.forEach(sc=>{sc.blocks=sc.blocks.filter(b=>b.type!=='slice'||b.ranges.length)});
+ // 저장한 조판에 없던 메모 띠(다른 사람 메모·나중에 단 메모·예전 저장본)는 그 줄을 담은 악보 블록을 그 줄에서
+ // 나눠 사이에 세운다 — 자동 조판처럼 띠 바로 밑이 그 줄이다. 두 조각은 원래 틀 높이 안에 들게 조금 줄인다.
+ // 자동 조판 자리에 두면 손으로 옮긴 악보와 상관없는 곳(다른 구간·다른 띠 위)에 떴다
+ const stripIn=t=>{if(!g)return false;
+  for(const sc of screens)for(const s of sc.blocks){
+   if(s.type!=='slice'||s.iid!==t.iid||s.pid!==t.pid||/~/.test(String(s.id)))continue;
+   if(!s.ranges.some(r=>r[0]-1<=t.cut&&t.cut<r[1]-1))continue;
+   const up=stgSubR(s.ranges,[[t.cut,Infinity]]),dn=stgSubR(s.ranges,[[-Infinity,t.cut]]);if(!dn.length)continue;
+   const k=stgBlockAt(s,g,g.W,g.H),s0=k.nb.scale,hU=stgRH(up,s0),hL=stgRH(dn,s0),y0=k.nb.top;
+   const f=Math.max(0.5,Math.min(1,(Math.max((s.h||0)*g.H,hU+hL)-STRIP_H-2)/(hU+hL)));
+   const part=(rs,y,id)=>({...s,id,ranges:rs,height:stgRH(rs,s.scale),fixed:true,
+    x:(k.left+k.w*(1-f)/2)/g.W,w:k.w*f/g.W,y:y/g.H,h:stgRH(rs,s0)*f/g.H});
+   const out=up.length?[part(up,y0,s.id)]:[];
+   out.push({...t,x:k.left/g.W,y:(y0+hU*f)/g.H,w:k.w/g.W,h:STRIP_H/g.H,hidden:!!s.hidden},
+    part(dn,y0+hU*f+STRIP_H+2,up.length?stgRoot(s.id)+'#'+Math.round(t.cut):s.id));
+   sc.blocks.splice(sc.blocks.indexOf(s),1,...out);
+   return true}
+  return false};
  autoL.screens.forEach((sc,i)=>sc.blocks.forEach(b=>{
   if(b.type==='slice'||used.has(b.id))return;
+  if(b.type==='strip'&&stripIn(b))return;
   while(screens.length<=i)screens.push({blocks:[]});
   screens[i].blocks.push(b)}));
  // 이름표는 조판 안에서 하나뿐이어야 한다 — 고르기·끌기·숨기기가 이름표로 블록을 찾는다
@@ -7399,10 +7428,14 @@ function stgSubR(rs,cut){let out=(rs||[]).map(r=>[r[0],r[1]]);
 // 고친 조판에서는 블록마다 폭이 다르다. 폭이 바뀐 만큼 악보도 같이 커진다
 function stgBlockAt(b,lay,W,H){
  const nat=stgNatW(b,lay.cw);
- const w=b.w!=null?b.w*W:nat, r=nat?w/nat:1;
+ let w=b.w!=null?b.w*W:nat, r=nat?w/nat:1, left=b.x!=null?b.x*W:0;
+ // 악보 높이는 폭을 따라가는데 자리(y)·틀 높이(h)는 캔버스 높이를 따라간다. 저장한 캔버스와 가로세로 비율이
+ // 다르면(같은 기기 종류의 다른 아이패드, 바 켜기, 창 크기) 악보가 제 틀보다 길어져 화면 아래로 잘리거나
+ // (.stgpage 는 넘치는 것을 자른다) 밑 블록을 덮었다. 저장한 틀 높이 안에 들게 폭째 줄여 틀 가운데에 둔다
+ if(b.type==='slice'&&b.h>0&&b.height>0){const q=b.h*H/(b.height*r);if(q<0.999){left+=w*(1-q)/2;w*=q;r*=q}}
  const nb={...b,col:0,top:b.y!=null?b.y*H:b.top};
  if(b.type==='slice'){nb.scale=b.scale*r;nb.height=b.height*r}
- return {nb,w,left:b.x!=null?b.x*W:0,nat}}
+ return {nb,w,left,nat}}
 // 격자 12×8 에 맞춘다
 // 자유 배치. 격자에 붙이지 않고 소수점만 정리한다 (PPT 처럼 아무 자리에나)
 const stgSnapX=x=>Math.round(x*1e4)/1e4, stgSnapY=y=>Math.round(y*1e4)/1e4;
@@ -7426,6 +7459,7 @@ function stgLayoutSave(){
 function stgLayoutSlim(L){
  const slim=b=>({
   id:b.id,pid:b.pid||undefined,iid:b.iid||undefined,type:b.type,hidden:b.hidden||undefined,compact:b.compact||undefined,text:b.type==='text'?b.text:undefined,
+  cut:b.type==='strip'&&b.cut!=null?b.cut:undefined,   // 띠가 선 줄 (stgHydrate 가 이것으로 찾는다)
   // 악보 블록은 모두 범위를 남긴다 — 번호만 남기면 캔버스 크기가 바뀔 때 알맹이가 바뀌어 자른 블록과 어긋났다
   ranges:b.type==='slice'?b.ranges:undefined,
   x:+(b.x||0).toFixed(4),y:+(b.y||0).toFixed(4),w:+(b.w||0).toFixed(4),h:+(b.h||0).toFixed(4)});
@@ -7789,8 +7823,11 @@ function stageRender(){
   (L.off||[]).forEach(o=>{if(isOff(o.b)){off.push(o);return}
    while(screens.length<=o.s)screens.push({blocks:[]});screens[o.s].blocks.push(o.b)});
   screens.forEach((sc,s)=>{sc.blocks=sc.blocks.filter(b=>{if(!isOff(b))return true;off.push({s,b});return false})});
-  STG.layout=stgHydrate(autoL,{screens})||(off.length||STG.edit?{screens:screens.length?screens.map(()=>({blocks:[]})):[{blocks:[]}]}:null);
-  if(STG.layout)STG.layout.off=off}
+  STG.layout=stgHydrate(autoL,{screens},{W,H,cw:auto.cw})||(off.length||STG.edit?{screens:screens.length?screens.map(()=>({blocks:[]})):[{blocks:[]}]}:null);
+  if(STG.layout)STG.layout.off=off;
+  // 편집 중에는 틀에 맞춰 줄여 그린 폭(stgBlockAt)을 조판에 적어 둔다 — 끌기·크기·자르기가 보이는 크기로 잰다
+  if(STG.layout&&STG.edit)STG.layout.screens.forEach(sc=>sc.blocks.forEach(b=>{if(b.type!=='slice'||b.w==null)return;
+   const k=stgBlockAt(b,auto,W,H);if(k.w<b.w*W-0.5){b.x=k.left/W;b.w=k.w/W}}))}
  const custom=!!STG.layout;
  const lay=custom?{...auto,screens:STG.layout.screens}:auto;
  const screens=lay.screens;STG.nscreens=screens.length;
