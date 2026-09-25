@@ -585,7 +585,10 @@ html.dark .sheet{box-shadow:0 10px 40px rgba(0,0,0,.5);border-color:transparent}
 .hl.mask{background:#fff;opacity:.86;border-radius:2px}
 .hltool .hl.mask{outline:1.5px dashed #B9BCB2;outline-offset:-1px}
 .slice.tool .hl[data-hl]{pointer-events:auto;cursor:pointer}
-.cutline{position:absolute;left:-36px;right:0;border-top:1.5px dashed #0A0A0A;pointer-events:auto;cursor:row-resize;touch-action:none;z-index:4}
+/* 절단선은 마커 도구에서만 끈다(.mktool). 다른 도구에서 ±12px 잡는 자리가 탭을 가로채면 마커·코드 상자를 눌러도 아무 일이 없다.
+   마커(.mkabs z3)보다 아래에 둬 겹치면 마커가 이긴다 — autoCut 이 코드 줄-오선 틈을 골라 절단선이 마커 몇 px 위에 흔히 놓인다 */
+.cutline{position:absolute;left:-36px;right:0;border-top:1.5px dashed #0A0A0A;pointer-events:none;z-index:2}
+.mktool .cutline{pointer-events:auto;cursor:row-resize;touch-action:none}
 .cutline::before{content:"";position:absolute;left:0;right:0;top:-12px;bottom:-12px}
 .cutline i{position:absolute;right:6px;top:-9px;width:16px;height:16px;border-radius:4px;background:#0A0A0A}
 .cutline b{position:absolute;right:26px;top:-9px;font-size:10px;line-height:16px;color:#0A0A0A;font-weight:700}
@@ -6392,6 +6395,7 @@ function drawEditorSheet(svc){const it=curItem(svc);const sh=$('#sheet');if(!it|
  const W=Math.max(200,Math.round(base*z));
  sh.style.width=z>1?(W+56)+'px':'';
  sh.classList.toggle('hltool',SEL[svc.id].tool==='hl'||SEL[svc.id].tool==='mask');
+ sh.classList.toggle('mktool',SEL[svc.id].tool==='marker');   // 절단선을 잡는 것은 마커 도구뿐
  const st=sw?sw.scrollTop:0;sh.innerHTML=sheetHTML(it,W,{mode:'edit',tool:SEL[svc.id].tool});if(sw)sw.scrollTop=st}
 // 위아래로 붙은 여러 곡: 오선 사이 큰 여백 안에 제목처럼 큰 글자 덩어리가 있으면 그 위에서 자름 (여러 지점 가능)
 function splitPointsV(cv){const sys=detectSystems(cv);if(sys.length<4)return [];const {g,W,H}=grayOf(cv,600);const hist=new Uint32Array(256);for(let i=0;i<g.length;i++)hist[g[i]]++;let bg=255,mx=0;for(let v=120;v<256;v++)if(hist[v]>mx){mx=hist[v];bg=v}const thr=bg-Math.max(40,bg*0.25);
