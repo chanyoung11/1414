@@ -846,6 +846,15 @@ body.stgon{overflow:hidden}
 .stgpage .blk{position:absolute}
 .stgpage .pslice{position:absolute;left:0;overflow:hidden}
 .stgpage .pslice>img{position:absolute;left:0;display:block;max-width:none}
+/* 조각 위 요소(가림·마커 배지·전조 코드) — 연습 화면에 보이던 것이 무대에서도 제자리에 보여야 한다.
+   조판 엔진은 이 DOM 을 무대에도 그리는데 규칙이 인쇄(.ppage)에만 있어, 무대에서는 가림이 투명하고
+   배지·코드는 자리 없이 조각 맨 위에 깔려 그림에 가려졌다. 그림(img) 뒤에 오므로 z-index 없이 그림 위에 서고,
+   z-index 를 따로 주지 않아 편집 손잡이(.sgrip z-index:6)·블록 메뉴 밑에 머문다 (하이라이트는 공용 .hl 규칙) */
+.stgpage .pslice>.mask{position:absolute;background:#fff;pointer-events:none}
+.stgpage .pchord{position:absolute;color:#C0392B;font-weight:700;font-family:"Pretendard Variable","Pretendard",Arial,sans-serif;white-space:nowrap;pointer-events:none;text-shadow:0 0 2px #fff,0 0 2px #fff}
+.stgpage .pmk{position:absolute;transform:translate(-50%,-50%);min-width:17px;height:17px;border-radius:999px;border:1.5px solid #111;background:#fff;color:#111;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;padding:0 3px;pointer-events:none}
+/* 띠를 끈 무대에서 그 마커에 메모가 몇 개 있는지 (연습 배지의 빨간 점과 같은 뜻) */
+.stgpage .pmk .badge,.ppage .pmk .badge{position:absolute;right:-9px;top:-8px;background:var(--destructive,#E5484D);color:#fff;font-size:9px;font-weight:700;border-radius:999px;padding:0 4px;line-height:13px}
 /* 메모 띠 — 인쇄(.ppage .pstrip)와 같은 모양. 무대에는 이 규칙이 없어 띠가 제자리에 안 서고 송폼 상자 밑에 깔렸다 */
 .stgpage .pstrip{position:absolute;display:flex;align-items:center;gap:6px;font-size:11px;overflow:hidden;border-left:3px solid #111;padding-left:7px}
 .stgpage .pstrip .mk2{min-width:17px;height:17px;border-radius:999px;background:#111;color:#fff;font-size:10px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;padding:0 4px;flex:0 0 auto}
@@ -6625,16 +6634,16 @@ function pgPageSize(){let [w,h]=PAPER[PRT.paper]||PAPER.A4;if(PRT.orient==='land
  PG.pw=w*PMM;PG.ph=h*PMM;PG.cols=PRT.orient==='landscape'?2:1}
 function pgColWidth(){return (PG.pw-PG.margin*2-PG.gutter*(PG.cols-1))/PG.cols}
 const pgKey=it=>it.mod?`${it.key} – ${it.mod}`:(it.key||'');
-// 송폼에서 섹션별 변형(Key up 등)을 뽑아 띠에 같이 적는다
-function pgMods(form){const m={};let pend=[];const toks=String(form||'').split(/\s+[–\-—]\s+/);
- for(const seg of toks){let rest=seg;const mod=rest.match(/^\(([^)]*)\)/);
-  if(mod){pend=[mod[1]];rest=rest.slice(mod[0].length)}else pend=[];
-  const sec=rest.match(/^([A-H])(\d?)/);if(sec&&pend.length){const b=sec[1];if(!m[b])m[b]=pend[0]+(sec[2]?' ('+sec[1]+sec[2]+')':'')}}
- return m}
+// 송폼에서 섹션별 변형(Key up 등)을 뽑아 띠에 같이 적는다 — 연습 띠(modsFor)와 같은 해석을 쓴다.
+// 따로 짠 해석은 괄호 뒤 빈칸을 몰라 가장 흔한 꼴인 '(Key up) C' 에서 아무것도 못 찾았다 →
+// 연습 띠에는 Key up 이 붙는데 무대·인쇄 띠에서만 빠졌다
+function pgMods(form){return modsFor(String(form||''))}
 const pgHeadH=(it,cw)=>36+8+(String(it.form||'').length>cw/8.2?46:28)+(it.reason?18:0)+10;
 // 앱의 조각 데이터를 엔진이 쓰는 모양으로. 좌표는 앱이 px 로 저장한다
+// opt.capo: 보는 사람 카포(무대만). 전조 코드는 opt.ctx.f.chords 가 false 면 안 그린다
 function pgPieces(item,box,opt){
- return (item.pieces||[]).map(p=>{
+ const showCh=!(opt.ctx&&opt.ctx.f&&opt.ctx.f.chords===false),capo=+opt.capo||0;
+ return (item.pieces||[]).map((p,pi)=>{
   const im={src:url(p.blob),w:p.w||1,h:p.h||1,gaps:p.gaps||[]};
   let s=box.cw/im.w*opt.scale;if(s*im.w>box.cw&&opt.clamp!==false)s=box.cw/im.w;
   const markers=(p.markers||[]).map(m=>({...m,px:m.x,py:m.y,
@@ -6677,7 +6686,17 @@ function pgPieces(item,box,opt){
    if(folds.some(([x,y])=>a>=x-1&&b<=y+1))continue;   // 큰 빈 여백은 접는다
    units.push({a,b,strip:forced.has(a)?markers.filter(m=>m.cut===a&&m.vis.length):null})}
   const hls=(p.hls||[]).filter(h=>h.kind!=='mask'),masks=(p.hls||[]).filter(h=>h.kind==='mask');
-  return {pid:p.id,im,s,markers,units,hls,masks,chords:p.chords||[]}})}
+  // 빨간 전조 코드 — 연습(sheetHTML)과 같은 값. 예전에는 인식한 코드를 그대로(악보 키 A 의 'A9/C#') 찍어
+  // 연주 키 C 로 치는 사람에게 악보에 이미 있는 글자를 한 번 더 보였고, 옮길 것이 없는(0) 코드까지 찍었다.
+  // 조각 보정(chordOffset) + '여기부터 전조'(shiftAt) − 카포, 0 이면 안 그린다. 접기 보호(위 chs)는 원래 목록 그대로 —
+  // 안 그리는 코드도 악보 그림에는 있는 글자라 그 자리를 접으면 안 된다
+  const off=chordOffset(item,p)-capo;
+  const srt=chs.slice().sort((u,v)=>(u.y-v.y)||(u.x-v.x));
+  const chords=showCh?srt.map((c,ci)=>{const o=off+shiftAt(item,pi,c.y);if(!o||!c.text)return null;
+   // 옆 코드(악보에 찍힌 원래 글자)에 닿으면 코드 위로 올린다 — 그리는 배율을 알아야 해서 판단은 pgBlockHTML 에서
+   const nx=srt[ci+1];
+   return {x:+c.x||0,y:+c.y,w:+c.w||0,h:+c.h||14,text:transposeChord(String(c.text),o,chordKeyAt(item,p,o)),nx:nx?{x:+nx.x||0,y:+nx.y}:null}}).filter(Boolean):[];
+  return {pid:p.id,im,s,markers,units,hls,masks,chords}})}
 function pgLayout(items,box,opt){
  const pages=[];const P=()=>{const p={blocks:[],col:0,ys:Array(box.cols).fill(box.top)};pages.push(p);return p};
  const fill=opt.fillH?Math.min(box.ch,opt.fillH):box.ch;
@@ -6754,6 +6773,8 @@ function pgBestFit(it,W,H,colsList,zMax,floor,opt){
 function pgCompose(svc){
  const pub=pubOrDraft(svc);
  const my=me();const session=PRT.session||my.session||'전체';
+ // 인쇄는 팀이 같이 보는 종이다 — 연습 필터(내가 잠깐 끈 메모·코드)도, 내 카포도 안 따른다(opt.capo 없음).
+ // 전조 코드는 연주 키 그대로 적는다. 카포 모양이 필요하면 무대에서 '이대로 내보내기'(무대에서 보던 그대로)
  const ctx={mode:'play',session,f:{leader:true,session:true,mine:true,chords:true}};
  const items=(pub.items||[]).map((it,i)=>{const live=(svc.items||[]).find(x=>x.id===it.id)||it;
   return {...it,notes:live.notes||[],_n:i}});
@@ -6827,9 +6848,16 @@ function pgBlockHTML(b,box,page){
    const on=(y,hh)=>y<end&&y+Math.max(hh||0,1)>start;
    if(box.hl!==false)pc.hls.forEach(h=>{if(on(h.y,h.h))sub+=`<div class="hl" style="left:${h.x*scale}px;top:${(h.y-start)*scale}px;width:${h.w*scale}px;height:${h.h*scale}px"></div>`});
    pc.masks.forEach(m=>{if(on(m.y,m.h))sub+=`<div class="mask" style="left:${m.x*scale}px;top:${(m.y-start)*scale}px;width:${m.w*scale}px;height:${m.h*scale}px"></div>`});
-   pc.chords.forEach(c=>{if(on(c.y,c.h||14))sub+=`<div class="pchord" style="left:${(c.x+(c.w||0))*scale+3}px;top:${(c.y-start)*scale-2}px;font-size:${Math.max(9,(c.h||14)*scale)}px">${esc(c.text||'')}</div>`});
+   // 자리·크기는 연습(sheetHTML)과 같게 — 원래 코드 바로 오른쪽, 글자 9~24px. 오른쪽에 붙일 자리가 같은 줄
+   // 다음 코드에 닿으면 코드 바로 위로 (라벨끼리·악보 글자와 겹쳐 읽히지 않게). 위로 올린 자리가 이 조각 범위 밖이면
+   // .pslice 가 잘라 글자가 반만 남으니 그때는 오른쪽 그대로 둔다
+   pc.chords.forEach(c=>{if(!on(c.y,c.h))return;const fs=Math.max(9,Math.min(24,c.h*scale*0.92)),lw=c.text.length*fs*0.62;
+    const up=!!c.nx&&Math.abs(c.nx.y-c.y)<c.h&&(c.x+c.w)*scale+4+lw>c.nx.x*scale-2&&(c.y-start)*scale-fs-1>=0;
+    sub+=`<div class="pchord" style="left:${up?c.x*scale:(c.x+c.w)*scale+4}px;top:${up?(c.y-start)*scale-fs-1:(c.y-start)*scale}px;font-size:${fs}px;line-height:${up?fs:Math.max(c.h*scale,fs)}px">${esc(c.text)}</div>`});
    pc.markers.forEach(m=>{const hasStrip=m.vis.length&&m.cut!=null&&box.memos!==false;
-    if(!hasStrip&&on(m.py-9/scale,18/scale))sub+=`<div class="pmk" style="left:${m.px*scale}px;top:${(m.py-start)*scale}px">${esc(m.label)}</div>`});
+    // 띠를 세우지 않은 마커(띠를 끈 무대)에 메모가 있으면 연습 배지처럼 개수를 단다. 보통 인쇄는 종이에서 열어 볼 수 없어 뺀다
+    const cnt=box.stage&&m.vis.length?`<span class="badge">${m.vis.length}</span>`:'';
+    if(!hasStrip&&on(m.py-9/scale,18/scale))sub+=`<div class="pmk" style="left:${m.px*scale}px;top:${(m.py-start)*scale}px">${esc(m.label)}${cnt}</div>`});
    inner+=`<div class="pslice" style="top:${off}px;width:${w}px;height:${hh}px">${sub}</div>`;off+=hh});
   return `<div class="blk" style="left:${left}px;top:${T}px;width:${w}px;height:${b.height}px"${box.stage&&b.idx!=null?` data-si="${b.idx}"`:''}>${inner}</div>`}
  if(b.type==='chart')return `<div class="blk pchart" style="left:${L}px;top:${T}px;width:${W}px">${chartHTML(b.item,{})}</div>`;
@@ -7303,7 +7331,7 @@ function metOpen(){
 const STG={svc:null,idx:0,screen:0,open:false,pref:null,edit:false,lay:null,nscreens:1,sel:[],clip:null,seq:0,
  layout:null,   // 사람이 고친 조판 {screens:[{blocks:[{id,type,x,y,w,...}]}]} · 없으면 자동
  drag:null,menu:null};
-const STG_DEF={zoom:1,cols:'auto',memos:true,hl:true,bar:true,form:'block',formV2:1};
+const STG_DEF={zoom:1,cols:'auto',memos:true,hl:true,chords:true,bar:true,form:'block',formV2:1};   // chords: 빨간 전조 코드
 // 송폼을 어디에 보여줄지 (기획 §4)
 const STG_FORM=[['auto','자동'],['bar','상단 바'],['block','조각 위'],['hide','숨김']];
 // 기기 구간: 11인치와 13인치 아이패드, 폰, 데스크톱이 같은 조판을 쓸 이유가 없다
@@ -7354,11 +7382,14 @@ const stgHeadH=(it,cw)=>{
 const STG_GUT=18;
 function stgCompose(pub,W,H,pref){
  const my=me();const session=PL.session||my.session||'전체';
- const ctx={mode:'play',session,f:{leader:true,session:true,mine:true,chords:true}};
+ // 무대는 연습의 연장이다 — 연습에서 끈 메모(인도자·세션·내 것)와 전조 코드는 무대에서도 안 보인다.
+ // 예전에는 전부 켠 채로 고정이라 연습에서 숨긴 메모가 무대에서 다시 나왔다. 전조 코드는 무대 설정(pref.chords)으로도 끈다.
+ // 카포도 연습처럼 내 것을 뺀다 (무대는 내 화면이다. 인쇄 pgCompose 는 팀 종이라 빼지 않는다)
+ const ctx={mode:'play',session,f:{leader:PL.f.leader!==false,session:PL.f.session!==false,mine:PL.f.mine!==false,chords:PL.f.chords!==false&&pref.chords!==false}};
  const cols=pref.cols&&pref.cols!=='auto'?+pref.cols:(W>H?2:1);
  const cw=(W-STG_GUT*(cols-1))/cols;
  const box={cols,cw,ch:H,gutter:STG_GUT,top:0};
- const opt={memos:pref.memos,session,ctx,gutter:STG_GUT,scale:1,clamp:true};
+ const opt={memos:pref.memos,session,ctx,gutter:STG_GUT,scale:1,clamp:true,capo:+my.capo||0};
  const fullW=cw*cols+STG_GUT*(cols-1);
  const screens=[];
  let sc=null,col=0,y=0;
@@ -8047,6 +8078,7 @@ function stageRender(){
 
 function stagePopHTML(fit){
  const P=STG.pref;
+ // 전조 코드는 연습 필터도 따른다 (stgCompose). 여기는 켜져 있는데 안 보이면 왜인지 옆에 적는다
  return `<div class="stgpop" data-stop="1">
   <div class="lbl" style="margin-top:0">이 예배 조판 <span class="hint">내 기기·내 계정에만</span></div>
   <div class="row" style="gap:8px"><span style="width:52px" class="hint">크기</span>
@@ -8058,6 +8090,7 @@ function stagePopHTML(fit){
    <span class="seg">${['auto',1,2,3].map(c=>`<button class="${String(P.cols)===String(c)?'on':''}" data-stg="cols" data-v="${c}">${c==='auto'?'자동':c+'열'}</button>`).join('')}</span></div>
   <label class="mrow" style="cursor:pointer"><span class="grow">메모 띠</span><input type="checkbox" data-stgt="memos" ${P.memos?'checked':''}></label>
   <label class="mrow" style="cursor:pointer"><span class="grow">하이라이트</span><input type="checkbox" data-stgt="hl" ${P.hl?'checked':''}></label>
+  <label class="mrow" style="cursor:pointer"><span class="grow">전조 코드${PL.f.chords===false?' <span class="hint">연습에서 껐어요</span>':''}</span><input type="checkbox" data-stgt="chords" ${P.chords!==false?'checked':''}></label>
   <label class="mrow" style="cursor:pointer"><span class="grow">상단 송폼 바</span><input type="checkbox" data-stgt="bar" ${P.bar?'checked':''}></label>
   <div class="hint" style="margin-top:8px">${fit.cols}열 · ${STG.nscreens||1}화면${STG.layout?' · 손으로 고친 조판':''}${(STG.nscreens||1)>1?' · 탭하면 다음 화면':''}</div>
   <div class="row" style="justify-content:space-between;margin-top:10px">

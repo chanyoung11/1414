@@ -71,6 +71,8 @@ SEED = "async([sid,idx])=>{" + NOTE + """const s=CONTI.S.services.find(x=>x.id==
   p.gaps=[g1,g2];
   p.markers=[{id:'mkB'+idx,label:'B',x:40,y:g1.e+3,cut:null}];
   await addNote(sid,it,'mkB'+idx,'noteB'+idx+'x'+Date.now().toString(36),'여기서 천천히');
+  // 빨간 코드는 옮길 것이 있을 때만 그린다(연습과 같게) — 악보 키 F → 연주 키 G(+2)라 Am7 은 Bm7 로 나온다
+  p.sheetKey='F';p.keyConfirmed=true;p.offset=null;
   p.chords=[{id:'cA'+idx,text:'Am7',x:80,y:g2.e-34,w:40,h:16,conf:100,fixed:true}];
   p.hls=[{id:'hA'+idx,x:30,y:g2.s+22,w:220,h:120}];
   CONTI.save();return {h,g1,g2,cut:CONTI.autoCut(p,g1.e+3)}}"""
@@ -101,7 +103,7 @@ def run():
         print('인쇄:', got)
         if got['strips'] != [s for s in got['strips'] if '여기서 천천히' in s] or len(got['strips']) != 1:
             fail('F26 메모 띠가 한 번 나와야 함: %s' % got['strips'])
-        if not any('Am7' in x for x in got['chords']): fail('F26 접히는 여백 안에 적은 코드가 인쇄에서 빠짐')
+        if not any('Bm7' in x for x in got['chords']): fail('F26 접히는 여백 안에 적은 코드(Am7 → 연주 키 Bm7)가 인쇄에서 빠짐')
         if got['hls'] < 1: fail('F26 여백에서 시작해 아래 줄로 걸친 하이라이트가 인쇄에서 빠짐')
         print('F26 인쇄 ok — 띠 %d · 코드 · 하이라이트' % len(got['strips']))
 
@@ -143,7 +145,7 @@ def run():
             units:pc.units.map(u=>[u.a,u.b,!!u.strip]),cover}})()""")
         print('무대:', {k: st[k] for k in ('strips', 'chords', 'hls')})
         if len(st['strips']) != 1 or '여기서 천천히' not in st['strips'][0]: fail('F26 무대에 메모 띠가 없음: %s' % st['strips'])
-        if not any('Am7' in x for x in st['chords']): fail('F26 무대에서 여백 안 코드가 빠짐')
+        if not any('Bm7' in x for x in st['chords']): fail('F26 무대에서 여백 안 코드(Am7 → 연주 키 Bm7)가 빠짐')
         if st['hls'] < 1: fail('F26 무대에서 하이라이트가 빠짐')
         # 조각의 모든 줄(접힌 여백 말고)이 어느 블록엔가 들어 있어야 한다 — 띠가 달린 줄도
         for a, bb, strip in st['units']:
