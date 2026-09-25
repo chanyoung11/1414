@@ -44,6 +44,8 @@ MOCK = r"""
   let seq = 0;
   const ad = window.__ad = { plat: PLAT, delay: 900, fill: true, log: [], shows: 0, maxAttached: 0,
     ios: { cur: null, attached: [] }, and: { v: null } };
+  // 웹뷰만 다시 불러온 흉내: 네이티브 배너 뷰는 앞 페이지 것이 남아 있다 (sessionStorage 로 넘긴다)
+  try { const pre = sessionStorage.getItem('__adPre'); if (pre && PLAT === 'android') { sessionStorage.removeItem('__adPre'); ad.and.v = { id: 999, size: 'BANNER', hidden: pre === 'hidden', loaded: true, w: innerWidth }; ad.log.push('pre:' + pre); } } catch (e) {}
   const emit = (n, d) => { ad.log.push('ev:' + n + (d && 'height' in d ? ':' + d.height : '')); (L[n] || []).slice().forEach((f) => f(d)); };
   // 지금 화면에 광고가 보이나 · 어떤 크기 · 가운데인가(안드로이드는 만든 때의 폭으로 맞춘다)
   ad.view = () => PLAT === 'ios' ? (ad.ios.attached[0] || ad.ios.cur) : ad.and.v;
@@ -91,7 +93,7 @@ MOCK = r"""
       showBanner: async (o) => {
         ad.shows++; ad.log.push('show:' + o.adSize);
         await sleep(5);
-        if (A.v) { ad.log.push('reload'); load(A.v); return; }   // 이미 있는 뷰: 광고만 다시 받고 보이게 하지 않는다
+        if (A.v) { ad.log.push('reload'); load(A.v); return new Promise(() => {}); }   // 이미 있는 뷰: 광고만 다시 받고 보이게 하지 않으며, 플러그인처럼 끝내 주지도 않는다
         A.v = { id: ++seq, size: o.adSize, hidden: false, loaded: false, w: innerWidth }; load(A.v);
       },
       hideBanner: async () => { ad.log.push('hide'); await sleep(5); if (!A.v) throw new Error('You tried to hide a banner that was never shown');
@@ -300,6 +302,15 @@ def run():
     if 'remove' not in s['log']: fail('3 받는 중에 내렸는데 뷰를 걷지 않음: %s' % s)
     memo_close(pg); s = settled(pg, '3 안드로이드: 메모 창 닫기 → 새로 받음', True)
     if 'reload' in pg.evaluate('__ad.log'): fail('3 숨긴 뷰에 광고만 다시 받음(보이지 않는 채): %s' % s)
+    # 웹뷰만 다시 불러옴(기기 데이터 지우기·계정 삭제의 reload): 앞 페이지의 네이티브 뷰가 남아도 줄이 막히지 않는다
+    for pre in ('hidden', 'shown'):
+      pg.evaluate("sessionStorage.setItem('__adPre', %r)" % pre)
+      pg.reload(); pg.wait_for_selector('[data-act="metro"]', timeout=15000)
+      s = settled(pg, '3 안드로이드 다시 불러옴(%s) → 보임' % pre, True, pg.evaluate('__ad.delay') + 900)
+      if 'reload' in s['log']: fail('3 다시 불러온 뒤 남은 뷰에 showBanner 를 불러 줄이 막힘: %s' % s)
+      stage_open(pg); settled(pg, '3 다시 불러온 뒤 무대 → 안 보임', False, 500); stage_close(pg)
+      settled(pg, '3 다시 불러온 뒤 무대 닫기 → 보임', True, 900)
+    print('3 안드로이드: 웹뷰를 다시 불러와도(남은 뷰 숨김·보임) 처음에 걷고 새로 띄움 · 무대에서 내려감 ok')
     # 폰 건반
     piano_open(pg); settled(pg, '5 안드로이드 폰 건반', False, 500)
     tool_close(pg); settled(pg, '5 안드로이드 건반 닫기', True, 700)
@@ -342,6 +353,15 @@ def run():
     if s['size'] != 'LEADERBOARD' or s['attached'] != 1: fail('4 받는 중에 폭이 바뀐 뒤 크기·뷰 수: %s' % s)
     print('4 아이패드: LEADERBOARD · 나눠 보기 폭 600 → BANNER · 받는 중에 바뀌어도 뷰 하나 ok')
     c.close()
+
+    # 창은 좁고(건반이 아래 시트) 기기는 태블릿: 7~8인치 태블릿 세로 · 아이패드 나눠 보기 — 건반이 배너에 붙은 채 남지 않는다
+    for plat, vw, vh, sw, sh in (('android', 600, 960, 800, 1280), ('ios', 507, 1180, 820, 1180), ('ios', 375, 1180, 820, 1180)):
+      c, pg = native(plat, vw, vh, sw, sh)
+      play(pg); settled(pg, '5 좁은 창 %s %dx%d' % (plat, vw, vh), True)
+      piano_open(pg); settled(pg, '5 좁은 창 건반(아래 시트) → 배너 내려감 %s %d' % (plat, vw), False, 500)
+      tool_close(pg); settled(pg, '5 좁은 창 건반 닫기 → 보임 %s %d' % (plat, vw), True, 900)
+      c.close()
+    print('5 좁은 창(7~8인치 태블릿 세로 · 아이패드 나눠 보기)에서도 아래 시트 건반이면 배너 내려감 ok')
 
     ours = [e for e in errs if 'adsbygoogle' not in e]
     if ours: fail('페이지 오류: ' + ours[0])

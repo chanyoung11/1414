@@ -7332,6 +7332,9 @@ function adsWant(on){ADSTATE.want=on;ADSTATE.q=(ADSTATE.q||Promise.resolve()).th
 // 추적 허용 → 초기화 → 동의. 배너와 보상형 광고가 같이 쓴다 (한 번만). 시험 기기가 있으면 그 기기에는 시험 광고
 async function adsInit(A){if(ADSTATE.ready)return;await adsTracking(A);
  const dev=(ADS.testingDevices||[]).filter(Boolean);await A.initialize({initializeForTesting:dev.length>0,testingDevices:dev});
+ // 웹뷰를 다시 불러오면(기기 데이터 지우기·계정 삭제의 reload) 네이티브 배너 뷰는 남는데 ADSTATE 는 처음부터다. 안드로이드는
+ // 이미 있는 뷰에 부른 showBanner 를 끝내 주지 않아 줄(ADSTATE.q)이 영영 막혔다 → 불러온 뒤 처음 한 번 걷고 시작한다 (뷰가 없어도 끝난다)
+ try{await A.removeBanner()}catch(e){}
  await adsConsent(A);ADSTATE.ready=true}
 // 플러그인(@capacitor-community/admob 8)이 두 플랫폼에서 다르게 움직여 앱이 맞춰 준다:
 //  · 아이폰은 배너 뷰를 광고가 들어온 순간에야 화면에 붙인다. 그 전에는 hideBanner·removeBanner 가 찾지 못해 헛돌고,
@@ -7354,7 +7357,9 @@ function adsSize(){return !adsPhone()&&(window.innerWidth||0)>=728?'LEADERBOARD'
 // 가로에서 왼쪽으로 쏠리고 가로에서 만든 배너는 세로에서 잘린다 → 걷고 새로 만든다. 키보드는 높이만 바꿔 여기 안 걸린다
 function adsStale(){return ADSTATE.view!=='none'&&(ADSTATE.size!==adsSize()||Math.abs(ADSTATE.w-(window.innerWidth||0))>2)}
 // 폰에서 건반을 열면 배너를 내린다 — 빠르게 연달아 누르는 건반이 배너와 15px 떨어져 있어 광고가 잘못 눌린다(애드몹 정책)
-const adsPianoPhone=()=>adsPhone()&&!!$('#sidetool[data-tool="piano"]');
+// 건반이 아래 시트가 되는 건 CSS(@media max-width:640px) — 창 폭으로 정해진다. 기기(짧은 변)만 보면 7~8인치 태블릿 세로·
+// 아이패드 나눠 보기에서 건반이 배너 바로 위(22px)에 붙은 채 남았다 → 둘 중 하나면 내린다
+const adsPianoPhone=()=>(adsPhone()||matchMedia('(max-width:640px)').matches)&&!!$('#sidetool[data-tool="piano"]');
 // 배너를 덮거나 배너가 덮을 것이 떠 있다: 무대 · 창(메모·시트) · 폰 건반
 function adsBlocked(){const m=$('#modal');
  return !!(document.getElementById('stageWrap')||(typeof PL!=='undefined'&&PL&&PL.stage)||(m&&m.firstChild)||adsPianoPhone())}
@@ -7418,7 +7423,7 @@ function adsSync(){
  if(AD_ROUTES.test(r)&&!document.getElementById('stageWrap')&&!(typeof PL!=='undefined'&&PL.stage)&&!adsPianoPhone())adsShow();else adsHide();
 }
 // 화면을 돌리면(폭이 바뀌면) 배너를 새 크기·자리로 다시 띄운다
-function adsRefit(){clearTimeout(adsRefit.t);adsRefit.t=setTimeout(()=>{if(adsStale())adsWant(ADSTATE.want)},250)}
+function adsRefit(){clearTimeout(adsRefit.t);adsRefit.t=setTimeout(()=>{if(adsStale())adsWant(ADSTATE.want);else adsSync()},250)}   // 폭이 640 을 넘나들면 건반 시트 여부도 바뀐다
 if(NATIVE&&window.addEventListener){window.addEventListener('resize',adsRefit);window.addEventListener('orientationchange',adsRefit)}
 
 // 무대 모드·연습 중에는 화면이 꺼지지 않게 한다
