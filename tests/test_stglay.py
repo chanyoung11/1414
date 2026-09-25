@@ -159,7 +159,8 @@ def run():
         # ---- 자동으로 되돌리기 ----
         pg.click('[data-stg="auto"]'); pg.wait_for_timeout(600)
         keys2 = pg.evaluate("Object.keys(localStorage).filter(k=>k.indexOf('conti-lay:')===0).map(k=>localStorage.getItem(k))")
-        if keys2 and keys2[0] not in ('null', None): fail('자동으로 되돌렸는데 저장본이 남음: %s' % keys2[0][:80])
+        # 조판은 남지 않는다. 바로 위에서 추천 조판을 올렸으니 '자동으로 보기' 표시({auto})가 남는다 — 비우면 다음에 열 때 추천으로 돌아갔다
+        if keys2 and keys2[0] not in ('null', None) and ('screens' in keys2[0] or '"auto"' not in keys2[0]): fail('자동으로 되돌렸는데 저장본이 남음: %s' % keys2[0][:80])
         print('자동으로 되돌리기 ok')
 
         # ---- 인쇄: 화면 = 쪽 (§6) ----

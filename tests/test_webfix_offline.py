@@ -5,7 +5,8 @@
 #  edge-3 같은 탭에서 주소만 다른 초대로 바뀌면 앞 초대의 팀이 보인 채 가입 단추는 새 초대로 가던 것 (미리보기를 코드와 함께)
 #  edge-4 로그인한 팀원이 오프라인이면 '기기 전용'·'내보내기 파일을 카톡으로' 가 뜨던 것 → 팀 이름 + 오프라인 안내
 #  edge-5 로그인 안 한 사람이 오프라인으로 열면 기기 전용 첫 설정(이름·세션·인도자/멤버)이 뜨던 것 → 로그인 화면 + 오프라인 안내
-#         (서버가 없는 곳 — 정적 호스팅의 404 — 은 예전처럼 기기 전용)
+#         (서버가 있다는 증거 — 앱·받아 둔 서버 답·로그인한 저장소 — 가 없는 곳은 예전처럼 기기 전용: 404 · SPA fallback 정적 호스팅)
+#  되돌림 검사(재검증): 초안을 밀기 전에 목록을 받고 서버 초안과 견준다 — 다른 기기에서 지운 콘티를 되살리거나 더 새 초안을 덮지 않게
 import os, re, sys, time, json
 from playwright.sync_api import sync_playwright
 
@@ -72,6 +73,9 @@ def poll(fn, ms=10000, step=400):
 ADD_NOTE = """([id,nid,text])=>{const s=CONTI.S.services.find(x=>x.id===id);
   s.items[0].notes.push({id:nid,layer:'mine',session:null,text,author:'하은',at:Date.now()});CONTI.save()}"""
 DEL_NOTE = """([id,nid])=>{const s=CONTI.S.services.find(x=>x.id===id);s.items[0].notes=s.items[0].notes.filter(n=>n.id!==nid);CONTI.save()}"""
+# 인도자가 콘티를 고친 것과 같게 (이름 · 발행 뒤 고친 판 · editedAt) — 고친 때를 돌려준다
+EDIT_NAME = """([id,name])=>{const s=CONTI.S.services.find(x=>x.id===id);s.name=name;
+  if(s.published&&s.version<=s.published.version)s.version=s.published.version+1;s.editedAt=Date.now();CONTI.save();return s.editedAt}"""
 
 # ---------------------------------------------------------------- edge-2
 def sec_memo(b):
@@ -138,6 +142,63 @@ def sec_memo(b):
     if reqs: fail('보낼 것이 없는데 화면 복귀마다 올리기 요청: %s' % reqs[:3])
     if pg.errs: fail('JS 오류: %s' % pg.errs[:3])
     print('edge-2 보낼 것이 없으면 요청하지 않음 ok')
+
+    # 4) 같은 인도자가 여러 기기를 쓸 때 — 다시 연결돼 미는 초안이 끊긴 사이 다른 기기에서 한 일을 되돌리지 않는다.
+    #    전에는 목록도 안 받고 서버 초안과 견주지도 않고 덮어, 지운 콘티가 초안으로 되살아나고 더 새 초안이 옛 것으로 바뀌었다
+    cB = b.new_context(storage_state=c.storage_state())   # 같은 인도자의 다른 기기 (서버만 부른다)
+    s3 = new_published(pg, '지울 예배', '곡3')
+    s4 = new_published(pg, '둘이 고칠 예배', '곡4')
+    pg.evaluate("location.hash='#/home'"); pg.wait_for_timeout(3500)
+    c.set_offline(True); pg.wait_for_timeout(300)
+    at4 = pg.evaluate(EDIT_NAME, [s4, 'A오프라인이름'])
+    pg.evaluate(EDIT_NAME, [s3, 'A오프라인수정'])
+    ok(cB.request.delete(URL + 'api/services/%s?team=%s' % (s3, team), headers=H), 'B 지우기')
+    doc = pg.evaluate("(id)=>CONTI.SYNC.draftDoc(CONTI.S.services.find(x=>x.id===id))", s4)
+    doc['name'] = 'B새이름'; doc['editedAt'] = at4 + 60000
+    ok(cB.request.put(URL + 'api/services/%s/draft' % s4, headers=H, data={'teamId': team, 'doc': doc}), 'B 초안')
+    c.set_offline(False)
+    if not wait_until(pg, "(id)=>!CONTI.S.services.some(x=>x.id===id)", 10000, s3): fail('edge-2 다른 기기에서 지운 콘티가 다시 연결된 기기에 남음')
+    pg.wait_for_timeout(2500)
+    r = ok(cB.request.get(URL + 'api/services?team=%s' % team), '목록')
+    if s3 in [x['id'] for x in r['services']] + [x['id'] for x in r.get('drafts', [])]: fail('edge-2 다시 연결되며 다른 기기에서 지운 콘티를 서버에 되살림')
+    def draft_of(sid):
+        return (ok(cB.request.get(URL + 'api/services/%s/draft?team=%s' % (sid, team)), 'draft').get('doc') or {}).get('name')
+    if draft_of(s4) != 'B새이름': fail('edge-2 다시 연결되며 다른 기기의 더 새 초안을 옛 것으로 덮음: %r' % draft_of(s4))
+    pg.evaluate("document.dispatchEvent(new Event('visibilitychange'))"); pg.wait_for_timeout(2500)
+    if draft_of(s4) != 'B새이름': fail('edge-2 화면 복귀에 다른 기기의 더 새 초안을 덮음: %r' % draft_of(s4))
+    print('edge-2 여러 기기: 지운 콘티를 되살리지 않고 · 더 새 초안을 덮지 않음 ok')
+    # 그 콘티를 에디터로 열면 전처럼 가져올지 묻는다 (수락하면 받은 초안으로)
+    asked = []
+    pg.on('dialog', lambda d: asked.append(d.message))
+    pg.goto(URL + '#/edit/' + s4); pg.wait_for_selector('[data-f="svc.name"]', timeout=10000)
+    if not wait_until(pg, "(id)=>CONTI.S.services.find(x=>x.id===id).name==='B새이름'", 15000, s4):   # 열기는 메모·말씀·악보를 먼저 받는다
+        st = pg.evaluate("(id)=>{const s=CONTI.S.services.find(x=>x.id===id);return {name:s.name,at:s.editedAt,pushed:s.draftPushedAt,v:s.version,pv:s.published&&s.published.version,r:CONTI.route()}}", s4)
+        fail('edge-2 에디터로 열어도 더 새 초안을 가져오지 않음 %s · 물음 %s · 서버 %r · B %s' % (st, asked, draft_of(s4), at4 + 60000))
+    if not any('더 새로워요' in m for m in asked): fail('edge-2 에디터로 열 때 더 새 초안을 가져올지 묻지 않음: %s' % asked)
+    print('edge-2 그 콘티를 열면 더 새 초안을 가져올지 물음 ok')
+    if pg.errs: fail('JS 오류: %s' % pg.errs[:3])
+    cB.close()
+
+    # 5) 팀원: 끊긴 사이 메모를 쓴 콘티가 그 사이 지워졌으면 다시 연결돼도 그 메모는 올리지 않는다 (서버는 콘티를 안 보고 받아
+    #    볼 사람 없는 줄로 남았다) — 남아 있는 콘티의 메모는 그대로 올라간다
+    cM, _, _ = account(b, 'omm', '민수', service_workers='block')
+    ok(cM.request.post(URL + 'api/invite/%s/join' % invite_code(c, team), headers=H, data={'name': '민수', 'sessions': ['드럼']}), '가입')
+    s5 = new_published(pg, '지워질 예배', '곡5')
+    pm = page(cM, '#/view/' + s5, '#app .top'); pm.wait_for_timeout(1500)
+    open_view(pm, s2); pm.wait_for_timeout(1500)
+    pm.evaluate("location.hash='#/home'"); pm.wait_for_timeout(4500)
+    cM.set_offline(True); pm.wait_for_timeout(300)
+    ne, nf = 'ne' + tag, 'nf' + tag
+    pm.evaluate(ADD_NOTE, [s5, ne, '지워질 콘티 메모'])
+    pm.evaluate(ADD_NOTE, [s2, nf, '남는 콘티 메모'])
+    ok(c.request.delete(URL + 'api/services/%s?team=%s' % (s5, team), headers=H), '지우기')
+    cM.set_offline(False)
+    if not poll(lambda: nf in server_notes(cM, team, s2), 8000): fail('edge-2 팀원이 끊긴 사이 쓴 메모가 다시 연결돼도 안 올라감')
+    pm.wait_for_timeout(1500)
+    if ne in server_notes(cM, team, s5): fail('edge-2 끊긴 사이 지워진 콘티의 메모를 서버에 올림')
+    if pm.errs: fail('JS 오류 (팀원): %s' % pm.errs[:3])
+    print('edge-2 팀원: 지워진 콘티의 메모는 안 올리고 남은 콘티 것은 올림 ok')
+    cM.close()
     c.close()
 
 # ---------------------------------------------------------------- edge-3
@@ -306,6 +367,45 @@ def sec_gate(b):
     if pg.locator('#lgUser').count() or not pg.locator('#sRole').count(): fail('정적 호스팅을 오프라인으로 열었는데 기기 전용 대신 로그인 화면이 뜸')
     if pg.errs: fail('JS 오류: %s' % pg.errs[:3])
     print('정적 호스팅(서버 없음)은 온·오프라인 모두 기기 전용 그대로 ok')
+    c.close()
+
+    # 6) 없는 주소에 index.html 을 200 으로 주는 정적 호스팅(SPA fallback — Cloudflare Pages 기본값, app/ 에는 404.html 이 없다):
+    #    서버 확인이 늘 모름(null)이라 전에는 인터넷이 되는데도 로그인 화면 + '연결되지 않았어요'에 갇혔다 → 서버가 있다는 증거가 없으면 기기 전용
+    html = open(os.path.join(ROOT, 'app', 'index.html'), 'rb').read()
+    c = b.new_context(viewport={'width': 1240, 'height': 900}, service_workers='block')
+    c.route('**/api/**', lambda r: r.fulfill(status=200, body=html, headers={'content-type': 'text/html; charset=utf-8'}))
+    pg = c.new_page(); pg.errs = []; pg.on('pageerror', lambda e: pg.errs.append(str(e)[:200]))
+    pg.goto(URL); pg.wait_for_timeout(2500)
+    if pg.evaluate('CONTI.NET.server') is not None: fail('준비: SPA fallback 인데 서버 확인이 모름(null)이 아님')
+    if pg.locator('#lgUser').count() or pg.locator('#offNote').count(): fail('SPA fallback 정적 호스팅이 로그인 화면 + 오프라인 안내에 갇힘')
+    if pg.evaluate('location.hash') != '#/settings' or not pg.locator('#sRole').count(): fail('SPA fallback 정적 호스팅의 기기 전용 첫 설정이 안 뜸')
+    pg.fill('#sName', '정적'); pg.click('#sOk'); pg.wait_for_timeout(500)
+    pg.reload(); pg.wait_for_timeout(2500)
+    if pg.locator('#lgUser').count() or not pg.locator('.side').count(): fail('SPA fallback 정적 호스팅을 다시 열었는데 기기 전용이 아님')
+    if pg.errs: fail('JS 오류: %s' % pg.errs[:3])
+    print('SPA fallback 정적 호스팅(서버 확인이 늘 모름)도 기기 전용 그대로 ok')
+    c.close()
+
+    # 7) 정적 호스팅(404)을 처음부터 오프라인으로 열면 — 받아 둔 답이 없으니 기기 전용 (전에는 로그인 화면에 갇혀 새로고침해야 했다)
+    c = b.new_context(viewport={'width': 1240, 'height': 900}, service_workers='block')
+    c.route('**/api/**', lambda r: r.abort('internetdisconnected'))
+    pg = c.new_page(); pg.errs = []; pg.on('pageerror', lambda e: pg.errs.append(str(e)[:200]))
+    pg.goto(URL); pg.wait_for_timeout(2500)
+    if pg.locator('#lgUser').count() or not pg.locator('#sRole').count(): fail('받아 둔 답이 없는 곳을 오프라인으로 열었는데 기기 전용이 아님')
+    c.close()
+    # 서버가 있던 곳으로 기억해 오프라인 로그인 화면을 띄운 채 '서버 없음(404)'을 받으면 새로고침 없이 기기 전용으로 다시 그린다
+    c = b.new_context(viewport={'width': 1240, 'height': 900}, service_workers='block')
+    pg = page(c, '', '#lgUser')
+    if pg.evaluate("localStorage.getItem('conti-server')") != '1': fail('준비: 서버 답을 기억하지 않음')
+    c.route('**/api/**', off)
+    pg.reload(); pg.wait_for_selector('#offNote', timeout=10000)
+    c.unroute('**/api/**', off); c.route('**/api/**', lambda r: r.fulfill(status=404, body='not found'))
+    pg.evaluate("document.dispatchEvent(new Event('visibilitychange'))")
+    try: pg.wait_for_selector('#sRole', timeout=8000)
+    except Exception: fail('오프라인 로그인 화면에서 서버 없음(404)을 받았는데 기기 전용으로 안 바뀜 (새로고침해야 함)')
+    if pg.locator('#lgUser').count(): fail('서버 없음을 받은 뒤에도 로그인 화면이 남음')
+    if pg.errs: fail('JS 오류: %s' % pg.errs[:3])
+    print('받아 둔 답이 없으면 오프라인이라도 기기 전용 · 로그인 화면에서 서버 없음을 받으면 바로 기기 전용 ok')
     c.close()
 
 def run():

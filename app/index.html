@@ -3321,9 +3321,12 @@ function josaRo(v){const t=String(v||'').trim();if(!t)return t;
 const online=()=>NET.server===true;
 // 서버가 있는 앱(웹·네이티브)을 서버 없이(모름) 열었는데 팀이 없다 — 로그인 안 했거나 팀이 없는 사람. 전에는 모름을 '서버 없음'(정적 호스팅)과
 // 같이 봐 기기 전용 첫 설정(이름·세션·인도자/멤버)이 떠, 로그인할 길 없이 기기에만 쓰는 사람이 됐다 → 로그인 화면과 오프라인 안내를 보인다.
-// 서버가 없는 곳(파일로 연 페이지·404 를 받아 둔 정적 호스팅)은 예전처럼 기기 전용
-const noServerHere=()=>!NATIVE&&(!/^https?:$/.test(location.protocol)||lsGet(SRV_KEY)==='0');
-const offGate=()=>NET.server===null&&!S.team.id&&!noServerHere();
+// 서버가 있는 곳이라는 증거가 있을 때만 막는다 — 앱(네이티브), 이 주소에서 서버 답을 받아 둔 적이 있다(probeServer),
+// 이 기기에 이 주소로 로그인한 적이 있는 저장소(state:<사용자>:…). 증거가 없으면(파일로 연 페이지·정적 호스팅) 예전처럼 기기 전용.
+// 전에는 '서버 없음(404)을 받아 둔 곳'만 빼서, 모르는 주소는 모두 서버가 있는 곳으로 봤다 — 없는 주소에 index.html 을 200 으로 주는
+// 정적 호스팅(Cloudflare Pages 기본값)은 서버 확인이 늘 모름이라, 인터넷이 되는데도 로그인 화면과 '연결되지 않았어요'에 갇혔다
+const srvHere=()=>NATIVE||lsGet(SRV_KEY)==='1'||/^state:(?!local:)[^:]+:/.test(String(CUR_SCOPE));
+const offGate=()=>NET.server===null&&!S.team.id&&srvHere();
 // 오프라인으로 켜면 NET.server 가 null 로 굳어, 다시 연결돼도 발행이 서버로 안 갔다
 let RECONNECT_T=null,RECHECK=null,BOOTING=true;
 // 여러 곳(online 이벤트·다시 묻기 타이머·화면 복귀)에서 겹쳐 불려도 한 번만 돈다. 겹치면 콘티를 두 번 받아 같은 콘티가 둘 생길 수 있다
@@ -3331,8 +3334,11 @@ let RECONNECT_T=null,RECHECK=null,BOOTING=true;
 // 켜기가 끝나며 늦게 온 '모름'으로 방금 붙은 연결을 덮었다. 켜기가 오프라인으로 끝나면 거기서 scheduleReprobe 가 다시 묻는다
 function recheckServer(){return RECHECK||(RECHECK=(async()=>{
  if(NET.server===true||BOOTING)return;
+ // 오프라인 로그인 화면(offGate)을 띄워 둔 채 '서버 없음'을 받았으면 기기 전용으로 다시 그린다 (켤 때처럼 이름이 없으면 첫 설정으로).
+ // 안 그리면 새로고침할 때까지 로그인 화면이 남아 누를 때마다 '연결되지 않았어요'만 떴다. 받은 답을 기억하기(probeServer) 전에 본다
+ const gate=offGate();
  const srv=await probeServer();
- if(srv!==true){NET.server=srv;return}
+ if(srv!==true){NET.server=srv;if(gate&&!offGate()){if(!me().name&&location.hash!=='#/settings')location.hash='#/settings';else render()}return}
  // NET.server 는 /me 가 끝난 뒤에 true 로 — 먼저 두면 /me 를 기다리는 사이 그린 화면이 사용자 없이 로그인 창이 되고,
  // /me 가 503·느림으로 실패하면 그 로그인 창이 오프라인인 채로 남았다. 실패하면 오프라인(모름)으로 두고 다음에 다시
  let m;try{m=await api('/me',{timeout:10000})}catch(e){if(e.status!==401){NET.server=null;return}}
@@ -3352,13 +3358,26 @@ function retryPending(){if(!online()||!S.team.id||!S.services.some(x=>x.pubPendi
 // 발행 대기를 먼저 올리고(서버에 콘티가 있어야 메모도 받는다) 못 올린 초안·메모·삭제를 모든 콘티에서 민다. 라이브러리·곡은 schedulePush 가.
 // 보낼 게 없으면 서버를 부르지 않는다. 겹쳐 불리면(online·화면 복귀) 하나만 돈다.
 // 너무 커서 거절된 초안은 고치기 전에는 다시 재지 않는다(화면 복귀마다 큰 문서를 통째로 재지 않게). 메모는 pullNotes 처럼 unswap 뒤에 보낸다 —
-// 업데이트 전 코드가 바꿔 둔 팀원 곡의 빠진 메모를 '지운 것'으로 보고 서버에서 지우지 않게
+// 업데이트 전 코드가 바꿔 둔 팀원 곡의 빠진 메모를 '지운 것'으로 보고 서버에서 지우지 않게.
+// 초안은 여기서 처음 열지 않은 콘티 것까지 미므로(에디터로 열 때는 pullDraft 가 먼저 서버 것과 견준다) 그냥 덮지 않는다:
+// 목록부터 받아(켤 때·recheckServer 처럼 발행 대기 → 목록) 다른 기기에서 지운 콘티를 치우고, 서버 초안과 견줘 안전한 것만 보낸다 (SYNC.draftSafe).
+// 전에는 끊긴 사이 다른 기기에서 지운 콘티가 초안으로 되살아나 모든 기기에 다시 나타났고, 다른 기기의 더 새 초안을 옛 것으로 말없이 덮었다
 let UNSENT=null;
 function pushUnsent(){if(!online()||!S.team.id)return Promise.resolve();
  return UNSENT||(UNSENT=(async()=>{const scope=CUR_SCOPE,moved=()=>scope!==CUR_SCOPE;
   await retryPending();
-  for(const svc of S.services.filter(x=>draftUnsent(x)&&!(SYNC.draftFail['big:'+x.id]&&SYNC.draftFail[x.id]===x.editedAt))){if(moved())return;try{await SYNC.pushDraft(svc)}catch(e){}}
-  for(const svc of S.services.filter(notesChanged)){if(moved())return;try{SYNC.unswap(svc);await SYNC.pushNotes(svc)}catch(e){}}
+  const drafts=()=>S.services.filter(x=>draftUnsent(x)&&!(SYNC.draftFail['big:'+x.id]&&SYNC.draftFail[x.id]===x.editedAt));
+  const pulled=drafts().length>0;
+  if(pulled){const ch=await SYNC.pullServices();if(moved())return;
+   // 에디터에서 치는 중이면 다시 그리지 않는다(입력 칸이 새로 그려져 치던 것이 끊긴다) — 그 콘티가 지워졌을 때만
+   if(ch&&(route().name!=='edit'||!svcById(route().a)))render()}
+  for(const svc of drafts()){if(moved())return;try{if(await SYNC.draftSafe(svc)&&!moved())await SYNC.pushDraft(svc)}catch(e){}}
+  // 메모도 서버에 있는 콘티 것만 민다 — 끊긴 사이 지워진 콘티의 메모는 서버가 콘티를 보지 않고 받아, 볼 사람 없는 줄로 남았다.
+  // 위에서 목록을 받았으면 지운 콘티는 이미 치워졌다. 아니면 목록의 id 만 가볍게 본다(못 받으면 전처럼 모두). 발행 전 초안은 전처럼 보낸다
+  let notes=S.services.filter(notesChanged);
+  if(notes.length&&!pulled){try{const r=await api('/services?team='+S.team.id);if(moved())return;
+   const on=new Set((r.services||[]).concat(r.drafts||[]).map(x=>x.id));notes=notes.filter(x=>on.has(x.id)||!x.published)}catch(e){}}
+  for(const svc of notes){if(moved())return;try{SYNC.unswap(svc);await SYNC.pushNotes(svc)}catch(e){}}
   if(moved())return;if(isLeader()&&(S.delPending||[]).length)await SYNC.flushDeletes();
   SYNC.schedulePush()})().catch(e=>console.warn('unsent',e&&e.message)).finally(()=>{UNSENT=null}))}
 // 켤 때는 온라인이었는데(NET.server===true) 발행하다 끊긴 것은 recheckServer 가 그냥 돌아가 다시 안 올라갔다 —
@@ -3670,6 +3689,12 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),getting:new Map(),notePut:{},no
   if(ok&&job.again)return SYNC.pushDraft(svc)},
  applyDraft(svc,doc){scrubVer(scrubIds(doc));const old=new Map(svc.items.map(it=>[it.id,it]));if(doc.word&&!svc.word)svc.word=doc.word;svc.name=doc.name;svc.date=doc.date;svc.folder=doc.folder||'';svc.notice=doc.notice||'';svc.message=doc.message||'';svc.messageRev=doc.messageRev||0;svc.version=Math.max(svc.version||0,doc.version||0);svc.editedAt=doc.editedAt||Date.now();svc.draftPushedAt=svc.editedAt;
   svc.items=clone(doc.items).map(it=>{const o=old.get(it.id);it.notes=o?(o.notes||[]):[];it.media=(it.media||[]).map(m=>{const om=o&&(o.media||[]).find(x=>x.id===m.id);return {...m,notes:om?(om.notes||[]):[]}});return it});save()},
+ // 다시 연결됐을 때(pushUnsent) 이 초안을 서버에 올려도 되는가. 서버 초안이 더 새것이면(끊긴 사이 다른 기기에서 고쳤다) 덮지 않는다 —
+ // 그 콘티를 에디터로 열 때 pullDraft 가 가져올지 묻는다. 한 번 올렸던 발행 전 초안이 서버에 없으면 다른 기기에서 지운 것이라 되살리지 않는다
+ // (전처럼 열어 고치면 그때 올라간다). 서버에 못 물었으면 보내지 않고 다음 연결·화면 복귀에 다시 본다
+ async draftSafe(svc){let d;try{d=await api('/services/'+svc.id+'/draft?team='+S.team.id)}catch(e){return false}
+  if(d&&d.doc)return (+d.doc.editedAt||0)<=(svc.editedAt||0)+500;
+  return !!svc.published||!svc.draftPushedAt},
  async pullDraft(svc){if(!online()||!isLeader()||!svc)return false;let d;try{d=await api('/services/'+svc.id+'/draft?team='+S.team.id)}catch(e){return false}
   if(!d||!d.doc)return false;const remote=+d.doc.editedAt||0;if(remote<=(svc.editedAt||0)+500)return false;
   const when=new Date(remote).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'numeric',minute:'2-digit'});
@@ -7895,10 +7920,16 @@ function stgLaySlot(){return `lay:${STG.svc?STG.svc.id:'-'}~${deviceClass()}`}
 // 기기에서 다음 사람이 앞 사람의 조판과 글 블록을 받고 고치면 앞 사람 것을 덮었다.
 // 오프라인이라 NET.user 가 없어도 지금 저장소(state:<사용자>:<팀>)의 사용자로 찾는다
 function stgLocKey(slot){return 'conti-'+slot+'@'+((NET.user&&NET.user.id)||String(CUR_SCOPE).split(':')[1]||'local')}
+// 인도자 추천 조판 (이 예배·이 기기 종류). 내 조판이 없을 때의 시작점이다 (stgLayoutLoad)
+function stgRec(){const r=((pubOrDraft(STG.svc||{}).stageLayouts)||{})[deviceClass()];return r&&r.screens?r:null}
+// '자동 조판으로 보겠다'는 내 선택. 추천 조판이 있는 예배에서 ↻·편집 끄기로 자동을 고른 것을 비워 두기(null)로만 남기면
+// 다음에 열 때 '내 조판 없음'으로 보고 추천 조판으로 돌아가 옮긴 블록이 되살아났다 → 이 표시를 내 조판 자리에 남겨 추천보다 먼저 세운다.
+// 추천이 없으면 전처럼 비워 둔다 (나중에 인도자가 추천하면 받게)
+const stgIsAuto=v=>!!(v&&v.auto&&!v.screens);
 function stgLayoutSave(){
  const slot=stgLaySlot();
  PREFS.data=PREFS.data||{};PREFS.data.stage=PREFS.data.stage||{};
- PREFS.data.stage[slot]=STG.layout?stgLayoutSlim(STG.layout):null;
+ PREFS.data.stage[slot]=STG.layout?stgLayoutSlim(STG.layout):stgRec()?{v:2,auto:1}:null;
  try{localStorage.setItem(stgLocKey(slot),JSON.stringify(PREFS.data.stage[slot]))}catch(e){}
  if(!online()||!NET.user)return;
  clearTimeout(stgLayoutSave.t);stgLayoutSave.t=setTimeout(()=>{
@@ -7931,7 +7962,7 @@ async function stgAdoptLegacy(){
   const lk=stgLocKey(slot);let cur=null;try{cur=localStorage.getItem(lk);if(cur==null){localStorage.setItem(lk,raw);cur=raw}}catch(e){continue}   // 못 옮겼으면 지우지 않는다
   if(cur!==raw){drop();continue}   // 업데이트 뒤 이 기기에서 새로 고친 것이 있다 — 그것이 지금 조판이다
   if(!online()||!NET.user||!PREFS.data)continue;   // 서버에 있는지 모른다 — 다음에 열 때 올리고 지운다
-  const srv=(PREFS.data.stage||{})[slot];if(srv&&srv.screens){drop();continue}   // 서버에 이미 있다 (그것이 먼저다 — stgLayoutLoad)
+  const srv=(PREFS.data.stage||{})[slot];if(srv&&(srv.screens||stgIsAuto(srv))){drop();continue}   // 서버에 이미 있다 (그것이 먼저다 — stgLayoutLoad)
   api('/me/prefs/stage/'+encodeURIComponent(slot),{method:'PUT',body:{value:v}})
    .then(()=>{if(PREFS.data){PREFS.data.stage=PREFS.data.stage||{};if(!PREFS.data.stage[slot])PREFS.data.stage[slot]=v}drop()})
    .catch(e=>{if(e&&e.status>=400&&e.status<500)drop()})}}   // 받지 않는 것(키·크기)은 다시 보내도 같다 — 기기 사본은 남았다
@@ -7939,13 +7970,13 @@ function stgLayoutLoad(){
  const slot=stgLaySlot();
  const srv=((PREFS.data||{}).stage||{})[slot];
  if(srv&&srv.screens)return srv;
- try{const v=JSON.parse(localStorage.getItem(stgLocKey(slot))||'null');if(v&&v.screens)return v}catch(e){}
+ if(stgIsAuto(srv))return null;   // 추천이 있어도 자동으로 보기로 했다
+ try{const v=JSON.parse(localStorage.getItem(stgLocKey(slot))||'null');if(v&&v.screens)return v;if(stgIsAuto(v))return null}catch(e){}
  // 내 조판이 없으면 인도자가 추천한 조판으로 시작한다
- const rec=((pubOrDraft(STG.svc||{}).stageLayouts)||{})[deviceClass()];
- return rec&&rec.screens?rec:null}
-// 이 기기·계정에 내가 고친 조판이 있는가 (있으면 추천 조판보다 먼저다 — stgLayoutLoad 와 같은 순서)
-function stgMine(){const slot=stgLaySlot();const srv=((PREFS.data||{}).stage||{})[slot];if(srv&&srv.screens)return true;
- try{const v=JSON.parse(localStorage.getItem(stgLocKey(slot))||'null');return !!(v&&v.screens)}catch(e){return false}}
+ return stgRec()}
+// 이 기기·계정에 내 조판(자동으로 보기로 한 것도)이 있는가 (있으면 추천 조판보다 먼저다 — stgLayoutLoad 와 같은 순서)
+function stgMine(){const slot=stgLaySlot();const srv=((PREFS.data||{}).stage||{})[slot];if(srv&&(srv.screens||stgIsAuto(srv)))return true;
+ try{const v=JSON.parse(localStorage.getItem(stgLocKey(slot))||'null');return !!(v&&(v.screens||stgIsAuto(v)))}catch(e){return false}}
 // 인도자 추천 조판으로 저장 — 멤버가 그 예배를 처음 열 때의 시작점
 async function stgRecommend(){
  if(!STG.layout)return toast('먼저 조판을 고쳐 주세요');
@@ -7965,7 +7996,8 @@ function stgEditOn(){
  STG.edit=true;STG.menu=null;STG.sel=[];stageRender()}
 // 편집을 켰다 끄기만 했으면(지금 자동 조판을 그대로 옮겨 적은 것과 같으면) 손으로 고친 조판으로 남기지 않는다.
 // 남기면 ⚙ 에 '손으로 고친 조판'이 뜨고 곡·캔버스가 바뀌어도 자동으로 다시 짜지 않으며, ↻ 뒤 끄기만 해도 도로 저장됐다.
-// 송폼 모드가 잠시 뺀 블록(off)이 있으면 그 자리를 옮겼을 수 있어 그대로 둔다
+// 송폼 모드가 잠시 뺀 블록(off)이 있으면 그 자리를 옮겼을 수 있어 그대로 둔다.
+// 추천 조판이 있는 예배라면 비우는 대신 '자동으로 보기' 표시가 남는다 (stgLayoutSave — 비우면 다음에 추천으로 돌아갔다)
 function stgSameAsAuto(L){
  if(!L||!STG.lay||(L.off&&L.off.length))return false;
  const a=stgLayoutSlim(stgToLayout(STG.lay,stgCanvasW(),stgCanvasH())),m=stgLayoutSlim(L);

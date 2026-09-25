@@ -35,6 +35,10 @@ NOTES = """([sid,LONG])=>{const s=CONTI.S.services.find(x=>x.id===sid);const it=
             {id:'wfs-mine',marker:'wfm1',layer:'mine',session:null,text:'내 개인 메모',author:'하은'},
             {id:'wfs-sess',marker:'wfm1',layer:'session',session:ses,text:'세션 공유 메모 · '+LONG,author:'하은'}];CONTI.save();return ses}"""
 SLOT = "(()=>'lay:'+CONTI.STG.svc.id+'~tab-l')()"
+# 내 조판(서버·기기 사본)을 지운다 — 추천 조판만 있는 사람(처음 여는 멤버)과 같게
+CLEAR_MINE = """async (slot)=>{await fetch('/api/me/prefs/stage/'+encodeURIComponent(slot),{method:'PUT',credentials:'include',
+  headers:{'content-type':'application/json','x-conti':'1'},body:JSON.stringify({value:null})});
+  Object.keys(localStorage).filter(k=>k.indexOf('conti-'+slot+'@')===0).forEach(k=>localStorage.removeItem(k))}"""
 
 def pop_hint(pg):
     pg.click('[data-stg="cfg"]'); pg.wait_for_selector('.stgpop', timeout=5000)
@@ -144,6 +148,52 @@ def run():
     if not any(w.startswith('나|') and '내 개인 메모' in w for w in pw): fail('phone-1 인쇄 띠에서 나만 메모 이름이 나가 아님 %s' % pw)
     pg.evaluate("(()=>{const a=document.querySelector('#printArea');if(a)a.remove();document.body.classList.remove('printing')})()")
     print('desk-1 ↻ 자동으로 다시 → 자동 조판 · 내보내기도 가운데 ok', pv)
+
+    # 인도자 추천 조판이 있는 예배: ↻ 자동으로 다시 → 끄기는 다음에 열어도 자동이다.
+    # 비워 두기(null)만 남기면 '내 조판 없음'으로 보고 추천 조판(옮긴 블록 · 손으로 고친 조판)으로 돌아갔다
+    open_stage(pg, sid, reload=True)
+    auto2 = pg.evaluate(GAPS); centered(auto2, 'desk-1 추천 전 자동 조판')
+    pg.click('[data-stg="edit"]'); pg.wait_for_timeout(500)
+    blk = pg.locator('.sblk').last; bb = blk.bounding_box()
+    pg.mouse.move(bb['x'] + bb['width'] / 2, bb['y'] + 30); pg.mouse.down()
+    pg.mouse.move(bb['x'] + bb['width'] / 2 + 120, bb['y'] + 30, steps=10); pg.mouse.up(); pg.wait_for_timeout(400)
+    pg.click('[data-sc="rec"]'); pg.wait_for_timeout(1500)
+    pg.click('[data-stg="edit"]'); pg.wait_for_timeout(1500)
+    rec = pg.evaluate("(()=>{const L=((CONTI.STG.svc.published||{}).stageLayouts||{})['tab-l'];return !!(L&&L.screens)})()")
+    if not rec: fail('준비: 인도자 추천 조판이 발행본에 안 붙음')
+    moved2 = pg.evaluate(GAPS)
+    if auto2['r'] - moved2['r'] < 0.015: fail('준비: 추천한 조판이 옮긴 자리가 아님 %s / 자동 %s' % (moved2, auto2))
+    pg.click('[data-stg="edit"]'); pg.wait_for_timeout(500)
+    pg.click('[data-stg="auto"]'); pg.wait_for_timeout(600)
+    pg.click('[data-stg="edit"]'); pg.wait_for_timeout(1500)
+    centered(pg.evaluate(GAPS), 'desk-1 추천이 있는 예배에서 ↻ 뒤 끈 조판')
+    if pg.evaluate("CONTI.STG.layout"): fail('desk-1 추천이 있는 예배에서 ↻ 뒤 끄자 조판이 남음')
+    if '손으로 고친' in pop_hint(pg): fail('desk-1 추천이 있는 예배에서 ↻ 뒤 손으로 고친 조판이라고 나옴')
+    sv = saved(pg)
+    if not (sv['srv'] or {}).get('auto') or (sv['srv'] or {}).get('screens'): fail('desk-1 추천이 있는데 자동으로 보기로 한 것이 서버에 안 남음 %s' % str(sv)[:200])
+    if not sv['loc'] or '"auto"' not in sv['loc'][0]: fail('desk-1 추천이 있는데 자동으로 보기로 한 것이 기기에 안 남음 %s' % str(sv)[:200])
+    for how in ('다시 열기', '새로고침'):
+        open_stage(pg, sid, reload=(how == '새로고침')); pg.wait_for_timeout(1500)   # 열 때 추천을 다시 받는 것(stageOpen)까지 기다린다
+        g = pg.evaluate(GAPS)
+        centered(g, 'desk-1 ↻ 뒤 %s (추천이 있는 예배)' % how)
+        if pg.evaluate("CONTI.STG.layout"): fail('desk-1 ↻ 뒤 %s하자 추천 조판으로 돌아감 %s' % (how, g))
+        if '손으로 고친' in pop_hint(pg): fail('desk-1 ↻ 뒤 %s했는데 손으로 고친 조판' % how)
+    # 내 것을 지우면(추천만 있는 사람 — 처음 여는 멤버와 같다) 추천 조판으로 연다 · 거기서 옮기면 내 조판으로 남는다
+    pg.evaluate(CLEAR_MINE, pg.evaluate(SLOT))
+    open_stage(pg, sid, reload=True); pg.wait_for_timeout(1500)
+    g = pg.evaluate(GAPS)
+    if not pg.evaluate("CONTI.STG.layout") or abs(g['r'] - moved2['r']) > 0.01: fail('desk-1 내 조판이 없는데 추천 조판으로 안 열림 %s' % g)
+    pg.click('[data-stg="edit"]'); pg.wait_for_timeout(500)
+    blk = pg.locator('.sblk').last; bb = blk.bounding_box()
+    pg.mouse.move(bb['x'] + bb['width'] / 2, bb['y'] + 30); pg.mouse.down()
+    pg.mouse.move(bb['x'] + bb['width'] / 2 - 60, bb['y'] + 30, steps=10); pg.mouse.up(); pg.wait_for_timeout(400)
+    pg.click('[data-stg="edit"]'); pg.wait_for_timeout(1500)
+    mine = pg.evaluate(GAPS); sv = saved(pg)
+    if not (sv['srv'] or {}).get('screens'): fail('desk-1 추천에서 옮긴 조판이 내 조판으로 안 남음 %s' % str(sv)[:200])
+    open_stage(pg, sid, reload=True); pg.wait_for_timeout(1500)
+    g = pg.evaluate(GAPS)
+    if abs(g['r'] - mine['r']) > 0.01: fail('desk-1 추천에서 옮긴 내 조판이 새로고침 뒤 아님 %s / %s' % (g, mine))
+    print('desk-1 추천 조판이 있어도 ↻ 자동으로 다시 → 다시 열어도 자동 · 추천·내 조판은 그대로 ok')
 
     # ================= phone-1 · phone-2 =================
     st = ctx.storage_state()
