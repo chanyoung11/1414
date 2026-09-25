@@ -861,11 +861,24 @@ body.stgon{overflow:hidden}
 .stgpage .pstrip{position:absolute;display:flex;align-items:center;gap:6px;font-size:11px;overflow:hidden;border-left:3px solid #111;padding-left:7px}
 .stgpage .pstrip .mk2{min-width:17px;height:17px;border-radius:999px;background:#111;color:#fff;font-size:10px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;padding:0 4px;flex:0 0 auto}
 .stgpage .pstrip .mod{font-size:10px;font-weight:700;color:#111;border:1px solid #111;border-radius:3px;padding:0 4px;flex:0 0 auto}
-.stgpage .pstrip .m{display:inline-flex;align-items:center;gap:4px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.stgpage .pstrip .m .who{font-size:9px;font-weight:700;color:#fff;background:#777;border-radius:3px;padding:0 4px}
+/* 칩은 띠 폭에 맞춰 줄고 글 끝에 … (.m 기본은 flex:0 0 auto 라 줄지 않아 끝 칩이 띠 밖에서 표시 없이 잘렸다).
+   띠를 칩마다 똑같이 나누되 제 글보다 넓어지지는 않게(max-content) — 짧은 메모는 다 보이고 긴 메모만 줄어든다.
+   이름표는 줄이지 않는다. 그래도 넘치면 띠를 탭해 전문을 본다 (stgMemoHTML) */
+.stgpage .pstrip .m{display:inline-flex;align-items:center;gap:4px;min-width:4.5em;max-width:max-content;overflow:hidden;white-space:nowrap;flex:1 1 0}
+.stgpage .pstrip .m .who{font-size:9px;font-weight:700;color:#fff;background:#777;border-radius:3px;padding:0 4px;flex:0 0 auto}
+.stgpage .pstrip .m .tx{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .stgpage .pstrip .m.all .who{background:#111}
 /* 바(--sat 아래 46px) 바로 밑에 뜬다. 54px 고정이면 노치 있는 아이폰에서 바의 톱니·닫기를 덮었다 */
 .stgpop{position:absolute;right:12px;top:calc(var(--sat) + 54px);width:min(340px,calc(100% - 24px));max-height:calc(100% - var(--sat) - 66px);overflow:auto;background:var(--card);color:var(--fg);border:1px solid var(--border-2);border-radius:var(--r-xl);padding:12px;z-index:4;box-shadow:0 24px 56px -20px rgba(0,0,0,.7)}
+/* 메모 띠 전문 — 폰 무대에서 줄어 … 로 끝난 띠를 탭하면 아래에 뜬다. 아무 데나 탭하면 닫힌다 */
+.stgmemo{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);width:min(420px,calc(100% - 24px));max-height:calc(100% - var(--sat) - 90px);overflow:auto;
+ background:#F2F3F4;color:#111213;border-radius:14px;padding:10px 14px;z-index:6;box-shadow:0 18px 40px -12px rgba(0,0,0,.7)}
+.stgmemo .smh{display:flex;align-items:center;gap:6px;margin:4px 0}
+.stgmemo .mk2{min-width:20px;height:20px;border-radius:999px;background:#111;color:#fff;font-size:11px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;padding:0 5px}
+.stgmemo .mod{font-size:11px;font-weight:700;border:1px solid #111;border-radius:3px;padding:0 4px}
+.stgmemo .smn{font-size:15px;line-height:1.45;padding:5px 0;border-top:1px solid #D5D7DA;word-break:keep-all;overflow-wrap:anywhere}
+.stgmemo .who{font-size:11px;font-weight:700;color:#fff;background:#777;border-radius:3px;padding:1px 5px;margin-right:6px;vertical-align:1px}
+.stgmemo .smn.all .who{background:#111}
 @media(max-width:640px){.stgbar .stgform{display:none}.stgcanvas{left:8px;right:8px}}
 /* ---------- 인쇄 조판 결과 (미리보기 + 종이) ---------- */
 #printArea{display:none}
@@ -954,8 +967,9 @@ body.stgon{overflow:hidden}
 .ppage .pstrip{position:absolute;display:flex;align-items:center;gap:6px;font-size:11px;overflow:hidden;border-left:3px solid #111;padding-left:7px}
 .ppage .pstrip .mk2{min-width:17px;height:17px;border-radius:999px;background:#111;color:#fff;font-size:10px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;padding:0 4px;flex:0 0 auto}
 .ppage .pstrip .mod{font-size:10px;font-weight:700;color:#111;border:1px solid #111;border-radius:3px;padding:0 4px;flex:0 0 auto}
-.ppage .pstrip .m{display:inline-flex;align-items:center;gap:4px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ppage .pstrip .m .who{font-size:9px;font-weight:700;color:#fff;background:#777;border-radius:3px;padding:0 4px}
+.ppage .pstrip .m{display:inline-flex;align-items:center;gap:4px;min-width:4.5em;max-width:max-content;overflow:hidden;white-space:nowrap;flex:1 1 0}
+.ppage .pstrip .m .who{font-size:9px;font-weight:700;color:#fff;background:#777;border-radius:3px;padding:0 4px;flex:0 0 auto}
+.ppage .pstrip .m .tx{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .ppage .pstrip .m.all .who{background:#111}
 .ppage .pchart .chart{margin:0}
 .ppage .pchart .cbar,.ppage .pchart .cbars{border-color:#bbb}
@@ -6089,7 +6103,10 @@ function noteVisible(n,ctx){ // ctx: {mode:'edit'|'play', session, f:{leader,ses
 }
 // layer 는 발행본·가져온 파일에서 그대로 오는 값이라 class 에 넣기 전에 정해진 것만 남긴다
 const NOTE_LAYERS=['leader','session','mine'];
-function noteChip(n){const all=n.layer==='leader'&&!n.session;const who=n.layer==='leader'?(n.session||'전체'):n.layer==='session'?(n.session||'세션'):'나';
+// 칩 이름표 — 누가 보는 메모인가. 연습 띠(noteChip)와 무대·인쇄 띠(pgBlockHTML)·무대 메모 창이 같은 이름을 쓴다.
+// 무대·인쇄 띠는 세션이 없는 메모를 모두 '전체'라 적어, 나만 보는 메모가 팀 전체에 보이는 메모처럼 나왔다
+function noteWho(n){return n.layer==='leader'||n.layer==='all'?(n.session||'전체'):n.layer==='session'?(n.session||'세션'):'나'}
+function noteChip(n){const all=n.layer==='leader'&&!n.session;const who=noteWho(n);
  return `<span class="m ${NOTE_LAYERS.includes(n.layer)?n.layer:'mine'}${all?' all':''}${n.fixed?' fixed':''}" data-note="${esc(n.id)}" title="${esc(n.text)}${n.fixed?' — 이 곡에 항상':''}"><span class="who">${esc(who)}</span>${esc(n.text)}</span>`}
 
 /* ---------- sheet renderer ---------- */
@@ -6895,7 +6912,8 @@ function pgBlockHTML(b,box,page){
   return `<div class="blk" style="left:${left}px;top:${T}px;width:${w}px;height:${b.height}px"${box.stage&&b.idx!=null?` data-si="${b.idx}"`:''}>${inner}</div>`}
  if(b.type==='chart')return `<div class="blk pchart" style="left:${L}px;top:${T}px;width:${W}px">${chartHTML(b.item,{})}</div>`;
  if(b.type==='text')return `<div class="blk ptext" style="left:${L}px;top:${T}px;width:${W}px">${esc(b.text||'')}</div>`;
- if(b.type==='strip')return `<div class="pstrip" style="left:${L}px;top:${T}px;width:${W}px;height:${b.height}px"${box.stage&&b.idx!=null?` data-si="${b.idx}"`:''}>${b.markers.map(m=>`<span class="mk2">${esc(m.label)}</span>${b.mods[m.label]?`<span class="mod">${esc(b.mods[m.label])}</span>`:''}${m.vis.map(n=>{const all=n.layer==='all'||(n.layer==='leader'&&!n.session);return `<span class="m ${all?'all':''}"><span class="who">${all?'전체':esc(n.session||'전체')}</span>${esc(n.text)}</span>`}).join('')}`).join('<span style="width:10px;display:inline-block"></span>')}</div>`;
+ // 칩 글은 따로 감싼다 — 칩(inline-flex) 안의 맨 글자에는 말줄임(…)이 서지 않아, 좁은 띠(폰 무대)에서 끝 메모가 표시 없이 잘렸다
+ if(b.type==='strip')return `<div class="pstrip" style="left:${L}px;top:${T}px;width:${W}px;height:${b.height}px"${box.stage&&b.idx!=null?` data-si="${b.idx}"`:''}${box.stage&&b.id!=null?` data-tid="${esc(b.id)}"`:''}>${b.markers.map(m=>`<span class="mk2">${esc(m.label)}</span>${b.mods[m.label]?`<span class="mod">${esc(b.mods[m.label])}</span>`:''}${m.vis.map(n=>{const all=n.layer==='all'||(n.layer==='leader'&&!n.session);return `<span class="m ${all?'all':''}" title="${esc(n.text)}"><span class="who">${esc(noteWho(n))}</span><span class="tx">${esc(n.text)}</span></span>`}).join('')}`).join('<span style="width:10px;display:inline-block"></span>')}</div>`;
  if(b.type==='divider')return `<div class="blk pdiv" style="left:${L}px;top:${T}px;width:${W}px">${esc(b.label)}</div>`;
  return ''}
 function pgPagesHTML(pages){
@@ -7533,7 +7551,8 @@ function metOpen(){
    한 곡이 한 화면에. 스크롤 없음. 조판은 사람·곡·기기 구간마다 따로 저장된다 */
 const STG={svc:null,idx:0,screen:0,open:false,pref:null,edit:false,lay:null,nscreens:1,sel:[],clip:null,seq:0,
  layout:null,   // 사람이 고친 조판 {screens:[{blocks:[{id,type,x,y,w,...}]}]} · 없으면 자동
- drag:null,menu:null};
+ drag:null,menu:null,
+ memo:null};   // 전문을 펼쳐 보는 메모 띠의 블록 id (폰에서 줄어 … 로 끝난 띠를 탭했을 때)
 const STG_DEF={zoom:1,cols:'auto',memos:true,hl:true,chords:true,bar:true,form:'block',formV2:1};   // chords: 빨간 전조 코드
 // 송폼을 어디에 보여줄지 (기획 §4)
 const STG_FORM=[['auto','자동'],['bar','상단 바'],['block','조각 위'],['hide','숨김']];
@@ -7672,14 +7691,20 @@ function stgCompose(pub,W,H,pref){
 // 자동 조판 결과를 '고칠 수 있는 조판'으로 바꾼다. 좌표는 캔버스 비율(0~1)이라
 // 해상도가 달라도 같은 모양이 나온다
 function stgToLayout(lay,W,H){
- return {screens:lay.screens.map(sc=>({blocks:sc.blocks.map((b,i)=>{
-  const L=b.col*(lay.cw+STG_GUT);
-  // 악보 조각은 열 폭보다 좁게 그려지고 가운데 놓인다. 열 폭으로 저장하면 좌우 여백이
-  // 블록에 묻어 들어가 손잡이가 그림에서 떨어진다 → 그림이 차지하는 폭·자리 그대로
-  const nw=stgNatW(b,lay.cw);
-  return {...b,id:b.id||(b.type+i+'_'+Math.round(b.top)),
-   x:(L+(lay.cw-nw)/2)/W,y:b.top/H,w:nw/W,h:b.height/H};
- })}))}}
+ return {screens:lay.screens.map(sc=>{
+  // 쓰는 열이 캔버스보다 좁으면 자동 조판은 가운데에 놓는다 (stageRender 의 box.left 와 같은 셈).
+  // 이 몫을 빼면 편집을 켜기만 해도 곡이 왼쪽 끝으로 붙고, 끄면 그 자리로 저장됐다
+  const cols=sc.blocks.map(b=>b.col).filter(c=>typeof c==='number');
+  const used=cols.length?Math.max(...cols)+1:1;
+  const off=Math.max(0,(W-(used*lay.cw+(used-1)*STG_GUT))/2);
+  return {blocks:sc.blocks.map((b,i)=>{
+   const L=off+b.col*(lay.cw+STG_GUT);
+   // 악보 조각은 열 폭보다 좁게 그려지고 가운데 놓인다. 열 폭으로 저장하면 좌우 여백이
+   // 블록에 묻어 들어가 손잡이가 그림에서 떨어진다 → 그림이 차지하는 폭·자리 그대로
+   const nw=stgNatW(b,lay.cw);
+   return {...b,id:b.id||(b.type+i+'_'+Math.round(b.top)),
+    x:(L+(lay.cw-nw)/2)/W,y:b.top/H,w:nw/W,h:b.height/H};
+  })}})}}
 // 블록이 원래(자동 조판에서) 차지하던 폭. 크기 조절 배율의 기준이 된다
 function stgNatW(b,cw){
  if(b.type==='slice'&&b.pc&&b.pc.im)return Math.min(cw,b.pc.im.w*b.scale);
@@ -7887,7 +7912,14 @@ function stgEditOn(){
  const W=stgCanvasW(),H=stgCanvasH();
  if(!STG.layout)STG.layout=stgToLayout(STG.lay,W,H);
  STG.edit=true;STG.menu=null;STG.sel=[];stageRender()}
-function stgEditOff(){STG.edit=false;STG.menu=null;STG.sel=[];stgLayoutSave();stageRender()}
+// 편집을 켰다 끄기만 했으면(지금 자동 조판을 그대로 옮겨 적은 것과 같으면) 손으로 고친 조판으로 남기지 않는다.
+// 남기면 ⚙ 에 '손으로 고친 조판'이 뜨고 곡·캔버스가 바뀌어도 자동으로 다시 짜지 않으며, ↻ 뒤 끄기만 해도 도로 저장됐다.
+// 송폼 모드가 잠시 뺀 블록(off)이 있으면 그 자리를 옮겼을 수 있어 그대로 둔다
+function stgSameAsAuto(L){
+ if(!L||!STG.lay||(L.off&&L.off.length))return false;
+ const a=stgLayoutSlim(stgToLayout(STG.lay,stgCanvasW(),stgCanvasH())),m=stgLayoutSlim(L);
+ return JSON.stringify(a.screens)===JSON.stringify(m.screens)}
+function stgEditOff(){STG.edit=false;STG.menu=null;STG.sel=[];if(stgSameAsAuto(STG.layout))STG.layout=null;stgLayoutSave();stageRender()}
 function stgAutoAgain(){
  if(!confirm('이 예배의 무대 조판을 자동으로 다시 짤까요?\n손으로 옮긴 것은 사라져요.'))return;
  STG.layout=null;STG.sel=[];STG.menu=null;stgLayoutSave();
@@ -8148,7 +8180,7 @@ async function stageOpen(svc,idx){
  try{await stgAdoptLegacy()}catch(e){console.warn('stage legacy',e)}   // 업데이트 전 이 기기에만 있던 조판 (위)
  STG.svc=svc;STG.idx=idx||0;STG.screen=0;STG.open=false;STG.from=idx||0;
  const it=stgItem();STG.pref=stgLoad();
- STG.edit=false;STG.menu=null;STG.sel=[];
+ STG.edit=false;STG.menu=null;STG.sel=[];STG.memo=null;
  STG.layout=deviceClass()==='phone'?null:stgLayoutLoad();
  let el=$('#stageWrap');if(el)el.remove();
  el=document.createElement('div');el.id='stageWrap';el.className='stgw';
@@ -8245,6 +8277,8 @@ function stageRender(){
  const page={pub,svc:STG.svc,session:PL.session||me().session||''};
  const k=keyStr(it);const fm=STG.pref.form||'auto';
  const ek=STG.edit?Math.max(.5,(H-58)/H):1;   // 편집 중 화면 띠 자리
+ const memo=STG.memo&&!STG.edit&&!STG.open?p.blocks.find(b=>b.type==='strip'&&!b.hidden&&b.id===STG.memo):null;
+ if(!memo)STG.memo=null;   // 넘겼거나 편집·⚙ 를 열었으면 창도 닫는다 (남아 있으면 다음 탭이 창만 닫고 화면은 안 넘겼다)
  host.innerHTML=`
   ${STG.pref.bar?`<div class="stgbar">
    <button class="sbtn" data-stg="prev" ${STG.screen?'':'disabled'}>${ic('left')}</button>
@@ -8276,9 +8310,16 @@ function stageRender(){
       ${on?stgBlockMenu(b,pos):''}</div>`}).join('')}</div></div>
   ${STG.edit&&STG.sel.length>1?`<div class="stgsel">${STG.sel.length}개 선택 · ⌘C 복사 · ⌘V 붙이기 · Delete 숨기기 · 화살표 이동</div>`:''}
   ${STG.edit?stgStripHTML(screens):''}
-  ${STG.open?stagePopHTML(lay):''}`;
+  ${STG.open?stagePopHTML(lay):''}
+  ${memo?stgMemoHTML(memo):''}`;
  if(STG.edit)stgEditBind(host,W,H,ek);}
 
+// 메모 띠 전문 (STG.memo) — 띠에 줄여 보이던 메모를 다 적는다. 이름표는 띠와 같다 (noteWho)
+function stgMemoHTML(s){
+ return `<div class="stgmemo">${s.markers.map(m=>`<div class="smh"><span class="mk2">${esc(m.label)}</span>${s.mods[m.label]?`<span class="mod">${esc(s.mods[m.label])}</span>`:''}</div>
+  ${m.vis.map(n=>`<div class="smn ${n.layer==='all'||(n.layer==='leader'&&!n.session)?'all':''}"><span class="who">${esc(noteWho(n))}</span>${esc(n.text)}</div>`).join('')}`).join('')}</div>`}
+// 띠에서 잘린 메모가 있는가 — 칩 글이 … 로 줄었거나, 칩이 다 줄고도 띠 밖으로 밀렸다
+function stgStripCut(el){return el.scrollWidth>el.clientWidth+1||[...el.querySelectorAll('.tx')].some(t=>t.scrollWidth>t.clientWidth+1)}
 function stagePopHTML(fit){
  const P=STG.pref;
  // 전조 코드는 연습 필터도 따른다 (stgCompose). 여기는 켜져 있는데 안 보이면 왜인지 옆에 적는다
@@ -8345,12 +8386,18 @@ function stageClick(e){
   return}
  const b=e.target.closest('[data-stg]');
  const t=e.target.closest('[data-stgt]');
+ // 메모 전문 창은 어디를 탭하든 닫는다 (창 안도 — 읽기만 하는 창이다). 바의 단추는 닫으면서 그대로 누른 것으로
+ if(STG.memo){STG.memo=null;if(!b&&!t){stageRender();return}}
  if(t){STG.pref[t.dataset.stgt]=t.checked;stgSave();stageRender();return}
  if(!b){ // 화면이 나뉘었으면 탭으로 다음 화면
   if(e.target.closest('.stgpop'))return;
   // '내 조판' 창이 떠 있으면 바깥 탭은 창만 닫는다 (화면은 안 넘긴다). 화면이 하나면 닫을 길이 톱니뿐이었다
   if(STG.open){STG.open=false;stageRender();return}
   if(STG.edit){if(STG.menu){STG.menu=null;stageRender()}return}
+  // 폰처럼 띠가 좁아 메모가 … 로 줄었거나 띠 밖으로 밀렸으면, 그 띠를 탭해 전문을 본다 (띠에는 끝까지 읽을 길이 없었다).
+  // 다 보이는 띠는 전처럼 탭 = 다음 화면
+  const ps=e.target.closest('.pstrip[data-tid]');
+  if(ps&&stgStripCut(ps)){STG.memo=ps.dataset.tid;stageRender();return}
   const si=e.target.closest('[data-si]');
   // 다른 곡 조각을 탭하면 바가 그 곡으로 바뀐다 (기획 §5). 그런데 '조각 위 블록'(기본)이나 바를 끈
   // 때는 바에 곡이 안 나와 바뀌는 것이 없고, 첫 탭이 그냥 먹혀 두 번 눌러야 넘어갔다 → 그때는 넘긴다
