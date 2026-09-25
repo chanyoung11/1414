@@ -979,6 +979,7 @@ body.stgon{overflow:hidden}
 .ppage .pchart .clr{color:#444}
 .ppage .pdiv{display:flex;align-items:center;gap:8px;color:#999;font-size:10px}
 .ppage .pdiv::before,.ppage .pdiv::after{content:"";flex:1;height:1px;background:#ddd}
+.ppage .pnosheet{margin-top:14px}
 .ppage .pfoot2{position:absolute;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:10px;color:#777;border-top:1px solid #ddd;padding-top:5px}
 .ppage .pfoot2 .nx{color:#111;font-weight:700;font-size:11px}
 .ppage .pcover .ct{font-size:30px;font-weight:800;letter-spacing:-.03em}
@@ -6840,11 +6841,15 @@ function pgCompose(svc){
  picked.forEach((it,idx)=>{
   const hasChart=!!(it.chart&&it.chart.sections&&it.chart.sections.length);
   if(!(it.pieces||[]).length){
-   if(!hasChart)return;
-   // 악보 사진 없이 코드 차트만 있는 곡: 머리 + 차트로 한 장
+   // 악보 사진 없이 코드 차트만 있는 곡: 머리 + 차트로 한 장.
+   // 차트도 없는 곡(제목·키·송폼만)은 예전에 통째로 건너뛰었는데, 앞 곡 바닥글은 여전히 '다음 N. 그 곡'이라
+   // 종이에 없는 곡을 넘겨 찾게 했다. 바닥글을 인쇄된 다음 곡으로 돌리면 예배 순서와 어긋나니(그 곡도 부른다)
+   // 옛 인쇄처럼 머리(번호·제목·키·송폼)만이라도 한 장 담는다 — 합주에 필요한 키·송폼이 거기 있다
+   // '악보 없음' 줄은 머리 안에 이어 그린다 — 따로 자리를 잡으면 긴 송폼·곡 메모가 머리 높이를 넘을 때 겹친다
    const headH=pgHeadH(it,fullW);
-   const p={blocks:[{type:'head',height:headH,item:it,idx:it._n,full:true,col:0,top:PG.margin},
-                    {type:'chart',height:fullH-headH-10,item:it,full:true,col:0,top:PG.margin+headH+10}],
+   const blocks=[{type:'head',height:headH,item:it,idx:it._n,full:true,col:0,top:PG.margin,nosheet:!hasChart}];
+   if(hasChart)blocks.push({type:'chart',height:fullH-headH-10,item:it,full:true,col:0,top:PG.margin+headH+10});
+   const p={blocks,
             box:{cols:1,cw:fullW,ch:fullH,gutter,top:PG.margin},svc,pub,session};
    if(PRT.next&&idx<picked.length-1){const nx=picked[idx+1];
     p.nextText=`다음 ${nx._n+1}. ${nx.title||'(제목 없음)'} / ${pgKey(nx)}`}
@@ -6887,7 +6892,7 @@ function pgBlockHTML(b,box,page){
   // 어디부터 어느 곡인지 눈에 바로 들어와야 한다
   if(box.stage)return `<div class="blk" style="left:${L}px;top:${T}px;width:${W}px" data-sblk="head:${b.idx}" data-si="${b.idx}">
    <div class="songhead"><div class="shtop"><span class="num">${b.idx+1}</span><span class="title">${esc(it.title||'(제목 없음)')}</span><span class="key">${esc(pgKey(it))}</span></div>${it.form&&!b.compact?`<span class="frm">${esc(it.form)}</span>`:''}</div></div>`;
-  return `<div class="blk" style="left:${L}px;top:${T}px;width:${W}px"><div class="songhead"><span class="num">${b.idx+1}</span><span class="title">${esc(it.title||'(제목 없음)')}</span><span class="key">${esc(pgKey(it))}</span></div>${it.form?`<div class="pform2 ${PRT.scale>=1?'big':''}">${esc(it.form)}</div>`:''}${it.songNote?`<div class="preason">${esc(it.songNote)}</div>`:''}</div>`}
+  return `<div class="blk" style="left:${L}px;top:${T}px;width:${W}px"><div class="songhead"><span class="num">${b.idx+1}</span><span class="title">${esc(it.title||'(제목 없음)')}</span><span class="key">${esc(pgKey(it))}</span></div>${it.form?`<div class="pform2 ${PRT.scale>=1?'big':''}">${esc(it.form)}</div>`:''}${it.songNote?`<div class="preason">${esc(it.songNote)}</div>`:''}${b.nosheet?'<div class="pdiv pnosheet">악보 없음</div>':''}</div>`}
  if(b.type==='slice'){const {pc,scale,ranges}=b;const im=pc.im;const w=im.w*scale;const left=L+(W-w)/2;
   if(!im.src)return `<div class="blk pmissing" style="left:${left}px;top:${T}px;width:${w}px;height:${b.height}px"><div>악보 파일이 이 기기에 아직 없어요<br><small>인도자가 발행하면 내려와요</small></div></div>`;
   let inner='';let off=0;
