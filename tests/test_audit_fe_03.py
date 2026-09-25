@@ -539,8 +539,10 @@ def sec_legal(b):
     if 'Vercel' in t: fail('더 쓰지 않는 Vercel 이 남아 있음')
     c2, u, uid = account(b, 'lv', '하은')
     ver = ok(c2.request.get(URL + 'api/me'))['user']['legalVer']
-    if ver not in t: fail('방침 시행일(%s)이 서버 약관 버전과 다름' % ver)
-    print('F70 처리위탁 표: Cloud Run·Neon(싱가포르)·Cloudflare R2 · 시행일 = 서버 버전 ok')
+    # 운영자 결정: 처리위탁 표만 고치고 다시 동의는 받지 않는다 → 문서는 09-24 개정, 동의 판은 09-17 그대로
+    if '2026-09-24' not in t: fail('개인정보처리방침에 개정 시행일(2026-09-24)이 없음')
+    if ver != '2026-09-17': fail('서버 약관 판이 바뀌어 모두에게 다시 동의를 받게 됨: %s' % ver)
+    print('F70 처리위탁 표: Cloud Run·Neon(싱가포르)·Cloudflare R2 · 문서 09-24 · 다시 동의 없음 ok')
     c.close(); c2.close()
 
 # ================================================================ 검증에서 되돌려진 것 바로잡기

@@ -2613,7 +2613,7 @@ const BIZ={name:'바디페인팅',ceo:'박찬영',regNo:'469-06-03606',
 // 결제를 붙이기 전까지 '결제 담당' 화면을 숨긴다. 결제가 없는데 이 말이 보이면
 // 앱 심사에서 외부 결제로 오해받는다. 서버의 billing_user_id 기록은 그대로 둔다
 const BILLING_UI=false;
-const LEGAL_AT='2026-09-24';       // 시행일. 내용을 고치면 같이 올린다 (서버 LEGAL_VERSION 과 같게)
+const LEGAL_AT='2026-09-24';       // 문서에 적는 시행일(마지막 개정). 다시 동의를 받는 기준은 서버 LEGAL_VERSION 이라 따로 간다
 function legalHTML(kind){
  const K=kind==='terms'?'terms':kind==='delete'?'delete':'privacy';
  const bizRow=`<table class="ltab"><tbody>

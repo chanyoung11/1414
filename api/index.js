@@ -955,7 +955,9 @@ const planName = (t) => {
 const planOf = (t) => PLAN[planName(t)] || PLAN.free;
 const PLAN_RANK = { free: 0, pro: 1, plus: 2 };   // 프로모션·결제가 플랜을 내리지 않게 비교할 때
 const ENFORCE_PLAN = process.env.ENFORCE_PLAN === '1';
-const LEGAL_VERSION = '2026-09-24';   // 약관·개인정보처리방침 시행일. 내용을 고치면 앱과 함께 올린다 (09-24: Cloud Run·R2 로 옮긴 처리위탁·국외이전 표)
+// 동의를 다시 받을 약관 판. 이 값이 바뀌면 모든 사용자가 앱을 열 때 다시 동의한다.
+// 09-24 개인정보처리방침의 처리위탁·국외이전 표를 Cloud Run·R2 로 고쳤지만 다시 동의는 받지 않기로 했다 (운영자 결정) → 판은 그대로
+const LEGAL_VERSION = '2026-09-17';
 // 한도를 넘었는지 본다. 검사가 꺼져 있으면 언제나 통과 (컬럼과 자리만 미리 만들어 둔 것)
 function checkLimit(team, key, count, msg) {
   if (!ENFORCE_PLAN) return;
