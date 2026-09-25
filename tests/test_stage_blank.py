@@ -4,8 +4,10 @@
 #  · 보기에서는 넘김(← → · 탭 · 앞뒤 단추)·쪽 번호 n/m·처음 여는 화면·내보내기 종이에서 건너뛴다 — 조판(저장본)은 지우지도 번호를 바꾸지도 않는다
 #  · 편집에서는 🗑 로 지울 수 있다 — 숨긴 블록은 숨긴 채 앞 화면(첫 화면이면 뒤 화면)으로, '숨김 되돌리기'는 제 화면을 새로 만들어 제자리에
 # 그 밖에는 화면을 저절로 지우지 않는다 (앞선 시도들이 옮기기·숨기기·저장·열기마다 지워 송폼 모드·새 곡 자리·되돌리기 순서가 어긋났다).
-# 다른 송폼 모드(자동·상단 바·숨김)는 곡 제목이 바·off 에 있어 캔버스가 비어도 그 곡 화면이다 — 고치기 전(main)과 똑같이 둔다
-# (건너뛰면 악보 없는 첫 곡 제목이 무대에 안 나왔고, 🗑 가 제목만 남은 화면의 제목을 숨겼다).
+# 다른 송폼 모드(자동·상단 바·숨김)는 곡 제목이 바·off 에 있어 캔버스가 비어도 그 곡 화면이다 — 🗑 는 고치기 전(main)과 똑같이 둔다
+# (🗑 가 제목만 남은 화면의 제목을 숨겼다). 보기(넘김·쪽 번호·처음 화면·내보내기)는 그 모드들도 모두 숨긴 흰 쪽을 건너뛴다(09-26) —
+# 블록이 있는데 보이는 것이 없는 화면만: 블록이 하나도 없는 화면(악보 없는 곡 화면 — 송폼이 바에 있다)과, 바에 띄운 송폼이 그 곡의
+# 전부인 화면(그 곡의 숨긴 블록이 없다)은 곡 화면이라 main 처럼 남는다 (건너뛰면 악보 없는 첫 곡 제목이 무대에 안 나왔다).
 # 다만 조각 위 🗑 로 옮긴 무리는 어느 모드에서 되돌려도 제 화면·제 순서로 (main 에는 없는 것 — 제자리에서 보이면 다른 곡 악보 위에 겹쳤다)
 # 1부 — 데스크톱 · 조각 위
 #   1 제보 그대로 — 마지막 화면을 모두 숨기면 편집에서는 그대로 두고, 보기(새로고침 뒤에도)·내보내기에서 건너뛴다
@@ -22,8 +24,9 @@
 #   커밋, STAGE_BLANK_BASE=<rev> 로 바꿀 수 있다)을 Playwright route 로 띄운 브라우저와 지금 앱을 나란히 같은 순서로 몰아 견준다
 #   8 자동 조판 · 송폼 자동/상단 바/숨김 · 악보 없는 곡이 첫·가운데·끝 — 처음 여는 화면 · 넘김(단추·←→ 키·탭)·쪽 번호 · 내보내기 ·
 #     🗑 (제목만 남은 곡 화면) · 저장본 · 다시 넘김 이 main 과 같다
-#   9 저장한 조판(조각 위로 고친 것) · 송폼 자동/상단 바/숨김 — 여는 화면 · 넘김 · 모두 숨긴 화면의 🗑(블록이 있어 막힘) · 넘김(흰 쪽도
-#     main 처럼) · 내보내기 · 제목만 남은 곡 화면 🗑 · 숨김 되돌리기 · 저장본 이 main 과 같다
+#   9 저장한 조판(조각 위로 고친 것) · 송폼 자동/상단 바/숨김 — 여는 화면 · 넘김 · 모두 숨긴 화면의 🗑(블록이 있어 막힘) · 제목만 남은
+#     곡 화면 🗑 · 숨김 되돌리기 · 저장본 이 main 과 같다. 모두 숨긴 뒤의 넘김 · 내보내기 · 다시 연 화면은 일부러 다르다 — main 에서
+#     모두 숨긴 그 화면(흰 쪽)만 뺀 것과 같아야 한다 (그 화면에 안 섬 · 넘겨 볼 화면 하나 적음 · 다른 화면은 main 과 같게 보임 · 그 종이만 빠짐)
 #  10 저장한 조판 · 송폼 자동/상단 바/숨김으로 악보 없는 곡과 악보 있는 곡을 (두 차례로) 더한 뒤 여는 화면 · 넘김 · 조각 위로
 #     되돌린 조판이 main 과 같고 겹침 없이 곡마다 한 화면
 #  11 (지금 앱만 · 조각 위) 악보 없는 곡의 블록을 › 로 보냈다 ‹ 로 되돌리면 전과 같다 · 송폼이 선 악보 없는 곡 화면은 안 건너뛰고,
@@ -36,7 +39,17 @@
 #   b 인도자가 그 조판을 추천하고, 멤버가 자동/상단 바/숨김으로 열어 되돌린다 → 그 모드에서 · 조각 위로 돌아와서 (추천 조판은 그대로)
 #   되돌린 뒤: 화면 수·화면마다 악보(제 화면·제 순서) · 숨긴 블록 없음(숨김 N개 단추 없음 — 되돌리기 전 단추 수 = 화면의 숨긴 블록) ·
 #   잃은 블록 없음 · 다른 곡끼리 겹침 없음 · 남의 화면에 선 송폼 없음
-#   CONTI_URL=http://localhost:8766/ .venv/bin/python tests/test_stage_blank.py   (STAGE_BLANK_PART=1|2|3 으로 하나만)
+# 4부 — 다른 송폼 모드(자동·상단 바·숨김) 보기의 빈 화면 · 무리 되돌리기 순서 (09-26 검증 제보)
+#   세로 태블릿 · 곡 하나/둘/빈(악보 없음)/셋 — 곡마다 한 화면
+#  13 저장한 조판: 셋 화면을 모두 숨기면 편집에서는 그대로(🗑 는 main 처럼 막음) · 보기(편집을 끝낸 자리·넘김·쪽 번호·새로고침 뒤·내보내기)는
+#     건너뛰고 빈 화면(송폼만 — 캔버스가 빈 곡 화면)은 남긴다 · 첫 화면도 숨기면 둘 화면으로 연다 · 되돌리면 네 화면.
+#     빈 화면에 숨긴 글 블록이 있어도(블록이 있는 흰 캔버스) 빈 곡 화면은 남긴다 — 그 모드에서 만든 조판(모드가 뺀 송폼이 조판에 없다)에서도
+#  14 조각 위에서 셋 화면·빈 화면을 잇달아 🗑 (둘 화면에 무리 둘 — 빈 송폼뿐인 무리 · 셋 무리) → 둘을 콘티에서 뺀 뒤 그 모드로 열어
+#     되돌리면 하나 · 빈 · 셋 차례 (전에는 저장본에서 센 번호로 끼운 빈 송폼이 셋 무리 뒤로 밀려 하나 · 셋 · 빈) — 그 모드에서 · 조각 위로
+#   데스크톱 1열 · 곡마다 두 화면
+#  15 조각 위에서 둘의 첫 화면·하나의 둘째 화면을 잇달아 🗑 (하나 첫 화면에 무리 둘) → 하나 첫 악보에 인도자 메모를 단 뒤(새 메모 띠가
+#     악보를 나눈다) 그 모드에서 되돌리면 하나·하나·둘·둘 차례 (전에는 하나·둘·하나·둘)
+#   CONTI_URL=http://localhost:8766/ .venv/bin/python tests/test_stage_blank.py   (STAGE_BLANK_PART=1|2|3|4 으로 하나만)
 import os, re, sys, time, json, subprocess, threading
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
@@ -642,6 +655,37 @@ def first_diff(a, b, path=''):
         return None if len(a) == len(b) else (path + ' (길이)', len(a), len(b))
     return None if a == b else (path, a, b)
 
+# 2부에서 일부러 main 과 다른 걸음 (09-26) — 다른 송폼 모드도 보기에서 모두 숨긴 흰 쪽(9 의 넷 화면)을 건너뛴다.
+# 지금 앱 = main 에서 그 화면만 뺀 것: 그 화면에 안 서고 · 넘겨 볼 화면이 하나 적고(쪽 번호·앞뒤 단추도 그대로 줄고) ·
+# 다른 화면은 main 과 같게 보이고(그린 블록 수 · 그린 것이 있는 화면의 바 제목·송폼) · 내보내기는 그 종이만 빠진다
+HID9 = 3   # 9 에서 모두 숨기는 화면 (넷 — O_MID 의 끝 화면)
+def skip_walk(vm, vb, hid=HID9):
+    m, b = [v for _, v in vm], [v for _, v in vb]
+    n = m[0][2]
+    if not any(v[0] == hid and v[8] == 0 for v in m): return ('main 이 모두 숨긴 흰 쪽을 안 보임', m, b)
+    if any(v[0] == hid for v in b): return ('모두 숨긴 화면에 섬', hid, b)
+    nav = sorted({v[0] for v in m} - {hid})
+    if sorted({v[0] for v in b}) != nav: return ('넘긴 화면', nav, b)
+    for v in b:
+        k = nav.index(v[0])
+        if v[2] != n - 1 or not v[3].startswith('%d/%d 화면' % (k + 1, n - 1)) or v[6] != (k == 0) or v[7] != (k == len(nav) - 1):
+            return ('넘겨 볼 화면 수·쪽 번호·앞뒤 단추', nav, v)
+    per = lambda xs: {v[0]: (v[8], v[4], v[5]) if v[8] else (0,) for v in xs if v[0] != hid}
+    if per(m) != per(b): return ('화면마다 보이는 것', per(m), per(b))
+    return None
+
+def skip_export(em, eb, hid=HID9):
+    pg_ = lambda p: p[:3] + [re.sub(r'\s*\d+ / \d+$', '', p[3])]
+    if len(em) <= hid or em[hid][:3] != [0, 0, 0]: return ('main 이 모두 숨긴 화면을 흰 종이로 안 찍음', em, eb)
+    want = [pg_(p) for i, p in enumerate(em) if i != hid]
+    return None if [pg_(p) for p in eb] == want else ('종이', want, eb)
+
+def skip_open(vm, vb):
+    want = vm[:2] + [vm[2] - 1, vm[3].replace('/%d 화면' % vm[2], '/%d 화면' % (vm[2] - 1))] + vm[4:]
+    return None if vb == want else ('다시 연 화면', want, vb)
+
+SKIPPED = ((' · 모두 숨긴 뒤 넘김', skip_walk), (' · 모두 숨긴 뒤 내보내기', skip_export), (' · 다시 연 화면', skip_open))
+
 def run2():
     rev, base = base_html()
     print('2부 — 견줄 main: %s' % rev)
@@ -650,16 +694,20 @@ def run2():
            threading.Thread(target=run2_build, args=('br', None, boxes['br']), name='br', daemon=True)]
     for t in ths: t.start()
     # 두 쪽이 간 데까지 걸음마다 곧바로 견준다 (다르면 거기서 멈춘다 — 한쪽이 먼저 멈췄어도 그 앞의 다름을 먼저 알린다)
-    k, last = 0, ''
+    k, last, nskip = 0, '', 0
     while True:
         alive = any(t.is_alive() for t in ths)
         rm, rb = boxes['main'].get('rec', []), boxes['br'].get('rec', [])
         while k < min(len(rm), len(rb)):
             (km, vm), (kb, vb) = rm[k], rb[k]
             if km != kb: fail('2부 걸음이 어긋남: main %s · br %s' % (km, kb))
-            d = first_diff(vm, vb)
-            if d: fail('%s — main 과 다름 (%s): main %s · br %s\n  main %s\n  br   %s' % (km, d[0], json.dumps(d[1], ensure_ascii=False)[:300],
-                       json.dumps(d[2], ensure_ascii=False)[:300], json.dumps(vm, ensure_ascii=False)[:1200], json.dumps(vb, ensure_ascii=False)[:1200]))
+            rule = next((f for s, f in SKIPPED if km.startswith('9 ') and km.endswith(s)), None)
+            d = rule(vm, vb) if rule else first_diff(vm, vb)
+            if d: fail('%s — main %s (%s): main %s · br %s\n  main %s\n  br   %s' % (km, '에서 모두 숨긴 흰 쪽만 뺀 것과 다름' if rule else '과 다름', d[0],
+                       json.dumps(d[1], ensure_ascii=False)[:300], json.dumps(d[2], ensure_ascii=False)[:300],
+                       json.dumps(vm, ensure_ascii=False)[:1200], json.dumps(vb, ensure_ascii=False)[:1200]))
+            if rule:
+                nskip += 1; print(km, '— main 에서 모두 숨긴 흰 쪽만 뺀 것과 같음 ok', flush=True)
             head = ' '.join(km.split(' · ')[:3])
             if head != last: print(head, '— main 과 같음 ok', flush=True); last = head
             k += 1
@@ -668,7 +716,8 @@ def run2():
     for who in ('main', 'br'):
         if not boxes[who].get('ok'): fail('2부 %s 쪽이 끝까지 못 감 (위 FAIL)' % who)
     if len(rm) != len(rb): fail('2부 걸음 수가 다름 main %d · br %d' % (len(rm), len(rb)))
-    print('2부 %d 걸음 모두 main 과 같음 · 11 (조각 위) 악보 없는 곡 › ‹ · 송폼이 선 곡 화면은 안 건너뜀 · 🗑 뒤 되돌리면 제 화면 ok' % k)
+    if nskip != len(SKIPPED) * len(FORMS): fail('2부 모두 숨긴 흰 쪽을 건너뛰는 걸음이 %d (기대 %d)' % (nskip, len(SKIPPED) * len(FORMS)))
+    print('2부 %d 걸음 main 과 같음(그중 %d 걸음은 main 에서 모두 숨긴 흰 쪽만 뺀 것) · 11 (조각 위) 악보 없는 곡 › ‹ · 송폼이 선 곡 화면은 안 건너뜀 · 🗑 뒤 되돌리면 제 화면 ok' % (k, nskip))
 
 # ---------------- 3부: 조각 위 🗑 무리를 다른 송폼 모드에서 되돌리기 ----------------
 VPS = {'D': {'width': 1600, 'height': 1000}, 'T': {'width': 834, 'height': 1194}}
@@ -795,7 +844,200 @@ def run3():
     if bad: fail('3부 %s 가 끝까지 못 감 (위 FAIL)' % ', '.join(bad))
     print('3부 조각 위 🗑 무리 — 데스크톱·태블릿 × 악보 없는 곡 첫·가운데·끝 × 첫·가운데·끝 화면: 자동·상단 바·숨김에서 되돌려도 제 화면 ok')
 
+# ---------------- 4부: 다른 송폼 모드 보기의 빈 화면 · 무리 되돌리기 순서 ----------------
+def open_in(pg, sid, slot, lay, form):
+    # 조판(저장본)과 송폼 모드를 맞추고, 저장본을 그 모드로 처음 그리게 무대를 다시 연다 (편집을 끄지 않고 나가 조판은 안 바뀐다)
+    pg.evaluate(PUT_LAY, [slot, lay]); open_stage(pg, sid); edit_on(pg); set_form(pg, form); exit_stage(pg)
+    open_stage(pg, sid)
+
+def nav(pg): return pg.evaluate("CONTI.STG.nav")
+
+def walk_view(pg):
+    # 보기: 넘겨 볼 첫 화면부터 → 단추로 끝까지 — 걸음마다 [화면, 쪽 번호]
+    pg.evaluate("(()=>{const S=CONTI.STG;S.screen=(S.nav||[0])[0];window.dispatchEvent(new Event('resize'))})()"); pg.wait_for_timeout(450)
+    out = []
+    for _ in range(12):
+        out.append([pg.evaluate("CONTI.STG.screen"), label(pg)])
+        if pg.locator('#stageWrap [data-stg="next"][disabled]').count(): break
+        pg.click('#stageWrap [data-stg="next"]'); pg.wait_for_timeout(300)
+    return out
+
+def add_hidden_text(pg):
+    # 지금 화면에 ＋ 글 → 그 글 블록을 숨긴다 (블록은 있는데 보이는 것이 없는 캔버스)
+    n0 = pg.evaluate(BLK + ".length")
+    pg.click('[data-sc="text"]'); pg.wait_for_timeout(500)
+    tid = pg.evaluate(BLK + ".filter(b=>b.type==='text').map(b=>b.id).pop()")
+    if pg.evaluate(BLK + ".length") != n0 + 1 or not tid: fail('준비: 글 블록을 못 더함')
+    pg.evaluate("(id)=>{CONTI.STG.sel=[id];CONTI.STG.menu=null}", tid); pg.keyboard.press('Delete'); pg.wait_for_timeout(400)
+    if not pg.evaluate("(id)=>" + BLK + ".find(b=>b.id===id).hidden", tid): fail('준비: 글 블록을 못 숨김')
+
+ITEM_IDS = "()=>CONTI.S.services[0].items.map(i=>i.id)"
+OFFP = "()=>(CONTI.STG.layout.off||[]).map(o=>[o.s,o.b.pid||o.b.iid])"
+
+def run4_tab(box):
+    # 세로 태블릿 · 하나/둘/빈(악보 없음)/셋 — 곡마다 한 화면
+    with sync_playwright() as p:
+        b = p.chromium.launch()
+        c = b.new_context(viewport={'width': 834, 'height': 1194}, service_workers='block')
+        pg = c.new_page()
+        errs = []; pg.on('pageerror', lambda e: errs.append(repr(e)[:200])); pg.on('dialog', lambda d: d.accept())
+        new_team_service(pg, 'v' + tag, '10/19 주일')
+        add_song(pg, '하나'); add_song(pg, '둘'); add_song_bare(pg, '빈'); add_song(pg, '셋')
+        sid = pg.evaluate("CONTI.S.services[0].id"); slot = 'lay:%s~tab-l' % sid
+        open_stage(pg, sid)
+        edit_on(pg); set_form(pg, 'block'); auto_again(pg); nudge(pg); edit_off(pg)
+        if pg.evaluate(SONGS) != [[0], [1], [2], [3]]: fail('4부 준비: 곡마다 한 화면이 아님 %s' % pg.evaluate(SONGS))
+        good = pg.evaluate("(slot)=>CONTI.PREFS.data.stage[slot]", slot)
+        exit_stage(pg)
+
+        # ---- 13 다른 송폼 모드 보기: 모두 숨긴 화면은 건너뛰고 빈 곡 화면은 남긴다 ----
+        for f in FORMS:
+            k = '13 %s' % f
+            open_in(pg, sid, slot, good, f)
+            if nav(pg) != [0, 1, 2, 3] or pg.evaluate("CONTI.STG.layout.screens[2].blocks.length"): fail('%s 준비: 네 화면 · 빈 곡 화면은 블록 없음이 아님 %s' % (k, pg.evaluate(LAYX)))
+            edit_on(pg); goto_screen(pg, 3); hide_all_here(pg)
+            st = pg.evaluate(ST)
+            if st['total'] != 4 or st['n'] != 4: fail('%s 편집 중에 화면을 저절로 지우거나 건너뜀 %s' % (k, st))
+            pg.evaluate("document.querySelector('#toast').textContent=''"); trash(pg)
+            if pg.evaluate(ST)['total'] != 4 or '빈 화면만 지울 수 있어요' not in toast(pg): fail('%s 🗑 가 main 과 다름 %s · %s' % (k, pg.evaluate(ST), toast(pg)))
+            edit_off(pg)
+            sv = pg.evaluate(SAVED, slot)
+            if not sv or len(sv) != 4 or sv[2] != [0, 0] or sv[3][0] < 1 or sv[3][1] != 0: fail('%s 저장본의 화면을 지우거나 번호를 바꿈 %s' % (k, sv))
+            st = pg.evaluate(ST)
+            if nav(pg) != [0, 1, 2] or st['screen'] != 2 or label(pg) != '3/3': fail('%s 편집을 끝낸 모두 숨긴 화면 대신 앞 화면(빈 곡 화면)이 아님 %s %s %s' % (k, nav(pg), st, label(pg)))
+            if drawn(pg): fail('%s 준비: 빈 곡 화면 캔버스에 블록이 그려짐 %d' % (k, drawn(pg)))
+            if walk_view(pg) != [[0, '1/3'], [1, '2/3'], [2, '3/3']]: fail('%s 넘김이 모두 숨긴 화면을 안 건너뜀 %s' % (k, pg.evaluate(ST)))
+            pg.keyboard.press('ArrowRight'); pg.wait_for_timeout(350)
+            if pg.evaluate("CONTI.STG.screen") != 2: fail('%s 끝 쪽에서 → 가 모두 숨긴 화면으로 감' % k)
+            pg.keyboard.press('ArrowLeft'); pg.wait_for_timeout(350)
+            if pg.evaluate("CONTI.STG.screen") != 1: fail('%s ← %s' % (k, pg.evaluate(ST)))
+            cbox = pg.locator('#stageWrap .stgcanvas').bounding_box()
+            got = []
+            for _ in range(3):
+                pg.mouse.click(cbox['x'] + cbox['width'] - 12, cbox['y'] + 12); pg.wait_for_timeout(350); got.append(pg.evaluate("CONTI.STG.screen"))
+            if got != [2, 0, 1]: fail('%s 탭이 모두 숨긴 화면을 안 건너뜀 %s' % (k, got))
+            n, blank = export_pages(pg)
+            if n != 3 or blank != 1: fail('%s 내보내기 종이 %d장 · 흰 종이 %d (기대 3장 · 빈 곡 종이 하나 — main 처럼)' % (k, n, blank))
+            reload(pg); open_stage(pg, sid)
+            if pg.evaluate("CONTI.STG.pref.form") != f or nav(pg) != [0, 1, 2] or label(pg) != '1/3': fail('%s 새로고침 뒤 %s %s' % (k, nav(pg), label(pg)))
+            # 첫 화면(하나)도 모두 숨기면 둘 화면으로 연다
+            edit_on(pg); goto_screen(pg, 0); hide_all_here(pg); edit_off(pg); exit_stage(pg); open_stage(pg, sid)
+            if nav(pg) != [1, 2] or pg.evaluate("CONTI.STG.screen") != 1 or label(pg) != '1/2': fail('%s 첫 화면을 모두 숨겼는데 둘 화면으로 안 엶 %s %s' % (k, nav(pg), label(pg)))
+            edit_on(pg); show_all(pg); edit_off(pg)
+            if nav(pg) != [0, 1, 2, 3] or pg.evaluate(ST)['hidden']: fail('%s 되돌린 뒤 네 화면이 아님 %s' % (k, pg.evaluate(ST)))
+            # 빈 곡 화면에 숨긴 글 — 블록이 있는 흰 캔버스지만 바에 띄운 송폼(빈)이 그 곡의 전부라 곡 화면으로 남는다
+            edit_on(pg); goto_screen(pg, 2); add_hidden_text(pg); edit_off(pg)
+            if nav(pg) != [0, 1, 2, 3]: fail('%s 숨긴 글이 있는 빈 곡 화면을 건너뜀 %s' % (k, pg.evaluate(LAYX)))
+            exit_stage(pg)
+            # 그 모드에서 만든 조판 (자동 조판에서 편집을 켜면 모드가 뺀 송폼은 조판에 안 들어간다 — 송폼 자리는 자동 조판 자리)
+            open_in(pg, sid, slot, {'v': 2, 'auto': 1}, f)
+            if pg.evaluate("!!CONTI.STG.layout") or nav(pg) != [0, 1, 2, 3]: fail('%s 자동 조판이 네 화면을 안 넘김 %s' % (k, nav(pg)))
+            edit_on(pg)
+            if pg.evaluate("(CONTI.STG.layout.off||[]).length") or pg.evaluate("CONTI.STG.layout.screens[2].blocks.length"): fail('%s 준비: 모드가 뺀 송폼이 조판에 있음 %s' % (k, pg.evaluate(LAYX)))
+            goto_screen(pg, 2); add_hidden_text(pg); goto_screen(pg, 3); hide_all_here(pg); edit_off(pg)
+            if nav(pg) != [0, 1, 2]: fail('%s 그 모드에서 만든 조판: 빈 곡 화면을 건너뛰거나 모두 숨긴 셋 화면을 안 건너뜀 %s %s' % (k, nav(pg), pg.evaluate(LAYX)))
+            exit_stage(pg)
+            print('%s — 모두 숨긴 화면은 보기(넘김·키·탭·쪽 번호·새로고침·내보내기)에서 건너뛰고 빈 곡 화면은 남김 · 편집·저장본·🗑 는 그대로 ok' % k, flush=True)
+
+        # ---- 14 한 화면에 무리 둘(빈 송폼뿐 · 셋) → 그 화면 곡(둘)을 콘티에서 뺀 뒤 다른 모드에서 되돌리기 ----
+        for f in FORMS:
+            k = '14 %s' % f
+            open_in(pg, sid, slot, good, 'block'); edit_on(pg)
+            goto_screen(pg, 3); hide_all_here(pg); trash(pg)
+            goto_screen(pg, 2); hide_all_here(pg); trash(pg)
+            gs = pg.evaluate("[...new Set(CONTI.STG.layout.screens[1].blocks.filter(b=>b.hidden&&b.lone).map(b=>b.lone))]")
+            if pg.evaluate(ST)['total'] != 2 or len(gs) != 2: fail('%s 준비: 둘 화면에 무리 둘이 아님 %s' % (k, pg.evaluate(LAYX)))
+            edit_off(pg); gb = pg.evaluate("(slot)=>CONTI.PREFS.data.stage[slot]", slot); exit_stage(pg)
+            gone = pg.evaluate("(()=>{const s=CONTI.S.services[0];const it=s.items.splice(1,1)[0];CONTI.save();return it})()"); pg.wait_for_timeout(600)
+            ids = pg.evaluate(ITEM_IDS)   # 하나 · 빈 · 셋
+            open_in(pg, sid, slot, gb, f); edit_on(pg)
+            if pg.evaluate(SHOWBTN) != '숨김 3개 되돌리기': fail('%s 되돌리기 전 숨김 수 %s %s' % (k, pg.evaluate(SHOWBTN), pg.evaluate(LAYX)))
+            show_all(pg)
+            st = pg.evaluate(ST)
+            # 하나 · (뺀 둘의 빈 화면) · 빈(송폼 — off) · 셋
+            if st['total'] != 4 or st['hidden'] or pg.evaluate(SONGS) != [[0], [], [], [2]] or sorted(pg.evaluate(OFFP)) != [[0, ids[0]], [2, ids[1]], [3, ids[2]]]:
+                fail('%s 그 모드에서 되돌린 화면 차례가 하나·빈·셋이 아님: %s · 송폼 %s (빈 %s · 셋 %s)' % (k, pg.evaluate(SONGS), pg.evaluate(OFFP), ids[1], ids[2]))
+            clean(pg, k + ' 되돌린 뒤')
+            set_form(pg, 'block')
+            if pg.evaluate(SONGS) != [[0], [], [1], [2]]: fail('%s 조각 위로 돌아온 화면 차례가 하나·빈·셋이 아님 %s' % (k, pg.evaluate(SONGS)))
+            clean(pg, k + ' 조각 위로')
+            edit_off(pg)
+            if nav(pg) != [0, 2, 3]: fail('%s 조각 위 무대 %s' % (k, nav(pg)))
+            exit_stage(pg)
+            pg.evaluate("(it)=>{const s=CONTI.S.services[0];s.items.splice(1,0,it);CONTI.save()}", gone); pg.wait_for_timeout(600)
+            print('%s — 한 화면의 무리 둘을 그 화면 곡을 뺀 뒤 되돌려도 하나·빈·셋 차례 (그 모드 · 조각 위로) ok' % k, flush=True)
+        if errs: fail('4부 태블릿 콘솔 오류: %s' % errs[:3])
+        b.close()
+    box['ok'] = True
+
+# 하나 첫 악보에 인도자 메모(마커 A) — 서버 메모 목록에도 올린다 (화면을 옮길 때 서버 것으로 덮는다). 메모 띠가 설 줄은 이 화면 악보 범위 안의 여백
+MEMO = """async([sid,lo,hi])=>{const s=CONTI.S.services.find(x=>x.id===sid);const it=s.items[0];const p=it.pieces[0];
+ const q=(p.gaps||[]).find(g=>(g.s+g.e)/2>lo+40&&(g.s+g.e)/2<hi-40);if(!q)return {gaps:p.gaps,lo,hi};
+ p.markers=[{id:'mkA',label:'A',x:42,y:q.e,cut:null}];const cut=CONTI.autoCut(p,q.e);
+ const id='nA'+Date.now().toString(36);
+ const r=await fetch('/api/notes',{method:'POST',credentials:'include',headers:{'content-type':'application/json','x-conti':'1'},
+  body:JSON.stringify({teamId:CONTI.S.team.id,serviceId:sid,notes:[{id,itemId:it.id,markerId:'mkA',layer:'leader',session:null,text:'여기서 천천히',at:Date.now()}]})});
+ it.notes=[{id,marker:'mkA',layer:'leader',session:null,text:'여기서 천천히',author:'인도자',at:Date.now()}];
+ CONTI.save();return {status:r.status,cut}}"""
+
+def run4_desk(box):
+    # 데스크톱 1열 · 하나/둘 — 곡마다 두 화면
+    with sync_playwright() as p:
+        b = p.chromium.launch()
+        c = b.new_context(viewport={'width': 1600, 'height': 1000}, service_workers='block')
+        pg = c.new_page()
+        errs = []; pg.on('pageerror', lambda e: errs.append(repr(e)[:200])); pg.on('dialog', lambda d: d.accept())
+        new_team_service(pg, 'w' + tag, '10/26 주일')
+        add_song(pg, '하나'); add_song(pg, '둘')
+        sid = pg.evaluate("CONTI.S.services[0].id"); slot = 'lay:%s~desktop' % sid
+        publish(pg, sid)
+        open_stage(pg, sid)
+        pg.click('[data-stg="cfg"]'); pg.wait_for_timeout(400); pg.click('[data-stg="cols"][data-v="1"]'); pg.wait_for_timeout(500); pg.click('[data-stg="cfg"]'); pg.wait_for_timeout(400)
+        edit_on(pg); set_form(pg, 'block'); auto_again(pg); nudge(pg); edit_off(pg)
+        ref = pg.evaluate(SONGS)
+        s1 = ref.index([1]) if [1] in ref else -1
+        if s1 < 2 or ref != [[0]] * s1 + [[1]] * (len(ref) - s1) or len(ref) - s1 < 2: fail('4부 준비: 1열에서 곡마다 두 화면 이상이 아님 %s' % ref)
+        good = pg.evaluate("(slot)=>CONTI.PREFS.data.stage[slot]", slot)
+        # 둘의 첫 화면 → 하나의 끝 화면 🗑 — 하나의 끝에서 둘째 화면(host)에 무리 둘 (하나 끝 조각 · 둘 첫 화면)
+        edit_on(pg); goto_screen(pg, s1); hide_all_here(pg); trash(pg); goto_screen(pg, s1 - 1); hide_all_here(pg); trash(pg)
+        host = s1 - 2
+        gs = pg.evaluate("(i)=>[...new Set(CONTI.STG.layout.screens[i].blocks.filter(b=>b.hidden&&b.lone).map(b=>b.lone))]", host)
+        rg = pg.evaluate("(i)=>CONTI.STG.layout.screens[i].blocks.filter(b=>!b.hidden&&b.type==='slice'&&b.idx===0).map(b=>b.ranges)", host)
+        if pg.evaluate(ST)['total'] != len(ref) - 2 or len(gs) != 2 or len(rg) != 1: fail('4부 준비: 하나 화면에 무리 둘이 아님 %s' % pg.evaluate(LAYX))
+        edit_off(pg); gb = pg.evaluate("(slot)=>CONTI.PREFS.data.stage[slot]", slot); exit_stage(pg)
+        pg.goto(URL + '#/edit/' + sid); pg.wait_for_timeout(1500)
+        r = pg.evaluate(MEMO, [sid, rg[0][0][0], rg[0][-1][1]])
+        if r.get('status') != 200 or r.get('cut') is None: fail('4부 준비: 메모를 못 닮 %s' % r)
+        publish(pg, sid)
+        for f in FORMS:
+            k = '15 %s' % f
+            open_in(pg, sid, slot, gb, f); edit_on(pg)
+            if not pg.evaluate("(i)=>CONTI.STG.layout.screens[i].blocks.some(b=>b.type==='strip'&&!b.hidden)", host): fail('%s 준비: 메모 띠가 하나 악보를 안 나눔 %s' % (k, pg.evaluate(LAYX)))
+            show_all(pg)
+            st = pg.evaluate(ST)
+            if st['total'] != len(ref) or st['hidden'] or pg.evaluate(SONGS) != ref: fail('%s 그 모드에서 되돌린 화면 차례가 다름: %s (기대 %s)' % (k, pg.evaluate(SONGS), ref))
+            clean(pg, k + ' 되돌린 뒤')
+            set_form(pg, 'block')
+            if pg.evaluate(SONGS) != ref: fail('%s 조각 위로 돌아온 화면 차례가 다름: %s (기대 %s)' % (k, pg.evaluate(SONGS), ref))
+            clean(pg, k + ' 조각 위로', ref)
+            exit_stage(pg)
+            print('%s — 메모 띠가 나눈 화면의 무리 둘을 되돌려도 하나·하나·둘·둘 차례 (그 모드 · 조각 위로) ok' % k, flush=True)
+        if errs: fail('4부 데스크톱 콘솔 오류: %s' % errs[:3])
+        b.close()
+    box['ok'] = True
+
+def run4():
+    boxes = [('태블릿', {}), ('데스크톱', {})]
+    ths = [threading.Thread(target=run4_tab, args=(boxes[0][1],), name='4부 태블릿', daemon=True),
+           threading.Thread(target=run4_desk, args=(boxes[1][1],), name='4부 데스크톱', daemon=True)]
+    for t in ths: t.start()
+    for t in ths: t.join()
+    bad = [n for n, bx in boxes if not bx.get('ok')]
+    if bad: fail('4부 %s 가 끝까지 못 감 (위 FAIL)' % ', '.join(bad))
+    print('4부 다른 송폼 모드 — 모두 숨긴 화면은 보기에서 건너뛰고 빈 곡 화면은 남김 · 한 화면의 무리 둘을 되돌려도 제 차례 ok')
+
 if PART in ('', '1'): run1()
 if PART in ('', '2'): run2()
 if PART in ('', '3'): run3()
+if PART in ('', '4'): run4()
 print('OK — 무대 빈 화면')

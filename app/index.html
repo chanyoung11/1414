@@ -7888,15 +7888,16 @@ function stgCompose(pub,W,H,pref){
  });
  // 송폼 모드에 따라 송폼 블록을 뺀다. 뺀 자리는 같은 열의 아래 블록이 끌어올린다 (§4)
  const off=[];   // 모드가 뺀 송폼 블록 — 손으로 고친 조판에서 그 자리를 버리지 않게 (stageRender)
- const dropHead=(sc,h)=>{const d=h.height+(h.gap||0);off.push(h);
+ const offSc=[];   // 그 송폼이 서 있던 화면 번호 (off 와 같은 차례 — 악보 없는 곡 화면을 보기에서 남긴다, stgFormOnly)
+ const dropHead=(sc,h,si)=>{const d=h.height+(h.gap||0);off.push(h);offSc.push(si);
   sc.blocks=sc.blocks.filter(b=>b!==h);
   sc.blocks.forEach(b=>{if(b.col===h.col&&b.top>h.top)b.top-=d})};
  const fm=pref.form||'auto';
- if(fm!=='block')screens.forEach(sc=>{
+ if(fm!=='block')screens.forEach((sc,si)=>{
   const heads=sc.blocks.filter(b=>b.type==='head');
   if(fm==='auto'&&new Set(heads.map(b=>b.idx)).size>1)return;
-  heads.forEach(h=>dropHead(sc,h))});
- return {screens,box,cols,cw,fullW,off}}
+  heads.forEach(h=>dropHead(sc,h,si))});
+ return {screens,box,cols,cw,fullW,off,offSc}}
 
 /* ---------- 무대 편집: 블록을 끌어 옮긴다 (기획 §3) ---------- */
 // 자동 조판 결과를 '고칠 수 있는 조판'으로 바꾼다. 좌표는 캔버스 비율(0~1)이라
@@ -8151,16 +8152,51 @@ function stgAutoAgain(){
 // 글 없는 글 블록도 아무것도 안 보인다. 송폼·메모 띠·글이 있으면 보이는 것이 있다
 const stgShows=b=>!!b&&!b.hidden&&!(b.type==='text'&&!String(b.text||'').trim());
 const stgBlank=sc=>!((sc&&sc.blocks)||[]).some(stgShows);
-// 빈 화면 고침(보기에서 건너뛰기 · 숨긴 블록만 남은 화면 🗑)은 송폼 '조각 위'(기본 · STG_DEF)에서만 한다.
+// 숨긴 블록만 남은 화면 🗑 는 송폼 '조각 위'(기본 · STG_DEF)에서만 한다.
 // 다른 송폼 모드(자동·상단 바·숨김)는 곡 제목을 바에 띄우고 캔버스의 송폼을 뺀다(off) — 캔버스가 비어도 그 곡의 화면일 수 있어
-// 건너뛰면 악보 없는 첫 곡의 제목이 무대에 안 나왔고, 🗑 는 그 제목을 숨겨 옮겼다. 그 모드들은 고치기 전과 똑같이 둔다.
-// 다만 조각 위에서 🗑 로 옮긴 무리(lone)는 어느 모드에서 되돌려도 제 화면·제 순서로 간다 — 고치기 전에는 없던 것이라 견줄 것이 없고,
+// 🗑 는 제목만 남은 화면의 제목을 숨겨 옮겼다. 그 모드들의 🗑 는 고치기 전과 똑같이 둔다(블록이 하나도 없는 화면만).
+// 보기에서 건너뛰기는 그 모드들도 한다 — 다만 바에 띄운 송폼이 그 곡의 전부인 화면(악보 없는 곡 화면)은 곡 화면이라 남긴다 (stgViewIdx).
+// 조각 위에서 🗑 로 옮긴 무리(lone)는 어느 모드에서 되돌려도 제 화면·제 순서로 간다 — 고치기 전에는 없던 것이라 견줄 것이 없고,
 // 제자리에서 보이면 옆 화면 다른 곡 악보 위에 겹친다 (stgScreenAct show · stageRender keep)
 const stgBlockForm=()=>((STG.pref&&STG.pref.form)||'auto')==='block';
-// 넘겨 볼 화면 번호들. 무대(편집 아님)·조각 위에서는 빈 화면을 건너뛴다 — 조판은 그대로 두고 넘김·쪽 번호에서만 뺀다.
-// 모두 비었으면 첫 화면. 편집 중이거나 다른 송폼 모드에서는 모든 화면 (고치기 전과 같다)
-function stgNav(scs){const all=scs.map((_,i)=>i);if(STG.edit||!stgBlockForm())return all;
- const v=all.filter(i=>!stgBlank(scs[i]));return v.length?v:all.slice(0,1)}
+// 보기(무대·내보내기)에서 넘겨 볼 화면 번호들 — 빈 화면은 건너뛴다. 조판은 그대로 두고 넘김·쪽 번호·처음 화면·내보내기에서만 뺀다.
+// 조각 위: 보이는 블록이 없는 화면 (모두 숨긴 화면 · 안 채운 화면).
+// 다른 송폼 모드(자동·상단 바·숨김): 보이는 블록이 없고 블록이 있는 화면(모두 숨긴 화면 — 그 모드의 🗑 가 막는 흰 쪽이다, 09-26).
+//  · 블록이 하나도 없는 화면은 고치기 전처럼 남긴다 — 악보 없는 곡 화면(송폼이 바에 있다)이고, 안 채운 화면이면 그 모드의 🗑 로 지운다.
+//    송폼 모드가 뺀 송폼의 화면 번호(off.s)는 그 모드의 🗑·＋·화면 옮기기가 따라 바꾸지 않아(고치기 전과 같다) 곡 화면을 가려내는 데 못 믿는다
+//  · 바에 띄운 송폼이 그 곡의 전부인 화면(그 곡의 숨긴 블록이 없다 — 악보 없는 곡 · 악보를 다른 화면으로 보낸 곡)도 곡 화면이라 남긴다 (stgFormOnly)
+// 모두 비었으면 첫 화면
+function stgViewIdx(scs){const all=scs.map((_,i)=>i);
+ const blk=stgBlockForm(),keep=blk?null:stgFormOnly(scs);
+ const v=all.filter(i=>!stgBlank(scs[i])||(!blk&&(!scs[i].blocks.length||keep.has(i))));return v.length?v:all.slice(0,1)}
+// 넘겨 볼 화면 번호들. 편집 중에는 모든 화면 (고치기 전과 같다)
+function stgNav(scs){return STG.edit?scs.map((_,i)=>i):stgViewIdx(scs)}
+// 송폼 모드(자동·상단 바·숨김)가 캔버스에서 빼 바에 띄운 송폼이 그 곡의 전부인 화면 번호들 — 그 화면에 그 곡의 숨긴 블록이 없다
+// (악보 없는 곡 · 악보를 다른 화면으로 보낸 곡). 곡의 악보를 모두 숨긴 화면은 곡 화면이 아니다 (보이는 것이 없다 — 건너뛴다).
+// 송폼 자리: 조판이 모드로 뺀 송폼(off — 제 화면 번호, 숨긴 송폼은 안 센다) · 조판에 아예 없는 송폼(그 모드에서 편집을 켜 만든 조판에는
+// 모드가 뺀 송폼이 안 들어간다)은 자동 조판 자리 (조각 위로 돌아가면 stgHydrate 가 거기에 세운다 · 자동 조판은 모드와 상관없이 화면이 같다)
+function stgFormOnly(scs){
+ const L=STG.layout,A=STG.lay||{},at=[],out=new Set();
+ const heads=L?[].concat(...(L.screens||[]).map(sc=>sc.blocks||[]),(L.off||[]).map(o=>o.b)).filter(b=>b&&b.type==='head'):[];
+ const hasP=new Set(heads.filter(b=>b.pid).map(b=>b.pid)),hasI=new Set(heads.filter(b=>!b.pid).map(b=>String(b.id)));
+ if(L)(L.off||[]).forEach(o=>at.push([o.s,o.b]));
+ (A.off||[]).forEach((h,k)=>{if(!hasP.has(h.pid)&&!hasI.has(String(h.id)))at.push([(A.offSc||[])[k],h])});
+ const song=b=>b.iid||(b.type==='head'?b.pid:null);
+ at.forEach(([s,h])=>{const sc=scs[s],q=song(h);if(!sc||!h||h.hidden||q==null)return;
+  if(!sc.blocks.some(b=>b.hidden&&song(b)===q))out.add(s)});
+ return out}
+// 송폼 모드가 뺀 무리 송폼(stageRender keep)을 hydrate 뒤 화면 블록 줄에 끼울 자리. 숨김 되돌리기는 무리를 블록 줄에 처음 나오는
+// 차례로 제 화면을 세운다(stgScreenAct show) — 저장본에서 센 번호(i)는 hydrate 뒤에 어긋났다(콘티에서 뺀 곡의 블록이 빠지고, 새 메모 띠가
+// 악보를 나눈다). 한 화면에 무리가 둘 이상이면 무리 차례가 바뀌어 되돌린 화면 순서가 틀렸다 (09-26 검증).
+// 그래서 번호가 아니라 무리로 찾는다 (gs = 저장본의 무리 차례): 제 무리 블록 앞 · 없으면(악보 없는 곡의 송폼뿐인 무리) 저장본에서
+// 뒤에 오던 무리의 첫 블록 앞 · 그것도 없으면 앞에 오던 무리의 끝 블록 뒤 · 다른 무리가 없으면 번호대로
+function stgKeepAt(bl,gs,g,i){
+ const first=h=>bl.findIndex(x=>x.hidden&&String(x.lone)===h);
+ let k=first(g);if(k>=0)return k;
+ const j=gs.indexOf(g);
+ for(const h of gs.slice(j+1)){k=first(h);if(k>=0)return k}
+ for(const h of gs.slice(0,Math.max(0,j)).reverse()){let e=-1;bl.forEach((x,n)=>{if(x.hidden&&String(x.lone)===h)e=n});if(e>=0)return e+1}
+ return Math.min(i,bl.length)}
 // 🗑 (조각 위) — 보이는 블록이 없는 화면 i 를 지운다. 숨긴 블록은 버리지 않는다 — 조판에서 빠진 악보 줄·송폼·띠는 stgHydrate 가
 // 자동 조판 자리에 도로 세워 숨긴 것이 다시 나온다. 숨긴 채 앞 화면(첫 화면이면 뒤 화면)으로 옮기고 무리 표시(lone)를 달아
 // '숨김 되돌리기'가 옆 화면 악보 위에 겹쳐 놓지 않고 제 화면을 새로 만들어 돌려놓게 한다. 뒤 화면으로 옮기면 lpre — 그 화면 앞에.
@@ -8485,7 +8521,7 @@ function stageKey(e){if(!$('#stageWrap'))return;
  else if(e.key==='Escape'){e.preventDefault();stageExit()}}
 // 넘김 단위는 '화면'이다 (기획 §5). 한 화면에 곡이 여러 개일 수 있으므로
 // 곡 단위로 넘기면 같은 화면을 두 번 보거나 건너뛰게 된다
-// 넘겨 볼 화면 번호들(stgNav — 조각 위 무대는 빈 화면을 건너뛴다)에서 앞뒤로
+// 넘겨 볼 화면 번호들(stgNav — 무대는 빈 화면을 건너뛴다)에서 앞뒤로
 function stageGo(d){
  const nav=STG.nav||[...Array(STG.nscreens||((STG.lay&&STG.lay.screens)||[]).length||1).keys()];
  const k=Math.max(0,nav.indexOf(STG.screen));
@@ -8515,6 +8551,7 @@ function stageRender(){
   const off=[],keep=[],screens=(L.screens||[]).map(sc=>({blocks:(sc.blocks||[]).slice()}));
   (L.off||[]).forEach(o=>{if(isOff(o.b)&&!lone(o.b)){off.push(o);return}
    while(screens.length<=o.s)screens.push({blocks:[]});screens[o.s].blocks.push(o.b)});
+  const gs=screens.map(sc=>[...new Set(sc.blocks.filter(lone).map(b=>String(b.lone)))]);   // 화면마다 무리 차례 (끼울 자리 — stgKeepAt)
   screens.forEach((sc,s)=>{let n=0;sc.blocks=sc.blocks.filter(b=>{if(!isOff(b)){n++;return true}
    if(lone(b)){keep.push({s,i:n++,b:{...b}});return false}
    off.push({s,b});return false})});
@@ -8523,14 +8560,14 @@ function stageRender(){
    if(keep.length){const scs=STG.layout.screens,ids=new Set([].concat(...scs.map(sc=>sc.blocks.map(b=>String(b.id))),off.map(o=>String(o.b.id))));
     keep.forEach(({s,i,b})=>{while(scs.length<=s)scs.push({blocks:[]});
      let id=String(b.id);if(ids.has(id)){let k=2;while(ids.has(id+'_'+k))k++;b.id=id+='_'+k}ids.add(id);   // 이름표는 하나뿐 (stgHydrate 와 같게)
-     const bl=scs[s].blocks;bl.splice(Math.min(i,bl.length),0,b)})}}}
+     const bl=scs[s].blocks;bl.splice(stgKeepAt(bl,gs[s]||[],String(b.lone),i),0,b)})}}}
  // 틀에 맞춰 줄여 그린 폭(stgBlockAt)은 그릴 때만 쓴다. 전에는 편집 중 그릴 때마다 조판에 적어, 편집을 켰다 끄기만
  // 해도(또는 편집 중 화면을 돌리면) 저장한 캔버스의 악보가 반 크기로 줄어 저장됐다. 편집은 보이는 상자로 잰다 (stgVis)
  const custom=!!STG.layout;
  const lay=custom?{...auto,screens:STG.layout.screens}:auto;
  const screens=lay.screens;
  if(STG.screen>=screens.length)STG.screen=Math.max(0,screens.length-1);
- // 넘겨 볼 화면들 — 조각 위 무대에서는 빈 화면(모두 숨긴 화면 · 안 채운 화면)을 건너뛴다 (stgNav · 다른 송폼 모드는 모든 화면).
+ // 넘겨 볼 화면들 — 무대에서는 빈 화면(모두 숨긴 화면 · 조각 위에서는 안 채운 화면도)을 건너뛴다 (stgNav · 다른 송폼 모드의 악보 없는 곡 화면은 남는다).
  // 그 화면에 서 있으면(처음 열 때 · 편집을 끝낼 때) 다음(없으면 앞) 화면으로. 쪽 번호 n/m 도 넘겨 볼 화면으로 센다
  const nav=stgNav(screens);STG.nav=nav;STG.nscreens=nav.length;
  if(nav.indexOf(STG.screen)<0){const nx=nav.filter(i=>i>STG.screen);STG.screen=nx.length?nx[0]:nav[nav.length-1]}
@@ -8696,7 +8733,7 @@ function stageClick(e){
   // 때는 바에 곡이 안 나와 바뀌는 것이 없고, 첫 탭이 그냥 먹혀 두 번 눌러야 넘어갔다 → 그때는 넘긴다
   if(si&&+si.dataset.si!==STG.idx){STG.idx=+si.dataset.si;
    if(STG.pref.bar&&(STG.pref.form||'auto')!=='block'){stageRender();return}}
-  const nav=STG.nav||[...Array(STG.nscreens||((STG.lay&&STG.lay.screens)||[]).length||1).keys()];   // 조각 위 무대는 빈 화면을 건너뛴다 (stgNav)
+  const nav=STG.nav||[...Array(STG.nscreens||((STG.lay&&STG.lay.screens)||[]).length||1).keys()];   // 무대는 빈 화면을 건너뛴다 (stgNav)
   if(nav.length>1){STG.screen=nav[(Math.max(0,nav.indexOf(STG.screen))+1)%nav.length];stageRender()}
   return}
  const a=b.dataset.stg;
@@ -8723,7 +8760,7 @@ function stageExport(){
  // 화면 = 쪽. 보던 그대로가 종이에 나온다
  const W=stgCanvasW(),H=stgCanvasH();
  const src=STG.layout||stgToLayout(fit,W,H);
- PRT.stageLayout=src?{W,H,cw:fit.cw,screens:src.screens,skip:stgBlockForm()}:null;   // skip: 빈 화면을 건너뛰는가 (stgPrintPages)
+ PRT.stageLayout=src?{W,H,cw:fit.cw,screens:src.screens,pick:stgViewIdx(src.screens)}:null;   // pick: 찍을 화면 = 무대에서 넘겨 보는 화면 (빈 화면 건너뛰기 — stgViewIdx)
  stageClose();printSheet(svc)}
 
 // 앱(WebView)에서는 window.print() 가 아무 일도 하지 않는다. 네이티브 인쇄로 넘긴다.
@@ -8791,9 +8828,9 @@ function stgPrintPages(svc){
  // 자리·폭·악보만 r 배로 옮기고 송폼 상자·글 상자·메모 띠의 글자와 안쪽 여백은 그대로 두면,
  // r<1(아이패드 프로·데스크톱)일 때 종이에서 글이 좁은 폭에 다시 감겨 상자가 무대보다 길어졌다 →
  // 무대에서 다 보이던 맨 아래 상자가 화면 칸에서 잘리고, 쌓인 송폼 상자끼리 겹쳤다
- // 조각 위로 보던 무대면 보이는 블록이 없는 화면(모두 숨긴 화면 · 안 채운 화면)은 흰 종이가 된다 — 무대처럼 건너뛴다.
- // 모두 비었으면 첫 화면 한 장 (무대와 같다). 다른 송폼 모드는 전처럼 모든 화면 (stgBlockForm)
- const all=SL.screens||[],scs=SL.skip?all.filter(sc=>!stgBlank(sc)):all;
+ // 보이는 블록이 없는 화면(모두 숨긴 화면 · 조각 위에서는 안 채운 화면도)은 흰 종이가 된다 — 무대처럼 건너뛴다 (stageExport 가 고른 pick).
+ // 모두 비었으면 첫 화면 한 장 (무대와 같다). 다른 송폼 모드의 악보 없는 곡 화면은 무대처럼 남는다 (stgViewIdx)
+ const all=SL.screens||[],scs=SL.pick?SL.pick.map(i=>all[i]).filter(Boolean):all;
  return (scs.length?scs:all.slice(0,1)).map(sc=>({pub,svc,session:PRT.session,stage:true,
   box:{cw:pw,gutter:0,cols:1},canvas:{W,H,r},
   blocks:sc.blocks.filter(b=>!b.hidden).map(b=>{
