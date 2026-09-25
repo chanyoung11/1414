@@ -9,6 +9,8 @@
 #  되돌림 검사(재검증): 초안을 밀기 전에 목록을 받고 서버 초안과 견준다 — 다른 기기에서 지운 콘티를 되살리거나 더 새 초안을 덮지 않게
 #  재검증 2: 견줘서 안 올린 초안을 다시 연결 끝의 저장 타이머(2.5초)가 에디터에 열린 콘티라며 그대로 올리던 것 → 붙잡아 두고(draftHold)
 #         가져올지 물어 답할 때까지 누구도 올리지 않는다 · 에디터에 열려 있으면 바로 묻는다 · 다시 연결을 견주는 동안 저장 타이머는 기다린다
+#  재검증 3: 다시 연결의 견주기가 실패하거나(1) 앱을 켜자마자 느린 망에서 에디터로 가면(2) 저장 타이머·flush 가 견주지 않고 올려 더 새 초안을 덮던 것
+#         → 아직 서버와 못 견준 초안은 붙잡아 두고(draftHold unknown) 견준 뒤에만 올린다 (sec_draft)
 import os, re, sys, time, json
 from playwright.sync_api import sync_playwright
 
@@ -481,9 +483,163 @@ def sec_gate(b):
     print('받아 둔 답이 없으면 오프라인이라도 기기 전용 · 로그인 화면에서 서버 없음을 받으면 바로 기기 전용 ok')
     c.close()
 
+# ---------------------------------------------------------------- 재검증 3: 초안 경쟁 (같은 인도자의 두 기기)
+#  1) 다시 연결될 때 서버 초안과 견주는 받기가 실패하면 붙잡지 않고 넘어가, 끝의 저장 타이머(2.5초)가 에디터에 열린 콘티를 견주지 않고 올려
+#     다른 기기의 더 새 초안을 말없이 덮었다(에디터는 묻지도 않음) — 홈에서 붙은 뒤 에디터를 열어도 여는 사이 올리기(flush·타이머)가 덮었다
+#  2) 앱을 닫아 둔 사이 다른 기기가 더 새 초안을 저장했는데, 켜자마자(느린 망) 에디터로 가면 켤 때 건 저장 타이머·flush 가
+#     편집 화면이 서버 것과 견주기(pullDraftOnce) 전에 이 기기 것을 올려 덮었다
+#  → 아직 서버와 못 견준 초안은 붙잡아 두고(draftHold unknown) 견준 뒤에만 올린다. 늘 같은 순서가 되게 받기를 막거나 붙잡아 둔다
+def sec_draft(b):
+    c, u, uid = account(b, 'odr', '하은', service_workers='block')
+    team = make_team(c, '초안팀')
+    cB = b.new_context(storage_state=c.storage_state())   # 같은 인도자의 다른 기기 (서버만 부른다)
+    asked, puts = [], []
+    def watch(p):
+        p.on('dialog', lambda d: asked.append(d.message))
+        p.on('request', lambda r: puts.append(r.post_data or '') if r.method == 'PUT' and '/draft' in r.url else None)
+    def draft_of(sid):
+        return (ok(cB.request.get(URL + 'api/services/%s/draft?team=%s' % (sid, team)), 'draft').get('doc') or {}).get('name')
+    def newer_on_b(p, sid, name):
+        doc = p.evaluate("(id)=>CONTI.SYNC.draftDoc(CONTI.S.services.find(x=>x.id===id))", sid)
+        doc['name'] = name; doc['editedAt'] = int(time.time() * 1000) + 60000
+        ok(cB.request.put(URL + 'api/services/%s/draft' % sid, headers=H, data={'teamId': team, 'doc': doc}), 'B 초안')
+    pushed = lambda name: any(name in x for x in puts)
+    asked_newer = lambda: any('더 새로워요' in m for m in asked)
+    gets = []
+    def fail_first(r):   # 다시 연결의 첫 초안 받기(서버 초안과 견주기)만 실패시킨다
+        if r.request.method == 'GET':
+            gets.append(r.request.url)
+            if len(gets) == 1: return r.abort('failed')
+        r.continue_()
+    def editor_shows(p, name, ms=8000):
+        return pump(p, lambda: p.locator('[data-f="svc.name"]').count() > 0 and p.input_value('[data-f="svc.name"]') == name, ms)
+
+    pg = page(c); watch(pg)
+    # 1) 에디터를 연 채 끊겼다 붙는데 다시 연결의 견주기가 실패한다
+    s1 = new_published(pg, '실패 예배', '곡1')
+    pg.evaluate("location.hash='#/home'"); pg.wait_for_timeout(3500)   # 발행 뒤 저장 타이머가 끝나게
+    pg.evaluate("(id)=>{location.hash='#/edit/'+id}", s1); pg.wait_for_selector('[data-f="svc.name"]', timeout=10000); pg.wait_for_timeout(1500)
+    c.set_offline(True); pg.wait_for_timeout(300)
+    pg.fill('[data-f="svc.name"]', 'A끊김1'); pg.wait_for_timeout(3500)   # 끊긴 채 올리기가 실패하게
+    newer_on_b(pg, s1, 'B새이름1')
+    gets.clear(); asked.clear(); puts.clear()
+    pg.route('**/api/services/*/draft?*', fail_first)
+    c.set_offline(False)
+    if not pump(pg, lambda: gets, 10000): fail('준비: 다시 연결이 서버 초안과 견주지 않음')
+    pg.wait_for_timeout(4500)   # 다시 연결 끝에 건 저장 타이머(2.5초)가 이 사이에 터진다
+    if draft_of(s1) != 'B새이름1' or pushed('A끊김1'):
+        fail('재검증 3 다시 연결의 견주기가 실패한 뒤 저장 타이머가 더 새 초안을 덮음: 서버 %r · 물음 %d' % (draft_of(s1), len(asked)))
+    if not pump(pg, asked_newer, 8000): fail('재검증 3 견주기가 실패한 뒤 에디터가 더 새 초안을 가져올지 묻지 않음 · 서버 %r' % draft_of(s1))
+    if not editor_shows(pg, 'B새이름1'): fail('재검증 3 가져온 초안을 에디터에 다시 그리지 않음: %r' % pg.input_value('[data-f="svc.name"]'))
+    pg.unroute('**/api/services/*/draft?*')
+    pg.wait_for_timeout(3000)
+    if draft_of(s1) != 'B새이름1' or pushed('A끊김1'): fail('재검증 3 가져온 뒤 이 기기 것을 올림: 서버 %r' % draft_of(s1))
+    pg.fill('[data-f="svc.name"]', 'A이어서1')   # 그 뒤 고친 것은 전처럼 저절로 올라간다
+    if not pump(pg, lambda: draft_of(s1) == 'A이어서1', 8000): fail('재검증 3 가져온 뒤 고친 초안이 안 올라감: %r' % draft_of(s1))
+    print('재검증 3 에디터를 연 채 다시 연결 · 견주기 실패: 덮지 않고 다시 물어 가져옴 · 이어 고친 것은 올라감 ok')
+
+    # 2) 홈에서 붙는데 견주기가 실패하고, 그 뒤 에디터를 여는 사이(메모 받기가 느림) 화면을 떠나며 올리기(flush — 저장 타이머와 같은 길)가 불린다
+    s2 = new_published(pg, '홈 예배', '곡2')
+    pg.evaluate("location.hash='#/home'"); pg.wait_for_timeout(3500)
+    c.set_offline(True); pg.wait_for_timeout(300)
+    pg.evaluate(EDIT_NAME, [s2, 'A끊김2'])
+    newer_on_b(pg, s2, 'B새이름2')
+    gets.clear(); asked.clear(); puts.clear()
+    pg.route('**/api/services/*/draft?*', fail_first)
+    c.set_offline(False)
+    if not pump(pg, lambda: gets, 10000): fail('준비: 다시 연결이 서버 초안과 견주지 않음 (홈)')
+    pg.wait_for_timeout(1500)   # 다시 연결을 마치게
+    held = []
+    pg.route('**/api/notes?*', lambda r: held.append(r))
+    pg.evaluate("(id)=>{location.hash='#/edit/'+id}", s2)
+    if not pump(pg, lambda: held, 8000): fail('준비: 편집 화면이 메모를 받지 않음')
+    pg.evaluate("CONTI.SYNC.flush()")   # 편집 화면이 서버 초안과 견주기 전 (메모를 기다리는 중)
+    pg.wait_for_timeout(1500)
+    mid = draft_of(s2)
+    for r in held: r.continue_()
+    pg.unroute('**/api/notes?*')
+    if mid != 'B새이름2' or pushed('A끊김2'): fail('재검증 3 견주기가 실패한 콘티를 에디터로 여는 사이 올리기가 더 새 초안을 덮음: 서버 %r' % mid)
+    if not pump(pg, asked_newer, 10000): fail('재검증 3 견주기가 실패한 콘티를 에디터로 열었는데 묻지 않음 · 서버 %r' % draft_of(s2))
+    if not editor_shows(pg, 'B새이름2'): fail('재검증 3 에디터로 열어 가져온 초안이 안 보임')
+    pg.unroute('**/api/services/*/draft?*')
+    pg.wait_for_timeout(3000)
+    if draft_of(s2) != 'B새이름2' or pushed('A끊김2'): fail('재검증 3 에디터로 가져온 뒤 이 기기 것을 올림: 서버 %r' % draft_of(s2))
+    print('재검증 3 홈에서 다시 연결 · 견주기 실패 뒤 에디터를 여는 사이 올리기: 덮지 않고 물어 가져옴 ok')
+    if pg.errs: fail('JS 오류: %s' % pg.errs[:3])
+
+    # 3) 앱을 닫아 둔 사이 다른 기기가 더 새 초안을 저장 → 켜자마자 에디터로 (메모 받기가 느림)
+    s3 = new_published(pg, '켤 때 예배', '곡3')
+    s4 = new_published(pg, '켤 때 둘째', '곡4')
+    s5 = new_published(pg, '켤 때 내 것', '곡5')   # 서버 초안이 이 기기 것보다 오래됐다 — 묻지 않고 올라간다
+    s7 = new_published(pg, '켤 때 셋째', '곡7')    # 열지 않은 채 로그아웃 — 로그아웃 전 올리기가 덮지 않는다
+    pg.evaluate("location.hash='#/home'"); pg.wait_for_timeout(3500)
+    c.set_offline(True); pg.wait_for_timeout(300)
+    for sid, name in ((s3, 'A끊김3'), (s4, 'A끊김4'), (s5, 'A끊김5'), (s7, 'A끊김7')): pg.evaluate(EDIT_NAME, [sid, name])
+    # 끊긴 채 새 콘티도 만든다 (발행 전 · 한 번도 안 올림) — 켜면 전처럼 저장 타이머가 올린다
+    pg.click('[data-act="new-svc"]'); pg.wait_for_selector('[data-f="svc.name"]', timeout=8000)
+    pg.fill('[data-f="svc.name"]', '끊겨 만든 예배'); pg.wait_for_timeout(300)
+    s6 = pg.evaluate('CONTI.route().a')
+    pg.evaluate("location.hash='#/home'"); pg.wait_for_timeout(800)
+    newer_on_b(pg, s3, 'B새이름3'); newer_on_b(pg, s4, 'B새이름4'); newer_on_b(pg, s7, 'B새이름7')
+    pg.wait_for_timeout(1500)
+    if pg.errs: fail('JS 오류: %s' % pg.errs[:3])
+    pg.close()   # 앱을 닫는다 (pagehide 가 저장을 마친다)
+    c.set_offline(False)
+    asked.clear(); puts.clear()
+    pn = c.new_page(); pn.errs = []; pn.dismiss = False
+    pn.on('pageerror', lambda e: pn.errs.append(str(e)[:200])); pn.on('dialog', lambda d: d.dismiss() if pn.dismiss else d.accept()); watch(pn)
+    held = []
+    pn.route('**/api/notes?*', lambda r: held.append(r))   # 느린 망: 편집 화면이 메모를 기다린다 (최대 2.5초 뒤 서버 초안과 견준다)
+    pn.goto(URL + '#/home'); pn.wait_for_selector('.svcrow', timeout=15000)
+    if pn.evaluate("(id)=>CONTI.S.services.find(x=>x.id===id).name", s3) != 'A끊김3': fail('준비: 닫기 전에 고친 것이 기기에 안 남음')
+    if not pump(pn, lambda: s6 in [x['id'] for x in ok(cB.request.get(URL + 'api/services?team=%s' % team), '목록').get('drafts', [])], 8000):
+        fail('재검증 3 끊겨 만든 새 콘티가 켠 뒤에도 서버에 안 올라감')
+    pn.wait_for_timeout(1000)   # 켤 때 건 저장 타이머가 홈에서 지나가게
+    # 3-a) 편집 화면이 견주기 전에 화면을 떠나며 올리기(flush)
+    pn.evaluate("(id)=>{location.hash='#/edit/'+id}", s3)
+    if not pump(pn, lambda: held, 8000): fail('준비: 편집 화면이 메모를 받지 않음 (켤 때)')
+    pn.evaluate("CONTI.SYNC.flush()")
+    pn.wait_for_timeout(1500)
+    mid = draft_of(s3)
+    for r in held: r.continue_()
+    held.clear()
+    if mid != 'B새이름3' or pushed('A끊김3'): fail('재검증 3 켜자마자 에디터로 가는 사이 올리기가 더 새 초안을 덮음: 서버 %r' % mid)
+    if not pump(pn, asked_newer, 10000): fail('재검증 3 켠 뒤 에디터로 열었는데 더 새 초안을 가져올지 묻지 않음 · 서버 %r' % draft_of(s3))
+    if not editor_shows(pn, 'B새이름3'): fail('재검증 3 켠 뒤 가져온 초안이 에디터에 안 보임')
+    # 3-b) 저장 타이머(2.5초)를 에디터를 열기 직전에 건다 — 편집 화면이 메모를 기다리는(2.5초) 사이에 먼저 터진다
+    asked.clear()
+    pn.evaluate("location.hash='#/home'"); pn.wait_for_timeout(1000)
+    pn.evaluate("(id)=>{CONTI.SYNC.schedulePush();location.hash='#/edit/'+id}", s4)
+    if not pump(pn, lambda: held, 8000): fail('준비: 편집 화면이 메모를 받지 않음 (타이머)')
+    pn.wait_for_timeout(3500)
+    mid = draft_of(s4)
+    for r in held: r.continue_()
+    pn.unroute('**/api/notes?*')
+    if mid != 'B새이름4' or pushed('A끊김4'): fail('재검증 3 켠 뒤 저장 타이머가 편집 화면이 견주기 전에 더 새 초안을 덮음: 서버 %r' % mid)
+    if not pump(pn, asked_newer, 10000): fail('재검증 3 켠 뒤 저장 타이머가 터진 에디터에서 묻지 않음 · 서버 %r' % draft_of(s4))
+    if not editor_shows(pn, 'B새이름4'): fail('재검증 3 켠 뒤 가져온 초안이 에디터에 안 보임 (타이머)')
+    pn.wait_for_timeout(3000)
+    if pushed('A끊김3') or pushed('A끊김4') or draft_of(s3) != 'B새이름3' or draft_of(s4) != 'B새이름4': fail('재검증 3 가져온 뒤 이 기기 것을 올림')
+    # 3-c) 켠 뒤 한 번도 열지 않은 채 로그아웃을 누른다(확인 창에서 취소) — 로그아웃 전 올리기가 서버와 견줘 본다:
+    #      서버 것이 더 오래된 것(s5)은 묻지 않고 올리고, 더 새 초안이 있는 것(s7)은 덮지 않고 '못 올린 수정'으로 알린다
+    asked.clear()
+    pn.evaluate("location.hash='#/settings'"); pn.wait_for_selector('.setpane', timeout=10000)
+    pn.click('[data-act="set-tab"][data-t="app"]'); pn.wait_for_selector('#sLogout', timeout=10000)
+    pn.dismiss = True; pn.click('#sLogout')
+    if not pump(pn, lambda: any('로그아웃' in m for m in asked), 12000): fail('준비: 로그아웃 확인 창이 안 뜸')
+    pn.dismiss = False
+    msg = [m for m in asked if '로그아웃' in m][0]
+    if draft_of(s7) != 'B새이름7' or pushed('A끊김7'): fail('재검증 3 켠 뒤 로그아웃 전 올리기가 더 새 초안을 덮음: 서버 %r' % draft_of(s7))
+    if '못 올린 수정' not in msg: fail('재검증 3 올리지 않은 초안이 있는데 로그아웃 확인 창이 알리지 않음: %r' % msg)
+    if draft_of(s5) != 'A끊김5': fail('재검증 3 서버 것이 더 오래된 초안을 로그아웃 전에 안 올림: %r' % draft_of(s5))
+    if asked_newer(): fail('재검증 3 로그아웃 전 올리기가 가져올지 물음: %s' % asked)
+    if pn.errs: fail('JS 오류: %s' % pn.errs[:3])
+    print('재검증 3 켜자마자 에디터로 (느린 망): 여는 사이 flush·저장 타이머가 덮지 않고 물어 가져옴 · 새 콘티 올라감 · 로그아웃 전 올리기도 견줘 봄 ok')
+    cB.close(); c.close()
+
 def run():
     only = set(sys.argv[1:])
-    secs = [('memo', sec_memo), ('join', sec_join), ('team', sec_team_offline), ('gate', sec_gate)]
+    secs = [('memo', sec_memo), ('draft', sec_draft), ('join', sec_join), ('team', sec_team_offline), ('gate', sec_gate)]
     with sync_playwright() as p:
         b = p.chromium.launch()
         for name, fn in secs:

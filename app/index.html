@@ -3210,7 +3210,9 @@ async function switchScope(next){if(next===CUR_SCOPE)return;
  if(typeof TM!=='undefined'){TM.data=null;TM.invites=null;TM.at=0}
  // 개인 설정(무대 조판 포함)과 무대 복사 버퍼도 앞 사람 것이다 — 30초 캐시로 다음 사람에게 넘어갔다
  if(typeof PREFS!=='undefined'){PREFS.data=null;PREFS.at=0}
- if(typeof STG!=='undefined')STG.clip=null}
+ if(typeof STG!=='undefined')STG.clip=null;
+ // 이 팀에서 전에 고치고 못 올린 초안은 서버 초안과 견줄 때까지 붙잡는다 (켤 때처럼)
+ if(typeof SYNC!=='undefined'&&online())holdUnchecked()}
 const me=()=>S.team.me;
 const isLeader=()=>me().role==='leader';
 let PRACTICE=null;   // 라이브러리에서 곡 하나만 연습할 때 쓰는 임시 콘티 (저장·동기화하지 않는다)
@@ -3346,7 +3348,7 @@ function recheckServer(){return RECHECK||(RECHECK=(async()=>{
  // /me 가 503·느림으로 실패하면 그 로그인 창이 오프라인인 채로 남았다. 실패하면 오프라인(모름)으로 두고 다음에 다시
  let m;try{m=await api('/me',{timeout:10000})}catch(e){if(e.status!==401){NET.server=null;return}}
  // takeMe 는 NET.user 부터 채운다 — true 와 사용자 사이에 그릴 틈이 없다. 팀이 바뀌었으면 그 안에서 온라인으로 라이브러리를 받는다
- NET.server=true;
+ NET.server=true;holdUnchecked();   // 끊긴 사이 고친 초안은 서버 초안과 견줄 때까지 붙잡는다 (아래 schedulePush 의 저장 타이머가 먼저 올리지 않게)
  if(!m)NET.user=null;else try{await takeMe(m)}catch(e){console.warn('me',e&&e.message);NET.server=null;return}
  toast('서버에 다시 연결됐어요');
  // 못 올린 발행을 먼저 올리고 나서 목록을 받는다 (거꾸로면 방금 올린 것을 '서버에서 지워진 것'으로 볼 수 있다)
@@ -3365,17 +3367,20 @@ function retryPending(){if(!online()||!S.team.id||!S.services.some(x=>x.pubPendi
 // 초안은 여기서 처음 열지 않은 콘티 것까지 미므로(에디터로 열 때는 pullDraft 가 먼저 서버 것과 견준다) 그냥 덮지 않는다:
 // 목록부터 받아(켤 때·recheckServer 처럼 발행 대기 → 목록) 다른 기기에서 지운 콘티를 치우고, 서버 초안과 견줘 안전한 것만 보낸다 (SYNC.draftSafe).
 // 전에는 끊긴 사이 다른 기기에서 지운 콘티가 초안으로 되살아나 모든 기기에 다시 나타났고, 다른 기기의 더 새 초안을 옛 것으로 말없이 덮었다
-// 안전하지 않은 것은 붙잡아 둔다(SYNC.draftHold) — 끝의 schedulePush·에디터 저장·flush 도 올리지 않고, 그 콘티가 에디터에 열려 있으면 바로 가져올지 묻는다
+// 안전하지 않은 것은 붙잡아 둔다(SYNC.draftHold) — 끝의 schedulePush·에디터 저장·flush 도 올리지 않고, 그 콘티가 에디터에 열려 있으면 바로 가져올지 묻는다.
+// 서버에 못 물은 것(견주는 받기가 실패)도 붙잡는다 — 전에는 그냥 넘어가 끝의 schedulePush 가 2.5초 뒤 에디터에 열린 그 콘티를 견주지 않고 올려
+// 다른 기기의 더 새 초안을 말없이 덮었다. 견주는 기준은 여기 들어올 때의 이 기기 것이다 (목록을 받는 사이 에디터에서 친 것은 서버 것을 못 보고 친 것이다)
 let UNSENT=null;
 function pushUnsent(){if(!online()||!S.team.id)return Promise.resolve();
  return UNSENT||(UNSENT=(async()=>{const scope=CUR_SCOPE,moved=()=>scope!==CUR_SCOPE;
-  await retryPending();
   const drafts=()=>S.services.filter(x=>draftUnsent(x)&&!(SYNC.draftFail['big:'+x.id]&&SYNC.draftFail[x.id]===x.editedAt));
+  holdUnchecked(drafts());
+  await retryPending();
   const pulled=drafts().length>0;
   if(pulled){const ch=await SYNC.pullServices();if(moved())return;
    // 에디터에서 치는 중이면 다시 그리지 않는다(입력 칸이 새로 그려져 치던 것이 끊긴다) — 그 콘티가 지워졌을 때만
    if(ch&&(route().name!=='edit'||!svcById(route().a)))render()}
-  for(const svc of drafts()){if(moved())return;try{if(await SYNC.draftSafe(svc)){if(!moved())await SYNC.pushDraft(svc,true)}else if(!moved())askHeldDraft(svc)}catch(e){}}
+  for(const svc of drafts()){if(moved())return;try{if(await draftSafeOnce(svc)){if(!moved())await SYNC.pushDraft(svc,true)}else if(!moved())askHeldDraft(svc)}catch(e){}}
   // 메모도 서버에 있는 콘티 것만 민다 — 끊긴 사이 지워진 콘티의 메모는 서버가 콘티를 보지 않고 받아, 볼 사람 없는 줄로 남았다.
   // 위에서 목록을 받았으면 지운 콘티는 이미 치워졌다. 아니면 목록의 id 만 가볍게 본다(못 받으면 전처럼 모두). 발행 전 초안은 전처럼 보낸다
   let notes=S.services.filter(notesChanged);
@@ -3389,6 +3394,19 @@ function pushUnsent(){if(!online()||!S.team.id)return Promise.resolve();
 function askHeldDraft(svc){const h=SYNC.draftHold[svc.id],here=()=>route().name==='edit'&&route().a===svc.id&&svcById(svc.id)===svc;
  if(!h||h.gone||document.hidden||!here())return;
  pullDraftOnce(svc).then(ch=>{if(ch&&here())render()}).catch(()=>{})}
+// 켤 때·다시 연결될 때(다시 묻기·online·화면 복귀)·팀을 바꿀 때: 이 기기에서 고치고 못 올린 초안은 서버 초안과 견줄 때까지 붙잡는다 (draftHold unknown).
+// 전에는 켜자마자(느린 망) 에디터로 가면, 켤 때 건 저장 타이머(2.5초)가 편집 화면이 서버 것과 견주기(pullDraftOnce) 전에 이 기기 것을 올려
+// 앱을 닫아 둔 사이 다른 기기에서 저장한 더 새 초안을 말없이 덮었다. at 은 지금의 editedAt — 견주기 전에 여기서 더 고쳐도 서버 것과는 이것으로 견준다
+function holdUnchecked(list){if(!isLeader())return;
+ for(const x of list||S.services)if(x&&x.editedAt&&x.draftPushedAt!==x.editedAt&&!SYNC.draftHold[x.id])SYNC.draftHold[x.id]={at:x.editedAt,gone:false,unknown:true}}
+// 서버 초안과 견주기(draftSafe)는 콘티마다 한 번에 하나 — 다시 연결·저장 타이머·로그아웃 전 올리기가 겹쳐 불러도 같이 기다린다.
+// 에디터가 견주는 중(pullDraftOnce · 가져올지 묻는 중)이면 그 답을 본 뒤에 견준다(둘이 엇갈려 답한 것을 옛 것으로 다시 붙잡고 또 묻지 않게)
+const SAFE_Q={};
+function draftSafeOnce(svc){return SAFE_Q[svc.id]||(SAFE_Q[svc.id]=(async()=>{const cmp=DRAFT_Q[svc.id];if(cmp){try{await cmp}catch(e){}}return SYNC.draftSafe(svc)})().finally(()=>{delete SAFE_Q[svc.id]}))}
+// 아직 못 견줘 붙잡은 것(unknown)은 견줘 보고 안전하면 올린다 — 저장 타이머의 새 콘티·flush·로그아웃 전 올리기.
+// 더 새 초안·지워진 초안 때문에 붙잡은 것은 pushDraft 가 그대로 둔다
+function pushChecked(svc){const h=SYNC.draftHold[svc.id];if(!h||!h.unknown)return SYNC.pushDraft(svc);
+ return draftSafeOnce(svc).then(ok=>ok?SYNC.pushDraft(svc):undefined)}
 // 켤 때는 온라인이었는데(NET.server===true) 발행하다 끊긴 것은 recheckServer 가 그냥 돌아가 다시 안 올라갔다 —
 // 다시 연결되면(online)·화면이 다시 보이면 그대로 올린다 (메모·초안도 같이 — pushUnsent)
 window.addEventListener('online',()=>{clearTimeout(RECONNECT_T);RECONNECT_T=setTimeout(()=>NET.server===true?pushUnsent():recheckServer(),800)});
@@ -3683,7 +3701,8 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),getting:new Map(),notePut:{},no
  // 다시 연결됐을 때 서버 초안과 견줘(draftSafe) 올리지 않기로 한 콘티 → {at: 그때 이 기기의 editedAt, gone: 서버에서 지워진 발행 전 초안}.
  // pushDraft 는 누가 부르든(저장 뒤 타이머·flush·로그아웃 전 올리기) 붙잡힌 것을 올리지 않는다 — 전에는 다시 연결을 마치며 부른 schedulePush 가
  // 2.5초 뒤 에디터에 열린 그 콘티를 서버와 견주지 않고 올려, 다른 기기의 더 새 초안을 말없이 덮었다(그 뒤 pullDraft 는 제 것을 보고 묻지도 않았다).
- // 더 새 초안(gone:false)은 pullDraft 가 가져올지 물어 답을 받을 때까지(가져오든 이 기기 것을 지키든), 지워진 초안(gone:true)은 이 기기에서 다시 고칠 때까지
+ // 더 새 초안(gone:false)은 pullDraft 가 가져올지 물어 답을 받을 때까지(가져오든 이 기기 것을 지키든), 지워진 초안(gone:true)은 이 기기에서 다시 고칠 때까지.
+ // unknown:true 는 아직 서버와 못 견준 것 — 켤 때·다시 연결될 때 못 올린 초안(holdUnchecked), 견주던 받기가 실패한 것. 견줄 때까지(draftSafe·pullDraft)
  draftHold:{},
  // own: 다시 연결을 미는 pushUnsent 가 서버와 견준 뒤 부른 것
  async pushDraft(svc,own){if(!online()||!isLeader()||!svc||!svc.editedAt)return;if(svc.draftPushedAt===svc.editedAt)return;
@@ -3714,17 +3733,23 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),getting:new Map(),notePut:{},no
   svc.items=clone(doc.items).map(it=>{const o=old.get(it.id);it.notes=o?(o.notes||[]):[];it.media=(it.media||[]).map(m=>{const om=o&&(o.media||[]).find(x=>x.id===m.id);return {...m,notes:om?(om.notes||[]):[]}});return it});save()},
  // 다시 연결됐을 때(pushUnsent) 이 초안을 서버에 올려도 되는가. 서버 초안이 더 새것이면(끊긴 사이 다른 기기에서 고쳤다) 덮지 않는다 —
  // 그 콘티를 에디터로 열 때 pullDraft 가 가져올지 묻는다. 한 번 올렸던 발행 전 초안이 서버에 없으면 다른 기기에서 지운 것이라 되살리지 않는다
- // (전처럼 열어 고치면 그때 올라간다). 서버에 못 물었으면 보내지 않고 다음 연결·화면 복귀에 다시 본다.
- // 올리지 않기로 한 것은 붙잡아 둔다(draftHold) — 끝에 부르는 schedulePush 나 에디터의 저장이 대신 올리지 않게
- async draftSafe(svc){const h=SYNC.draftHold[svc.id];if(h&&!h.gone)return false;   // 더 새 초안을 가져올지 아직 안 물었다 (그 사이 여기서 고쳤어도)
-  let d;try{d=await api('/services/'+svc.id+'/draft?team='+S.team.id)}catch(e){return false}
-  const ok=d&&d.doc?(+d.doc.editedAt||0)<=(svc.editedAt||0)+500:(!!svc.published||!svc.draftPushedAt);
-  if(ok)delete SYNC.draftHold[svc.id];else SYNC.draftHold[svc.id]={at:svc.editedAt,gone:!(d&&d.doc)};
+ // (전처럼 열어 고치면 그때 올라간다). 서버에 못 물었으면 보내지 않고 붙잡아 둔다(unknown) — 에디터에 열려 있으면 저장 타이머가 다시 묻고,
+ // 아니면 다음 연결·화면 복귀에 다시 본다. 전에는 붙잡지 않고 넘어가 저장 타이머가 견주지 않고 올렸다.
+ // 올리지 않기로 한 것은 붙잡아 둔다(draftHold) — 끝에 부르는 schedulePush 나 에디터의 저장이 대신 올리지 않게.
+ // 아직 못 견준 것(unknown)은 붙잡을 때의 이 기기 것과 견준다 — 그 뒤 여기서 고쳤어도 서버 것을 못 보고 고친 것이다
+ async draftSafe(svc){const h=SYNC.draftHold[svc.id];if(h&&!h.gone&&!h.unknown)return false;   // 더 새 초안을 가져올지 아직 안 물었다 (그 사이 여기서 고쳤어도)
+  const at=h&&h.unknown?Math.min(h.at||0,svc.editedAt||0):(svc.editedAt||0);
+  let d;try{d=await api('/services/'+svc.id+'/draft?team='+S.team.id)}catch(e){if(!SYNC.draftHold[svc.id])SYNC.draftHold[svc.id]={at,gone:false,unknown:true};return false}
+  const ok=d&&d.doc?(+d.doc.editedAt||0)<=at+500:(!!svc.published||!svc.draftPushedAt);
+  if(ok)delete SYNC.draftHold[svc.id];else SYNC.draftHold[svc.id]=d&&d.doc?{at,gone:false}:{at:svc.editedAt,gone:true};
   return ok},
- async pullDraft(svc){if(!online()||!isLeader()||!svc)return false;let d;try{d=await api('/services/'+svc.id+'/draft?team='+S.team.id)}catch(e){return false}
-  // 더 새 서버 초안 때문에 붙잡아 둔 것(draftHold)은 붙잡을 때의 이 기기 것과 견준다 — 그 뒤 여기서 고쳤어도 다른 기기 것을 못 보고 고친 것이다
-  const h=SYNC.draftHold[svc.id],newer=!!(h&&!h.gone),base=newer?Math.min(h.at||0,svc.editedAt||0):(svc.editedAt||0);
-  if(!d||!d.doc){if(newer){if(svc.published||!svc.draftPushedAt)delete SYNC.draftHold[svc.id];else SYNC.draftHold[svc.id]={at:svc.editedAt,gone:true}}return false}
+ async pullDraft(svc){if(!online()||!isLeader()||!svc)return false;let d;
+  // 못 물었으면(끊김·느린 망) 견줄 때까지 붙잡는다 — 안 그러면 이 편집 화면에서 고친 것을 저장 타이머가 서버 것과 안 견주고 올려,
+  // 그 사이 다른 기기에서 저장한 더 새 초안을 덮었다. 다음 저장 때 저장 타이머가 다시 묻는다(askHeldDraft)
+  try{d=await api('/services/'+svc.id+'/draft?team='+S.team.id)}catch(e){if(!SYNC.draftHold[svc.id])SYNC.draftHold[svc.id]={at:svc.editedAt||0,gone:false,unknown:true};return false}
+  // 붙잡아 둔 것(더 새 서버 초안·아직 못 견줌)은 붙잡을 때의 이 기기 것과 견준다 — 그 뒤 여기서 고쳤어도 다른 기기 것을 못 보고 고친 것이다
+  const h=SYNC.draftHold[svc.id],held=!!(h&&!h.gone),base=held?Math.min(h.at||0,svc.editedAt||0):(svc.editedAt||0);
+  if(!d||!d.doc){if(held){if(svc.published||!svc.draftPushedAt)delete SYNC.draftHold[svc.id];else SYNC.draftHold[svc.id]={at:svc.editedAt,gone:true}}return false}
   const remote=+d.doc.editedAt||0;if(remote<=base+500){delete SYNC.draftHold[svc.id];return false}
   const when=new Date(remote).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'numeric',minute:'2-digit'});
   if(!confirm(`다른 기기에서 ${when}에 저장한 초안이 더 새로워요. 가져올까요?\n(취소하면 이 기기의 초안을 유지하고, 다음 저장 때 서버에 덮어씁니다)`)){delete SYNC.draftHold[svc.id];svc.editedAt=Date.now();save();return false}
@@ -3863,12 +3888,13 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),getting:new Map(),notePut:{},no
   S.noteShadow=S.noteShadow||{};S.noteShadow[svc.id]=d.notes.filter(n=>here.has(n.itemId+'|'+(n.mediaId||''))).map(n=>({id:n.id,itemId:n.itemId||'',mediaId:n.mediaId||null}))
    .concat(loc.filter(n=>fresh.has(n.id)&&shNow.has(n.id)).map(n=>({id:n.id,itemId:n.itemId,mediaId:n.mediaId||null})));   // 이미 올린 새 메모는 그림자에 그대로
   SYNC.pulledAt[svc.id]=Date.now();if(sig()!==sig0){save();return true}return false},
- flush(){const r=route();const svc=svcById(r.a);if(online()&&svc&&/^(edit|view|play)$/.test(r.name)){clearTimeout(SYNC.t);SYNC.pushNotes(svc,true);if(r.name==='edit'&&isLeader()){clearTimeout(SYNC.td);SYNC.pushDraft(svc)}}},
+ flush(){const r=route();const svc=svcById(r.a);if(online()&&svc&&/^(edit|view|play)$/.test(r.name)){clearTimeout(SYNC.t);SYNC.pushNotes(svc,true);if(r.name==='edit'&&isLeader()){clearTimeout(SYNC.td);pushChecked(svc)}}},
  schedulePush(){if(!online())return;clearTimeout(SYNC.tl);SYNC.tl=setTimeout(()=>{SYNC.pushLibrary();pushDirtySongs();pushSongs()},3000);clearTimeout(SYNC.t);SYNC.t=setTimeout(()=>{const r=route();const svc=svcById(r.a);if(svc&&/^(edit|view|play)$/.test(r.name))SYNC.pushNotes(svc)},700);clearTimeout(SYNC.td);SYNC.td=setTimeout(()=>{const r=route();const svc=svcById(r.a);
   // 붙잡아 둔 콘티(draftHold)는 올리지 않고, 가져올지 아직 못 물었으면(묻던 받기가 실패) 여기서 다시 묻는다 — 안 그러면 다음 화면 복귀까지 저장이 멈춘다
   if(svc&&r.name==='edit'&&isLeader()){askHeldDraft(svc);SYNC.pushDraft(svc)}
-  // 에디터를 거치지 않고 만든 새 콘티(라이브러리 '넣고 계속 고르기')도 올려 둔다. 안 올리면 다른 기기에 안 보이고 서버에도 없다
-  if(isLeader())S.services.forEach(x=>{if(x!==svc&&!x.published&&x.editedAt&&!x.draftPushedAt&&SYNC.draftFail[x.id]!==x.editedAt)SYNC.pushDraft(x)})},2500)}
+  // 에디터를 거치지 않고 만든 새 콘티(라이브러리 '넣고 계속 고르기')도 올려 둔다. 안 올리면 다른 기기에 안 보이고 서버에도 없다.
+  // 켤 때·다시 연결될 때 붙잡은 것(아직 못 견줌)은 견줘 보고 올린다 (pushChecked)
+  if(isLeader())S.services.forEach(x=>{if(x!==svc&&!x.published&&x.editedAt&&!x.draftPushedAt&&SYNC.draftFail[x.id]!==x.editedAt)pushChecked(x)})},2500)}
 };
 // 켤 때 부팅과 홈 그리기가 발행본 목록을 동시에 받는다. 겹쳐 돌면 같은 초안을 두 번 넣으므로(둘 다 '없음'을 보고 넣는다)
 // 같은 팀이면 이미 도는 것을 같이 기다린다
@@ -4252,7 +4278,7 @@ async function flushUnsynced(){
   // 올리는 사이 팀을 바꾸면 남은 옛 팀 콘티의 초안·메모를 S.team.id(새 팀)로 보낸다 → 바뀌면 거기서 멈춘다
   const scope=CUR_SCOPE,tid=S.team.id,moved=()=>scope!==CUR_SCOPE||tid!==S.team.id;
   try{await SYNC.pushPending()}catch(e){}
-  for(const svc of S.services.filter(draftUnsent)){if(moved())return unsyncedCount();try{await SYNC.pushDraft(svc)}catch(e){}}   // 서버에 콘티가 있어야 메모도 받는다
+  for(const svc of S.services.filter(draftUnsent)){if(moved())return unsyncedCount();try{await pushChecked(svc)}catch(e){}}   // 서버에 콘티가 있어야 메모도 받는다 · 아직 못 견준 것은 견줘 보고
   for(const svc of S.services.filter(notesUnsent)){if(moved())return unsyncedCount();try{await SYNC.pushNotes(svc)}catch(e){}}   // 못 올린 메모는 그림자에 안 들어가 아래 수에 남는다
   if(!moved()&&isLeader()){try{await SYNC.flushDeletes()}catch(e){}try{await SYNC.pushLibrary()}catch(e){}try{await pushDirtySongs()}catch(e){}}}
  return unsyncedCount()}
@@ -6311,7 +6337,9 @@ function redrawView(h,ok){if(ok&&location.hash===h&&route().name==='view')render
 const NOTES_Q={},WORD_Q={};   // 늦게 끝나는 받기를 기다리지 않고 넘어간 사이 같은 콘티를 또 받지 않게
 function pullNotesOnce(svc){return NOTES_Q[svc.id]||(NOTES_Q[svc.id]=SYNC.pullNotes(svc).finally(()=>{delete NOTES_Q[svc.id]}))}
 // 초안도 — 편집 화면을 그리는 사이 같은 주소를 또 그리면(목록·곡 받기 뒤) 두 번 받아 '더 새로운 초안' 창이 두 번 떴다
-const DRAFT_Q={};function pullDraftOnce(svc){return DRAFT_Q[svc.id]||(DRAFT_Q[svc.id]=SYNC.pullDraft(svc).finally(()=>{delete DRAFT_Q[svc.id]}))}
+// 다시 연결이 같은 콘티를 견주는 중(draftSafeOnce)이면 그것이 끝난 뒤에 견준다 — 엇갈리면 여기서 가져온 뒤 그쪽이 옛 기준으로 다시 붙잡아 한 번 더 물었다
+const DRAFT_Q={};function pullDraftOnce(svc){const s=SAFE_Q[svc.id];
+ return DRAFT_Q[svc.id]||(DRAFT_Q[svc.id]=(s?s.catch(()=>{}).then(()=>SYNC.pullDraft(svc)):SYNC.pullDraft(svc)).finally(()=>{delete DRAFT_Q[svc.id]}))}
 // 말씀(목회자)과 읽음 표시. 바뀌었으면 true
 function pullWordOnce(svc){return WORD_Q[svc.id]||(WORD_Q[svc.id]=(async()=>{try{const wd=await api('/services/'+svc.id+'/word?team='+S.team.id);
   const was=JSON.stringify(svc.word||null),rv0=(S.readRev||{})[svc.id]||0;
@@ -9479,6 +9507,8 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
   if(S.team.id||await probeServer()!==true)srv=null;
   break}}
  clearTimeout(early);NET.server=srv;BOOTING=false;   // 이제부터 다시 묻기(recheckServer)가 돈다
+ // 닫혀 있던 사이 다른 기기에서 더 새 초안을 저장했을 수 있다 — 못 올린 초안은 서버와 견줄 때까지 붙잡는다 (켤 때 건 저장 타이머가 먼저 올리지 않게)
+ if(online())holdUnchecked();
  // 알림을 눌러 새 창으로 열렸으면 주소의 ?team= 이 그 알림의 팀이다 (sw.js). 그 팀으로 바꾸고 주소에서는 뗀다
  const pushTeam=new URLSearchParams(location.search).get('team');
  if(pushTeam){const h=location.hash;try{history.replaceState(null,'',location.pathname+h)}catch(e){}
