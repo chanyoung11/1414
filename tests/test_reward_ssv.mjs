@@ -6,7 +6,9 @@
 // 1) 서명 확인(lib/admob.js)을 구글과 똑같이: 우리 ECDSA P-256 키 한 쌍을 만들고, 로컬 서버가 구글 키 파일 모양
 //    (verifier-keys.json)으로 공개키를 내준다. 콜백은 구글처럼 만든다 — 값은 퍼센트 인코딩해 보내고, 서명은
 //    '디코딩한' 쿼리(signature 앞까지)에 한다 (tink RewardedAdsVerifier · testShouldVerifyWithEncodedUrl).
-//    맞는 것은 통과, 한 글자라도 바꾼 것·날것에 서명한 것·모양이 틀린 것은 거절. 키 캐시(한 번만 받기 · 동시에 와도 한 번 ·
+//    맞는 것은 통과, 한 글자라도 바꾼 것·날것에 서명한 것·모양이 틀린 것은 거절. 값은 서명한 글자에서 읽어, 남의 광고 단위로
+//    받은 진짜 서명 콜백의 '&' 를 %26 으로 감춰 다시 나눈 위조(custom_data·user_id 로 ad_unit·표·transaction_id 끼우기)도 거절.
+//    키 캐시(한 번만 받기 · 동시에 와도 한 번 ·
 //    모르는 key_id 로 쏟아지지 않기 · 시간 제한 · 받기가 실패하면 남은 키로 · 빈 목록이 캐시를 지우지 않기).
 // 2) API 전체를 이 프로세스 안에서: 보상 표 · 광고 단위 목록 · 시각 · 인도자 · 같은 콜백/표 한 번만 · 거절한 콜백도 다시 못 씀 ·
 //    하루 3개·한 달 20개를 동시에 보내도 넘지 않음 · 한도 넘긴 코드 인식은 보상 1개를 쓰고 사용량(10)에 안 잡힘 ·
@@ -93,16 +95,65 @@ const madeUsers = [], madeTeams = [], sentTxns = [];
 try {
   /* ================= 1) 서명 확인 (구글과 같은 방식) ================= */
   _resetKeys();
-  // 특수 글자가 든 custom_data (':' '/' 공백 '&' '=' '+' '%' 한글 · 따옴표) — 구글은 퍼센트 인코딩해 보낸다
-  const tricky = "r1:팀 & 곡=1/2?%+ok*'()!&user_id=evil";
+  // 특수 글자가 든 custom_data (':' '/' 공백 '=' '+' '%' '?' 한글 · 따옴표) — 구글은 퍼센트 인코딩해 보낸다
+  const tricky = "r1:팀 곡=1/2?%+ok*'()!";
   let cb = googleCallback(baseFields({ custom_data: tricky, user_id: 'real-user-1' }));
-  ok(/custom_data=r1%3A%ED%8C%80%20%26%20/.test(cb), '콜백의 custom_data 는 퍼센트 인코딩돼 있다');
+  ok(/custom_data=r1%3A%ED%8C%80%20%EA%B3%A1%3D1/.test(cb), '콜백의 custom_data 는 퍼센트 인코딩돼 있다');
   let v = await verifySsv(cb);
   ok(v.ok === true, '구글처럼 디코딩한 쿼리에 서명한 콜백 → 통과');
-  ok(v.customData === tricky, 'custom_data 를 인자 하나로 그대로 푼다 ' + JSON.stringify(v.customData));
-  ok(v.userId === 'real-user-1', "custom_data 안의 '&user_id=evil' 이 user_id 를 덮지 못한다");
+  ok(v.customData === tricky, "custom_data 를 인자 하나로 그대로 푼다 ('=' 는 첫 것만 나눈다) " + JSON.stringify(v.customData));
+  ok(v.userId === 'real-user-1', 'user_id 도 읽는다');
   ok(v.adUnit === UNIT && v.timestamp > 0 && /^[0-9a-f]{32}$/.test(v.txn), '광고 단위·시각·transaction_id 를 읽는다');
   ok(_keyStats().fetches === 1, '키 파일을 한 번 받았다');
+  // 값은 서명한 글자(디코딩한 쿼리)에서 읽는다 — custom_data 안의 '&이름=' 은 서명한 글자에서 따로 선 인자라 이름이 겹치면 거절
+  v = await verifySsv(googleCallback(baseFields({ custom_data: 'r1:팀 & 곡=1&user_id=evil', user_id: 'real-user-1' })));
+  ok(!v.ok && v.why === 'shape', "custom_data 안의 '&user_id=evil' (서명한 글자에서 user_id 가 두 번) → 거절 (" + v.why + ')');
+  v = await verifySsv(googleCallback(baseFields({ custom_data: `x&ad_unit=${UNIT2}` })));
+  ok(!v.ok && v.why === 'shape', "custom_data 로 ad_unit 을 하나 더 넣으면 → 거절 (" + v.why + ')');
+
+  /* ---- 날것을 다시 나눠 인자를 끼워 넣는 위조 (남의 광고 단위로 받은 진짜 서명 콜백) ----
+     구글의 키는 모든 애드몹 퍼블리셔가 같다. 자기 보상형 광고 단위와 SSV 주소를 가진 사람은 custom_data·user_id 를
+     마음대로 정한 '진짜로 서명된' 콜백을 받는다. 서명은 디코딩한 글자에만 걸려 있으니, 보낼 때 어느 '&' 를 %26 으로
+     감출지를 바꿔도 서명은 그대로다. 날것을 '&' 로 나눠 읽으면: 진짜 ad_unit(남의 것)은 다른 인자 값·쓸모없는 키 안에
+     숨고, custom_data·user_id 에 적어 둔 ad_unit=우리 단위 · custom_data=우리 표 · transaction_id=아무거나 가 진짜 인자가 된다 */
+  const FOREIGN = '7770009999';
+  // 구글이 남의 광고 단위 콜백에 서명한 것 (디코딩한 글자 · 서명). 다시 나눠 보내는 것은 아래에서 손으로 만든다
+  const signedFor = (fields) => {
+    const names = Object.keys(fields).sort();
+    const decoded = names.map((k) => `${k}=${fields[k]}`).join('&');
+    return { decoded, sig: sign('sha256', Buffer.from(decoded, 'utf8'), { key: kp.privateKey, dsaEncoding: 'der' }).toString('base64url') };
+  };
+  const tokLike = rewardToken({ teamId: randomBytes(16).toString('hex'), userId: randomBytes(16).toString('hex'), kind: 'ocr' }).token;
+  // (1) custom_data = 'junk&ad_unit=<우리>&custom_data=<표>' · 앞의 '&' 두 개를 %26 으로 감춰 진짜 ad_unit 을 ad_network 값 속에 숨긴다
+  const forgeA = (tok) => {
+    const s = signedFor(baseFields({ ad_unit: FOREIGN, custom_data: `junk&ad_unit=${UNIT}&custom_data=${tok}` }));
+    const P = s.decoded.split('&');   // ad_network · ad_unit=남 · custom_data=junk · ad_unit=우리 · custom_data=표 · reward_amount …
+    const raw = ['ad_network=' + enc(P.slice(0, 3).join('&').slice('ad_network='.length)), ...P.slice(3)].join('&');
+    if (decodeURIComponent(raw) !== s.decoded) throw new Error('forgeA: 디코딩하면 서명한 글자와 같아야 한다');
+    return { url: `${raw}&signature=${s.sig}&key_id=${KEY_ID}`, honest: `${s.decoded.split('&').map((kv) => { const i = kv.indexOf('='); return kv.slice(0, i + 1) + enc(kv.slice(i + 1)); }).join('&')}&signature=${s.sig}&key_id=${KEY_ID}` };
+  };
+  // (2) user_id = 'u&ad_unit=<우리>&custom_data=<표>&transaction_id=<아무거나>' · 진짜 transaction_id 는 쓸모없는 키
+  //     'transaction_id=<진짜>&user_id' 안에 숨기고, 진짜 ad_unit 은 (1)처럼 ad_network 값 속에
+  const forgeB = (tok, fakeTx) => {
+    const s = signedFor(baseFields({ ad_unit: FOREIGN, custom_data: 'x', user_id: `u&ad_unit=${UNIT}&custom_data=${tok}&transaction_id=${fakeTx}` }));
+    const P = s.decoded.split('&');
+    const iA = P.findIndex((x) => x.startsWith('reward_amount=')), iT = P.findIndex((x) => x.startsWith('transaction_id='));
+    const raw = ['ad_network=' + enc(P.slice(0, iA).join('&').slice('ad_network='.length)), ...P.slice(iA, iT),
+      enc(P[iT] + '&user_id') + '=' + P[iT + 1].slice('user_id='.length), ...P.slice(iT + 2)].join('&');
+    if (decodeURIComponent(raw) !== s.decoded) throw new Error('forgeB: 디코딩하면 서명한 글자와 같아야 한다');
+    return { url: `${raw}&signature=${s.sig}&key_id=${KEY_ID}`, realTx: /transaction_id=([0-9a-f]+)&user_id=/.exec(s.decoded)[1] };
+  };
+  {
+    const fa = forgeA(tokLike);
+    v = await verifySsv(fa.url);
+    ok(!v.ok, '위조 (1): 남의 ad_unit 을 숨기고 custom_data 로 ad_unit·custom_data 를 끼워 넣은 것 → 거절 ' + JSON.stringify({ ok: v.ok, why: v.why, adUnit: v.adUnit }));
+    ok(v.why === 'shape', '위조 (1) 은 서명은 맞아도 인자 이름이 겹쳐 shape (' + v.why + ')');
+    v = await verifySsv(fa.honest);
+    ok(!v.ok && v.why === 'shape', '위조 (1) 의 정직한 모양(구글이 보낸 그대로)도 거절 (' + v.why + ')');
+    const fb = forgeB(tokLike, 'ffff' + randomBytes(8).toString('hex'));
+    v = await verifySsv(fb.url);
+    ok(!v.ok && v.why === 'shape', '위조 (2): user_id 로 ad_unit·custom_data·transaction_id 를 끼우고 진짜 transaction_id 를 쓸모없는 키에 숨긴 것 → 거절 ' + JSON.stringify({ ok: v.ok, why: v.why, adUnit: v.adUnit, txn: v.txn }));
+  }
   v = await verifySsv(googleCallback(baseFields({ custom_data: 'abc' })));
   ok(v.ok && _keyStats().fetches === 1, '두 번째는 캐시로 (다시 안 받는다)');
   // 날것(인코딩된 문자열)에 서명한 것은 구글이 하는 방식이 아니다 → 인코딩된 글자가 있으면 틀린 서명
@@ -229,13 +280,33 @@ try {
   r = await ssv(bad1); ok(r.st === 200 && r.j.ok === false, '목록에 없는 광고 단위 → 거절 (200)');
   r = await ssv(cbFor(await token(), { timestamp: String(Date.now() - 2 * 3600e3) })); ok(r.j.ok === false, '2시간 전 콜백 → 거절');
   r = await ssv(cbFor(await token(), { timestamp: String(Date.now() + 10 * 60e3) })); ok(r.j.ok === false, '10분 앞선 콜백 → 거절');
-  const forged = tok1.replace(/.$/, (c) => (c === 'A' ? 'B' : 'A'));
+  // mac 의 첫 글자를 바꾼다 (마지막 글자는 아래 4비트가 버려지는 자리라 바꿔도 같은 mac 일 수 있다 — 그건 아래에서 따로)
+  const macAt = tok1.lastIndexOf('.') + 1;
+  const forged = tok1.slice(0, macAt) + (tok1[macAt] === 'A' ? 'B' : 'A') + tok1.slice(macAt + 1);
+  ok(!admob.readRewardToken(forged), '위조한 표(mac 틀림)는 풀리지 않는다');
   r = await ssv(cbFor(forged)); ok(r.j.ok === false, '위조한 표(mac 틀림) → 거절');
+  {
+    // 끝 글자를 base64url 값의 맨 아래 비트(버려지는 4비트 중 하나)만 다른 글자로 — 풀면 같은 mac 16바이트
+    const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    const lastB = tok1.slice(0, -1) + B64[B64.indexOf(tok1[tok1.length - 1]) ^ 1];
+    ok(Buffer.from(lastB.slice(macAt), 'base64url').equals(Buffer.from(tok1.slice(macAt), 'base64url')), '(준비) 끝 글자만 바꾼 mac 이 같은 바이트로 풀린다');
+    ok(admob.readRewardToken(tok1) && !admob.readRewardToken(lastB), '끝 글자의 버려지는 비트만 바꾼 표는 받지 않는다 (쓴 글자 그대로만)');
+  }
   r = await ssv(cbFor(`${teamId}:ocr`)); ok(r.j.ok === false, "앱이 적은 '팀id:종류' 같은 값 → 거절");
   const oldTok = rewardToken({ teamId, userId: L.id, kind: 'ocr', now: Date.now() - 31 * 60e3 }).token;
   r = await ssv(cbFor(oldTok)); ok(r.j.ok === false, '만료된 표(30분) → 거절');
   const memTok = rewardToken({ teamId, userId: M.id, kind: 'ocr' }).token;
   r = await ssv(cbFor(memTok)); ok(r.j.ok === false, '인도자가 아닌 사람의 표 → 거절');
+  // 위조 (1)·(2) 에 우리 서버가 준 진짜 표를 넣어도 — 서명은 구글이 한 진짜지만 광고 단위는 남의 것 → 적히지 않는다
+  const nGrants = async () => (await one('select count(*)::int n from ad_reward_grants where team_id=$1', [teamId])).n;
+  const g0 = await nGrants();
+  const fA = forgeA(await token());
+  r = await ssv(fA.url); ok(r.st === 200 && r.j.ok === false, '위조 (1) 을 /ads/ssv 로 → 거절 ' + JSON.stringify(r.j));
+  r = await ssv(fA.honest); ok(r.st === 200 && r.j.ok === false, '위조 (1) 의 정직한 모양 → 거절 ' + JSON.stringify(r.j));
+  const fB = forgeB(await token(), 'ffff' + randomBytes(8).toString('hex'));
+  r = await ssv(fB.url); ok(r.st === 200 && r.j.ok === false, '위조 (2) 을 /ads/ssv 로 → 거절 ' + JSON.stringify(r.j));
+  ok(await nGrants() === g0, '위조 콜백으로는 보상이 하나도 안 적혔다 (' + g0 + ' → ' + (await nGrants()) + ')');
+  ok(!(await one('select 1 from ad_ssv_seen where txn=$1', [fB.realTx])), '위조 (2) 가 숨긴 진짜 transaction_id 도 적히지 않았다 (모양에서 끝남)');
   st = await status(); ok(st.ready === before.ready && st.today === before.today, '거절한 것들은 하나도 안 적혔다 ' + JSON.stringify(st));
   // 거절한 콜백은 transaction_id 를 적어 두어, 나중에 다시 보내도 못 쓴다 (아직 오늘 자리가 남아 있는데도)
   const seenBad = await one('select result from ad_ssv_seen where txn=$1', [new URLSearchParams(bad1).get('transaction_id')]);

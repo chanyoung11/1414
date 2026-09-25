@@ -15,6 +15,8 @@
 #  · 확인을 기다리는 사이 시트를 닫고 다른 창을 열면 그 창을 닫지 않고, 받은 보상은 '받아 둔 1곡으로 인식'으로 남는다 →
 #    누르면 광고 없이 인식
 #  · 확인이 늦으면 '늦어지고 있어요' + [다시 확인] · 오늘 한도 / 이번 달 한도를 나눠 말한다
+#  · 인식이 402 로 막혀(다른 기기가 한도를 다 씀) 시트를 열려는 사이 다른 창을 열었거나 편집기를 떠났으면 그 창·화면을
+#    덮지 않는다 (길게 알리고 상단 바에 [광고 보고 인식]) · 아무것도 안 열었으면 시트가 뜬다
 import os, sys, time, json, socket, subprocess, tempfile, threading, shutil, urllib.request
 from urllib.parse import urlparse, quote
 from playwright.sync_api import sync_playwright
@@ -113,6 +115,13 @@ MOCK = r"""
       }, 100);
     }),
   };
+  // 보상 상태(/api/ads/reward?…)를 __hold ms 붙잡는다 — 시트가 상태를 기다리는 사이에 다른 일을 하는 검사용
+  const realFetch = window.fetch.bind(window);
+  window.__hold = 0; window.__held = 0;
+  window.fetch = async (u, o) => {
+    if (window.__hold && /\/api\/ads\/reward\?/.test(String(u && u.url || u))) { window.__held++; await sleep(window.__hold); }
+    return realFetch(u, o);
+  };
   window.Capacitor = {
     getPlatform: () => 'android', isNativePlatform: () => true, isPluginAvailable: () => false,
     Plugins: {
@@ -133,9 +142,17 @@ def run():
       b = p.chromium.launch(); errs = []
       c = b.new_context(viewport={'width': 1100, 'height': 900}, service_workers='block')
       leaks = []
+      NET = {'stale': False}   # 다른 기기가 한도를 다 쓴 것처럼: 이 기기는 /usage 에서 5/10 을 받는다 (서버는 10/10)
       def handler(route):
         u = urlparse(route.request.url)
         if (u.scheme == 'https' and u.hostname == 'localhost' and u.port is None) or u.hostname in ('lets1414.com', 'www.lets1414.com'):
+          if NET['stale'] and u.path.startswith('/api/teams/') and u.path.endswith('/usage'):
+            try:
+              rr = route.fetch(url=BASE + u.path.lstrip('/') + ('?' + u.query if u.query else '')); j = rr.json(); j['ocr']['used'] = 5
+              return route.fulfill(response=rr, body=json.dumps(j))
+            except Exception:
+              try: return route.abort()
+              except Exception: return
           try: return route.fulfill(response=route.fetch(url=BASE + u.path.lstrip('/') + ('?' + u.query if u.query else '')))
           except Exception:
             try: return route.abort()
@@ -313,6 +330,60 @@ def run():
       pg.evaluate("CONTI.ADS.test=false"); pg.click('#rwClose')
       print('시험 모드(ADS.test) → isTesting ok')
       if pg.evaluate('__ad.init') != {'initializeForTesting': False, 'testingDevices': []}: fail('초기화 값: %s' % pg.evaluate('__ad.init'))
+
+      # ---- 인식이 402 로 막혀 시트를 열려는 사이: 다른 창을 열었거나 편집기를 떠났으면 덮지 않는다 ----
+      # 다른 기기가 한도를 다 써 이 기기는 5/10 으로 안다 → [코드 인식] → [인식] → 서버 402 → 보상 상태를 받고 시트
+      new_song('셋째 곡')
+      pg.evaluate("__ad.mode='reward';window.__hold=0")
+      def stale_ocr():
+        # 앞에서 늦게 도착한 /usage 응답(10)이 낡은 값을 덮을 수 있어 몇 번 다시 받는다
+        for _ in range(4):
+          NET['stale'] = True; refresh(); NET['stale'] = False
+          if pg.evaluate('CONTI.PLANQ.ocr.used') == 5: break
+        else: fail('준비: 낡은 사용량(5)이 아님 %s' % pg.evaluate('CONTI.PLANQ.ocr'))
+        b3 = pg.locator('.chordbar [data-act="ocr"]').last
+        if not b3.count(): fail('준비: 낡은 사용량인데 [코드 인식] 버튼이 없음: %s' % bar())
+        b3.click(); pg.wait_for_selector('#ocrGo', timeout=5000)
+        pg.evaluate("document.querySelector('#toast').textContent=''")
+      OTHER = "CONTI.modal('<div id=\"otherModal\"><b>메모</b><textarea id=\"memoTx\">쓰던 글</textarea></div>')"
+      def settled():
+        # 시트가 떴거나(고치기 전) 안내가 나왔다(고친 뒤) — 어느 쪽이든 끝난 것
+        pg.wait_for_function("!!document.querySelector('#rwd')||document.querySelector('#toast').textContent.includes('이번 달 코드 인식')", timeout=20000)
+        pg.wait_for_timeout(300)
+      def kept(label):
+        st = pg.evaluate("({other:!!document.querySelector('#otherModal'),memo:(document.querySelector('#memoTx')||{}).value,rwd:!!document.querySelector('#rwd'),toast:document.querySelector('#toast').textContent})")
+        if not st['other'] or st['memo'] != '쓰던 글' or st['rwd']: fail('%s: 그 사이 연 창을 광고 시트가 덮음 %s' % (label, st))
+        if '[광고 보고 인식]' not in st['toast']: fail('%s: 시트 대신 길게 알리지 않음 %s' % (label, st))
+        pg.evaluate('CONTI.closeModal()'); pg.wait_for_timeout(400)
+        b4 = pg.locator('.chordbar [data-act="ocr-reward"]').last
+        if not b4.count() or '광고 보고 인식' not in b4.inner_text(): fail('%s: 상단 바에 [광고 보고 인식]이 없음 %s' % (label, bar()))
+
+      # (0) 아무것도 안 열었으면 시트가 뜬다 (고친 뒤에도)
+      stale_ocr(); pg.click('#ocrGo')
+      pg.wait_for_selector('#rwd #rwGo', timeout=20000)
+      if '광고 보고 1곡 인식' not in pg.inner_text('#rwGo'): fail('402 뒤 시트 버튼: %s' % pg.inner_text('#rwGo'))
+      pg.click('#rwClose'); pg.wait_for_timeout(400)
+      print('402 → 다른 창이 없으면 광고 시트 ok')
+      # (1) [인식]을 누르자마자 메모 창을 연다 (402 가 오기 전)
+      stale_ocr()
+      pg.evaluate("document.querySelector('#ocrGo').click();" + OTHER)
+      settled(); kept('402 전에 연 창')
+      print('402 전에 연 메모 창(쓰던 글)은 그대로 · 안내 + 상단 바 [광고 보고 인식] ok')
+      # (2) 402 뒤 보상 상태를 기다리는 사이에 연다
+      stale_ocr()
+      pg.evaluate("window.__hold=2000;window.__held=0;document.querySelector('#ocrGo').click()")
+      pg.wait_for_function("window.__held>0", timeout=20000); pg.evaluate(OTHER)
+      settled(); pg.evaluate("window.__hold=0"); kept('상태를 기다리는 사이 연 창')
+      print('보상 상태를 기다리는 사이 연 창은 그대로 ok')
+      # (3) 상단 바 [광고 보고 인식] → 상태를 기다리는 사이 편집기를 떠난다 → 다른 화면에 시트가 뜨지 않는다
+      pg.evaluate("window.__hold=2000;window.__held=0;document.querySelector('#toast').textContent=''")
+      pg.locator('.chordbar [data-act="ocr-reward"]').last.click()
+      pg.wait_for_function("window.__held>0", timeout=10000); pg.evaluate("CONTI.go('')")
+      settled(); pg.evaluate("window.__hold=0")
+      st = pg.evaluate("({r:CONTI.route().name,rwd:!!document.querySelector('#rwd'),modal:!!document.querySelector('#modal').firstChild,toast:document.querySelector('#toast').textContent})")
+      if st['r'] == 'edit' or st['rwd'] or st['modal'] or '[광고 보고 인식]' not in st['toast']: fail('편집기를 떠난 뒤 시트가 뜨거나 안내가 없음 %s' % st)
+      if pg.evaluate('CONTI.REWARD.busy') or pg.evaluate('__ad.active()'): fail('떠난 뒤 busy·리스너가 남음')
+      print('상태를 기다리는 사이 편집기를 떠나면 다른 화면에 시트가 안 뜸 · 안내 ok')
 
       if errs: fail('JS 오류: %s' % errs[:3])
       c.close()

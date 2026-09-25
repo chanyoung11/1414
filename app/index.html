@@ -7264,6 +7264,16 @@ async function rewardSheet(svc,it,piece){
  let st=null;try{st=await rewardStatusOf(team)}catch(e){}
  if(S.team.id!==team)return;   // 기다리는 사이 팀을 바꿨다
  const n=(it.pieces||[]).length,cap=PLANQ.ocr.cap,pro=PLANS[0];
+ // 상태를 받는 사이(인식이 402 로 막힌 뒤 · 상단 바 버튼을 누른 뒤 — 약한 망이면 15초까지) 사용자가 다른 창(메모·코드 고치기·
+ // 라벨·결제)을 열었거나 이 곡의 편집기를 떠났으면 시트를 띄우지 않는다. modal() 은 떠 있는 창을 통째로 바꿔 써서
+ // 쓰던 글이 날아가고, 다른 화면이면 엉뚱한 곳에 시트가 뜬다. 길게 알리고, 받은 상태로 상단 바를 다시 그려 거기서 다시 열게 둔다
+ if($('#rwd'))return;   // 같은 시트가 벌써 떠 있다 (두 번 누름)
+ const rt=route(),s0=rt.name==='edit'?svcById(rt.a):null,c0=s0&&curItem(s0);
+ if($('#modal').firstChild||!s0||s0.id!==svc.id||!c0||c0.id!==it.id){
+  toast(`이번 달 코드 인식 ${cap}곡을 다 썼어요`+(!st?'':st.ready>0?' · [받아 둔 1곡으로 인식]으로 바로 인식할 수 있어요'
+   :st.left>0?' · [광고 보고 인식]으로 1곡 더 인식할 수 있어요':' · '+rewardCapText(st,true)),6000);
+  if(s0)drawEditorSheet(s0);
+  return}
  modal(`<div class="rwd" id="rwd">
   <b class="rwd-t">이번 달 코드 인식을 다 썼어요</b>
   <p class="hint rwd-p" id="rwP"></p>
