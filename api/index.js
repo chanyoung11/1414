@@ -11,6 +11,7 @@ import { sendPush, pushConfigured, vapidPublicKey, pushEndpointOk } from '../lib
 import { fcmConfigured } from '../lib/fcm.js';
 import { apnsConfigured } from '../lib/apns.js';
 import { rcAuthOk, rcConfigured, planFromEvent } from '../lib/iap.js';
+import { verifySsv, rewardToken, readRewardToken } from '../lib/admob.js';
 import { transcribeSheet, transcribeScore, geminiConfigured, geminiModel, estimateUSD, ocrChordsGemini } from '../lib/gemini.js';
 import { norm as normSong, cho as choSong } from '../lib/song.js';
 import { safeDoc, safeItem } from '../lib/docsafe.js';
@@ -867,6 +868,17 @@ async function aiRefund(teamId, kind, quota) {
   if (!ENFORCE_PLAN || !quota || !quota.charged || !quota.key) return false;
   const key = quota.key;
   const month = aiMonth();
+  // 광고로 낸 곡: 그 광고 보상을 다시 쓸 수 있게 돌려준다. 월 환불 횟수(요금제 몫)는 쓰지 않는다 — 보상 곡을 돌려받느라
+  // 요금제 곡의 환불 자리가 없어지면 안 된다. 대신 보상 하나는 한 번만 돌려준다: 코드가 적은 악보만 골라
+  // 광고 한 번으로 곡을 끝없이 인식하지 못하게 (환불한 뒤 또 적게 나오면 그 곡으로 쓴 것으로 둔다)
+  if (quota.source === 'reward') {
+    const r = await q(`with g as (update ad_reward_grants set used_key=null, used_at=null, refunds=refunds+1,
+                                    expires_at=greatest(expires_at, now() + interval '15 minutes')
+                                  where txn=$5 and team_id=$1 and used_key=$4 and refunds < 1 returning txn)
+                       delete from ai_songs where team_id=$1 and month=$2 and kind=$3 and song_key=$4 and source='reward'
+                         and exists (select 1 from g) returning 1`, [teamId, month, kind, key, quota.rewardTxn]);
+    return r.length > 0;
+  }
   const n = (await one(`select count(*)::int n from credit_refunds where team_id=$1 and month=$2 and kind=$3`, [teamId, month, kind])).n;
   if (n >= REFUND_PER_MONTH) return false;
   const gone = await q('delete from ai_songs where team_id=$1 and month=$2 and kind=$3 and song_key=$4 returning source', [teamId, month, kind, key]);
@@ -884,6 +896,11 @@ async function aiUndo(teamId, kind, quota) {
   const gone = await q('delete from ai_songs where team_id=$1 and month=$2 and kind=$3 and song_key=$4 returning source', [teamId, aiMonth(), kind, quota.key]);
   if (!gone.length) return false;
   if (gone[0].source === 'credit') await q('update credit_balance set omr = omr + 1, updated_at=now() where team_id=$1', [teamId]);
+  // 광고로 낸 곡이면 그 보상을 다시 쓸 수 있게. 자정 직전에 실패했어도 다시 누를 틈(15분)을 준다
+  if (gone[0].source === 'reward' && quota.rewardTxn) {
+    await q(`update ad_reward_grants set used_key=null, used_at=null, expires_at=greatest(expires_at, now() + interval '15 minutes')
+             where txn=$1 and team_id=$2`, [quota.rewardTxn, teamId]);
+  }
   return true;
 }
 
@@ -896,27 +913,52 @@ async function aiSongGuard(teamId, kind, songKey) {
   const t = await one('select plan, plan_until from teams where id=$1', [teamId]);
   const cap = planOf(t)[kind === 'omr' ? 'omrSongs' : 'ocrSongs'];
   const month = aiMonth();
-  const seen = await one('select 1 from ai_songs where team_id=$1 and month=$2 and kind=$3 and song_key=$4', [teamId, month, kind, key]);
-  // 요금제 몫만 센다. 크레딧으로 낸 곡은 한도 사용량이 아니다
-  const used = (await one(`select count(*)::int n from ai_songs where team_id=$1 and month=$2 and kind=$3 and source is distinct from 'credit'`, [teamId, month, kind])).n;
-  if (seen) return { charged: false, key, used, cap };            // 같은 달 같은 곡은 다시 안 센다
+  const seenSql = 'select source from ai_songs where team_id=$1 and month=$2 and kind=$3 and song_key=$4';
+  const seen = await one(seenSql, [teamId, month, kind, key]);
+  // 요금제 몫만 센다. 크레딧·광고 보상으로 낸 곡은 한도 사용량이 아니다
+  const used = (await one(`select count(*)::int n from ai_songs where team_id=$1 and month=$2 and kind=$3 and coalesce(source, '') not in ('credit', 'reward')`, [teamId, month, kind])).n;
+  if (seen) return { charged: false, key, used, cap, source: seen.source || 'plan' };   // 같은 달 같은 곡은 다시 안 센다
   const what = kind === 'omr' ? '채보' : '코드 인식';
   if (cap != null && used >= cap) {
-    // 채보는 크레딧 팩으로 산 횟수가 남아 있으면 거기서 뺀다 (소멸 없음).
-    // 곡을 먼저 적어 둔다 — 같은 곡을 다시 채보하면 또 빠지지 않고(동시에 불러도), 실패하면 돌려준다 (F112)
+    // 한도를 넘긴 뒤에는 무엇으로 낼지(크레딧·광고 보상)를 잡는 것과 곡을 적는 것을 한 문장으로 한다.
+    // 전에는 곡을 먼저 적고 낼 것이 없으면 지웠는데, 그 틈에 같은 곡으로 동시에 온 요청이 '이미 센 곡'을 보고
+    // 아무것도 내지 않고 인식을 받았다 (같은 곡을 2~4번 동시에 보내면 한도가 없는 것과 같았다).
+    // 이제 곡 행은 무엇을 냈을 때만 보인다. 같은 곡이 그 사이 먼저 적혔으면(그쪽이 냈다) 잡은 것을 돌려놓는다
+    // 채보는 크레딧 팩으로 산 횟수가 남아 있으면 거기서 뺀다 (소멸 없음, F112)
     if (kind === 'omr') {
-      const mine = await q(`insert into ai_songs(team_id, month, kind, song_key, source) values($1,$2,$3,$4,'credit')
-                            on conflict do nothing returning 1`, [teamId, month, kind, key]);
-      if (!mine.length) return { charged: false, key, used, cap };
-      const got = await q(`update credit_balance set omr = omr - 1, updated_at=now()
-                           where team_id=$1 and omr > 0 returning omr`, [teamId]);
-      if (got.length) return { charged: true, key, used, cap, credits: got[0].omr };
-      await q('delete from ai_songs where team_id=$1 and month=$2 and kind=$3 and song_key=$4', [teamId, month, kind, key]);
+      const r = await one(`with c as (update credit_balance set omr = omr - 1, updated_at=now() where team_id=$1 and omr > 0 returning omr),
+                                ins as (insert into ai_songs(team_id, month, kind, song_key, source) select $1::uuid, $2::text, $3::text, $4::text, 'credit' from c
+                                        on conflict do nothing returning 1)
+                           select (select omr from c) as omr, exists (select 1 from ins) as ins`, [teamId, month, kind, key]);
+      if (r.omr != null && r.ins) return { charged: true, key, used, cap, credits: r.omr, source: 'credit' };
+      if (r.omr != null) {
+        await q('update credit_balance set omr = omr + 1, updated_at=now() where team_id=$1', [teamId]);
+        return { charged: false, key, used, cap, source: 'credit' };
+      }
     }
+    // 코드 인식은 광고를 보고 받은 1곡이 남아 있으면 그걸 쓴다 (먼저 끝나는 것부터)
+    if (kind === 'ocr') {
+      const r = await one(`with g as (update ad_reward_grants set used_key=$4, used_at=now()
+                                      where txn = (select txn from ad_reward_grants where team_id=$1 and kind=$3 and used_at is null and expires_at > now()
+                                                   order by expires_at, created_at limit 1 for update skip locked)
+                                        and used_at is null
+                                      returning txn),
+                                ins as (insert into ai_songs(team_id, month, kind, song_key, source) select $1::uuid, $2::text, $3::text, $4::text, 'reward' from g
+                                        on conflict do nothing returning 1)
+                           select (select txn from g) as txn, exists (select 1 from ins) as ins`, [teamId, month, kind, key]);
+      if (r.txn && r.ins) return { charged: true, key, used, cap, source: 'reward', rewardTxn: r.txn };
+      if (r.txn) {
+        await q('update ad_reward_grants set used_key=null, used_at=null where txn=$1', [r.txn]);
+        return { charged: false, key, used, cap, source: 'reward' };
+      }
+    }
+    // 낼 것이 없어도, 그 사이 같은 곡을 다른 요청이 내고 적었으면 이번 달 이미 센 곡이다
+    const late = await one(seenSql, [teamId, month, kind, key]);
+    if (late) return { charged: false, key, used, cap, source: late.source || 'plan' };
     throw new HttpError(402, 'ai_limit', `이번 달 ${what} ${cap}곡을 다 썼어요. 다음 달 1일에 다시 채워집니다`);
   }
   const ins = await q('insert into ai_songs(team_id, month, kind, song_key) values($1,$2,$3,$4) on conflict do nothing returning 1', [teamId, month, kind, key]);
-  return { charged: ins.length > 0, key, used: used + 1, cap };
+  return { charged: ins.length > 0, key, used: used + 1, cap, source: 'plan' };
 }
 
 // B.9 플랜 한도. 결제가 아직 없어서 검사는 꺼 둔다 (ENFORCE_PLAN=1 이면 켜진다)
@@ -2796,7 +2838,10 @@ on('POST', '/ocr', async ({ uid, body }) => {
       await aiCount(teamId, 'ocr', (g.usage && (g.usage.input + g.usage.output)) || 0, uid);
       const usd = estimateUSD(g.model, g.usage);
       return { results: g.bands, engine: 'gemini', title: g.title || '', key: g.key || '',
-               quota: { used: refunded ? Math.max(0, quota.used - 1) : quota.used, cap: quota.cap, refunded },
+               // 요금제 몫을 돌려준 때만 사용량이 준다. 크레딧·광고 보상으로 낸 곡을 돌려주면 한도 사용량은 그대로다
+               // (전에는 보상 곡을 돌려받으면 화면에 '1곡 남음'이 떴고, 누르면 곧바로 402 였다)
+               quota: { used: refunded && quota.source === 'plan' ? Math.max(0, quota.used - 1) : quota.used, cap: quota.cap, refunded,
+                        ...(quota.charged && quota.source === 'reward' ? { reward: true } : {}) },
                usage: g.usage, cost: usd, costKRW: Math.round(usd * (+process.env.USD_KRW || 1400) * 10) / 10 };
     }
   }
@@ -2805,7 +2850,7 @@ on('POST', '/ocr', async ({ uid, body }) => {
     try { await aiGuard(teamId, 'ocr', uid, images.length); } catch (e) { await aiUndo(teamId, 'ocr', quota); throw e; }
   }
   const results = await ocrBands(images);
-  return { results, engine: 'vision', quota: { used: quota.used, cap: quota.cap } };
+  return { results, engine: 'vision', quota: { used: quota.used, cap: quota.cap, ...(quota.charged && quota.source === 'reward' ? { reward: true } : {}) } };
 });
 
 /* ---------- 결제 · 프로모션 코드 ---------- */
@@ -3113,25 +3158,150 @@ async function fillDates(teamId, rec, weeks = 13) {
     [teamId, dates, rec.label, rec.time || null, rec.id]);
 }
 
+/* ---------- 보상형 광고: 무료 코드 인식 한도를 다 썼을 때 광고를 보고 1곡 ----------
+   흐름: 앱이 POST /ads/reward/start 로 보상 표(서버가 서명한 일회용 토큰)를 받아 광고의 custom_data 로 넘긴다 →
+   광고를 끝까지 보면 구글이 GET /ads/ssv 를 서명과 함께 부른다 → 서명·광고 단위·시각·표·인도자인지를 보고
+   그날 쓸 1곡을 적는다 → 앱은 GET /ads/reward 로 들어왔는지 보고 평소처럼 /ocr 을 부른다 → aiSongGuard 가 그 1곡을 쓴다.
+   환경변수 ADMOB_REWARD_UNITS(보상형 광고 단위, 쉼표로)가 비어 있으면 모두 꺼져 있다 (표를 안 주고, 콜백은 서명도 안 본다) */
+// 팀마다 하루·한 달에 받을 수 있는 수. 무제한으로 두면 Pro(월 100곡)를 살 까닭이 없어진다
+const REWARD = { kinds: new Set(['ocr']), perDay: 3, perMonth: 20, grace: 30 * 60e3 };
+// 콜백의 timestamp(밀리초)가 이보다 오래됐거나 앞서 있으면 받지 않는다. 표의 수명(30분)보다 길게 — 광고를 오래 본 것까지
+const SSV_MAX_AGE = 60 * 60e3, SSV_SKEW = 5 * 60e3;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// 콘솔에 보이는 'ca-app-pub-…/1234567890' 을 그대로 적어도 된다 — 콜백의 ad_unit 은 뒤의 숫자만 온다
+const rewardUnits = () => new Set(String(process.env.ADMOB_REWARD_UNITS || '').split(',')
+  .map((x) => x.trim().split('/').pop()).filter((x) => /^\d{1,20}$/.test(x)));
+// 한도 검사가 꺼져 있으면(ENFORCE_PLAN) 광고로 받을 것이 없다
+const rewardOn = () => ENFORCE_PLAN && rewardUnits().size > 0;
+// 다음 달 1일 (한국 시간 'YYYY-MM' → 'YYYY-MM-DD')
+const nextMonthStart = (month) => { const [y, m] = month.split('-').map(Number); return m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`; };
+// 이 시각이 속한 한국 날짜의 다음 자정 (ms)
+const kstMidnightAfter = (ms) => { const d = new Date(ms + 9 * 3600e3); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1) - 9 * 3600e3; };
+async function rewardStatus(teamId, kind) {
+  const day = kstDay(), month = aiMonth();
+  const r = await one(`select
+      coalesce((select case when c.day = $3::date then c.n_day else 0 end from ad_reward_counts c where c.team_id=$1 and c.kind=$2 and c.month=$4), 0)::int as today,
+      coalesce((select c.n_month from ad_reward_counts c where c.team_id=$1 and c.kind=$2 and c.month=$4), 0)::int as month,
+      (select count(*) from ad_reward_grants g where g.team_id=$1 and g.kind=$2 and g.used_at is null and g.expires_at > now())::int as ready,
+      (select min(g.expires_at) from ad_reward_grants g where g.team_id=$1 and g.kind=$2 and g.used_at is null and g.expires_at > now()) as ready_until`,
+    [teamId, kind, day, month]);
+  const dayLeft = Math.max(0, REWARD.perDay - r.today), monthLeft = Math.max(0, REWARD.perMonth - r.month);
+  const left = Math.min(dayLeft, monthLeft);
+  // left 가 0 인 까닭을 나눠 알려 준다 — 한 달 한도에 걸렸는데 '오늘 다 썼어요'라고 하면 내일 또 헛걸음한다
+  return { on: rewardOn(), today: r.today, perDay: REWARD.perDay, month: r.month, perMonth: REWARD.perMonth,
+           ready: r.ready, readyUntil: r.ready_until || null, left, why: left > 0 ? '' : (monthLeft <= 0 ? 'month' : 'day'),
+           resetAt: nextMonthStart(month) };
+}
+async function rewardTeam(uid, v) {
+  const teamId = str(v, 64);
+  if (!UUID_RE.test(teamId)) throw bad('팀이 이상해요');   // uuid 가 아니면(없으면) DB 가 500 을 냈다
+  await requireMember(uid, teamId, 'leader');             // 코드 인식은 인도자만 부른다
+  return teamId;
+}
+const rewardKind = (v) => { const k = str(v, 10) || 'ocr'; if (!REWARD.kinds.has(k)) throw bad('종류가 이상해요'); return k; };
+// 앱이 광고를 보여 주기 전(몇 번 남았나)과 본 뒤(구글 확인이 들어왔나)에 부른다
+on('GET', '/ads/reward', async ({ uid, url }) => {
+  if (!uid) throw noAuth();
+  const teamId = await rewardTeam(uid, url.searchParams.get('teamId'));
+  const kind = rewardKind(url.searchParams.get('kind'));
+  return { enforced: ENFORCE_PLAN, ...(await rewardStatus(teamId, kind)) };
+});
+// 광고를 보여 주기 직전에 부른다. 받은 표를 광고의 custom_data 로 넘긴다 (ServerSideVerificationOptions)
+on('POST', '/ads/reward/start', async ({ uid, body }) => {
+  if (!uid) throw noAuth();
+  const teamId = await rewardTeam(uid, body.teamId);
+  const kind = rewardKind(body.kind);
+  const st = await rewardStatus(teamId, kind);
+  if (!st.on) throw new HttpError(409, 'reward_off', '지금은 광고로 받을 수 없어요');
+  // 한도에 걸렸으면 광고를 보여 주지 않는다 — 끝까지 보고도 아무것도 못 받게 되니까
+  if (st.left <= 0) return { ok: false, capped: true, ...st };
+  const t = rewardToken({ teamId, userId: uid, kind });
+  return { ok: true, token: t.token, expiresAt: new Date(t.exp * 1000).toISOString(), ...st };
+});
+// 구글이 부르는 서버 측 확인. 로그인이 없고, 서명과 보상 표로만 믿는다.
+// 결정이 난 요청(받음·거절)은 늘 200 이다: 200 이 아니면 구글이 1초 간격으로 다섯 번까지 다시 보낸다.
+// 키를 못 받았거나 DB 가 잠깐 안 될 때만 5xx — 그때는 다시 보내 주는 게 맞다
+on('GET', '/ads/ssv', async ({ req }) => {
+  const raw = String(req.url || '').split('?').slice(1).join('?');
+  // 콘솔의 'URL 확인' 은 서명 없는 요청을 보낸다 — 그냥 200
+  if (!/(^|&)signature=/.test(raw)) return { ok: true };
+  // 꺼져 있으면 서명도 안 본다 (키 파일을 받으러 밖으로 나가지 않게)
+  if (!rewardOn()) return { ok: false };
+  let v;
+  try { v = await verifySsv(raw); } catch (e) { console.error('ssv keys', e.message); throw new HttpError(503, 'ssv_keys', '잠시 뒤 다시 보내 주세요'); }
+  if (!v.ok) { console.warn('ssv reject', v.why); return { ok: false }; }
+  const txn = v.txn;
+  if (!/^[0-9A-Za-z_-]{1,128}$/.test(txn)) { console.warn('ssv reject txn'); return { ok: false }; }
+  // 여기부터는 구글이 서명한 콜백이다. 그래도 우리 광고 단위·방금 본 광고·우리가 준 표·그 팀 인도자인지 본다
+  //  · 광고 단위: 남의 애드몹 계정 광고의 서명 콜백을 이리로 보내 보상을 받지 못하게
+  //  · 표: 팀·사람을 앱이 적은 값이 아니라 서버가 서명한 표에서 읽는다 (user_id 는 믿지 않는다)
+  const tk = readRewardToken(v.customData);
+  let why = '';
+  if (!rewardUnits().has(v.adUnit)) why = 'unit';
+  else if (!v.timestamp || Date.now() - v.timestamp > SSV_MAX_AGE || v.timestamp - Date.now() > SSV_SKEW) why = 'stale';
+  else if (!tk) why = 'token';
+  else if (tk.expired) why = 'token_expired';
+  else if (!REWARD.kinds.has(tk.kind)) why = 'kind';
+  else {
+    const m = await one(`select m.role, m.active, t.deleted_at from members m join teams t on t.id=m.team_id
+                         where m.user_id=$1 and m.team_id=$2`, [tk.userId, tk.teamId]);
+    if (!m || m.active === false || m.role !== 'leader' || m.deleted_at) why = 'member';
+  }
+  if (why) {
+    // 거절한 콜백도 transaction_id 를 적어 둔다 — 한 번 거절된 것을 나중에(날이 바뀐 뒤 등) 다시 보내 받지 못하게
+    await q('insert into ad_ssv_seen(txn, team_id, result) values($1, $2, $3) on conflict do nothing',
+      [txn, tk ? tk.teamId : null, why]);
+    console.warn('ssv reject', why);
+    return { ok: false };
+  }
+  // 받기: 콜백·표를 처음 보는지 → 하루·한 달 자리를 잡는지 → 보상을 적는지를 한 문장으로.
+  // 자리(ad_reward_counts 한 행)는 on conflict … where 로 올리므로 동시에 와도 한도를 넘지 않는다
+  const now = Date.now();
+  const expires = new Date(Math.max(kstMidnightAfter(now), now + REWARD.grace)).toISOString();
+  const r = await one(`with seen as (
+        insert into ad_ssv_seen(txn, nonce, team_id, result) values($1, $2, $3, 'ok') on conflict do nothing returning txn
+      ), c as (
+        insert into ad_reward_counts(team_id, kind, month, day, n_day, n_month) select $3::uuid, $4::text, $5::text, $6::date, 1, 1 from seen
+        on conflict (team_id, kind, month) do update set
+          n_month = ad_reward_counts.n_month + 1,
+          n_day = case when ad_reward_counts.day = excluded.day then ad_reward_counts.n_day + 1 else 1 end,
+          day = excluded.day, updated_at = now()
+        where ad_reward_counts.n_month < $7 and (ad_reward_counts.day <> excluded.day or ad_reward_counts.n_day < $8)
+        returning 1
+      ), ins as (
+        insert into ad_reward_grants(txn, team_id, user_id, kind, day, ad_unit, nonce, expires_at)
+        select $1::text, $3::uuid, $9::uuid, $4::text, $6::date, $10::text, $2::text, $11::timestamptz from c returning txn
+      )
+      select exists (select 1 from seen) as fresh, exists (select 1 from c) as slot, exists (select 1 from ins) as granted`,
+    [txn, tk.nonce, tk.teamId, tk.kind, aiMonth(), kstDay(), REWARD.perMonth, REWARD.perDay, tk.userId, str(v.adUnit, 32), expires]);
+  if (r.granted) return { ok: true };
+  if (!r.fresh) {
+    // 같은 콜백이 다시 왔다(구글 재전송) — 이미 받은 것이면 그대로 ok. 같은 표를 다른 광고에 다시 쓴 것이면 거절
+    const had = await one('select 1 from ad_reward_grants where txn=$1', [txn]);
+    return { ok: !!had, dup: true };
+  }
+  await q(`update ad_ssv_seen set result='capped' where txn=$1`, [txn]);
+  return { ok: false, capped: true };
+});
+
 // 이번 달 AI 사용량 (상단 바의 크레딧 알약·설정의 플랜 화면에서 쓴다)
 on('GET', '/teams/:id/usage', async ({ uid, params }) => {
   if (!uid) throw noAuth();
-  await requireMember(uid, params.id);
+  const mem = await requireMember(uid, params.id);
   const t = await one('select plan, plan_until from teams where id=$1', [params.id]);
   const pl = planOf(t);
   const month = aiMonth();
-  // 크레딧으로 낸 곡은 월 한도 사용량이 아니다 (크레딧은 creditOmr 로 따로 보인다)
-  const rows = await q(`select kind, count(*)::int n from ai_songs where team_id=$1 and month=$2 and source is distinct from 'credit' group by kind`, [params.id, month]);
+  // 크레딧·광고 보상으로 낸 곡은 월 한도 사용량이 아니다 (크레딧은 creditOmr 로 따로 보인다)
+  const rows = await q(`select kind, count(*)::int n from ai_songs where team_id=$1 and month=$2 and coalesce(source, '') not in ('credit', 'reward') group by kind`, [params.id, month]);
   const used = (k) => (rows.find((r) => r.kind === k) || {}).n || 0;
-  // 다음 달 1일 (한국 시간)
-  const [y, m] = month.split('-').map(Number);
-  const next = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
   const cb = await one('select omr from credit_balance where team_id=$1', [params.id]);
-  return { plan: planName(t), month, resetAt: next, enforced: ENFORCE_PLAN,
+  // 광고 보상 상태는 켜져 있을 때 인도자에게만 (코드 인식 상단 바가 버튼·안내를 이것으로 고른다)
+  const reward = rewardOn() && mem.role === 'leader' ? await rewardStatus(params.id, 'ocr') : undefined;
+  return { plan: planName(t), month, resetAt: nextMonthStart(month), enforced: ENFORCE_PLAN,
            creditOmr: (cb && cb.omr) || 0,
            ocr: { used: used('ocr'), cap: pl.ocrSongs },
            omr: { used: used('omr'), cap: pl.omrSongs },
-           credits: pl.credits };
+           credits: pl.credits, ...(reward ? { reward } : {}) };
 });
 
 on('GET', '/teams/:id/dates', async ({ uid, url, params }) => {
@@ -3609,6 +3779,8 @@ on('GET', '/cron/dates', async ({ req }) => {
   const purged = (await q(`delete from notifications where updated_at < now() - interval '90 days' returning id`)).length;
   await q('delete from revoked_sessions where exp < now()').catch((e) => console.error('revoked purge', e.message));   // 만료된 토큰은 어차피 안 통한다
   await q(`delete from cron_marks where day < current_date - 7`).catch((e) => console.error('cron marks purge', e.message));
+  // 서명 맞은 SSV 콜백 기록. 시각 확인이 1시간이라 60일이면 넉넉하다 (지워도 다시 쓸 수 없다)
+  await q(`delete from ad_ssv_seen where created_at < now() - interval '60 days'`).catch((e) => console.error('ssv seen purge', e.message));
   // §5.4 녹음 보관: 만료 7일 전 인도자에게 알림함 항목, 지난 것은 파일까지 삭제
   let warned = 0, dropped = 0, failed = 0;
   failed += await eachLimit(await q(`select id, team_id, service_id, label, date::text as date, expires_at from rehearsals

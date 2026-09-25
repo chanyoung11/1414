@@ -1165,12 +1165,27 @@ body.lnopen .main>main,body.lnopen .main>.hd{padding-right:min(476px,100%)}
  .titlein.big{font-size:16px}
  .shell{padding:10px 10px 10px}.main>main{padding-bottom:calc(var(--bnavh,100px) + 16px)}.hd{padding:0 14px}.metrics{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.metric{padding:10px 12px}.metric .v{font-size:19px}
 }
+/* 보상형 광고 시트 (코드 인식 1곡 — 무료 한도를 다 썼을 때, 앱에서만) */
+.rwd{padding:4px 4px 8px}
+.rwd-t{font-size:19px;display:block}
+.rwd-p{margin:6px 0 0;line-height:1.55;font-size:14px}
+.rwd-n{margin-top:6px;font-size:12px}
+.rwd-song{display:flex;align-items:center;gap:12px;background:var(--secondary);border-radius:var(--r-xl);padding:12px 14px;margin-top:16px}
+.rwd-song .ic{width:22px;height:22px;flex:0 0 auto}
+.rwd-song .grow{display:flex;flex-direction:column;min-width:0}
+.rwd-song .hint{font-size:12px}
+/* 진행·결과는 시트 안에 글로 남긴다 (1.8초 토스트만으로는 놓치고, 스크린리더가 못 읽는다) */
+.rwd-msg{margin-top:14px;padding:10px 12px;border-radius:var(--r-lg);background:var(--secondary);font-size:13.5px;line-height:1.5}
+.rwd-msg:empty{display:none}
+.rwd-msg.bad{color:var(--destructive);background:var(--destructive-soft)}
+.rwd-btns{display:flex;flex-direction:column;gap:8px;margin-top:16px}
+.rwd .btn.big{height:52px;font-size:15px;font-weight:700;border-radius:var(--r-xl);width:100%}
 </style>
 </head>
 <body>
 <div id="app"></div>
 <div id="modal"></div>
-<div id="toast" class="toast"></div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
 <script>
 (function(){
 'use strict';
@@ -1190,7 +1205,8 @@ const THEME={get(){try{return localStorage.getItem('conti-theme')||'system'}catc
 window.addEventListener('pagehide',()=>{if(typeof SYNC!=='undefined'){SYNC.flush();writeJournal();if(SAVE_DUE)flushSave()}});document.addEventListener('visibilitychange',()=>{if(document.hidden&&typeof SYNC!=='undefined'){SYNC.flush();writeJournal();if(SAVE_DUE)flushSave()}});
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{if(THEME.get()==='system')THEME.apply()});
 const fmtToday=()=>{const d=new Date();return `${d.getMonth()+1}월 ${d.getDate()}일 ${'일월화수목금토'[d.getDay()]}요일`};
-let toastT;function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),1800)}
+// ms: 긴 안내(광고 보상 결과 등)는 1.8초 안에 다 못 읽는다 — 부르는 쪽이 늘려 준다
+let toastT;function toast(msg,ms){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),ms||1800)}
 /* ---------- icons ---------- */
 const ICONS={
  setlist:'<path d="M3 6h9M3 12h9M3 18h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M15.5 17V6.5l5-1.2V16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="17" r="2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="18.5" cy="16" r="2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
@@ -5906,11 +5922,11 @@ function scoreMenuModal(svc,it){const sc=it.score;
 // 그때 월 한도에서 한 곡이 차감된다. 한도 검사가 꺼져 있으면 예전처럼 모두 자동이다
 // 이번 달 AI 사용량. 상단 바의 크레딧 알약과 설정 → 플랜에서 쓴다.
 // cap 이 null 이면 한도 검사가 꺼져 있다는 뜻이라 '무제한'으로 보여 준다
-const PLANQ={plan:'free',ocr:{used:0,cap:null},omr:{used:0,cap:null},resetAt:'',enforced:false,credits:false};
+const PLANQ={plan:'free',ocr:{used:0,cap:null},omr:{used:0,cap:null},resetAt:'',enforced:false,credits:false,reward:null};
 async function pullUsage(){
  if(!online()||!NET.user||!S.team.id)return;
  try{const u=await api('/teams/'+S.team.id+'/usage');
-  Object.assign(PLANQ,u);
+  Object.assign(PLANQ,u);PLANQ.reward=u.reward||null;   // 광고 보상 (켜져 있을 때 인도자에게만 온다)
   if(!u.enforced){PLANQ.ocr={...u.ocr,cap:null};PLANQ.omr={...u.omr,cap:null}}   // 검사가 꺼져 있으면 숫자를 보이지 않는다
  }catch(e){}}
 // 인식 뒤 서버가 알려준 사용량으로 바로 갱신한다 (다시 부르지 않기 위해)
@@ -5922,6 +5938,7 @@ const askBeforeOcr=()=>(PLANQ.ocr.cap!=null)&&PREFS.confirmOcr!==false;
 function askOcr(svc,it,piece){
  if(!askBeforeOcr())return recognizeChords(svc,it,piece);
  const q=PLANQ.ocr,left=Math.max(0,q.cap-q.used),again=(piece.chords||[]).length>0;
+ if(left<=0&&rewardAvailable())return recognizeChords(svc,it,piece);
  const n=(it.pieces||[]).length;
  modal(`<b style="font-size:17px">코드 인식</b>
   <p class="hint" style="margin:6px 0 10px;line-height:1.55">${again
@@ -5970,11 +5987,18 @@ async function recognizeChords(svc,it,piece){if(!online()||!isLeader()||!piece)r
   if(piece.sheetKey&&!(it.key||'').trim()){it.key=piece.sheetKey;filled.push('키 '+piece.sheetKey)}
   // 무료 플랜이면 이번 달 남은 곡 수를 함께 알려 준다
   if(L.here)takeQuota('ocr',r.quota);   // 팀을 바꿨으면 지금 팀의 남은 횟수가 아니다
-  const qa=r.quota&&r.quota.cap!=null?` · 이번 달 ${r.quota.used}/${r.quota.cap}곡`:'';
+  // 광고 보상으로 낸 곡: 받아 둔 수를 바로 맞춘다 (돌려받았으면 그대로). 상단 바 버튼이 따라 바뀐다
+  const rw=!!(r.quota&&r.quota.reward);
+  if(L.here&&rw&&PLANQ.reward&&!r.quota.refunded)PLANQ.reward.ready=Math.max(0,(PLANQ.reward.ready||0)-1);
+  const qa=(r.quota&&r.quota.cap!=null?` · 이번 달 ${r.quota.used}/${r.quota.cap}곡`:'')
+   +(rw?(r.quota.refunded?' · 코드를 거의 못 찾아 광고 보상 1곡을 돌려드렸어요':' · 광고 보상 1곡으로 인식'):'');
   toast((uniq.length?`코드 ${uniq.length}개 인식 · 악보 키 ${piece.sheetKey||'?'}`:'코드를 찾지 못했어요')+(filled.length?` · ${filled.join('·')} 채움`:'')+qa);
  }catch(e){
   // 한도 초과는 실패가 아니라 안내다. 다시 누를 수 있게 상태를 되돌린다
-  if(e.code==='ai_limit'){piece.ocr='';piece.ocrErr='';toast(e.message)}
+  if(e.code==='ai_limit'){piece.ocr='';piece.ocrErr='';
+   // 앱에서 광고 보상을 쓸 수 있으면 안내 대신 광고 시트 (다른 기기가 한도를 다 쓴 것일 수 있어 사용량도 맞춘다)
+   if(L.here&&rewardAvailable()){PLANQ.ocr.used=Math.max(PLANQ.ocr.used,PLANQ.ocr.cap);setTimeout(()=>rewardSheet(svc,it,piece),0)}
+   else toast(e.message)}
   else{piece.ocr=e.code==='no_ocr'?'none':'error';piece.ocrErr=e.message||'';if(piece.ocr==='error')toast('코드 인식 실패: '+piece.ocrErr)}}
  await L.done();
  if(!L.here){toast(AI_ELSEWHERE);return}
@@ -6089,6 +6113,7 @@ function sheetHTML(item,W,ctx){
    // 상단 바 — 키 블록 · 상태 줄 · 동작 블록 (시안 1414_악보상단바_크레딧)
    const st=p.ocr==='pending'?'run':(p.ocr==='error'?'bad':(nCh?'done':(p.sheetKey?'keyonly':'none')));
    const q=PLANQ.ocr, unl=q.cap==null, left=unl?null:Math.max(0,q.cap-q.used), out=!unl&&left<=0;
+   const rw=out&&rewardAvailable()?PLANQ.reward:null, rwGo=!!rw&&(rw.ready>0||rw.left>0);   // 광고 보상 (앱 · 한도를 다 썼을 때만)
    const keyBlk=(nCh||p.sheetKey||st==='none')?`<button class="btn sm" data-act="sheet-key" data-id="${p.id}">악보 키 ${esc(p.sheetKey||'?')}${(p.sheetKey&&!p.keyConfirmed)?' <span class="muted">(추정)</span>':''}</button><span class="hint">→ 연주 키 ${esc(item.key||'?')}</span>${(nCh||p.sheetKey)?`<span class="pill">${off>0?'+':''}${off}</span><button class="icon sm ghost" data-act="chord-off" data-id="${p.id}" data-d="-1" title="반음 내림">${ic('down')}</button><button class="icon sm ghost" data-act="chord-off" data-id="${p.id}" data-d="1" title="반음 올림">${ic('up')}</button>`:''}`:'';
    const STATUS={
     none:['','코드 <b>아직 인식 안 함</b> · 인식하면 연주 키 코드를 빨간색으로 병기해요'],
@@ -6105,10 +6130,12 @@ function sheetHTML(item,W,ctx){
    const omrBtn=(NET.omr&&p.ocr!=='pending')?`<button class="btn sm ghost" data-act="omr" data-id="${p.id}" title="코드·가사·구성을 읽어 곡 정보에 채움">${ic('music')}채보${oq.cap!=null?` <span class="cost">${oleft}/${oq.cap}</span>`:''}</button>`:'';
    let act='';
    if(p.ocr==='pending')act=`${pill}<span class="hint">인식 중…</span>`;
-   else if(st==='bad')act=`${pill}<button class="btn sm pri" data-act="ocr" data-id="${p.id}">다시 시도${cost}</button><button class="btn sm ghost" data-act="sheet-key" data-id="${p.id}">키만 직접 설정</button>${omrBtn}`;
+   else if(st==='bad')act=`${pill}<button class="btn sm pri" data-act="${rwGo?'ocr-reward':'ocr'}" data-id="${p.id}">다시 시도${rwGo?'':cost}</button><button class="btn sm ghost" data-act="sheet-key" data-id="${p.id}">키만 직접 설정</button>${omrBtn}`;
    else if(nCh)act=`${pill}<button class="btn sm" data-act="ocr" data-id="${p.id}">${ic('marker')}다시 인식${cost}</button>${omrBtn}`;
+   else if(rwGo)act=`${pill}<button class="btn sm pri" data-act="ocr-reward" data-id="${p.id}">${rw.ready>0?ic('marker')+'받아 둔 1곡으로 인식':ic('play')+'광고 보고 인식'}</button>${omrBtn}`;
    else act=`${pill}<button class="btn sm pri" data-act="ocr" data-id="${p.id}" ${out?'disabled':''}>${ic('marker')}코드 인식${cost}</button>${omrBtn}`;
-   const note=out?`<div class="cb-note bad">이번 달 코드 인식 ${q.cap}곡을 다 썼어요 · ${esc(PLANQ.resetAt||'다음 달 1일')}에 다시 채워져요 · 키는 위에서 직접 고를 수 있어요</div>`:'';
+   const rwNote=!rw?'':rw.ready>0?` · 광고로 받은 1곡이 남아 있어요 (${rewardUntil(rw)})`:rw.left>0?` · 광고를 보면 오늘 ${rw.left}곡 더 인식할 수 있어요`:' · '+rewardCapText(rw,true);
+   const note=out?`<div class="cb-note bad">이번 달 코드 인식 ${q.cap}곡을 다 썼어요 · ${esc(PLANQ.resetAt||'다음 달 1일')}에 다시 채워져요${esc(rwNote)} · 키는 위에서 직접 고를 수 있어요</div>`:'';
    html+=`<div class="chordbar">${keyBlk}<div class="cb-status"><span class="cb-dot ${STATUS[0]}"></span><span>${STATUS[1]}</span></div><div class="cb-act">${act}</div>${note}</div>`;
    if(item.score&&pi===0)html+=`<div class="chordbar slim"><button class="btn sm" data-act="score-open" title="재구성한 악보 열기">${ic('music')}악보 ${item.score.measures.length}마디</button><button class="btn sm ghost" data-act="score-make" data-id="${p.id}">${ic('pen')}악보 다시 만들기</button></div>`;
    else if(NET.omr&&p.ocr!=='pending')html+=`<div class="chordbar slim"><button class="btn sm ghost" data-act="score-make" data-id="${p.id}" title="오선·음표·코드·가사를 새로 그린 악보로 만듭니다">${ic('pen')}악보 만들기</button></div>`;
@@ -7093,9 +7120,16 @@ function appLinkRoute(u){
 /* ---------- 광고 (무료 플랜만) ---------- */
 // 애드몹 앱·광고 단위 id. 애드몹에서 만든 값으로 바꾼다.
 // 비워 두면 광고를 아예 시도하지 않는다 (지금이 그 상태)
+// reward: 보상형 광고 단위 id (무료 코드 인식 한도를 다 쓴 뒤 광고 보고 1곡). 비어 있으면 광고 보고 인식 버튼·안내가 아예 없다.
+//   애드몹에서 보상형 광고 단위를 만들고, 그 단위의 '서버 측 확인' URL 에 https://lets1414.com/api/ads/ssv 를 넣고,
+//   서버 환경변수 ADMOB_REWARD_UNITS 에 같은 단위 id 를 적은 뒤에 채운다 (서버가 모르는 단위의 보상은 거절한다)
+// test: true 면 구글 시험 광고를 부른다 (진짜 노출·클릭이 생기지 않는다 — 개발 중 진짜 광고를 여러 번 보면 무효 트래픽 경고를 받는다).
+//   구글 시험 광고 단위는 우리 서버로 확인(SSV)을 보내지 않아 보상 확인까지는 안 된다. 끝까지 보려면 test 는 false 로 두고
+//   testingDevices 에 개발 기기 id(앱 로그의 'test device' 줄)를 넣는다 → 진짜 단위로 시험 광고가 나오고 서버 확인도 온다
 const ADS={
- ios:{banner:'ca-app-pub-5011605715320185/7209052890'},
- android:{banner:'ca-app-pub-5011605715320185/9271100292'},
+ ios:{banner:'ca-app-pub-5011605715320185/7209052890',reward:''},
+ android:{banner:'ca-app-pub-5011605715320185/9271100292',reward:''},
+ test:false,testingDevices:[],
 };
 // 웹 광고(애드센스). 승인 뒤 아래 두 값을 채우면 무료 플랜 화면 아래에 뜬다.
 // 비어 있으면 아무것도 하지 않는다
@@ -7159,6 +7193,10 @@ async function adsTracking(A){
 function adsShow(){return adsWant(true)}
 function adsHide(){return adsWant(false)}
 function adsWant(on){ADSTATE.want=on;ADSTATE.q=(ADSTATE.q||Promise.resolve()).then(adsApply,adsApply);return ADSTATE.q}
+// 추적 허용 → 초기화 → 동의. 배너와 보상형 광고가 같이 쓴다 (한 번만). 시험 기기가 있으면 그 기기에는 시험 광고
+async function adsInit(A){if(ADSTATE.ready)return;await adsTracking(A);
+ const dev=(ADS.testingDevices||[]).filter(Boolean);await A.initialize({initializeForTesting:dev.length>0,testingDevices:dev});
+ await adsConsent(A);ADSTATE.ready=true}
 async function adsApply(){
  const A=CapPlug().AdMob;if(!A)return;
  const want=()=>ADSTATE.want&&adsAllowed();
@@ -7167,7 +7205,7 @@ async function adsApply(){
   ADSTATE.on=false;document.body.classList.remove('hasad');return}
  const plat=(window.Capacitor.getPlatform&&window.Capacitor.getPlatform())||'android';
  try{
-  if(!ADSTATE.ready){await adsTracking(A);await A.initialize({initializeForTesting:false});await adsConsent(A);ADSTATE.ready=true}
+  await adsInit(A);
   if(ADSTATE.on||!want())return;   // 준비하는 사이 무대·팝업이 열렸으면 띄우지 않는다
   // 배너가 실제 높이를 가질 때만 본문을 밀어 올린다. 광고가 안 오면(승인 전·무필)
   // 배너 뷰는 투명한 채로 떠 있어서, 그때 자리를 비우면 바만 공중에 뜬다
@@ -7178,7 +7216,7 @@ async function adsApply(){
    A.addListener('bannerAdLoaded',()=>document.body.classList.add('hasad'));
    A.addListener('bannerAdFailedToLoad',()=>document.body.classList.remove('hasad'))}
   // 크기는 고정 배너(320×50). 적응형은 안드로이드에서 화면 절반을 차지하는 시안이 와서 하단바가 한가운데로 밀렸다
-  await A.showBanner({adId:ADS[plat].banner,adSize:window.innerWidth>=728?'LEADERBOARD':'BANNER',position:'BOTTOM_CENTER',margin:0,isTesting:false});
+  await A.showBanner({adId:ADS[plat].banner,adSize:window.innerWidth>=728?'LEADERBOARD':'BANNER',position:'BOTTOM_CENTER',margin:0,isTesting:!!ADS.test});
   ADSTATE.on=true;   // 띄우는 사이 내리라는 말이 왔으면 줄 선 다음 차례가 내린다
  }catch(e){console.warn('ads',e)}
 }
@@ -7197,6 +7235,155 @@ function adsSync(){
 async function keepAwake(on){
  if(!NATIVE)return;const K=CapPlug().KeepAwake;if(!K)return;
  try{on?await K.keepAwake():await K.allowSleep()}catch(e){}}
+
+/* ---------- 보상형 광고: 무료 코드 인식 한도를 다 썼을 때 광고를 보고 1곡 ---------- */
+// 보상은 앱이 아니라 서버가 준다. 앱은 서버에서 보상 표(서명한 일회용 토큰)를 받아 광고의 custom_data 로 넘기고,
+// 광고를 끝까지 보면 구글이 서버(/api/ads/ssv)를 서명과 함께 부른다 → 서버가 그날 쓸 1곡을 적는다.
+// 앱은 그게 들어왔는지만 확인하고 평소처럼 인식을 부른다 → 서버가 그 1곡을 쓴다.
+// 켜지는 조건: 이 플랫폼의 보상형 광고 단위(ADS.<플랫폼>.reward)가 있고 · 서버도 켜져 있고(/usage 의 reward.on) ·
+// 한도 검사가 켜진 무료 플랜 · 인도자 · 앱. 하나라도 아니면 버튼·안내가 아예 없다 (웹은 그대로)
+// poll: 광고를 닫은 뒤 서버 확인을 기다리는 간격·횟수 · lim: 불러오기·보여 주기 시작·보는 중 시간 제한 (검사에서 줄인다)
+const REWARD={busy:false,poll:{ms:1500,n:10},lim:{loadMs:20000,showMs:15000,watchMs:10*60000}};
+const rewardUnit=()=>{if(!NATIVE)return '';const plat=(window.Capacitor&&window.Capacitor.getPlatform&&window.Capacitor.getPlatform())||'';return (ADS[plat]||{}).reward||''};
+const rewardAvailable=()=>!!rewardUnit()&&!!CapPlug().AdMob&&online()&&isLeader()&&!!NET.user&&!!S.team.id
+ &&PLANQ.ocr.cap!=null&&(PLANQ.plan||'free')==='free'&&!!(PLANQ.reward&&PLANQ.reward.on);
+async function rewardStatusOf(team){const st=await api('/ads/reward?teamId='+encodeURIComponent(team)+'&kind=ocr',{timeout:15000});if(S.team.id===team)PLANQ.reward=st;return st}
+// 받아 둔 보상을 언제까지 쓰나 (그날 자정 · 자정 무렵에 받았으면 30분 더)
+function rewardUntil(st){const d=st&&st.readyUntil?new Date(st.readyUntil):null;if(!d||isNaN(d))return '오늘 자정까지';
+ return d.getHours()===0&&d.getMinutes()===0?'오늘 자정까지':`${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}까지`}
+// 광고로 더 못 받는 까닭 — 하루 한도와 한 달 한도를 나눠 말한다 ('오늘 다 썼어요'를 믿고 내일 다시 오지 않게)
+function rewardCapText(st,short){
+ if(st.why==='month')return short?`이번 달 광고 인식 ${st.perMonth}곡도 다 썼어요`:`이번 달 광고 인식 ${st.perMonth}곡을 다 썼어요 · ${st.resetAt||'다음 달 1일'}에 다시 채워져요`;
+ return short?`오늘 광고 인식 ${st.perDay}곡도 다 썼어요 (내일 다시)`:`오늘 광고 인식 ${st.perDay}곡을 다 썼어요 · 내일 다시 볼 수 있어요`}
+// 한도를 다 쓴 곡에서 부른다 (상단 바의 '광고 보고 인식' · 인식이 402 로 막혔을 때)
+async function rewardSheet(svc,it,piece){
+ if(!rewardAvailable()){toast(`이번 달 코드 인식 ${PLANQ.ocr.cap}곡을 다 썼어요`);return}
+ // 앞 흐름이 닫힌 시트 뒤에서 아직 돈다 (보상 확인 중). 광고를 겹쳐 띄우지 않는다
+ if(REWARD.busy){toast('광고 보상을 확인하고 있어요. 잠시만 기다려 주세요',3000);return}
+ const team=S.team.id,tok=aiTok();
+ let st=null;try{st=await rewardStatusOf(team)}catch(e){}
+ if(S.team.id!==team)return;   // 기다리는 사이 팀을 바꿨다
+ const n=(it.pieces||[]).length,cap=PLANQ.ocr.cap,pro=PLANS[0];
+ modal(`<div class="rwd" id="rwd">
+  <b class="rwd-t">이번 달 코드 인식을 다 썼어요</b>
+  <p class="hint rwd-p" id="rwP"></p>
+  <div class="mono hint rwd-n" id="rwN"></div>
+  <div class="rwd-song">${ic('music')}<span class="grow"><b>${esc(it.title||'(제목 없음)')}</b><span class="hint">악보 ${n}장 · 인식하면 연주 키 ${esc(it.key||'?')}로 병기</span></span></div>
+  <div class="rwd-msg" id="rwMsg" role="status" aria-live="polite"></div>
+  <div class="rwd-btns">
+   <button class="btn pri big" id="rwGo"></button>
+   <button class="btn big" id="rwPro">Pro · 월 ${esc(pro.won)}원 <span class="hint" style="font-weight:500">· ${esc((pro.lines.find(x=>/코드 인식/.test(x))||'').replace('코드 인식 ',''))} · 광고 없음</span></button>
+   <button class="btn ghost" id="rwClose">다음에 할게요</button>
+  </div></div>`,{sheet:true});
+ const box=$('#rwd');
+ // 이 시트가 아직 떠 있나 — 기다리는 사이 사용자가 닫고 다른 창(결제·메모)을 열었으면 그 창을 건드리지 않는다
+ const mine=()=>box.isConnected&&$('#rwd')===box;
+ const say=(msg,bad)=>{if(!mine())return;const m=$('#rwMsg');m.textContent=msg||'';m.classList.toggle('bad',!!bad)};
+ const btn=(html,a,on=true)=>{if(!mine())return;const g=$('#rwGo');g.innerHTML=html;g.dataset.a=a||'';g.disabled=!on};
+ const busy=on=>{if(!mine())return;box.setAttribute('aria-busy',on?'true':'false');$('#rwPro').disabled=on};
+ // 서버 상태로 본문·숫자·버튼을 고른다
+ const view=s=>{if(!mine())return;
+  $('#rwN').textContent=s?`광고 인식 오늘 ${s.today}/${s.perDay} · 이번 달 ${s.month}/${s.perMonth}`:'';
+  $('#rwP').textContent=!s?'서버에 연결하지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.'
+   :s.ready>0?`무료 플랜 월 ${cap}곡을 모두 썼어요. 광고로 받아 둔 1곡이 있어요 (${rewardUntil(s)}).`
+   :s.left>0?`무료 플랜 월 ${cap}곡을 모두 썼어요. 짧은 광고를 보면 이 곡 하나를 바로 인식해 드려요.`
+   :`무료 플랜 월 ${cap}곡을 모두 썼어요. ${rewardCapText(s)}.`;
+  if(!s)btn('다시 시도','retry');
+  else if(s.ready>0)btn(ic('marker')+'받아 둔 1곡으로 인식','use');
+  else if(s.left>0)btn(ic('play')+'광고 보고 1곡 인식','watch');
+  else btn(s.why==='month'?'이번 달 광고 인식을 다 썼어요':'오늘 광고 인식을 다 썼어요','',false)};
+ view(st);
+ // 열리면 첫 버튼으로 (키보드·스크린리더가 시트 안에서 시작하게)
+ requestAnimationFrame(()=>{if(!mine())return;const g=$('#rwGo');(g.disabled?$('#rwClose'):g).focus()});
+ // 결과를 알린다: 시트가 떠 있으면 시트 안에, 닫혔으면 토스트로 (길게)
+ const tell=(msg,bad)=>{if(mine())say(msg,bad);else toast(msg,4500)};
+ const land=()=>S.team.id===team&&CUR_SCOPE===tok.scope;   // 시작한 팀·기기 자리 그대로인가
+ box.addEventListener('click',async e=>{
+  if(e.target.closest('#rwClose')){if(mine())closeModal();return}
+  if(e.target.closest('#rwPro')){if(REWARD.busy)return;closeModal();upgradeModal();return}
+  const g=e.target.closest('#rwGo');if(!g||g.disabled||REWARD.busy)return;
+  const a=g.dataset.a;
+  if(a==='use'){closeModal();recognizeChords(svc,it,piece);return}
+  if(a==='retry'||a==='check'){btn('확인하는 중…','',false);say('');let s=null;try{s=await rewardStatusOf(team)}catch(e){}
+   view(s);if(a==='check'&&s&&!s.ready)say('아직 보상이 확인되지 않았어요. 조금 뒤 다시 확인해 주세요');return}
+  if(a!=='watch')return;
+  say('');busy(true);
+  const r=await rewardWatch(team,ph=>{
+   if(ph==='start'){btn('광고 불러오는 중…','',false);say('광고를 불러오고 있어요')}
+   else if(ph==='showing'){btn('광고 보는 중…','',false);say('')}
+   else if(ph==='confirming'){btn('보상 확인 중…','',false);say('광고를 끝까지 봤어요. 보상을 확인하고 있어요 (몇 초 걸려요)')}});
+  busy(false);
+  if(r.ok){
+   // 시트가 그대로이고 같은 팀이면 바로 인식한다. 사용자가 닫았으면(다른 일을 하는 중) 받아만 두고 알린다
+   if(mine()&&land()){closeModal();toast('광고 보상 1곡을 받았어요 · 코드를 인식해요',3000);recognizeChords(svc,it,piece);return}
+   toast(land()?'광고 보상 1곡을 받았어요 · [받아 둔 1곡으로 인식]을 누르면 바로 인식돼요':'광고 보상 1곡을 원래 팀에 받아 뒀어요 (오늘 자정까지)',5000);
+   if(land()&&route().name==='edit'){const s2=svcById(route().a);if(s2)drawEditorSheet(s2)}
+   return}
+  if(r.why==='capped'){view(r.st);tell(rewardCapText(r.st),true);return}
+  if(r.why==='noreward'){btn(ic('play')+'다시 광고 보기','watch');tell('광고를 끝까지 봐야 1곡을 받을 수 있어요');return}
+  // 확인이 끝내 안 왔고 그 사이 한도가 찼다(다른 기기가 먼저 받음) → 기다려도 안 온다. 까닭을 말한다
+  if(r.why==='late'&&r.st&&r.st.left<=0&&!r.st.ready){view(r.st);tell('보상이 확인되지 않았어요 · '+rewardCapText(r.st),true);return}
+  if(r.why==='late'){btn('다시 확인','check');
+   // 시트가 닫혔으면 보이지 않는 [다시 확인] 대신, 상단 바 버튼으로 다시 열면 확인된다고 알린다 (광고를 또 볼 필요 없다)
+   if(mine())say(`보상 확인이 늦어지고 있어요. 확인되면 이 곡을 바로 인식할 수 있어요 — 조금 뒤 [다시 확인]을 눌러 주세요 (받은 보상은 ${rewardUntil(PLANQ.reward)} 쓸 수 있어요)`);
+   else toast('보상 확인이 늦어지고 있어요 · 조금 뒤 코드 인식 버튼을 다시 누르면 받은 보상을 먼저 확인해요',5000);
+   return}
+  if(r.why==='off'){btn('지금은 광고로 받을 수 없어요','',false);tell('지금은 광고로 받을 수 없어요',true);return}
+  if(r.why==='server'){btn('다시 시도','retry');tell('서버에 연결하지 못했어요. 잠시 뒤 다시 해 주세요',true);return}
+  btn(ic('play')+'다시 시도','watch');
+  tell(r.why==='failload'?'지금은 광고를 불러올 수 없어요. 잠시 뒤 다시 해 주세요':'광고를 보여 주지 못했어요. 잠시 뒤 다시 해 주세요',true);
+ });
+}
+// 보상 표 받기 → 광고 불러오기 → 보여 주기 → (보상 받고 닫힘) → 서버 확인까지. 어느 길로 끝나든 돌아온다:
+//  {ok:true} · {ok:false, why: capped|off|server|failload|failshow|timeout|noreward|late}
+// 안드로이드 플러그인은 닫거나 보여 주기에 실패해도 showRewardVideoAd 가 끝나지 않는다 → 이벤트(닫힘·실패)와 시간 제한으로 끝낸다.
+// 리스너·타이머·busy 는 finally 에서 늘 정리한다 (전에는 실패하면 '광고 불러오는 중…'에 멈추고 앱을 다시 켤 때까지 버튼이 죽었다)
+async function rewardWatch(team,phase){
+ const A=CapPlug().AdMob;if(!A)return {ok:false,why:'failload'};
+ REWARD.busy=true;const hs=[],timers=[];
+ const wait=(ms,v)=>new Promise(r=>timers.push(setTimeout(()=>r(v),ms)));
+ const until=(f,ms)=>new Promise(r=>{const t0=Date.now();const t=setInterval(()=>{if(f()){clearInterval(t);r(true)}else if(Date.now()-t0>ms){clearInterval(t);r(false)}},100);timers.push(t)});
+ try{
+  phase('start');
+  let s;try{s=await api('/ads/reward/start',{method:'POST',body:{teamId:team,kind:'ocr'},timeout:15000})}
+  catch(e){return {ok:false,why:e.code==='reward_off'?'off':'server'}}
+  if(!s.ok){if(S.team.id===team)PLANQ.reward=s;return {ok:false,why:'capped',st:s}}
+  // 배너와 같은 줄에서 초기화한다 (추적 허용·초기화·동의는 한 번만)
+  try{await (ADSTATE.q=(ADSTATE.q||Promise.resolve()).then(()=>adsInit(A),()=>adsInit(A)))}catch(e){console.warn('reward init',e)}
+  if(!ADSTATE.ready)return {ok:false,why:'failload'};
+  let earned=false,showed=false,fin;const done=new Promise(r=>{fin=r});
+  const on=async(ev,fn)=>{try{hs.push(await A.addListener(ev,fn))}catch(e){}};
+  await on('onRewardedVideoAdReward',()=>{earned=true});
+  await on('onRewardedVideoAdShowed',()=>{showed=true;phase('showing')});
+  await on('onRewardedVideoAdDismissed',()=>fin('dismissed'));
+  await on('onRewardedVideoAdFailedToShow',()=>fin('failshow'));
+  await on('onRewardedVideoAdFailedToLoad',()=>fin('failload'));
+  // 표는 custom_data 로만 넘긴다 (user_id 는 보내지 않는다 — 서버는 표의 사람을 믿는다). 시험 모드면 구글 시험 광고
+  const loaded=await Promise.race([
+   A.prepareRewardVideoAd({adId:rewardUnit(),isTesting:!!ADS.test,ssv:{customData:s.token}}).then(()=>'ok',()=>'failload'),
+   done,wait(REWARD.lim.loadMs,'failload')]);
+  if(loaded!=='ok')return {ok:false,why:loaded==='dismissed'?'noreward':loaded};
+  // 보상을 받으면 끝나는 promise. 실패로 끝나면(iOS) 실패로 본다
+  A.showRewardVideoAd().then(()=>{earned=true},()=>fin('failshow'));
+  let how=await Promise.race([done,until(()=>showed,REWARD.lim.showMs)]);
+  if(how===false)how='failshow';                                   // 보여 주기가 시작되지 않았다
+  if(how===true)how=await Promise.race([done,wait(REWARD.lim.watchMs,'timeout')]);
+  if(how==='dismissed'&&!earned)await wait(400);                   // 보상 이벤트가 닫힘 바로 뒤에 오는 기기도 있다
+  if(!earned)return {ok:false,why:how==='dismissed'?'noreward':how};
+  // 구글이 서버를 부르기까지 보통 몇 초 걸린다. 보상이 늘었는지 본다
+  phase('confirming');
+  let last=null;
+  for(let i=0;i<REWARD.poll.n;i++){
+   await wait(REWARD.poll.ms);
+   try{const st=last=await rewardStatusOf(team);if(st.ready>s.ready||(st.ready>0&&st.month>s.month))return {ok:true,st}}catch(e){}
+  }
+  return {ok:false,why:'late',st:last};
+ }finally{
+  REWARD.busy=false;
+  timers.forEach(t=>{clearTimeout(t);clearInterval(t)});
+  hs.forEach(h=>{try{h&&h.remove&&h.remove()}catch(e){}});
+ }
+}
 
 /* ---------- 메트로놈 · 건반 (연습 화면 도구) ---------- */
 // 소리는 Web Audio 로 직접 만든다. 음원 파일이 없어 앱 용량이 늘지 않고,
@@ -8877,6 +9064,7 @@ document.addEventListener('click',async e=>{
     touch(sv);save();syncLib(it);await preload(sv);toast(`${parts.length}곡으로 나눴어요`);render()}break}
   case 'del-piece':{const s=svcById(r.a);const it=curItem(s);if(!confirm('조각을 삭제할까요? 마커와 메모도 지워집니다.'))break;const p=it.pieces.find(x=>x.id===el.dataset.id);const mids=new Set(p.markers.map(m=>m.id));it.notes=it.notes.filter(n=>!mids.has(n.marker));it.pieces=it.pieces.filter(x=>x.id!==p.id);touch(s);save();syncLib(it);render();break}
   case 'add-yt':{const s=svcById(r.a);const it=curItem(s);const u=$('#ytUrl').value.trim();if(!ytId(u)){toast('유튜브 링크가 아니에요');break}it.media.push({id:uid(),type:'youtube',url:u,name:'',start:ytStart(u)||0,end:0,notes:[],sessions:((SEL[s.id]||{}).mdTarget||[]).slice()});touch(s);save();syncLib(it);render();break}
+  case 'ocr-reward':{const s=svcById(r.a);const it=curItem(s);const p=it&&it.pieces.find(x=>x.id===el.dataset.id);if(!p)break;if(!online()){toast('서버에 연결돼 있을 때만 인식할 수 있어요');break}rewardSheet(s,it,p);break}
   case 'ocr':{const s=svcById(r.a);const it=curItem(s);const p=it&&it.pieces.find(x=>x.id===el.dataset.id);if(!p)break;if(!online()){toast('서버에 연결돼 있을 때만 인식할 수 있어요');break}askOcr(s,it,p);break}
   case 'omr':{const s=svcById(r.a);const it=curItem(s);const p=it&&it.pieces.find(x=>x.id===el.dataset.id);if(!p)break;if(!online()){toast('서버에 연결돼 있을 때만 채보할 수 있어요');break}transcribePiece(s,it,p);break}
   case 'score-make':{const s=svcById(r.a);const it=curItem(s);const p=it&&it.pieces.find(x=>x.id===el.dataset.id);if(!p)break;if(!online()){toast('서버에 연결돼 있을 때만 악보를 만들 수 있어요');break}rebuildScore(s,it,p);break}
@@ -8980,7 +9168,7 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
  if(!online()){REPROBE.n=0;scheduleReprobe()}   // 켜는 동안 건너뛴 다시 묻기가 간격만 늘려 놨다 — 5초부터 다시
  setInterval(()=>{if(NET.server===null&&!document.hidden)recheckServer()},20000);
  probeOmr();startNotiPoll();nativeSetup();
- window.CONTI={ADS,WEBADS,AD_HOSTS,setZoom,P,pl:()=>PL,STG,stageOpen,stageExit,adsAllowed,webAdsAllowed,MET,PIANO,metOpen,metStart,metStop,metSet,pianoOpen,HOME,PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go,PLANQ,planCls,ytOriginParam,ytEmbedSrc,YT};
+ window.CONTI={REWARD,rewardAvailable,rewardSheet,pullUsage,ADSTATE,modal,closeModal,ADS,WEBADS,AD_HOSTS,setZoom,P,pl:()=>PL,STG,stageOpen,stageExit,adsAllowed,webAdsAllowed,MET,PIANO,metOpen,metStart,metStop,metSet,pianoOpen,HOME,PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go,PLANQ,planCls,ytOriginParam,ytEmbedSrc,YT};
 })();
 })();
 </script>

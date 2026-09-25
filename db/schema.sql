@@ -627,3 +627,46 @@ create table if not exists cron_marks (
   done_at    timestamptz,
   primary key (job, day, team_id)
 );
+
+-- 보상형 광고로 받은 코드 인식 1곡. 구글이 서버 측 확인(SSV, /api/ads/ssv)으로 부를 때만 생긴다 (앱이 만들 수 없다).
+-- 무료 한도를 다 쓴 뒤 코드 인식이 오면 아직 안 쓴 것 중 먼저 끝나는 것 하나를 쓴다 (ai_songs.source='reward').
+-- 그날(한국 날짜) 자정까지만 쓴다 — 쌓아 두었다가 한꺼번에 쓰지 못하게. 자정 무렵에 받은 것은 30분 더 (광고가 끝나고
+-- 확인이 오기까지 몇 초 걸려, 23:59 에 본 광고가 날짜를 넘기면 쓰지도 못하고 사라졌다)
+create table if not exists ad_reward_grants (
+  txn        text primary key,                 -- 구글 transaction_id (같은 보상을 두 번 보내도 한 번만)
+  team_id    uuid not null references teams(id) on delete cascade,
+  user_id    uuid references users(id) on delete set null,
+  kind       text not null default 'ocr',
+  day        date not null,                    -- 받은 날 (한국 날짜)
+  ad_unit    text,
+  nonce      text unique,                      -- 보상 표의 일회용 값 — 표 하나로는 보상 하나
+  expires_at timestamptz not null,
+  used_key   text,                             -- 쓴 곡(item) id
+  used_at    timestamptz,
+  refunds    int not null default 0,           -- 인식이 잘 안 돼 돌려준 횟수 (보상 하나에 한 번까지)
+  created_at timestamptz not null default now()
+);
+create index if not exists ad_reward_grants_ready on ad_reward_grants (team_id, kind, expires_at) where used_at is null;
+
+-- 팀마다 이번 달·오늘 받은 보상 수. 한 행을 한 문장(on conflict … where)으로 올려서, 콜백이 동시에 와도
+-- 하루·한 달 한도를 넘지 않는다 (세고 나서 넣으면 동시에 온 것이 모두 '아직 2개'를 보고 넘었다)
+create table if not exists ad_reward_counts (
+  team_id    uuid not null references teams(id) on delete cascade,
+  kind       text not null,
+  month      text not null,                    -- 'YYYY-MM' (한국 시간)
+  day        date not null,                    -- n_day 를 센 날 (한국 날짜). 날이 바뀌면 n_day 는 1부터
+  n_day      int not null default 0,
+  n_month    int not null default 0,
+  updated_at timestamptz not null default now(),
+  primary key (team_id, kind, month)
+);
+
+-- 서명이 맞은 SSV 콜백의 transaction_id 는 거절한 것까지 모두 적는다 — 한도·만료로 거절된 콜백을 나중에
+-- 다시 보내 보상을 만들지 못하게. nonce 도 여기서 한 번만 (보상 표를 다른 광고에 다시 쓰지 못하게)
+create table if not exists ad_ssv_seen (
+  txn        text primary key,
+  nonce      text unique,
+  team_id    uuid,
+  result     text not null,                    -- ok | capped | unit | stale | token | token_expired | kind | member
+  created_at timestamptz not null default now()
+);
