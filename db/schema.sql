@@ -565,6 +565,9 @@ create table if not exists identities (
 create index if not exists identities_user_idx on identities(user_id);
 -- 같은 제공자를 한 계정에 두 번 붙이지 않는다
 create unique index if not exists identities_one_per_provider on identities(user_id, provider);
+-- 애플만: 로그인 때 받은 authorization code 를 바꾼 refresh token (AES-GCM, AUTH_SECRET 에서 뽑은 키 · lib/apple.js).
+-- 계정 삭제·애플 연결 해제 때 애플에 되돌린다 (App Store 5.1.1(v)). code 를 안 보내는 옛 앱으로 붙인 줄은 비어 있다
+alter table identities add column if not exists refresh_enc text;
 
 -- 계정 삭제(§7)가 '누가 했는지'만 가리키는 칸에 막히지 않게: 사람이 지워지면 그 칸만 비운다.
 -- 결제 담당·초대 링크 만든 사람·관리 기록·곡·공유 코드가 on delete 없이 users 를 가리켜서

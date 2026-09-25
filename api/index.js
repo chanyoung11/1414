@@ -5,6 +5,7 @@ import { q, one, tx } from '../lib/db.js';
 import { sessionClaims, sessionTokens, sessionCookie, clearSessionCookie, randomToken, isApp, appSessionToken } from '../lib/session.js';
 import { hashPasswordAsync, verifyPasswordAsync, USERNAME_RE, PASSWORD_MIN } from '../lib/password.js';
 import { verifyIdToken, audiencesOf, socialConfigured } from '../lib/social.js';
+import { appleRevokeConfigured, exchangeAppleCode, sealAppleRefresh, openAppleRefresh, revokeAppleToken } from '../lib/apple.js';
 import { putBlob, delBlobs, readUrls, presignPut, headBlob, blobExists, BlobDownError, sweepBlobs } from '../lib/blob.js';
 import { ocrBands, visionConfigured } from '../lib/vision.js';
 import { sendPush, pushConfigured, vapidPublicKey, pushEndpointOk } from '../lib/push.js';
@@ -310,6 +311,37 @@ async function freeUsername(seed) {
   }
   throw bad('아이디를 만들지 못했어요');
 }
+// ---- 애플 토큰 되돌리기 (App Store 심사 지침 5.1.1(v)) — lib/apple.js ----
+// 애플로 가입한 계정을 지우면 애플에 토큰을 되돌려야 한다. ID 토큰만으로는 못 해서, 애플 로그인(가입·로그인·연결·본인 다시 확인)이
+// authorization code 를 같이 보내면 refresh token 으로 바꿔 암호화해 두고(identities.refresh_enc), 계정 삭제·애플 연결 해제 때 되돌린다.
+// 로그인할 때마다 새것으로 바꿔 둔다 — 사용자가 아이폰 설정에서 끊었다 다시 허락했으면 옛 토큰을 되돌려도 새 허락은 남는다.
+// code 를 안 보내는 옛 앱·키가 없는 서버는 그냥 넘어가고, 애플이 늦거나 실패해도 로그인·삭제는 막지 않는다 (시간 제한 · 로그만)
+// 웹(Services ID)은 로그인 때 쓴 redirect_uri 를 같이 보내야 애플이 받는다. 우리 콜백 주소 모양만 넘긴다
+const APPLE_REDIRECT_RE = /^(https:\/\/[a-z0-9.-]+(:\d{1,5})?|http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?)\/api\/auth\/apple\/callback$/i;
+async function keepAppleRefresh(provider, uid, claim, src) {
+  const code = provider === 'apple' ? str(src && src.code, 2000) : '';
+  if (!code || !appleRevokeConfigured()) return;
+  try {
+    // client_id 는 code 가 나온 곳 = 같은 로그인의 ID 토큰 aud (웹 Services ID · 앱 번들 id — 이미 허용 목록으로 검증했다)
+    const web = !!process.env.APPLE_SERVICE_ID && claim.aud === process.env.APPLE_SERVICE_ID;
+    const ru = str(src.redirectUri, 300);
+    const r = await exchangeAppleCode({ code, clientId: claim.aud, sub: claim.sub, redirectUri: web && APPLE_REDIRECT_RE.test(ru) ? ru : undefined });
+    if (!r.ok) { console.error('apple token: refresh token 을 받지 못함 —', r.error); return; }
+    await q(`update identities set refresh_enc=$1 where provider='apple' and subject=$2 and user_id=$3`,
+      [await sealAppleRefresh(r.refreshToken, claim.aud, claim.sub), claim.sub, uid]);
+  } catch (e) { console.error('apple token', e && e.message); }
+}
+// rows: [{subject, refresh_enc}] — 지운(또는 지울) 애플 연결. 되는 만큼 되돌리고 실패는 적어 둔다 (토큰은 적지 않는다)
+async function revokeApple(rows, why) {
+  await Promise.all((rows || []).filter((r) => r && r.refresh_enc).map(async (r) => {
+    try {
+      const t = await openAppleRefresh(r.refresh_enc, r.subject);
+      if (!t) { console.error(`apple revoke(${why}): 적어 둔 토큰을 열지 못함 — AUTH_SECRET 이 바뀌었나`); return; }
+      const out = await revokeAppleToken({ token: t.token, clientId: t.clientId });
+      if (!out.ok) console.error(`apple revoke(${why}): 실패 —`, out.error);
+    } catch (e) { console.error(`apple revoke(${why})`, e && e.message); }
+  }));
+}
 // 로그인 화면이 어떤 소셜 버튼을 띄울지 알아야 한다 (공개)
 // 애플 웹 로그인이 돌아오는 자리. 팝업 방식이면 애플이 이 주소로 form_post 를 보내고,
 // 우리는 그 값을 연 창(앱 화면)으로 넘겨 준다. 등록된 Return URL 이라 형식만 맞으면 된다
@@ -354,12 +386,14 @@ on('POST', '/auth/social', async ({ req, uid, body }) => {
         await q('insert into identities(provider, subject, user_id, email) values($1,$2,$3,$4)', [provider, claim.sub, uid, claim.email]);
       } catch (e) { throw new HttpError(409, 'taken', `이 계정에는 이미 ${SOCIAL[provider]} 계정이 연결돼 있어요`); }
     }
+    await keepAppleRefresh(provider, uid, claim, body);
     return { data: withAppToken(req, await meView(uid), uid), headers: { 'Set-Cookie': sessionCookie(req, uid) } };
   }
 
   // 로그인 상태가 아니면 찾거나 새로 만든다
   if (found) {
     await q('update users set last_login_at=now() where id=$1', [found.user_id]);
+    await keepAppleRefresh(provider, found.user_id, claim, body);
     return { data: withAppToken(req, await meView(found.user_id), found.user_id), headers: { 'Set-Cookie': sessionCookie(req, found.user_id) } };
   }
   // 가입: 약관 동의 시각을 남긴다 (아이디/비밀번호 가입과 같은 기준).
@@ -374,6 +408,7 @@ on('POST', '/auth/social', async ({ req, uid, body }) => {
   const u = await one(`insert into users(username, password_hash, display_name, last_login_at, agreed_at, agreed_ver)
                        values($1,'',$2,now(),$3,$4) returning id`, [username, name, seen ? agreedAt : null, seen ? LEGAL_VERSION : null]);
   await q('insert into identities(provider, subject, user_id, email) values($1,$2,$3,$4)', [provider, claim.sub, u.id, claim.email]);
+  await keepAppleRefresh(provider, u.id, claim, body);
   return { data: withAppToken(req, await meView(u.id), u.id), headers: { 'Set-Cookie': sessionCookie(req, u.id) } };
 });
 // 내 계정에 붙은 소셜 계정 목록 / 떼기
@@ -392,7 +427,9 @@ on('DELETE', '/auth/social/:provider', async ({ uid, params, body }) => {
   if (!(u && u.password_hash) && rows.length <= 1) throw bad('이 방법 말고는 로그인할 길이 없어요. 먼저 비밀번호를 정해 주세요');
   // 떼는 것도 본인 확인 — 구글로만 드나들고 비밀번호는 잊은 사람은 세션만 가진 사람이 구글을 떼면 못 들어온다
   await recheckPassword(uid, u && u.password_hash, body && body.password, null, body);
-  await q('delete from identities where user_id=$1 and provider=$2', [uid, params.provider]);
+  const gone = await q('delete from identities where user_id=$1 and provider=$2 returning subject, refresh_enc', [uid, params.provider]);
+  // 애플을 떼면 애플에도 되돌린다 (5.1.1(v) — 사용자가 연결을 끊으면 앱도 끊는다)
+  if (params.provider === 'apple') await revokeApple(gone, 'unlink');
   return { ok: true };
 });
 
@@ -443,6 +480,8 @@ async function recheckSocial(uid, ra) {
   if (!(claim.iat > nowSec() - REAUTH_FRESH_S)) throw new HttpError(401, 'bad_token', `${SOCIAL[provider]}로 한 번 더 로그인해 주세요 (확인한 지 오래됐어요)`);
   if (!await one('select 1 from identities where provider=$1 and subject=$2 and user_id=$3', [provider, claim.sub, uid]))
     throw new HttpError(401, 'bad_token', `이 계정에 연결된 ${SOCIAL[provider]} 계정이 아니에요`);
+  // 애플로 다시 확인했으면 그 code 로 토큰을 새로 받아 둔다 — 옛 앱으로 가입해 토큰이 없던 계정도 새 앱으로 지우면 되돌릴 수 있다
+  await keepAppleRefresh(provider, uid, claim, ra);
 }
 
 // 계정 삭제 (§7): 아이디·비밀번호로 두 번 확인. 인도자로 남아 있는 팀이 있으면 먼저 넘기게 한다
@@ -466,6 +505,8 @@ on('POST', '/auth/delete', async ({ req, uid, body }) => {
   // 메모와 혼자 쓰던 팀만 먼저 지워지고 계정은 남았다. 운영 DB(Neon HTTP)는 문장 묶음을 한 번에 보내므로
   // 문장마다 스스로 대상을 고른다 (앞 문장의 결과를 JS 로 받아 다음을 정하지 않는다)
   const P = [uid];
+  // 되돌릴 애플 토큰은 계정과 함께 지워지므로(on delete cascade) 같은 트랜잭션 안에서 읽어 두고, 삭제가 끝난 뒤에 애플에 보낸다
+  const appleSel = [`select subject, refresh_enc from identities where user_id=$1 and provider='apple' and refresh_enc is not null`, P];
   // 나만 있는 팀 (내가 만들었는데 아무도 없는 팀 포함) → 팀째로 지운다
   const solo = `select t.id from teams t where (t.created_by=$1 or exists (select 1 from members m where m.team_id=t.id and m.user_id=$1))
                   and not exists (select 1 from members m where m.team_id=t.id and m.user_id<>$1)`;
@@ -492,6 +533,7 @@ on('POST', '/auth/delete', async ({ req, uid, body }) => {
         and exists (select 1 from members m where m.team_id=t.id and m.user_id=$1 and m.role='leader')
         and exists (select 1 from members m where m.team_id=t.id and m.user_id<>$1)
         and not exists (select 1 from members m where m.team_id=t.id and m.user_id<>$1 and m.active)`, P],
+    appleSel,
     [`delete from notes where author_id=$1`, P],
     [`delete from blobs where team_id in (${solo}) returning url`, P],
     [`delete from teams where id in (${solo})`, P],
@@ -505,6 +547,8 @@ on('POST', '/auth/delete', async ({ req, uid, body }) => {
   for (const m of myTeams) {
     try { await clearFromLineups(m.team_id, uid); } catch (e) { console.error('clear lineup', e.message); }
   }
+  // 애플 토큰도 계정이 실제로 지워진 뒤에 (막힌 삭제는 계정이 남아 애플 로그인을 계속 쓴다). 애플이 늦거나 죽어도 삭제는 이미 끝났다
+  await revokeApple(out[steps.indexOf(appleSel)], 'delete');
   // 파일은 계정이 실제로 지워진 뒤에 (되돌려진 삭제가 파일만 지우지 않게)
   await delBlobs(out[steps.length - 3].map((r) => r.url));
   return { data: { ok: true }, headers: { 'Set-Cookie': clearSessionCookie(req) } };

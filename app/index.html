@@ -3985,6 +3985,12 @@ function loadScript(src){
 const A_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.05 12.94c-.02-2.3 1.88-3.4 1.96-3.45-1.07-1.56-2.73-1.78-3.32-1.8-1.41-.14-2.76.83-3.48.83-.72 0-1.83-.81-3.01-.79-1.55.02-2.98.9-3.78 2.28-1.61 2.8-.41 6.94 1.16 9.21.77 1.11 1.68 2.36 2.88 2.31 1.16-.05 1.6-.75 3-.75s1.79.75 3.01.72c1.24-.02 2.03-1.13 2.79-2.25.88-1.29 1.24-2.54 1.26-2.6-.03-.01-2.42-.93-2.44-3.69M14.9 5.5c.64-.77 1.07-1.85.95-2.92-.92.04-2.03.61-2.69 1.38-.59.68-1.11 1.77-.97 2.82 1.02.08 2.07-.52 2.71-1.28"/></svg>';
 const G_SVG = '<svg viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.7 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.8 6.1C12.3 13.2 17.6 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-2.8-.4-4H24v7.6h12.7c-.3 2.1-1.6 5.3-4.7 7.4l7.2 5.6c4.3-4 6.9-9.9 6.9-16.6z"/><path fill="#FBBC05" d="M10.4 28.7c-.5-1.5-.8-3-.8-4.7s.3-3.2.8-4.7l-7.8-6.1C1 16.3 0 20 0 24s1 7.7 2.6 10.8l7.8-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.2-5.6c-2 1.4-4.6 2.3-8.7 2.3-6.4 0-11.7-3.7-13.6-9.8l-7.8 6.1C6.5 42.6 14.6 48 24 48z"/></svg>';
 
+// 애플 authorization code — 서버가 refresh token 으로 바꿔 두었다가 계정 삭제·애플 연결 해제 때 애플에 되돌린다 (App Store 5.1.1(v)).
+// 웹은 로그인 때 쓴 redirect_uri 도 같이 보낸다 (애플이 교환할 때 같은 값을 요구한다). 없으면 보내지 않는다 (서버는 로그인만)
+const appleRedirect=()=>location.origin+'/api/auth/apple/callback';
+function appleExtra(code,web){if(!code||typeof code!=='string')return {};return web?{code,redirectUri:appleRedirect()}:{code}}
+// 앱 플러그인(Capgo SocialLogin)의 애플 결과에서 code: useProperTokenExchange 면 authorizationCode, 옛 방식이면 accessToken.token 이 code 다
+const appleCodeOf=res=>res&&(res.authorizationCode||(res.accessToken&&res.accessToken.token))||'';
 async function mountSocial(){
   const box=$('#socialBox');
   if(!box)return;
@@ -4004,12 +4010,12 @@ async function mountSocial(){
         await loadScript('https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/ko_KR/appleid.auth.js');
         if(!window.AppleID)throw new Error('애플 로그인을 불러오지 못했어요');
         AppleID.auth.init({clientId:cfg.apple, scope:'name email',
-          redirectURI:location.origin+'/api/auth/apple/callback', usePopup:true});
+          redirectURI:appleRedirect(), usePopup:true});
         const r=await AppleID.auth.signIn();
         const tok=r&&r.authorization&&r.authorization.id_token;
         // 이름은 첫 로그인 때만 온다
         const nm=r&&r.user&&r.user.name?[r.user.name.lastName,r.user.name.firstName].filter(Boolean).join(''):'';
-        await socialLogin('apple', tok, nm);
+        await socialLogin('apple', tok, nm, undefined, appleExtra(r&&r.authorization&&r.authorization.code, true));
       }catch(e){
         if(e&&(e.error==='popup_closed_by_user'||e.error==='user_cancelled_authorize'))return;
         err.textContent=(e&&(e.message||e.error))||'애플 로그인을 시작하지 못했어요';
@@ -4078,28 +4084,32 @@ function drawLinks(){
   box.innerHTML = rows.join('') + (!LINK.hasPassword&&LINK.linked.length<=1
     ? `<div class="hint" style="margin-top:8px">지금은 이 방법으로만 들어올 수 있어요. 해제하려면 먼저 아래에서 비밀번호를 정해 주세요.</div>` : '');
 }
-// 로그인할 때와 같은 흐름으로 그 제공자의 ID 토큰을 받아 온다 (계정 연결 · 본인 다시 확인)
-async function providerToken(pv){
+// 로그인할 때와 같은 흐름으로 그 제공자의 ID 토큰을 받아 온다 (계정 연결 · 본인 다시 확인).
+// {idToken} — 애플은 code(웹은 redirectUri 도)를 같이: 연결하면 서버가 토큰을 받아 두고, 다시 확인이면 새것으로 바꿔 둔다
+// (옛 앱으로 가입해 토큰이 없던 계정도 계정을 지울 때 애플에 되돌릴 수 있게)
+async function providerAuth(pv){
   const cfg=await socialConfig();
   if(NATIVE){
     const SL=CapPlug().SocialLogin;
     if(!SL)throw new Error('이 버전에서는 할 수 없어요. 앱을 업데이트해 주세요');
     const ios=/iphone|ipad|ipod/i.test(navigator.userAgent||'');
     const opt={ google:{ webClientId:cfg.google||undefined, iOSClientId:cfg.googleIos||undefined } };
-    if(ios&&cfg.appleBundle)opt.apple={ clientId:cfg.appleBundle };
+    if(ios&&cfg.appleBundle)opt.apple={ clientId:cfg.appleBundle, useProperTokenExchange:true };
     await SL.initialize(opt);
     // 구글은 늘 화면을 띄워 새로 로그인한다 (forcePrompt). 없으면 아이폰에서 전에 로그인한 적이 있을 때 구글 화면 없이
     // 저장된 로그인을 되살려 그때 받은 토큰(만료 10분 전까지 안 바꿔 50분쯤 된 것)을 줘서 서버가 '확인한 지 오래됐어요'로
     // 막았다 — 구글로만 가입한 사람이 계정 삭제·복구 코드·비밀번호·애플 연결을 못 했다. 이 기기에 남은 다른 사람의
     // 구글 계정이 고를 틈 없이 붙거나 확인에 쓰이지도 않는다. 안드로이드 기본 화면은 원래 늘 뜬다
     const r=await SL.login({provider:pv, options:pv==='google'?{forcePrompt:true}:{}});
-    return r&&r.result&&r.result.idToken;
+    const res=r&&r.result;
+    return {idToken:res&&res.idToken, ...(pv==='apple'?appleExtra(appleCodeOf(res),false):{})};
   }
-  if(pv==='google')return googleToken(cfg.google);
+  if(pv==='google')return {idToken:await googleToken(cfg.google)};
   await loadScript('https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/ko_KR/appleid.auth.js');
-  AppleID.auth.init({clientId:cfg.apple, scope:'name email', redirectURI:location.origin+'/api/auth/apple/callback', usePopup:true});
+  AppleID.auth.init({clientId:cfg.apple, scope:'name email', redirectURI:appleRedirect(), usePopup:true});
   const r=await AppleID.auth.signIn();
-  return r&&r.authorization&&r.authorization.id_token;
+  const a=r&&r.authorization;
+  return {idToken:a&&a.id_token, ...appleExtra(a&&a.code,true)};
 }
 // 로그인 방법을 바꾸는 일(복구 코드·비밀번호·연결·해제·계정 삭제)은 본인인지 다시 확인한다 (서버도 같은 기준).
 // 소셜로만 가입한 계정은 비밀번호가 없어 연결된 구글·애플로 한 번 더 로그인한다 — 세션만으로 되면
@@ -4112,9 +4122,9 @@ async function socialReauth(){
   const pv=linked.find(p=>LINK.available&&LINK.available[p]&&!(p==='apple'&&NATIVE&&!ios));
   if(!pv)throw new Error(`이 기기에서는 ${linked.map(p=>SOCNAME[p]||p).join('·')}로 확인할 수 없어요. 웹이나 아이폰에서 해 주세요`);
   toast(`본인인지 확인할게요 — ${SOCNAME[pv]}로 한 번 더 로그인해 주세요`);
-  const idToken=await providerToken(pv);
-  if(!idToken)throw new Error(`${SOCNAME[pv]} 확인을 받지 못했어요`);
-  return {reauth:{provider:pv, idToken}};
+  const t=await providerAuth(pv);
+  if(!t||!t.idToken)throw new Error(`${SOCNAME[pv]} 확인을 받지 못했어요`);
+  return {reauth:{provider:pv, ...t}};
 }
 // 비밀번호가 있는 계정: 현재 비밀번호를 묻는 창. 취소하면 null
 function askPassword(title){
@@ -4138,8 +4148,8 @@ async function linkProvider(pv){
   try{
     const who=await reauthBody(`${SOCNAME[pv]} 연결`);
     if(!who)return;
-    const idToken=await providerToken(pv);
-    await api('/auth/social',{method:'POST',body:{provider:pv, idToken, ...who}});
+    const t=await providerAuth(pv);
+    await api('/auth/social',{method:'POST',body:{...t, ...who, provider:pv}});
     toast(`${SOCNAME[pv]} 계정을 연결했어요`);
     await loadLinks();
   }catch(e){
@@ -4182,9 +4192,10 @@ async function mountSocialNative(box){
     `<div class="err" id="socErr" role="alert"></div>`;
   const init=async()=>{
     if(socInit)return;
-    // 쓰지 않는 제공자는 넘기지 않는다 — 안드로이드에서 apple 을 주면 redirectUrl 을 요구한다
+    // 쓰지 않는 제공자는 넘기지 않는다 — 안드로이드에서 apple 을 주면 redirectUrl 을 요구한다.
+    // useProperTokenExchange: 애플 code 를 authorizationCode 로 준다 (iOS 는 redirectUrl 이 없으면 플러그인이 애플에 따로 묻지 않는다)
     const opt={ google:{ webClientId:cfg.google||undefined, iOSClientId:cfg.googleIos||undefined } };
-    if(ios&&cfg.appleBundle)opt.apple={ clientId:cfg.appleBundle };
+    if(ios&&cfg.appleBundle)opt.apple={ clientId:cfg.appleBundle, useProperTokenExchange:true };
     await SL.initialize(opt);
     socInit=true;
   };
@@ -4208,7 +4219,7 @@ async function mountSocialNative(box){
       const res=r&&r.result;
       const pf=res&&res.profile;
       const nm=pf?[pf.familyName,pf.givenName].filter(Boolean).join(''):'';
-      await socialLogin('apple', res&&res.idToken, nm);
+      await socialLogin('apple', res&&res.idToken, nm, undefined, appleExtra(appleCodeOf(res),false));
     }catch(e){ if(cancelled(e))return; if(err)err.textContent=msgOf(e); }
   };
 }
@@ -4219,12 +4230,13 @@ const msgOf=e=>String((e&&(e.message||e.error))||'로그인을 시작하지 못�
 // 이메일 앞부분(이메일 가리기면 무작위 글자)으로 가입됐다 → 그 계정(sub)이 준 이름을 이번 실행 동안 기억해 둔다
 const SOC_NAME={};
 function jwtSub(t){try{return String(JSON.parse(atob(String(t).split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))).sub||'')}catch(e){return ''}}
-async function socialLogin(provider, idToken, name, agreedAt){
+// extra: 애플 code(·redirectUri) — 새 계정 동의 창(428)을 거쳐 다시 보낼 때도 같이 (애플 code 는 5분 · 한 번만이라 그때 처음 쓴다)
+async function socialLogin(provider, idToken, name, agreedAt, extra){
   const err=$('#socErr');
   try{
     if(!idToken)throw new Error('토큰을 받지 못했어요');
     const sub=jwtSub(idToken),sk=provider+':'+sub;if(sub){if(name)SOC_NAME[sk]=name;else if(SOC_NAME[sk])name=SOC_NAME[sk]}
-    const body={provider, idToken};
+    const body={...(extra||{}), provider, idToken};
     if(name)body.name=name;
     if(!NET.user){
       // 로그인 화면에서 부른 것이다. 로그아웃이 덜 돼 옛 세션 쿠키가 남아 있어도 그 계정에 이 구글·애플 계정을 붙이지 말라고 알린다
@@ -4236,7 +4248,7 @@ async function socialLogin(provider, idToken, name, agreedAt){
     }
     let m;
     try{m=await api('/auth/social',{method:'POST',body})}
-    catch(e){if(e.code==='needs_consent'&&!body.agreedAt){socialConsent(provider,idToken,name);return}throw e}
+    catch(e){if(e.code==='needs_consent'&&!body.agreedAt){socialConsent(provider,idToken,name,extra);return}throw e}
     GATE.err='';GATE.preview=null;GATE.pw='';GATE.name='';await takeMe(m);render();probeOmr();
     if(S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()});
   }catch(e){ if(err)err.textContent=e.message; else toast(e.message); }
@@ -4305,7 +4317,7 @@ async function confirmLogout(btn,ask){if(btn)btn.disabled=true;
  const warn=await unsyncedWarning().finally(()=>{if(btn)btn.disabled=false});
  return confirm((ask||LOGOUT_ASK)+warn)}
 // 구글·애플로 처음 오는 사람: 계정을 만들기 전에 약관·개인정보처리방침과 만 14세 안내를 보여 주고 동의를 받는다
-function socialConsent(provider,idToken,name){
+function socialConsent(provider,idToken,name,extra){
  modal(`<b style="font-size:17px">처음 오셨네요</b>
   <div class="hint" style="margin-top:6px">${esc(SOCNAME[provider]||provider)} 계정으로 새로 가입해요. 약관을 확인하고 동의해 주세요.</div>
   <div class="row" style="margin-top:12px;gap:8px"><button class="btn sm" data-lg="terms">이용약관</button><button class="btn sm" data-lg="privacy">개인정보처리방침</button></div>
@@ -4316,7 +4328,7 @@ function socialConsent(provider,idToken,name){
   if(e.target.closest('[data-close]')){closeModal();return}
   const lg=e.target.closest('[data-lg]');if(lg){closeModal();go('legal/'+lg.dataset.lg);return}   // 읽고 돌아와 다시 누르면 된다
   if(e.target.closest('#scOk')){if(!$('#scAgree').checked){$('#scErr').textContent='동의에 체크해 주세요';return}
-   closeModal();await socialLogin(provider,idToken,name,new Date().toISOString())}}}
+   closeModal();await socialLogin(provider,idToken,name,new Date().toISOString(),extra)}}}
 // 이 기기의 알림 주소(웹푸시 endpoint · 앱 토큰). 로그아웃·비밀번호 변경 때 서버가 이 기기 것을 가려낸다
 async function pushIdent(){const o={};if(APP_PUSH_TOKEN)o.pushToken=APP_PUSH_TOKEN;
  try{if(!NATIVE&&pushSupported()){const reg=await Promise.race([navigator.serviceWorker.ready,new Promise(r=>setTimeout(r,1500))]);
