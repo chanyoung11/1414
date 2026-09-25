@@ -8044,8 +8044,11 @@ function stgBlockAt(b,lay,W,H){
  return {nb,w,left,nat}}
 // 화면에 보이는 가로 자리·폭 (캔버스 폭에 대한 비율). 줄여 그린 악보는 저장한 틀보다 좁다 (위).
 // 편집(끌기·꼭짓점·붙이기·화면 안에 남기기)은 이 상자로 재고, 조판에는 틀을 옮기거나 같은 배율로 키운 것만 적는다 —
-// 줄인 폭을 조판에 적으면 저장한 캔버스(세로 화면·다른 아이패드)로 돌아가도 그만큼 작은 채로 남는다
-function stgVis(b,W,H){const k=stgBlockAt(b,STG.lay||{cw:W},W,H);return {x:k.left/W,w:k.w/W}}
+// 줄인 폭을 조판에 적으면 저장한 캔버스(세로 화면·다른 아이패드)로 돌아가도 그만큼 작은 채로 남는다.
+// h = 보이는 높이 (캔버스 높이에 대한 비율). 악보는 틀 위에 붙어 그려져, 틀이 그린 악보보다 길면(q>1 — 가로 조판을 세로에서)
+// 틀 밑이 빈다 — 붙이기·화면 안에 남기기는 이 높이로 잰다 (악보가 아닌 블록은 틀 높이)
+function stgVis(b,W,H){const k=stgBlockAt(b,STG.lay||{cw:W},W,H);
+ return {x:k.left/W,w:k.w/W,h:b.type==='slice'&&k.nb.height>0?k.nb.height/H:(b.h||0)}}
 // 격자 12×8 에 맞춘다
 // 자유 배치. 격자에 붙이지 않고 소수점만 정리한다 (PPT 처럼 아무 자리에나)
 const stgSnapX=x=>Math.round(x*1e4)/1e4, stgSnapY=y=>Math.round(y*1e4)/1e4;
@@ -8345,12 +8348,13 @@ function stgEditBind(host,W,H,k){
 const STG_KEEP=28;
 function stgKeepIn(gs,W,H,page){
  if(!gs.length)return;
- const hs=gs.map(b=>{if(b.type==='slice'&&b.h)return b.h;
-  const el=page&&page.querySelector('[data-sid="'+CSS.escape(b.id)+'"]');
-  return el?el.offsetHeight/H:(b.h||0.05)});
  // 가로는 보이는 상자로 잰다 — 줄여 그린 악보는 틀 가운데에 좁게 있어, 틀로 재면 틀의 빈 옆자리만 남고
  // 악보는 화면 밖으로 나가 다시 잡을 수 없었다. 옮길 때는 틀째 (d = 틀 왼쪽에서 보이는 왼쪽까지)
- const vs=gs.map(b=>{const v=stgVis(b,W,H);return {d:v.x-(b.x||0),w:v.w}});
+ const vs=gs.map(b=>{const v=stgVis(b,W,H);return {d:v.x-(b.x||0),w:v.w,h:v.h}});
+ // 세로도 악보는 보이는 높이로 — 틀이 그린 악보보다 길면(q>1) 틀로 재어 틀의 빈 밑자리만 남고 악보는 화면 위로 사라졌다
+ const hs=gs.map((b,i)=>{if(b.type==='slice'&&vs[i].h)return vs[i].h;
+  const el=page&&page.querySelector('[data-sid="'+CSS.escape(b.id)+'"]');
+  return el?el.offsetHeight/H:(b.h||0.05)});
  const fit=(pos,size,M,set)=>{
   const rng=gs.map((b,i)=>{const s=size(b,i),m=Math.min(M,s);return [m-s,1-m]});
   let lo=-Infinity,hi=Infinity;
@@ -8430,11 +8434,17 @@ function stgCut(bid){
  // 크기를 바꾼 블록은 그릴 때 폭 비율만큼 악보도 커진다 (stgBlockAt). 나눈 두 조각의 자리·높이도
  // 그 비율로 재야 한다 — 원래 크기로 재서 줄인 블록은 사이가 벌어지고, 키운 블록은 겹쳐 도로 붙었다
  const k=stgBlockAt(b,STG.lay,stgCanvasW(),H),r=k.nat?k.w/k.nat:1;
+ // 틀이 그린 악보보다 길면(q>1 — 가로에서 만든 조판을 세로에서 열면 악보는 틀 폭대로 그려지고 밑이 빈다) 두 조각의 높이·자리도
+ // 틀 높이로 잰다 (stripIn 과 같다). 그린 악보 높이로 적으면 틀이 좁아지지 않고 낮아지기만 해 가로세로 비율이 바뀌고, 저장한
+ // 캔버스로 돌아가면 stgBlockAt 이 악보를 그 낮은 틀에 맞춰 반 크기로 줄여 그렸다. 틀을 악보 줄 비율대로 나누면 두 조각 틀도
+ // 원래 틀과 같은 비율이라 저장한 캔버스에서는 틀을 꽉 채우고, 이 캔버스에서는 원래 틀처럼 조각마다 악보 밑이 빈다
+ // (q<1 이면 틀 = 줄여 그린 악보 높이라 q=1 — 전과 같다)
+ const D=k.nb.height||0,e=r*(D?Math.max(1,(b.h||0)*H/D):1);
  // 원본과 그 복사본을 같은 자리에서 자르면 이름표가 같아진다 — 빈 이름표를 쓴다
  L.blocks=L.blocks.filter(x=>x!==b);
  const mk=(rs,y)=>{const h=stgRH(rs,b.scale);
-  L.blocks.push({...b,id:stgFreeId(stgRoot(b.id)+'#'+Math.round(rs[0][0])),ranges:rs,height:h,y,h:h*r/H})};
- mk(r1,b.y);mk(r2,Math.min(1-0.05,b.y+stgRH(r1,b.scale)*r/H+0.01));
+  L.blocks.push({...b,id:stgFreeId(stgRoot(b.id)+'#'+Math.round(rs[0][0])),ranges:rs,height:h,y,h:h*e/H})};
+ mk(r1,b.y);mk(r2,Math.min(1-0.05,b.y+stgRH(r1,b.scale)*e/H+0.01));
  STG.menu=null;stgLayoutSave();stageRender()}
 // 나뉜 두 블록을 겹쳐 놓으면 도로 하나가 된다. 숨긴 반쪽은 짝이 아니다 — 무대에 안 보이는 블록인데 붙으면 사람이 숨긴 악보가
 // 도로 나왔다 (🗑 로 지운 화면의 숨긴 반쪽이 남은 반쪽 화면으로 옮겨 오면 흔하다 — stgDropScreen)
@@ -8443,8 +8453,9 @@ function stgTryMerge(L,b){
  const mates=L.blocks.filter(o=>o!==b&&!o.hidden&&o.type==='slice'&&stgRoot(o.id)===stgRoot(b.id));
  for(const o of mates){
   // 보이는 상자끼리 겹쳐야 붙는다 — 틀은 줄여 그린 악보보다 넓어, 틀로 재면 나란히 둔 두 조각이 붙어 버렸다
+  // 세로도 보이는 높이로 — 틀이 그린 악보보다 길면(q>1) 위 조각의 빈 틀 밑자리에 둔 조각(보이는 틈이 있는데)이 붙어 버렸다
   const vb=stgVis(b,stgCanvasW(),stgCanvasH()),vo=stgVis(o,stgCanvasW(),stgCanvasH());
-  const over=!(vb.x+vb.w<vo.x||vo.x+vo.w<vb.x||b.y+(b.h||0)<o.y||o.y+(o.h||0)<b.y);
+  const over=!(vb.x+vb.w<vo.x||vo.x+vo.w<vb.x||b.y+vb.h<o.y||o.y+vo.h<b.y);
   if(!over)continue;
   const endB=b.ranges[b.ranges.length-1][1], startO=o.ranges[0][0];
   const endO=o.ranges[o.ranges.length-1][1], startB=b.ranges[0][0];
@@ -8455,9 +8466,12 @@ function stgTryMerge(L,b){
   const rr=[];rs.forEach(r=>{const l=rr[rr.length-1];if(l&&Math.abs(l[1]-r[0])<0.6)l[1]=r[1];else rr.push([r[0],r[1]])});
   const h=stgRH(rr,b.scale), H=stgCanvasH();
   const k=stgBlockAt(b,STG.lay,stgCanvasW(),H),r=k.nat?k.w/k.nat:1;   // 키운·줄인 만큼 (stgCut 과 같이)
+  // 틀이 그린 악보보다 길면(q>1) 붙인 틀도 틀 높이로 — 끈 블록의 틀 비율 그대로 (stgCut 과 같이). 그린 악보 높이로 적으면
+  // 틀이 낮아지기만 해, 저장한 캔버스로 돌아가면 붙인 악보가 그 낮은 틀에 맞춰 반 크기로 줄어 그려졌다
+  const D=k.nb.height||0,e=r*(D?Math.max(1,(b.h||0)*H/D):1);
   L.blocks=L.blocks.filter(x=>x!==b&&x!==o);
   L.blocks.push({...b,id:stgFreeId(stgRoot(b.id)+'#'+Math.round(rr[0][0])),ranges:rr,height:h,
-   y:Math.min(b.y,o.y),h:h*r/H});
+   y:Math.min(b.y,o.y),h:h*e/H});
   return true}
  return false}
 
