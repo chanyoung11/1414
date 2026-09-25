@@ -450,7 +450,8 @@ def run():
         npg = nctx.new_page(); nerrs = []; npg.on('pageerror', lambda e: nerrs.append(str(e))); npg.on('dialog', lambda d: d.accept())
         npg.goto('https://localhost/#/home'); npg.wait_for_function('window.CONTI&&CONTI.S', timeout=20000)
         if not npg.evaluate("location.protocol==='https:'&&!location.port"): fail('앱 주소로 열리지 않음')
-        npg.evaluate("CONTI.S.team.me.name='하은';CONTI.S.services.push({id:'nat'+%s,name:'앱 예배 😀',date:'2026-10-25',notice:'😀'.repeat(300000),version:0,items:[],published:null});CONTI.save();location.hash='#/home';CONTI.render()" % json.dumps(tag))
+        # 서버를 다 막았으니 오프라인 앱이다. 팀이 없으면 로그인 화면(오프라인 안내)이 뜨므로(webfix edge-5) 받아 둔 팀이 있는 팀원으로 연다
+        npg.evaluate("CONTI.S.team.id='nat'+%s;CONTI.S.team.name='앱팀';CONTI.S.team.me.name='하은';CONTI.S.services.push({id:'nat'+%s,name:'앱 예배 😀',date:'2026-10-25',notice:'😀'.repeat(300000),version:0,items:[],published:null});CONTI.save();location.hash='#/home';CONTI.render()" % (json.dumps(tag), json.dumps(tag)))
         npg.wait_for_selector('[data-act="export"]', timeout=10000)
         npg.click('[data-act="export"]'); npg.wait_for_function('!!window.__shared', timeout=15000); npg.wait_for_timeout(300)
         chunks = npg.evaluate('window.__chunks.map(c=>({n:c.name,a:c.append,l:c.data.length}))')

@@ -292,6 +292,7 @@ html.dark .a-ok{color:#5FBF8A}html.dark .a-maybe{color:#E9C35C}html.dark .a-no{c
 .side{display:none;position:sticky;top:16px;width:224px;flex:0 0 auto;height:calc(100vh - 32px)}
 .side .box{display:flex;flex-direction:column;height:100%;padding:12px;background:var(--card);border:1px solid var(--surface-border);border-radius:var(--r-xl);box-shadow:var(--shadow-card)}
 .side .head{display:flex;align-items:center;gap:8px;padding:6px 8px 8px}
+.side .head .pill{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;line-height:20px}   /* 긴 팀 이름·'오프라인 · 팀'이 사이드바 밖으로 나가지 않게 끝을 줄인다 */
 .side nav{margin-top:8px;flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:2px}
 .side .sect{padding:14px 12px 4px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--faint-fg)}
 .side .sect:first-child{padding-top:0}
@@ -1331,12 +1332,14 @@ function navItems(){
  if(on)B.push({k:'team',act:'team',ic:'users2',t:'팀'});
  return [['사역',A],['자산',B]];
 }
+// 서버를 못 찾는 동안(오프라인)에도 팀에 든 사람(S.team.id)은 팀 이름과 '오프라인'을 보인다. 전에는 '기기 전용'·'내보내기 파일을
+// 카톡으로 보내세요'(서버 없는 정적 호스팅의 문구)가 떠, 다시 연결되면 저절로 올라갈 수정을 파일로 손수 보내게 했다 (홈·설정도 같다)
 function sidebarHTML(active){
  const m=me();const on=online();
  const groups=navItems().map(([label,items])=>`<div class="sect">${label}</div>`+items.map(it=>
   `<button class="navi ${it.k===active?'on':''}" data-act="${it.act}">${ic(it.ic)}${esc(it.t)}${it.cnt!==''&&it.cnt!=null?`<span class="cnt">${esc(String(it.cnt))}</span>`:''}</button>`).join('')).join('');
  return `<aside class="side"><div class="box">
-  <div class="head">${logoLockup(26)}${logoSymbol(30,'rail')}<span class="pill">${on?esc(S.team.name||'팀'):'기기 전용'}</span></div>
+  <div class="head">${logoLockup(26)}${logoSymbol(30,'rail')}<span class="pill" title="${on?esc(S.team.name||'팀'):S.team.id?'오프라인 · '+esc(S.team.name||'팀'):'기기 전용'}">${on?esc(S.team.name||'팀'):S.team.id?'오프라인 · '+esc(S.team.name||'팀'):'기기 전용'}</span></div>
   <nav>${groups}</nav>
   <button class="prof ${active==='settings'?'on':''}" data-act="settings" title="설정">
    <span class="av">${esc((m.name||'?').slice(0,1))}</span>
@@ -1399,7 +1402,7 @@ function homeHTML(){
  const body=`${heroHTML()}
     ${todoHTML()}
     <div class="metrics rise"><div class="metric"><div class="v">${S.services.length}</div><div class="l">전체 예배</div></div><div class="metric"><div class="v">${upcoming}</div><div class="l">다가오는 예배</div></div><div class="metric"><div class="v">${pubN}</div><div class="l">발행된 콘티</div></div></div>
-    <div class="sect-hd rise d1"><div><h2>예배 목록</h2><p>${on?`${esc(S.team.name)} 팀 · 인도자가 발행하면 자동으로 내려와요`:'이 기기에만 저장돼요. 팀에 보내려면 내보내기 파일을 카톡으로 보내세요'}</p></div>
+    <div class="sect-hd rise d1"><div><h2>예배 목록</h2><p>${on?`${esc(S.team.name)} 팀 · 인도자가 발행하면 자동으로 내려와요`:S.team.id?`${esc(S.team.name)} 팀 · 지금은 서버에 연결되지 않았어요. 받아 둔 콘티로 열고, 고친 것은 다시 연결되면 팀에 올려요`:'이 기기에만 저장돼요. 팀에 보내려면 내보내기 파일을 카톡으로 보내세요'}</p></div>
      <div class="row">${pick?`<button class="btn sm" data-act="pick-all">${HOME.sel.length===svcs.length?'전체 해제':'전체 선택'}</button><span class="pill">${HOME.sel.length}개</span><button class="btn sm danger" data-act="pick-del" ${HOME.sel.length?'':'disabled'}>${ic('trash')}삭제</button><button class="btn sm ghost" data-act="pick-off">취소</button>`
       :`${lead?`<button class="btn sm pri" data-act="new-svc">${ic('plus')}새 예배</button>`:''}<span class="row more-hide">${lead&&svcs.length?`<button class="btn sm" data-act="pick-on">${ic('check')}고르기</button>`:''}${on?`<button class="btn sm" data-act="sync" title="팀 서버에서 최신 발행본 받기">${ic('refresh')}새로고침</button>`:''}${(!on||lead)?`<button class="btn sm" data-act="import">${ic('import')}가져오기</button>`:''}<button class="btn sm" data-act="export">${ic('export')}내보내기</button></span><button class="icon more-only" data-act="home-more" title="더 보기">${ic('list')}</button>`}</div></div>
     ${folders.length?`<div class="filters rise d1">${
@@ -2926,7 +2929,7 @@ function settingsHTML(){
    <div class="lbl">내 이름</div><input class="field" id="sName" value="${esc(m.name)}" placeholder="하은">
    ${isPastor()?'':`<div class="lbl">내 세션</div><div id="sSess">${S.team.sessions.map(x=>`<button class="q ${x===m.session?'on':''}" data-s="${esc(x)}">${esc(x)}</button>`).join('')}</div>
    <div class="lbl">겸임 세션 <span class="hint">선택 · 편성에서 이 세션 후보에도 들어가요</span></div><div id="sSess2">${S.team.sessions.map(x=>`<button class="q ${(m.mySessions||[]).includes(x)&&x!==m.session?'on2':''}" data-s2="${esc(x)}" ${x===m.session?'hidden':''}>${esc(x)}</button>`).join('')}</div>`}
-   ${on?'':`<div class="lbl">역할</div><div id="sRole"><button class="q ${m.role==='leader'?'on':''}" data-r="leader">인도자 (콘티 제작)</button><button class="q ${m.role!=='leader'?'on':''}" data-r="member">멤버</button></div>
+   ${on||S.team.id?'':`<div class="lbl">역할</div><div id="sRole"><button class="q ${m.role==='leader'?'on':''}" data-r="leader">인도자 (콘티 제작)</button><button class="q ${m.role!=='leader'?'on':''}" data-r="member">멤버</button></div>
    <div class="lbl">팀 세션 목록 <span class="hint">쉼표로</span></div><input class="field" id="sList" value="${esc(S.team.sessions.join(', '))}">`}
    <div class="lbl">기타 카포 <span class="hint">0이면 없음. 내 화면의 빨간 코드가 카포만큼 더 내려가요</span></div>
    <div class="row"><input class="field mono" id="sCapo" type="number" min="0" max="9" value="${+m.capo||0}" style="width:90px;text-align:center"><span class="hint">프렛</span></div>
@@ -2974,7 +2977,7 @@ function settingsHTML(){
   <div class="card"><b>이 기기</b>
    <div class="row" style="margin-top:8px"><span class="hint grow">${on?'받아 둔 콘티·악보·메모를 지웁니다. 계정은 그대로예요':'모든 데이터를 지웁니다'}</span><button class="btn ghost danger" id="sReset">${on?'기기 데이터 지우기':'전체 초기화'}</button></div>
    ${on?`<div class="hr"></div><div class="row"><span class="hint grow">이 기기에서 로그아웃해요</span><button class="btn" id="sLogout">${ic('logout')}로그아웃</button></div>`:''}</div>`;
- const sub=on?`${esc(S.team.name)} · ${roleLabel(m.role)}`:'이 기기 전용';
+ const sub=on?`${esc(S.team.name)} · ${roleLabel(m.role)}`:S.team.id?`${esc(S.team.name)} · ${roleLabel(m.role)} · 오프라인`:'이 기기 전용';
  return shellHTML('settings',{title:'설정',sub,body:tabs+`<div class="setpane">${pane}</div>`})}
 function afterSettings(){
  const m=me();const on=online();const lead=isLeader();
@@ -3023,6 +3026,8 @@ function afterSettings(){
   if(e.target.closest('#sPushTest')){try{const r=await api('/push/test',{method:'POST'});
     toast(r.sent?'보냈어요 — 잠시 뒤 알림이 떠요':'보낼 기기가 없어요. 알림 켜기를 먼저 눌러 주세요')}catch(err){toast(err.message)}return}
   if(e.target.closest('#sOk')){const name=$('#sName').value.trim();
+   // 팀원은 오프라인이면 저장하지 않는다 — 이 기기에만 적으면 다시 연결될 때 서버의 내 정보(applyMembership)로 말없이 덮였다
+   if(!on&&S.team.id){$('#sErr').textContent='지금은 서버에 연결되지 않았어요. 연결되면 다시 저장해 주세요';return}
    if(on){try{await applyMembership(await api('/me',{method:'PATCH',body:{teamId:S.team.id,name,session:sess,mySessions:mySessNow(),capo:+($('#sCapo')||{value:0}).value||0}}))}
     catch(err){$('#sErr').textContent=err.message;return}}
    else{m.name=name;m.session=sess;m.mySessions=mySessNow();m.role=role;m.capo=+($('#sCapo')||{value:0}).value||0;
@@ -3314,6 +3319,11 @@ function josaRo(v){const t=String(v||'').trim();if(!t)return t;
  if(c>=0xac00&&c<=0xd7a3){const b=(c-0xac00)%28;return t+(b===0||b===8?'로':'으로')}
  return t+(hasBat(t)?'으로':'로')}
 const online=()=>NET.server===true;
+// 서버가 있는 앱(웹·네이티브)을 서버 없이(모름) 열었는데 팀이 없다 — 로그인 안 했거나 팀이 없는 사람. 전에는 모름을 '서버 없음'(정적 호스팅)과
+// 같이 봐 기기 전용 첫 설정(이름·세션·인도자/멤버)이 떠, 로그인할 길 없이 기기에만 쓰는 사람이 됐다 → 로그인 화면과 오프라인 안내를 보인다.
+// 서버가 없는 곳(파일로 연 페이지·404 를 받아 둔 정적 호스팅)은 예전처럼 기기 전용
+const noServerHere=()=>!NATIVE&&(!/^https?:$/.test(location.protocol)||lsGet(SRV_KEY)==='0');
+const offGate=()=>NET.server===null&&!S.team.id&&!noServerHere();
 // 오프라인으로 켜면 NET.server 가 null 로 굳어, 다시 연결돼도 발행이 서버로 안 갔다
 let RECONNECT_T=null,RECHECK=null,BOOTING=true;
 // 여러 곳(online 이벤트·다시 묻기 타이머·화면 복귀)에서 겹쳐 불려도 한 번만 돈다. 겹치면 콘티를 두 번 받아 같은 콘티가 둘 생길 수 있다
@@ -3337,9 +3347,23 @@ function recheckServer(){return RECHECK||(RECHECK=(async()=>{
 // 올리고도 다른 화면으로 갈 때까지 '서버에 못 올림'·다시 올리기 단추가 남았다
 function retryPending(){if(!online()||!S.team.id||!S.services.some(x=>x.pubPending))return Promise.resolve(0);
  return SYNC.pushPending().catch(()=>0).then(n=>{if(n||route().name==='home')render();return n})}
+// 켜 둔 채 끊겼다 붙으면 NET.server 는 그대로 true 라 recheckServer 가 돌지 않는다. 끊긴 사이 쓴 메모·고친 초안은 저장할 때
+// 보내다 실패하고 다시 보내지 않아(pushNotes 는 실패하면 '다음 저장 때'), 그 콘티를 다시 열 때까지 서버에 없어 팀원이 못 봤다 →
+// 발행 대기를 먼저 올리고(서버에 콘티가 있어야 메모도 받는다) 못 올린 초안·메모·삭제를 모든 콘티에서 민다. 라이브러리·곡은 schedulePush 가.
+// 보낼 게 없으면 서버를 부르지 않는다. 겹쳐 불리면(online·화면 복귀) 하나만 돈다.
+// 너무 커서 거절된 초안은 고치기 전에는 다시 재지 않는다(화면 복귀마다 큰 문서를 통째로 재지 않게). 메모는 pullNotes 처럼 unswap 뒤에 보낸다 —
+// 업데이트 전 코드가 바꿔 둔 팀원 곡의 빠진 메모를 '지운 것'으로 보고 서버에서 지우지 않게
+let UNSENT=null;
+function pushUnsent(){if(!online()||!S.team.id)return Promise.resolve();
+ return UNSENT||(UNSENT=(async()=>{const scope=CUR_SCOPE,moved=()=>scope!==CUR_SCOPE;
+  await retryPending();
+  for(const svc of S.services.filter(x=>draftUnsent(x)&&!(SYNC.draftFail['big:'+x.id]&&SYNC.draftFail[x.id]===x.editedAt))){if(moved())return;try{await SYNC.pushDraft(svc)}catch(e){}}
+  for(const svc of S.services.filter(notesChanged)){if(moved())return;try{SYNC.unswap(svc);await SYNC.pushNotes(svc)}catch(e){}}
+  if(moved())return;if(isLeader()&&(S.delPending||[]).length)await SYNC.flushDeletes();
+  SYNC.schedulePush()})().catch(e=>console.warn('unsent',e&&e.message)).finally(()=>{UNSENT=null}))}
 // 켤 때는 온라인이었는데(NET.server===true) 발행하다 끊긴 것은 recheckServer 가 그냥 돌아가 다시 안 올라갔다 —
-// 다시 연결되면(online)·화면이 다시 보이면 그대로 올린다
-window.addEventListener('online',()=>{clearTimeout(RECONNECT_T);RECONNECT_T=setTimeout(()=>NET.server===true?retryPending():recheckServer(),800)});
+// 다시 연결되면(online)·화면이 다시 보이면 그대로 올린다 (메모·초안도 같이 — pushUnsent)
+window.addEventListener('online',()=>{clearTimeout(RECONNECT_T);RECONNECT_T=setTimeout(()=>NET.server===true?pushUnsent():recheckServer(),800)});
 // 켤 때 건강검진이 한 번 실패하면(503·잠깐 끊김·와이파이 로그인 화면) 앱을 끌 때까지 '이 기기 전용'이었다.
 // 서버를 못 찾는 동안(null)은 간격을 늘려 가며(5초→1분) 다시 묻고, 화면이 다시 보일 때도 바로 묻는다.
 // false(여기엔 서버가 없다 · 정적 호스팅의 404)는 타이머로 두드리지 않는다
@@ -3347,7 +3371,7 @@ const REPROBE={t:null,n:0};
 function scheduleReprobe(){clearTimeout(REPROBE.t);if(NET.server!==null){REPROBE.n=0;return}
  REPROBE.t=setTimeout(async()=>{if(!document.hidden)await recheckServer();scheduleReprobe()},Math.min(60000,5000*2**Math.min(REPROBE.n++,4)))}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&NET.server!==true){REPROBE.n=0;recheckServer().then(scheduleReprobe)}
- else if(!document.hidden)retryPending()});
+ else if(!document.hidden)pushUnsent()});
 const RL={leader:'인도자',session_lead:'세션리더',member:'멤버',pastor:'목회자'};
 const isPastor=()=>me().role==='pastor';   // 목회자: 세션 없음, 편성·라이브러리 편집 없음, 말씀을 쓴다 (§0)
 // 목회자 메모는 팀 설정(pastorCanMemo)으로 켠다. 꺼져 있으면 서버가 받지 않으니 쓰는 창부터 열지 않는다
@@ -3378,7 +3402,10 @@ async function api(path,o){const opt={method:(o&&o.method)||'GET',headers:{'x-co
  if(!r.ok){const err=new Error((j&&j.message)||('오류 '+r.status));err.status=r.status;err.code=j&&j.error;throw err}return j}
 // false 는 '여기엔 서버가 없다'(정적 호스팅의 404)일 때만. 503·429 같은 일시 오류는 null(모름) — 다시 묻는다.
 // 약한 와이파이·교회 포털에서는 fetch 가 1분 넘게 안 끝난다 → 시간을 넘기면 '모름(null)'으로 보고 받아 둔 것으로 연다
-async function probeServer(){const ac=typeof AbortController!=='undefined'?new AbortController():null;const tm=ac?setTimeout(()=>ac.abort(),8000):0;
+// 받은 답(있음·없음)은 기억해 둔다. 모름(null)은 '끊겼다'와 '정적 호스팅을 오프라인으로 열었다' 둘 다라, 서버가 있는 곳인지는 이것으로 가른다 (offGate)
+const SRV_KEY='conti-server';
+async function probeServer(){const v=await probeHealth();if(v!==null)try{localStorage.setItem(SRV_KEY,v?'1':'0')}catch(e){}return v}
+async function probeHealth(){const ac=typeof AbortController!=='undefined'?new AbortController():null;const tm=ac?setTimeout(()=>ac.abort(),8000):0;
  try{const r=await fetch(API_BASE+'/api/health',{cache:'no-store',credentials:NATIVE?'include':'same-origin',headers:NATIVE?{'x-conti-app':'1'}:{},signal:ac?ac.signal:undefined});if(!r.ok)return r.status===404?false:null;const j=await r.json();
  if(j&&j.app==='conti')NET.enforcePlan=!!j.enforcePlan;
  return !!(j&&j.app==='conti')}catch(e){return null}finally{clearTimeout(tm)}}
@@ -3795,14 +3822,16 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),getting:new Map(),notePut:{},no
 const GATE={mode:'login',err:'',user:'',pw:'',name:'',sess:'',preview:null,agree:false};
 function authShell(inner){return `<div class="auth"><aside class="auth-side"><div class="logostack">${logoSymbol(56)}${logoWordmark(47,'')}</div><div><p class="kick">찬양팀 콘티 · 연습 · 무대 — 1414</p><blockquote>“콘티 한 장으로<br>팀 전체가 같은 곳을 봅니다.”</blockquote><p class="desc">곡 순서와 키, 송폼, 악보, 참고 영상을 한 화면에. 인도자가 발행하면 팀원은 자기 세션 메모와 함께 연습하고 무대에 섭니다.</p>
  <ul><li>${ic('send')}발행 한 번으로 카톡 공유 문구까지 자동 생성</li><li>${ic('marker')}악보 위 마커에 붙는 세션별 메모</li><li>${ic('moon')}네트워크 없이도 열리는 무대 모드</li></ul></div><p class="copy">© 2026 1414 · lets1414.com</p></aside><div class="auth-main"><div class="auth-box">${inner}</div></div></div>`}
-function recoverHTML(){return authShell(`<div class="auth-card"><div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div><h1>비밀번호 재설정</h1><p class="sub">설정에서 발급받아 둔 복구 코드로 새 비밀번호를 정합니다. 코드가 없으면 인도자에게 초기화를 부탁하세요.</p>
+function recoverHTML(){return authShell(`<div class="auth-card"><div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div><h1>비밀번호 재설정</h1><p class="sub">설정에서 발급받아 둔 복구 코드로 새 비밀번호를 정합니다. 코드가 없으면 인도자에게 초기화를 부탁하세요.</p>${offNote()}
  <div class="lbl">아이디</div><input class="field" id="lgUser" autocomplete="username" autocapitalize="none" spellcheck="false" value="${esc(GATE.user)}">
  <div class="lbl">복구 코드</div><input class="field mono" id="rcCode" autocapitalize="none" spellcheck="false" placeholder="xxxx-xxxx-xxxx">
  <div class="lbl">새 비밀번호</div><input class="field" id="lgPass" type="password" autocomplete="new-password" placeholder="6자 이상">
  <div class="err" id="lgErr" role="alert">${esc(GATE.err)}</div>
  <button class="btn pri wide" data-act="rc-submit">${ic('check')}비밀번호 바꾸고 로그인</button>
  <p class="fine"><a href="#" data-act="lg-mode" data-m="login">로그인으로 돌아가기</a></p></div>`)}
-function loginHTML(){const m=GATE.mode;if(m==='recover')return recoverHTML();return authShell(`<div class="auth-card"><div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div><h1>${m==='login'?'로그인':'회원가입'}</h1><p class="sub">${m==='login'?'팀 계정으로 로그인해 콘티를 함께 봅니다.':'아이디와 비밀번호만 있으면 바로 시작할 수 있어요.'}</p>
+// 서버를 못 찾는 채로 연 로그인 화면(offGate)의 안내
+const offNote=()=>online()?'':`<div class="lnote" id="offNote" role="status">인터넷에 연결되지 않았어요. 연결되면 바로 로그인할 수 있어요</div>`;
+function loginHTML(){const m=GATE.mode;if(m==='recover')return recoverHTML();return authShell(`<div class="auth-card"><div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div><h1>${m==='login'?'로그인':'회원가입'}</h1><p class="sub">${m==='login'?'팀 계정으로 로그인해 콘티를 함께 봅니다.':'아이디와 비밀번호만 있으면 바로 시작할 수 있어요.'}</p>${offNote()}
  <div class="tabs"><button class="${m==='login'?'on':''}" data-act="lg-mode" data-m="login">로그인</button><button class="${m==='signup'?'on':''}" data-act="lg-mode" data-m="signup">회원가입</button></div>
  <div class="lbl">아이디</div><input class="field" id="lgUser" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="영문 소문자·숫자 3~20자" value="${esc(GATE.user)}">
  <div class="lbl">비밀번호</div><input class="field" id="lgPass" type="password" autocomplete="${m==='login'?'current-password':'new-password'}" placeholder="6자 이상" value="${esc(GATE.pw||'')}">
@@ -3830,7 +3859,9 @@ function blockedHTML(){const u=NET.user||{};const b=NET.blocked||{};
   <h1>지금은 들어갈 수 없어요</h1><p class="sub">${esc(b.teamName||'이 팀')}에서 비활성 상태예요. 인도자에게 문의해 주세요.<br>쓰신 메모와 지난 편성은 그대로 남아 있어요.</p>
   <div class="lbl">초대 링크로 다시 들어가기</div><div class="row"><input class="field" id="gtLink" placeholder="인도자가 보낸 링크 또는 코드"><button class="btn" data-act="join-go">열기</button></div><div class="err" id="gtErr"></div></div>
  ${teamCreateCard(u)}`)}
-function joinHTML(tok){const p=GATE.preview,u=NET.user||{};return authShell(`<div class="auth-card"><div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div>
+// 미리보기는 받은 초대 코드(tok)와 함께 둔다. 같은 탭에서 주소만 다른 초대로 바뀌면(웹 hashchange) 앞 초대의 팀 이름·인원이 남은 채
+// 가입 단추는 새 코드로 보내, 화면에 보인 팀이 아닌 다른 팀에 들어갔다 → 코드가 다르면 '확인 중'으로 두고 새로 받는다
+function joinHTML(tok){const p=GATE.preview&&GATE.preview.tok===tok?GATE.preview:null,u=NET.user||{};return authShell(`<div class="auth-card"><div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div>
  ${!p?`<h1>초대 확인 중…</h1><p class="sub">잠시만요.</p>`:p.error?`<h1>초대를 열 수 없어요</h1><p class="sub">${esc(p.error)}</p><button class="btn wide" style="margin-top:18px" data-act="go-home">처음으로</button>`:
  `<p class="kicker">${p.rejoin?'다시 들어가기':'팀 초대'+(p.role&&p.role!=='member'?' · '+RL[p.role]:'')}</p><h1 style="margin-top:6px">${esc(p.teamName)}</h1><p class="sub">${p.rejoin?'예전에 있던 팀이에요. 역할과 세션은 그대로 돌아가요.':`멤버 ${p.count}명 · ${p.role==='pastor'?'이름만 적으면':'이름과 세션만 고르면'} 바로 들어가요.`}</p>
   <div class="lbl">내 이름</div><input class="field" id="jnName" value="${esc(u.name||'')}" maxlength="12">
@@ -3848,8 +3879,10 @@ async function afterGate(){const gs=$('#gtSess');if(gs)gs.onclick=e=>{const b=e.
  if(lp)lp.oninput=()=>{GATE.pw=lp.value};
  if(ln)ln.oninput=()=>{GATE.name=ln.value};
  const f=$('#lgUser')||$('#gtTeam')||$('#jnName');if(f&&!f.value)f.focus();
- mountSocial();   // 구글·애플 버튼
- const r=route();if(r.name==='join'&&NET.user&&!GATE.preview){try{const p=await api('/invite/'+r.a);if(p.alreadyMember){await refreshMe();toast('이미 '+p.teamName+' 팀에 있어요');go('home');return}GATE.preview=p;GATE.sessTouched=false;GATE.sessList=p.role==='pastor'?[]:[(p.sessions||[])[0]].filter(Boolean)}catch(e){GATE.preview={error:e.message}}render()}}
+ if(online())mountSocial();   // 구글·애플 버튼. 오프라인이면 붙이지 않는다 — 설정을 못 받은 빈 답이 굳어 다시 연결돼도 버튼이 안 떴다
+ // 받는 사이 다른 초대로 옮겨 갔으면 늦게 온 앞 초대는 버린다 (옮긴 주소의 그리기가 따로 받는다)
+ const r=route(),tok=r.a,here=()=>{const q=route();return q.name==='join'&&q.a===tok};
+ if(r.name==='join'&&NET.user&&!(GATE.preview&&GATE.preview.tok===tok)){try{const p=await api('/invite/'+tok);if(!here())return;if(p.alreadyMember){await refreshMe();toast('이미 '+p.teamName+' 팀에 있어요');go('home');return}GATE.preview={...p,tok};GATE.sessTouched=false;GATE.sessList=p.role==='pastor'?[]:[(p.sessions||[])[0]].filter(Boolean)}catch(e){if(!here())return;GATE.preview={error:e.message,tok}}render()}}
 /* ---------- 구글·애플 로그인 ---------- */
 // 로그인 화면이 그려진 뒤 버튼을 붙인다. 어떤 제공자를 띄울지는 서버가 알려 준다.
 // 앱(네이티브)은 웹 방식이 막혀 있어 여기서는 띄우지 않는다 (플러그인으로 따로 붙인다)
@@ -4209,6 +4242,14 @@ async function pushIdent(){const o={};if(APP_PUSH_TOKEN)o.pushToken=APP_PUSH_TOK
  return o}
 async function doGate(act,el){
  try{
+  // 오프라인으로 연 로그인 화면(offGate): 누르면 서버를 한 번 더 찾아 보고, 그래도 없으면 알린다 — 그냥 보내면 'Failed to fetch' 만 떴다.
+  // 찾으면 화면이 다시 그려지니 친 값을 새 칸에 돌려 놓고 이어 간다. 로그인 창이 없어졌으면(이미 로그인된 기기) 거기서 멈춘다
+  if((act==='lg-submit'||act==='rc-submit')&&!online()){
+   const vals=['lgUser','lgPass','lgName','rcCode'].map(id=>[id,($('#'+id)||{}).value]),ag=!!($('#lgAgree')||{}).checked;
+   await recheckServer();
+   if(!online()){const box=$('#lgErr');if(box)box.textContent='인터넷에 연결되지 않았어요. 연결되면 다시 눌러 주세요';return}
+   if(!$('#lgUser'))return;
+   vals.forEach(([id,v])=>{const f=$('#'+id);if(f&&v!=null)f.value=v});const a2=$('#lgAgree');if(a2)a2.checked=ag}
   if(act==='lg-mode'){GATE.mode=el.dataset.m;GATE.err='';GATE.user=($('#lgUser')||{value:''}).value;GATE.pw=($('#lgPass')||{value:''}).value;GATE.agree=!!($('#lgAgree')||{}).checked;render();return}
   if(act==='rc-submit'){const username=$('#lgUser').value.trim(),code=$('#rcCode').value.trim(),next=$('#lgPass').value;GATE.user=username;const m=await api('/auth/recover',{method:'POST',body:{username,code,next}});GATE.err='';GATE.mode='login';await takeMe(m);toast('비밀번호를 바꿨어요. 설정에서 복구 코드를 새로 발급해 두세요');render();return}
   if(act==='lg-submit'){const username=$('#lgUser').value.trim(),password=$('#lgPass').value;GATE.user=username;
@@ -6242,6 +6283,7 @@ async function render(){
   if(!S.team.id){app.innerHTML=NET.blocked?blockedHTML():gateHTML();afterGate();return}
   if(r.name==='edit'&&!isLeader())return go('view/'+r.a);
  }
+ else if(offGate()){app.innerHTML=loginHTML();afterGate();return}   // 다시 붙으면 recheckServer 가 다시 그린다 (친 값은 GATE 에 남는다)
  if(r.name!=='view')VF.draft=false;
  if(/^(edit|view|play)$/.test(r.name)){let svc=svcById(r.a);
   if(!svc&&online()){app.innerHTML=`<div class="empty" style="margin:40px auto;max-width:420px"><b>콘티를 받는 중…</b>팀 서버에서 발행본을 내려받고 있어요.</div>`;try{svc=await SYNC.pullService(r.a)}catch(e){
@@ -9055,7 +9097,7 @@ document.addEventListener('click',async e=>{
   case 'noti-go':{const n=NOTI.list.find(x=>x.id===el.dataset.id);if(!n)break;
    if(!n.readAt){n.readAt=new Date().toISOString();NOTI.unread=Math.max(0,NOTI.unread-1);NOTI.sig='';api('/notifications/read',{method:'POST',body:{teamId:S.team.id,ids:[n.id]}}).catch(()=>{})}
    const h=String(n.link||'').replace(/^#\/?/,'');go(h||'home');break}
-  case 'go-home':go('home');break;
+  case 'go-home':GATE.preview=null;go('home');break;   // 못 연 초대(끊김 등)를 두면 같은 링크를 다시 열어도 다시 묻지 않고 그 오류를 보였다
   case 'lg-mode':case 'lg-submit':case 'rc-submit':case 'join-go':case 'team-create':case 'team-join':e.preventDefault();doGate(act,el);break;
   // 팀 없는·비활성·초대 화면의 로그아웃도 설정과 같이 먼저 올려 보고 묻는다 (지금 팀·다른 팀의 못 올린 메모가 함께 지워진다)
   case 'logout':e.preventDefault();if(await confirmLogout(el))doGate('logout');break;
@@ -9225,7 +9267,7 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
  if(pushTeam){const h=location.hash;try{history.replaceState(null,'',location.pathname+h)}catch(e){}
   if(online()&&NET.user&&pushTeam!==S.team.id){try{await applyMembership(await api('/teams/'+encodeURIComponent(pushTeam)))}catch(e){console.warn('push team',e&&e.message)}
    if(location.hash!==h)try{history.replaceState(null,'',location.pathname+h)}catch(e){}}}   // 팀을 바꾸면 홈으로 보내는 것을 되돌린다
- if(!online()&&!me().name){location.hash='#/settings';render()}else render();
+ if(!online()&&!me().name&&!offGate()){location.hash='#/settings';render()}else render();   // 기기 전용 첫 실행은 서버가 없는 곳에서만
  // 못 올린 발행(오프라인 발행·올리다 닫힌 앱)을 먼저 올리고 목록을 받는다
  if(online()&&S.team.id){retryPending().then(()=>SYNC.pullServices()).then(ch=>{if(ch)render()});SYNC.pullLibrary();pullSongs('fresh').then(ch=>{if(ch&&/^(edit|view|play|library)$/.test(route().name))render()}).catch(()=>{});
   SYNC.schedulePush()}   // 오프라인에서 고친 것. 예전에는 /me 뒤 save() 가 대신 불러 줬는데, 이제 그때는 아직 연결 전(NET.server)이다
