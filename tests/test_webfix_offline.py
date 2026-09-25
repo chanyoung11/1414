@@ -7,6 +7,8 @@
 #  edge-5 로그인 안 한 사람이 오프라인으로 열면 기기 전용 첫 설정(이름·세션·인도자/멤버)이 뜨던 것 → 로그인 화면 + 오프라인 안내
 #         (서버가 있다는 증거 — 앱·받아 둔 서버 답·로그인한 저장소 — 가 없는 곳은 예전처럼 기기 전용: 404 · SPA fallback 정적 호스팅)
 #  되돌림 검사(재검증): 초안을 밀기 전에 목록을 받고 서버 초안과 견준다 — 다른 기기에서 지운 콘티를 되살리거나 더 새 초안을 덮지 않게
+#  재검증 2: 견줘서 안 올린 초안을 다시 연결 끝의 저장 타이머(2.5초)가 에디터에 열린 콘티라며 그대로 올리던 것 → 붙잡아 두고(draftHold)
+#         가져올지 물어 답할 때까지 누구도 올리지 않는다 · 에디터에 열려 있으면 바로 묻는다 · 다시 연결을 견주는 동안 저장 타이머는 기다린다
 import os, re, sys, time, json
 from playwright.sync_api import sync_playwright
 
@@ -35,8 +37,8 @@ def invite_code(c, team):
     return ok(c.request.get(URL + 'api/teams/%s' % team), 'team get')['invite']
 
 def page(c, hash_='#/home', sel='.shell[data-page]'):
-    pg = c.new_page(); pg.errs = []
-    pg.on('pageerror', lambda e: pg.errs.append(str(e)[:200])); pg.on('dialog', lambda d: d.accept())
+    pg = c.new_page(); pg.errs = []; pg.dismiss = False   # dismiss: 확인 창에서 '취소'
+    pg.on('pageerror', lambda e: pg.errs.append(str(e)[:200])); pg.on('dialog', lambda d: d.dismiss() if pg.dismiss else d.accept())
     pg.goto(URL + hash_)
     if sel: pg.wait_for_selector(sel, timeout=15000)
     return pg
@@ -67,6 +69,14 @@ def poll(fn, ms=10000, step=400):
     while time.time() < t:
         if fn(): return True
         time.sleep(step / 1000)
+    return fn()
+
+# 페이지 이벤트(붙잡은 요청·확인 창)를 돌리며 기다린다 — time.sleep 동안에는 playwright 가 이벤트를 넘기지 않는다
+def pump(pg, fn, ms=8000):
+    t = time.time() + ms / 1000
+    while time.time() < t:
+        if fn(): return True
+        pg.wait_for_timeout(100)
     return fn()
 
 # 콘티 화면의 메모 쓰기·지우기와 같은 길 (it.notes 를 고치고 save() → schedulePush → pushNotes)
@@ -167,15 +177,78 @@ def sec_memo(b):
     pg.evaluate("document.dispatchEvent(new Event('visibilitychange'))"); pg.wait_for_timeout(2500)
     if draft_of(s4) != 'B새이름': fail('edge-2 화면 복귀에 다른 기기의 더 새 초안을 덮음: %r' % draft_of(s4))
     print('edge-2 여러 기기: 지운 콘티를 되살리지 않고 · 더 새 초안을 덮지 않음 ok')
-    # 그 콘티를 에디터로 열면 전처럼 가져올지 묻는다 (수락하면 받은 초안으로)
-    asked = []
+    # 그 콘티를 에디터로 열면 전처럼 가져올지 묻는다 (수락하면 받은 초안으로).
+    # 화면 복귀를 마치며 건 저장 타이머(2.5초)가 에디터가 서버 초안과 견주는 사이에 터지게, 에디터의 견주기(GET 초안)를 붙잡아 둔다 —
+    # 전에는 그 타이머가 견주지 않고 이 기기 것을 올려 더 새 초안을 덮었고, 에디터는 제 것을 보고 묻지도 않았다 (복귀 2.5초쯤 뒤에 열면 그랬다)
+    asked, puts, held = [], [], []
     pg.on('dialog', lambda d: asked.append(d.message))
-    pg.goto(URL + '#/edit/' + s4); pg.wait_for_selector('[data-f="svc.name"]', timeout=10000)
+    pg.on('request', lambda r: puts.append(r.post_data or '') if r.method == 'PUT' and '/draft' in r.url else None)
+    pg.route('**/api/services/*/draft?*', lambda r: held.append(r) if r.request.method == 'GET' else r.continue_())
+    pg.evaluate("(id)=>{location.hash='#/edit/'+id}", s4)
+    if not pump(pg, lambda: held): fail('준비: 에디터가 서버 초안과 견주지 않음')
+    pg.evaluate("CONTI.SYNC.schedulePush()")   # 저장 타이머를 여기서 다시 건다 — 견주기를 붙잡아 둔 사이에 반드시 터지게
+    pg.wait_for_timeout(3500)
+    mid = draft_of(s4)
+    for r in held: r.continue_()
+    pg.unroute('**/api/services/*/draft?*')
+    if mid != 'B새이름' or any('A오프라인이름' in x for x in puts):
+        fail('edge-2 에디터를 여는 사이 저장 타이머가 더 새 초안을 덮음: 서버 %r · 올림 %d' % (mid, len(puts)))
+    pg.wait_for_selector('[data-f="svc.name"]', timeout=10000)
     if not wait_until(pg, "(id)=>CONTI.S.services.find(x=>x.id===id).name==='B새이름'", 15000, s4):   # 열기는 메모·말씀·악보를 먼저 받는다
         st = pg.evaluate("(id)=>{const s=CONTI.S.services.find(x=>x.id===id);return {name:s.name,at:s.editedAt,pushed:s.draftPushedAt,v:s.version,pv:s.published&&s.published.version,r:CONTI.route()}}", s4)
         fail('edge-2 에디터로 열어도 더 새 초안을 가져오지 않음 %s · 물음 %s · 서버 %r · B %s' % (st, asked, draft_of(s4), at4 + 60000))
     if not any('더 새로워요' in m for m in asked): fail('edge-2 에디터로 열 때 더 새 초안을 가져올지 묻지 않음: %s' % asked)
-    print('edge-2 그 콘티를 열면 더 새 초안을 가져올지 물음 ok')
+    if pg.input_value('[data-f="svc.name"]') != 'B새이름': fail('edge-2 가져온 초안이 에디터에 안 보임: %r' % pg.input_value('[data-f="svc.name"]'))
+    print('edge-2 그 콘티를 열면 더 새 초안을 가져올지 물음 · 여는 사이 저장 타이머가 덮지 않음 ok')
+    if pg.errs: fail('JS 오류: %s' % pg.errs[:3])
+
+    # 4-2) 에디터를 연 채 끊겼다 붙을 때 — 끊긴 사이 에디터에서 치고, 다른 기기가 더 새 초안을 올렸다.
+    #      전에는 다시 연결을 마치며 건 저장 타이머가 2.5초 뒤 서버와 견주지 않고 이 기기 것을 올려 더 새 초안을 덮었다(묻지도 않음).
+    #      붙기 직전에 친 것의 저장 타이머가 다시 연결의 견주기(목록 받기가 느림)보다 먼저 터져도 덮지 않는다
+    def in_editor(name, song):
+        sid = new_published(pg, name, song)
+        pg.evaluate("location.hash='#/home'"); pg.wait_for_timeout(3500)   # 발행 뒤 저장 타이머가 끝나게
+        pg.evaluate("(id)=>{location.hash='#/edit/'+id}", sid); pg.wait_for_selector('[data-f="svc.name"]', timeout=10000)
+        pg.wait_for_timeout(1500)
+        c.set_offline(True); pg.wait_for_timeout(300)
+        pg.fill('[data-f="svc.name"]', name + ' 끊김'); pg.wait_for_timeout(3500)   # 끊긴 채 올리기가 실패하게
+        return sid
+    def newer_on_b(sid, name):
+        doc = pg.evaluate("(id)=>CONTI.SYNC.draftDoc(CONTI.S.services.find(x=>x.id===id))", sid)
+        doc['name'] = name; doc['editedAt'] = int(time.time() * 1000) + 60000
+        ok(cB.request.put(URL + 'api/services/%s/draft' % sid, headers=H, data={'teamId': team, 'doc': doc}), 'B 초안')
+    s6 = in_editor('에디터 예배', '곡6')
+    newer_on_b(s6, 'B에디터이름')
+    asked.clear(); puts.clear(); held.clear()
+    pg.route('**/api/services?team=*', lambda r: held.append(r))   # 다시 연결의 목록 받기를 붙잡아 둔다
+    pg.fill('[data-f="svc.name"]', 'A붙기직전'); pg.wait_for_timeout(200)
+    c.set_offline(False)
+    if not pump(pg, lambda: held): fail('준비: 다시 연결이 목록을 받지 않음')
+    pg.wait_for_timeout(3500)   # 친 것의 저장 타이머(2.5초)가 이 사이에 터진다
+    mid = draft_of(s6)
+    for r in held: r.continue_()
+    pg.unroute('**/api/services?team=*')
+    if mid != 'B에디터이름' or any('A붙기직전' in x for x in puts): fail('edge-2 다시 연결을 견주기 전에 저장 타이머가 더 새 초안을 덮음: 서버 %r' % mid)
+    if not pump(pg, lambda: any('더 새로워요' in m for m in asked), 10000): fail('edge-2 에디터를 연 채 다시 연결됐는데 더 새 초안을 가져올지 묻지 않음 · 서버 %r' % draft_of(s6))
+    if not pump(pg, lambda: pg.input_value('[data-f="svc.name"]') == 'B에디터이름', 6000):
+        fail('edge-2 가져온 초안을 에디터에 다시 그리지 않음: %r' % pg.input_value('[data-f="svc.name"]'))
+    pg.wait_for_timeout(3500)
+    if draft_of(s6) != 'B에디터이름' or any('A붙기직전' in x for x in puts): fail('edge-2 가져온 뒤에도 이 기기 것을 올림: 서버 %r' % draft_of(s6))
+    # 그 뒤 고친 것은 전처럼 저절로 올라간다
+    pg.fill('[data-f="svc.name"]', 'A이어서 고침')
+    if not poll(lambda: draft_of(s6) == 'A이어서 고침', 8000): fail('edge-2 가져온 뒤 고친 초안이 안 올라감: %r' % draft_of(s6))
+    print('edge-2 에디터를 연 채 다시 연결: 바로 물어 가져오고 · 저장 타이머가 덮지 않고 · 이어 고친 것은 올라감 ok')
+
+    # 4-3) 같은 자리에서 '취소'(이 기기 것 유지)하면 약속대로 이 기기 것을 올린다
+    s7 = in_editor('지킬 예배', '곡7')
+    newer_on_b(s7, 'B버릴이름')
+    asked.clear(); pg.dismiss = True
+    c.set_offline(False)
+    if not pump(pg, lambda: any('더 새로워요' in m for m in asked), 10000): fail('edge-2 에디터를 연 채 다시 연결됐는데 묻지 않음 (취소 경우)')
+    if not poll(lambda: draft_of(s7) == '지킬 예배 끊김', 8000): fail('edge-2 취소(이 기기 것 유지)했는데 서버에 안 올라감: %r' % draft_of(s7))
+    pg.dismiss = False
+    if pg.input_value('[data-f="svc.name"]') != '지킬 예배 끊김': fail('edge-2 취소했는데 에디터가 바뀜: %r' % pg.input_value('[data-f="svc.name"]'))
+    print('edge-2 에디터를 연 채 다시 연결 · 취소: 이 기기 것을 올림 ok')
     if pg.errs: fail('JS 오류: %s' % pg.errs[:3])
     cB.close()
 
