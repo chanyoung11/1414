@@ -1,6 +1,8 @@
 /* 콘티 service worker — 오프라인 지원.
    index.html: 네트워크 우선(새 버전 자동 반영), 실패 시 캐시.  나머지 같은 도메인 파일: 캐시 우선.  /api/ 는 절대 캐시하지 않음. */
-const CACHE = 'conti-shell-v4';   // 오류 응답은 캐시하지 않는다(오프라인에서 오류 페이지가 뜨던 문제)
+// v4: 오류 응답은 캐시하지 않는다(오프라인에서 오류 페이지가 뜨던 문제)
+// v5: 앱 자리에 다른 파일(og.png·yt.html 등)이 들어간 캐시를 버리고 새로 받는다
+const CACHE = 'conti-shell-v5';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-512.png', './favicon-32.png', './favicon-16.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
@@ -8,11 +10,15 @@ self.addEventListener('fetch', e => {
   const req = e.request; if (req.method !== 'GET') return;
   const url = new URL(req.url); if (url.origin !== location.origin) return;
   if (url.pathname.startsWith('/api/') || url.pathname === '/api') return;
-  const isPage = req.mode === 'navigate' || url.pathname.endsWith('/') || url.pathname.endsWith('index.html');
+  // 앱 화면은 첫 화면 주소(/ · /index.html) 하나뿐이다. 전에는 주소창으로 연 파일이면 무엇이든(og.png·yt.html·manifest·ads.txt·.well-known)
+  // 앱 자리('./index.html')에 넣어, 그걸 한 번 열고 나면 오프라인·약한 와이파이(4초 뒤)에 앱 대신 그 파일이 떴다
+  const root = self.location.pathname.replace(/sw\.js$/, '');
+  const isPage = url.pathname === root || url.pathname === root + 'index.html';
+  if (!isPage && req.mode === 'navigate') return;   // 다른 파일을 여는 것은 손대지 않는다 (네트워크 그대로)
   if (isPage) {
     // 약한 와이파이·교회 포털에서는 네트워크가 끝없이 붙잡고 있어 흰 화면이 1분씩 갔다.
-    // 캐시가 있으면 4초만 기다리고 캐시로 연다. 늦게 온 응답은 뒤에서 캐시에 넣어 다음에 쓴다
-    const net = fetch(req).then(res => { if (res && res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => { c.put('./index.html', copy); }); } return res; });
+    // 캐시가 있으면 4초만 기다리고 캐시로 연다. 늦게 온 응답은 뒤에서 캐시에 넣어 다음에 쓴다 (HTML 일 때만 — 앱 자리를 다른 것이 덮지 않게)
+    const net = fetch(req).then(res => { if (res && res.ok && /text\/html/i.test(res.headers.get('content-type') || '')) { const copy = res.clone(); caches.open(CACHE).then(c => { c.put('./index.html', copy); }); } return res; });
     e.respondWith(new Promise(resolve => {
       let done = false; const fin = r => { if (!done && r) { done = true; resolve(r); } };
       const t = setTimeout(() => caches.match('./index.html').then(fin), 4000);
