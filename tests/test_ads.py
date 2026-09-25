@@ -1,5 +1,7 @@
 # 광고: 무료 플랜에만 나오고 유료 플랜에는 안 나온다.
 # 예배 중 화면(연습·콘티 보기·무대)에는 무료라도 안 나온다.
+# 웹 광고(애드센스)는 승인 전이라 스위치(WEBADS.on)로 꺼 두었다 — 꺼져 있으면 아무것도 없고, 켜면 아래처럼 돈다
+# (꺼진 상태의 요청·자리 검사는 tests/test_banner.py)
 import os, sys, time
 from playwright.sync_api import sync_playwright
 URL = os.environ.get('CONTI_URL', 'http://localhost:8766/')
@@ -20,6 +22,11 @@ def run():
 
     # 승인된 주소가 아니면(로컬·미리보기) 광고를 부르지 않는다 — 정책 위반이고 오류가 난다
     if L.evaluate("CONTI.webAdsAllowed()"): fail('로컬인데 광고를 넣으려 함')
+    # 스위치는 기본으로 꺼져 있다 (애드센스 승인 전). 승인된 주소·무료 플랜이라도 광고가 없다
+    if L.evaluate("CONTI.WEBADS.on") is not False: fail('웹 광고 스위치가 기본으로 꺼져 있지 않음')
+    if L.evaluate("(()=>{CONTI.AD_HOSTS.add(location.hostname);CONTI.S.team.plan='free';const r=CONTI.webAdsAllowed();CONTI.AD_HOSTS.delete(location.hostname);return r})()"):
+      fail('스위치가 꺼졌는데 광고를 허락함')
+    L.evaluate("CONTI.WEBADS.on=true")   # 여기부터는 켰을 때 (코드는 그대로 둔다)
 
     # 운영 주소인 것처럼 흉내 내면 무료 플랜에서는 나온다.
     # 실제 애드센스 스크립트는 부르지 않는다 (승인 안 된 주소라 오류가 난다)

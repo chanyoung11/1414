@@ -718,8 +718,11 @@ html.dark .msgbody{background:#1C1C1C}
 /* 광고가 안 들어오면 자리를 접는다. 안 접으면 예배 목록 한가운데에
    400px 짜리 빈 구멍이 남는다 (애드센스 승인 전에는 늘 안 들어온다) */
 ins.adsbygoogle[data-ad-status="unfilled"]{display:none!important}
-/* 광고 배너가 뜨면 그만큼 아래를 비운다 — 하단 탭이 가려지면 안 된다 */
-body.hasad #app{padding-bottom:calc(var(--sab) + var(--adh,50px))}   /* 연습 화면 아래 배너 자리 */
+/* 광고 배너가 뜨면 그만큼 아래를 비운다 — 하단 탭이 가려지면 안 된다.
+   hasad 는 배너가 진짜로 보이는 동안에만 붙는다 (받기 전·숨긴 뒤에는 없다 — 빈 띠가 남지 않게) */
+body.hasad #app{padding-bottom:calc(var(--sab) + var(--adh,50px) + var(--adgap,0px))}   /* 연습 화면 아래 배너 자리 */
+/* 폰(세로 640 이하·가로 높이 500 이하): 본문 끝(필터 칩·악보 마커)이 배너 윗변에 딱 붙어 잘못 누를 여지가 있었다 → 8px 띄운다 */
+@media (max-width:640px),(max-height:500px){body.hasad{--adgap:8px}}
 /* 건반·메트로놈은 왼쪽에서 나온다 — 악보를 가리지 않아야 쳐 보면서 볼 수 있다.
    body 에 바로 붙는 판이라 #app 의 안전 영역 여백을 못 받는다 → 상태바·노치·홈 인디케이터를 직접 피한다.
    창(.ov 50)·알림보다는 아래 — 위에 있으면 패널이 떠 있는 동안 연 창을 누를 수 없었다 */
@@ -738,7 +741,7 @@ body.hasad #app{padding-bottom:calc(var(--sab) + var(--adh,50px))}   /* 연습 �
 }
 /* 연습 화면 아래 광고 배너(네이티브 뷰라 웹 위에 뜬다)가 떠 있으면 판을 그 위에서 끝낸다.
    가려지면 박자 버튼을 못 누르고, 건반을 치면 광고가 눌린다 */
-body.hasad .sidetool{bottom:calc(var(--sab) + var(--adh,50px));padding-bottom:14px}
+body.hasad .sidetool{bottom:calc(var(--sab) + var(--adh,50px) + var(--adgap,0px));padding-bottom:14px}
 /* 건반 한 옥타브 */
 .pkeys{position:relative;display:flex;height:150px;margin-top:12px;user-select:none;touch-action:none;
  border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;background:#fff}
@@ -7250,15 +7253,23 @@ const ADS={
  android:{banner:'ca-app-pub-5011605715320185/9271100292',reward:''},
  test:false,testingDevices:[],
 };
-// 웹 광고(애드센스). 승인 뒤 아래 두 값을 채우면 무료 플랜 화면 아래에 뜬다.
-// 비어 있으면 아무것도 하지 않는다
-const WEBADS={client:'ca-pub-5011605715320185',slot:'3461379578'};
+// 웹 광고(애드센스). on 하나로 켜고 끈다 — false 면 웹에는 광고가 아예 없다: 자리(<ins>)·여백·스크립트·요청 모두 없음.
+// 2026-09 애드센스 심사에서 '사이트 미완성'으로 거절됐다 → 승인될 때까지 끈다 (코드는 켤 때를 위해 그대로 둔다).
+// app/ads.txt 는 그대로 둔다 (다시 심사받을 때 필요하다).
+// 다시 켜기 전에 고칠 것 (배너 위치 점검 2026-09-25):
+//  · 자리가 미디어 칸(.panel.media — 높이 제한·overflow:hidden) 안이라 광고가 잘리고 재생 버튼·'여기에 메모'를 칸 밖으로 민다
+//    → 칸 밖 독립 자리로 (flex-shrink:0 · 고정 최소 높이 · '광고' 표시 · 재생 버튼·타임라인과 떨어지게)
+//  · render 첫머리의 setTimeout(webAdsRender,0) 이 연습 화면을 그리기(await 뒤) 전에 돌아, 새로고침·홈→연습에서는 요청을 안 한다
+//    → app.innerHTML=playHTML(...) 뒤에서 부른다
+//  · 같은 화면을 다시 그릴 때마다(동기화) <ins> 가 새로 생겨 사용자 조작 없이 광고를 다시 요청한다(정책 위반) → 채워진 자리를 재사용
+// client·slot 이 비어 있어도 아무것도 하지 않는다
+const WEBADS={on:false,client:'ca-pub-5011605715320185',slot:'3461379578'};
 let WEBAD_LOADED=false;
 // 애드센스는 승인된 주소에서만 부른다. 로컬·미리보기에서 부르면 오류가 나고,
 // 승인되지 않은 곳에 광고를 띄우는 것은 정책 위반이기도 하다
 const AD_HOSTS=new Set(['lets1414.com','www.lets1414.com']);
 function webAdsAllowed(){
- if(NATIVE||!WEBADS.client||!WEBADS.slot)return false;
+ if(NATIVE||!WEBADS.on||!WEBADS.client||!WEBADS.slot)return false;
  if(!AD_HOSTS.has(location.hostname))return false;
  if(!NET.user||!S.team.id)return false;              // 로그인 전 화면에는 안 넣는다
  return (S.team.plan||'free')==='free';
@@ -7279,7 +7290,13 @@ function webAdsRender(){
  $$('.webad').forEach(el=>{if(el.dataset.done)return;el.dataset.done='1';
   try{(window.adsbygoogle=window.adsbygoogle||[]).push({})}catch(e){}});
 }
-const ADSTATE={on:false,ready:false,consent:false,want:false,q:null};
+// 앱 배너(애드몹) 상태
+//  want  화면이 바라는 것 (연습 화면이면 true — adsSync·modal·무대가 적는다)
+//  view  네이티브 배너 뷰: 'none' 없음 · 'loading' 광고를 받는 중 · 'ready' 광고가 들어와 있다(보이거나 숨김)
+//  vis   보이라고 한 상태 (showBanner·resumeBanner 부터 hideBanner·removeBanner 까지)
+//  on    광고가 진짜로 보이는 중 = body.hasad (본문 아래를 배너 높이만큼 비운다). 받기 전·숨긴 뒤·실패 뒤에는 늘 false
+//  size·w  뷰를 만들 때 고른 크기와 화면 폭 — 화면을 돌려 안 맞으면 걷고 새로 만든다 · failAt  마지막으로 못 받은 때
+const ADSTATE={on:false,ready:false,consent:false,want:false,q:null,view:'none',vis:false,size:'',w:0,failAt:0};
 // 유료 플랜이면 광고를 띄우지 않는다. 한도 검사가 꺼져 있으면(결제 전) 모두 무료로 본다
 const adsAllowed=()=>{
  if(!NATIVE)return false;
@@ -7316,39 +7333,93 @@ function adsWant(on){ADSTATE.want=on;ADSTATE.q=(ADSTATE.q||Promise.resolve()).th
 async function adsInit(A){if(ADSTATE.ready)return;await adsTracking(A);
  const dev=(ADS.testingDevices||[]).filter(Boolean);await A.initialize({initializeForTesting:dev.length>0,testingDevices:dev});
  await adsConsent(A);ADSTATE.ready=true}
+// 플러그인(@capacitor-community/admob 8)이 두 플랫폼에서 다르게 움직여 앱이 맞춰 준다:
+//  · 아이폰은 배너 뷰를 광고가 들어온 순간에야 화면에 붙인다. 그 전에는 hideBanner·removeBanner 가 찾지 못해 헛돌고,
+//    늦게 온 광고가 무대 악보·메모 창 '저장' 위에 그대로 떴다 → 들어올 때(Loaded) 지금 원하는지 다시 보고 곧바로 숨긴다
+//  · 안드로이드는 showBanner 가 이미 있는 뷰에 광고만 다시 받고 숨긴(GONE) 채로 둔다 — 한 번 내린 뒤로는 앱을 다시 켤 때까지
+//    광고 없이 빈 띠만 남았다 → 숨긴 배너는 resumeBanner 로 다시 보이고, 받는 중에 내린 뷰는 걷어(removeBanner) 다음에 새로 만든다
+//  · 안드로이드 15+ (실기기 확인 필요): 플러그인이 배너를 처음 띄울 때 decorView 에 자기 OnApplyWindowInsetsListener 를 걸어
+//    (BannerExecutor.java:136) Capacitor SystemBars 가 건 리스너(키보드 높이만큼 웹뷰 아래를 비움)를 갈아 끼운다 → 그 뒤로
+//    키보드가 메모 칸·저장 버튼을 가릴 수 있다. 안드로이드 15·16 기기에서 광고가 뜬 연습 화면 → 메모 창 → 입력으로 볼 것.
+//    가리면 플러그인 패치(앞 리스너로 넘겨 주기)나 앱 쪽 키보드 높이 처리가 필요하다. 14 이하는 플러그인이 아래 여백 계산을 안 하니
+//    거기서도 배너가 내비게이션 바에 가리지 않는지 같이 본다 (docs/서버_설정.md '배너 광고')
+const adsPlat=()=>(window.Capacitor&&window.Capacitor.getPlatform&&window.Capacitor.getPlatform())||'android';
+// 폰 = 짧은 변 600 미만 — 가로로 돌려도 폰이다. 키보드가 올라와도 안 바뀌게 창이 아니라 화면(screen) 크기로 본다
+function adsPhone(){const sc=window.screen||{};
+ return Math.min(sc.width||window.innerWidth||0,sc.height||window.innerHeight||0)<600}
+// 크기는 고정 배너. 태블릿이고 폭이 728 이상일 때만 728×90, 폰은 가로로 두어도 320×50 — 폰 가로에서 728×90 이 화면의 28% 를
+// 차지했고 띄운 채 세로로 돌리면 양옆이 잘렸다. 적응형은 안드로이드에서 화면 절반을 차지하는 시안이 와서 하단바가 한가운데로 밀렸다
+function adsSize(){return !adsPhone()&&(window.innerWidth||0)>=728?'LEADERBOARD':'BANNER'}
+// 지금 뷰가 화면과 안 맞는다 (돌렸거나 창 폭이 바뀜). 안드로이드는 뷰를 만들 때의 폭으로 가운데를 맞춰 두어 세로에서 만든 배너는
+// 가로에서 왼쪽으로 쏠리고 가로에서 만든 배너는 세로에서 잘린다 → 걷고 새로 만든다. 키보드는 높이만 바꿔 여기 안 걸린다
+function adsStale(){return ADSTATE.view!=='none'&&(ADSTATE.size!==adsSize()||Math.abs(ADSTATE.w-(window.innerWidth||0))>2)}
+// 폰에서 건반을 열면 배너를 내린다 — 빠르게 연달아 누르는 건반이 배너와 15px 떨어져 있어 광고가 잘못 눌린다(애드몹 정책)
+const adsPianoPhone=()=>adsPhone()&&!!$('#sidetool[data-tool="piano"]');
+// 배너를 덮거나 배너가 덮을 것이 떠 있다: 무대 · 창(메모·시트) · 폰 건반
+function adsBlocked(){const m=$('#modal');
+ return !!(document.getElementById('stageWrap')||(typeof PL!=='undefined'&&PL&&PL.stage)||(m&&m.firstChild)||adsPianoPhone())}
+// 지금 배너가 보여도 되는가. 바라는 상태만 믿지 않고 화면을 직접 본다 — 늦게 들어온 광고도 이걸로 다시 거른다
+function adsOk(){return !!ADSTATE.want&&adsAllowed()&&AD_ROUTES.test(route().name)&&!adsBlocked()}
+function adsMark(on){ADSTATE.on=on;document.body.classList[on?'add':'remove']('hasad')}
+const adsCall=(A,m)=>Promise.resolve().then(()=>A[m]()).catch(()=>{});
+async function adsRemove(A){adsMark(false);ADSTATE.vis=false;await adsCall(A,A.removeBanner?'removeBanner':'hideBanner');ADSTATE.view='none'}
+async function adsOff(A){adsMark(false);if(!ADSTATE.vis)return;ADSTATE.vis=false;
+ // 안드로이드: 받는 중인 뷰는 걷는다 (숨겨 두면 다시 보일 때 광고가 없을 수 있다). 아이폰은 받는 중에 못 걷어 들어오면 숨긴다
+ if(ADSTATE.view==='loading'&&adsPlat()!=='ios'&&A.removeBanner){await adsCall(A,'removeBanner');ADSTATE.view='none';return}
+ await adsCall(A,'hideBanner')}
+// 광고가 들어왔다 (처음 받음·새로 고침)
+function adsLoaded(A){
+ if(ADSTATE.view==='none'&&adsPlat()!=='ios')return;   // 안드로이드: 걷은 뷰의 늦은 소식 (플러그인도 거르지만 한 번 더)
+ ADSTATE.view='ready';
+ if(!ADSTATE.vis||!adsOk()){adsMark(false);ADSTATE.vis=false;adsCall(A,'hideBanner');return}   // 원하지 않을 때 온 광고 → 곧바로 숨긴다
+ if(adsStale()){adsMark(false);adsWant(ADSTATE.want);return}   // 받는 사이 화면을 돌렸다 → 걷고 새 크기로
+ adsMark(true)}
+function adsBind(A){if(ADSTATE.bound)return;ADSTATE.bound=true;
+ // 배너가 실제 높이를 가질 때만 본문을 밀어 올린다. 광고가 안 오면(승인 전·무필) 배너 뷰는 투명한 채로 떠 있어서,
+ // 그때 자리를 비우면 바만 공중에 뜬다. 숨기기·걷기가 보내는 0 은 무시한다 (자리는 hasad 가 정한다)
+ A.addListener('bannerAdSizeChanged',sz=>{let h=(sz&&sz.height)||0;if(h<=0)return;if(h>120)h=60;   // 말도 안 되는 값이면 배너 한 줄 높이로
+  document.documentElement.style.setProperty('--adh',h+'px');
+  if(!ADSTATE.vis||!adsOk()){adsMark(false);ADSTATE.vis=false;adsCall(A,'hideBanner')}});
+ // 자리는 광고가 진짜로 들어왔고 지금 원할 때만 비운다. 크기 이벤트는 채워지기 전에도 와서 빈 띠가 생겼다
+ A.addListener('bannerAdLoaded',()=>adsLoaded(A));
+ A.addListener('bannerAdFailedToLoad',()=>{ADSTATE.view='none';ADSTATE.vis=false;ADSTATE.failAt=Date.now();adsMark(false)})}
 async function adsApply(){
  const A=CapPlug().AdMob;if(!A)return;
- const want=()=>ADSTATE.want&&adsAllowed();
- if(!want()){if(!ADSTATE.on)return;
-  try{await A.hideBanner()}catch(e){}
-  ADSTATE.on=false;document.body.classList.remove('hasad');return}
- const plat=(window.Capacitor.getPlatform&&window.Capacitor.getPlatform())||'android';
+ const want=()=>adsOk();
  try{
+  // 화면을 돌려 크기·폭이 안 맞는 배너는 걷는다 (원하면 아래에서 새로 띄운다). 아이폰에서 받는 중인 배너는 못 걷으니 들어온 뒤에
+  if(adsStale()&&(ADSTATE.view==='ready'||adsPlat()!=='ios'))await adsRemove(A);
+  if(!want()){await adsOff(A);return}
   await adsInit(A);
-  if(ADSTATE.on||!want())return;   // 준비하는 사이 무대·팝업이 열렸으면 띄우지 않는다
-  // 배너가 실제 높이를 가질 때만 본문을 밀어 올린다. 광고가 안 오면(승인 전·무필)
-  // 배너 뷰는 투명한 채로 떠 있어서, 그때 자리를 비우면 바만 공중에 뜬다
-  if(!ADSTATE.bound){ADSTATE.bound=true;
-   A.addListener('bannerAdSizeChanged',sz=>{let h=(sz&&sz.height)||0;if(h>120)h=60;   // 말도 안 되는 값이면 배너 한 줄 높이로
-    document.documentElement.style.setProperty('--adh',h+'px')});
-   // 자리는 광고가 진짜로 들어왔을 때만 비운다. 크기 이벤트는 채워지기 전에도 와서 빈 띠가 생겼다
-   A.addListener('bannerAdLoaded',()=>document.body.classList.add('hasad'));
-   A.addListener('bannerAdFailedToLoad',()=>document.body.classList.remove('hasad'))}
-  // 크기는 고정 배너(320×50). 적응형은 안드로이드에서 화면 절반을 차지하는 시안이 와서 하단바가 한가운데로 밀렸다
-  await A.showBanner({adId:ADS[plat].banner,adSize:window.innerWidth>=728?'LEADERBOARD':'BANNER',position:'BOTTOM_CENTER',margin:0,isTesting:!!ADS.test});
-  ADSTATE.on=true;   // 띄우는 사이 내리라는 말이 왔으면 줄 선 다음 차례가 내린다
- }catch(e){console.warn('ads',e)}
+  if(!want()){await adsOff(A);return}   // 준비하는 사이 무대·팝업이 열렸으면 띄우지 않는다
+  adsBind(A);
+  if(ADSTATE.vis)return;   // 이미 띄웠다 (받는 중이면 들어올 때 보인다)
+  if(ADSTATE.view==='none'&&Date.now()-ADSTATE.failAt<30000)return;   // 방금 못 받았다 — 화면을 넘길 때마다 다시 요청하지 않는다
+  ADSTATE.vis=true;
+  if(ADSTATE.view==='ready'){
+   // 숨겨 둔 배너를 다시 보인다 (다시 받지 않는다). 아이폰은 뷰가 없어졌으면 거절한다 → 새로 띄운다
+   const ok=await Promise.resolve().then(()=>A.resumeBanner()).then(()=>true,()=>false);
+   if(ok){if(ADSTATE.vis&&ADSTATE.view==='ready'&&want())adsMark(true);return}
+   ADSTATE.view='none'}
+  if(ADSTATE.view==='loading')return;   // 아이폰: 받는 중에 내렸다 다시 올림 — 들어오면 그대로 보인다
+  ADSTATE.view='loading';ADSTATE.size=adsSize();ADSTATE.w=window.innerWidth||0;
+  await A.showBanner({adId:ADS[adsPlat()].banner,adSize:ADSTATE.size,position:'BOTTOM_CENTER',margin:0,isTesting:!!ADS.test});
+  // 자리(hasad)는 광고가 들어오면(Loaded) 비운다. 띄우는 사이 내리라는 말이 왔으면 줄 선 다음 차례가 내린다
+ }catch(e){console.warn('ads',e);if(ADSTATE.view==='loading'){ADSTATE.view='none';ADSTATE.vis=false}}
 }
 // 예배 중에는 광고를 내린다 — 무대 모드·연습·콘티 보기
-// 광고는 연습 화면에만 — 체류 시간이 길고, 탭바가 없어서 아무것도 안 가린다. 무대(연습 안 스위치 포함)에서는 내린다
+// 광고는 연습 화면에만 — 체류 시간이 길고, 탭바가 없어서 아무것도 안 가린다. 무대(연습 안 스위치 포함)·폰 건반에서는 내린다
 const AD_ROUTES=/^play$/;
 function adsSync(){
  // 약관 동의·인도자의 글 같은 팝업이 떠 있으면 광고(→ATT 창)는 나중에. 창 세 개가 한꺼번에 뜨지 않게
  if(NATIVE&&$('#modal')&&$('#modal').firstChild){clearTimeout(adsSync.t);adsSync.t=setTimeout(adsSync,2500);return}
  if(!NATIVE)return;
  const r=route().name;
- if(AD_ROUTES.test(r)&&!document.getElementById('stageWrap')&&!(typeof PL!=='undefined'&&PL.stage))adsShow();else adsHide();
+ if(AD_ROUTES.test(r)&&!document.getElementById('stageWrap')&&!(typeof PL!=='undefined'&&PL.stage)&&!adsPianoPhone())adsShow();else adsHide();
 }
+// 화면을 돌리면(폭이 바뀌면) 배너를 새 크기·자리로 다시 띄운다
+function adsRefit(){clearTimeout(adsRefit.t);adsRefit.t=setTimeout(()=>{if(adsStale())adsWant(ADSTATE.want)},250)}
+if(NATIVE&&window.addEventListener){window.addEventListener('resize',adsRefit);window.addEventListener('orientationchange',adsRefit)}
 
 // 무대 모드·연습 중에는 화면이 꺼지지 않게 한다
 async function keepAwake(on){
@@ -7518,20 +7589,23 @@ async function rewardWatch(team,phase){
 // 소리는 Web Audio 로 직접 만든다. 음원 파일이 없어 앱 용량이 늘지 않고,
 // setTimeout 대신 오디오 시계에 미리 예약해 박이 밀리지 않는다
 // 왼쪽에서 나오는 도구 패널. 악보를 가리지 않는다
-function sideTool(title,html,onOpen){
+// tool: 어떤 도구인지 (data-tool) — 폰에서 건반이 열려 있으면 앱 배너를 내린다
+function sideTool(title,html,onOpen,tool){
  let el=$('#sidetool');
  // 열려 있던 패널을 다시 쓰면 건반·메트로놈이 붙인 클릭 처리가 쌓여 +5 가 +10, 옥타브가 두 칸씩 뛰었다.
  // 속성(열림 상태)만 가진 새 틀로 바꿔 끼운다
  if(el){const n=el.cloneNode(false);el.replaceWith(n);el=n}
  else{el=document.createElement('div');el.id='sidetool';el.className='sidetool';document.body.appendChild(el)}
- el.dataset.r=route().name;
+ el.dataset.r=route().name;el.dataset.tool=tool||'';
  el.innerHTML=`<div class="sthd"><b>${title}</b><span class="grow"></span>
    <button class="icon ghost" data-act="sidetool-close" title="닫기">${ic('x')}</button></div>${html}`;
  requestAnimationFrame(()=>el.classList.add('on'));
  el.onclick=e=>{if(e.target.closest('[data-act="sidetool-close"]'))sideToolClose()};
  if(onOpen)onOpen(el);
+ if(NATIVE)setTimeout(adsSync,0);   // 폰 건반이면 배너를 내리고, 건반에서 메트로놈으로 바꾸면 다시 띄운다
  return el}
-function sideToolClose(){const el=$('#sidetool');if(!el)return;el.classList.remove('on');
+function sideToolClose(){const el=$('#sidetool');if(!el)return;el.classList.remove('on');el.dataset.tool='';
+ if(NATIVE)setTimeout(adsSync,0);   // 건반을 닫으면 배너를 다시 띄운다
  setTimeout(()=>{if(el&&!el.classList.contains('on'))el.remove()},200)}
 // 패널은 body 에 붙어 있어 화면이 바뀌어도 남았다 — 홈에서 하단 탭·더보기를 가렸다. 다른 화면으로 가면 닫는다
 // (같은 연습 화면 안에서 곡만 넘길 때는 그대로 둔다. 메트로놈은 닫아도 계속 울린다)
@@ -7589,7 +7663,7 @@ function pianoOpen(){
   box.addEventListener('pointerup',up);box.addEventListener('pointercancel',up);box.addEventListener('pointerleave',up);
   el.addEventListener('click',e=>{const b=e.target.closest('[data-act="oct"]');if(!b)return;
    PIANO.oct=Math.max(1,Math.min(7,PIANO.oct+ +b.dataset.d));
-   const o=el.querySelector('#pOct');if(o)o.textContent=PIANO.oct+'옥타브'})});
+   const o=el.querySelector('#pOct');if(o)o.textContent=PIANO.oct+'옥타브'})},'piano');
 }
 
 const MET={on:false,bpm:90,beats:4,beat:0,next:0,timer:null,tapAt:[]};
