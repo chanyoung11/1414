@@ -854,7 +854,9 @@ body.stgon{overflow:hidden}
 .stgpage .pchord{position:absolute;color:#C0392B;font-weight:700;font-family:"Pretendard Variable","Pretendard",Arial,sans-serif;white-space:nowrap;pointer-events:none;text-shadow:0 0 2px #fff,0 0 2px #fff}
 .stgpage .pmk{position:absolute;transform:translate(-50%,-50%);min-width:17px;height:17px;border-radius:999px;border:1.5px solid #111;background:#fff;color:#111;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;padding:0 3px;pointer-events:none}
 /* 띠를 끈 무대에서 그 마커에 메모가 몇 개 있는지 (연습 배지의 빨간 점과 같은 뜻) */
-.stgpage .pmk .badge,.ppage .pmk .badge{position:absolute;right:-9px;top:-8px;background:var(--destructive,#E5484D);color:#fff;font-size:9px;font-weight:700;border-radius:999px;padding:0 4px;line-height:13px}
+.stgpage .pmk .badge,.ppage .pmk .badge{gap:0;position:absolute;right:-9px;top:-8px;background:var(--destructive,#E5484D);color:#fff;font-size:9px;font-weight:700;border-radius:999px;padding:0 4px;line-height:13px}
+/* 전역 .badge 의 앞 점(::before)이 새어 들어와 '● 1' 로 보이던 것 — 연습 배지(.mkabs)처럼 끈다 */
+.stgpage .pmk .badge::before,.ppage .pmk .badge::before{display:none}
 /* 메모 띠 — 인쇄(.ppage .pstrip)와 같은 모양. 무대에는 이 규칙이 없어 띠가 제자리에 안 서고 송폼 상자 밑에 깔렸다 */
 .stgpage .pstrip{position:absolute;display:flex;align-items:center;gap:6px;font-size:11px;overflow:hidden;border-left:3px solid #111;padding-left:7px}
 .stgpage .pstrip .mk2{min-width:17px;height:17px;border-radius:999px;background:#111;color:#fff;font-size:10px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;padding:0 4px;flex:0 0 auto}
@@ -6851,9 +6853,13 @@ function pgBlockHTML(b,box,page){
    // 자리·크기는 연습(sheetHTML)과 같게 — 원래 코드 바로 오른쪽, 글자 9~24px. 오른쪽에 붙일 자리가 같은 줄
    // 다음 코드에 닿으면 코드 바로 위로 (라벨끼리·악보 글자와 겹쳐 읽히지 않게). 위로 올린 자리가 이 조각 범위 밖이면
    // .pslice 가 잘라 글자가 반만 남으니 그때는 오른쪽 그대로 둔다
+   // 줄 끝 코드는 오른쪽에 붙일 자리가 악보 폭(.pslice) 밖이라 잘리거나 통째로 사라졌다(연습은 패널 여백으로 넘쳐 보인다)
+   // → 폭을 넘으면 위로 올리고, 위도 범위 밖이면 폭 안쪽 끝에 붙인다
    pc.chords.forEach(c=>{if(!on(c.y,c.h))return;const fs=Math.max(9,Math.min(24,c.h*scale*0.92)),lw=c.text.length*fs*0.62;
-    const up=!!c.nx&&Math.abs(c.nx.y-c.y)<c.h&&(c.x+c.w)*scale+4+lw>c.nx.x*scale-2&&(c.y-start)*scale-fs-1>=0;
-    sub+=`<div class="pchord" style="left:${up?c.x*scale:(c.x+c.w)*scale+4}px;top:${up?(c.y-start)*scale-fs-1:(c.y-start)*scale}px;font-size:${fs}px;line-height:${up?fs:Math.max(c.h*scale,fs)}px">${esc(c.text)}</div>`});
+    const rx=(c.x+c.w)*scale+4,upTop=(c.y-start)*scale-fs-1,over=rx+lw>w;
+    const up=(over||!!c.nx&&Math.abs(c.nx.y-c.y)<c.h&&rx+lw>c.nx.x*scale-2)&&upTop>=0;
+    const lx=up?Math.min(c.x*scale,Math.max(0,w-lw)):over?Math.max(0,w-lw):rx;
+    sub+=`<div class="pchord" style="left:${lx}px;top:${up?upTop:(c.y-start)*scale}px;font-size:${fs}px;line-height:${up?fs:Math.max(c.h*scale,fs)}px">${esc(c.text)}</div>`});
    pc.markers.forEach(m=>{const hasStrip=m.vis.length&&m.cut!=null&&box.memos!==false;
     // 띠를 세우지 않은 마커(띠를 끈 무대)에 메모가 있으면 연습 배지처럼 개수를 단다. 보통 인쇄는 종이에서 열어 볼 수 없어 뺀다
     const cnt=box.stage&&m.vis.length?`<span class="badge">${m.vis.length}</span>`:'';

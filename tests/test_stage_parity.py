@@ -26,7 +26,7 @@ def shot(pg, name, loc=None):
     (loc or pg).screenshot(path=p); print('  shot', p)
 
 # 연습 화면의 빨간 코드 = 기대값 (같은 규칙으로 그려야 한다)
-EXPECT0 = sorted(['F', 'C', 'G/B', 'C', 'Dm7', 'D', 'A'])
+EXPECT0 = sorted(['F', 'C', 'G/B', 'C', 'Dm7', 'D', 'A', 'G'])   # 'G' 는 줄 끝(악보 오른쪽 끝에 닿는) 코드 — 라벨이 폭 밖으로 잘리면 안 된다
 
 NOTE = """const addNote=async(sid,it,marker,id,text)=>{
   const r=await fetch('/api/notes',{method:'POST',credentials:'include',headers:{'content-type':'application/json','x-conti':'1'},
@@ -42,7 +42,7 @@ SEED = "async(sid)=>{" + NOTE + """const s=CONTI.S.services.find(x=>x.id===sid);
   p.markers=[mk('mkA','A',365),mk('mkB','B',540),mk('mkC','C',720),mk('mkD','D',890,2),mk('mkE','E',1240,-3)];
   const ch=(id,text,x,y,w)=>({id,text,x,y,w:w||30,h:30,conf:100,fixed:true});
   p.chords=[ch('c1','D',300,190),ch('c2','A',300,370),ch('c3','E/G#',700,545,60),ch('c3b','A',770,545),
-            ch('c4','Bm7',300,730),ch('c5','A',300,900),ch('c6','E',300,1055),ch('c7','A',300,1250),ch('c8','D',300,1400)];
+            ch('c9','E',1370,190),ch('c4','Bm7',300,730),ch('c5','A',300,900),ch('c6','E',300,1055),ch('c7','A',300,1250),ch('c8','D',300,1400)];
   p.hls=[{id:'h1',x:63,y:380,w:658,h:80,kind:'hl'},{id:'m1',x:84,y:276,w:1274,h:26,kind:'mask'}];
   it.notes=[];
   await addNote(sid,it,'mkA','nA'+Date.now().toString(36),'여기서 천천히');
@@ -66,7 +66,7 @@ PROBE = """(root)=>{const R=document.querySelector(root);if(!R)return null;
    const t=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
    const kind=el.classList.contains('mask')?'mask':el.classList.contains('hl')?'hl':el.classList.contains('pmk')?'pmk':'chord';
    const bd=el.querySelector('.badge');
-   out.items.push({kind,text:kind==='pmk'?(el.firstChild.textContent||'').trim():(el.textContent||'').trim(),badge:bd?bd.textContent:'',
+   out.items.push({kind,text:kind==='pmk'?(el.firstChild.textContent||'').trim():(el.textContent||'').trim(),badge:bd?bd.textContent:'',bdot:bd?getComputedStyle(bd,'::before').display:'',
     r:[r.left-q.left,r.top-q.top,r.right-q.left,r.bottom-q.top],pg:pi,w:r.width,h:r.height,
     inside:r.left>=pr.left-1&&r.right<=pr.right+1&&r.top>=pr.top-1&&r.bottom<=pr.bottom+1,
     pos:cs.position,bg:cs.backgroundColor,disp:cs.display,vis:cs.visibility,op:+cs.opacity,z:cs.zIndex,
@@ -256,6 +256,8 @@ def run():
         pg.click('.stgpop input[data-stgt="memos"]'); pg.wait_for_timeout(500)
         g = stage_all(pg)
         bd = {x['text']: x['badge'] for x in g['items'] if x['kind'] == 'pmk'}
+        dots = [x['bdot'] for x in g['items'] if x['kind'] == 'pmk' and x['badge']]
+        if any(d != 'none' for d in dots): fail("메모 개수 배지에 전역 .badge 의 앞 점이 붙어 '● 1' 로 보임: %s" % dots)
         if g['strips'] or bd.get('A') != '1' or bd.get('C') != '1' or bd.get('B') != '':
             fail('메모 띠를 끈 무대에서 A·C 배지에 메모 개수가 붙어야 함: %s · 띠 %s' % (bd, g['strips']))
         else: print('메모 띠 끈 무대 ok — 배지 %s' % bd)
@@ -293,7 +295,7 @@ def run():
         set_capo(pg, 2)
         P2 = practice_chords(pg, sid)
         print('연습 코드(카포 2):', P2)
-        if P2 == P0 or len(P2) != 9: fail('준비가 잘못됨 — 카포 2 연습 코드: %s' % P2)
+        if P2 == P0 or len(P2) != 10: fail('준비가 잘못됨 — 카포 2 연습 코드: %s' % P2)
         open_stage(pg, sid)
         g = stage_all(pg)
         if chords_of(g) != P2: fail('카포 2 무대 코드가 연습과 다름: %s ≠ %s' % (chords_of(g), P2))
