@@ -557,7 +557,9 @@ html.dark .pill.role-pastor{color:#B4A7F5}
 .stack{display:grid;grid-template-rows:fit-content(50%) 6px minmax(0,1fr);gap:0;min-height:0;min-width:0}
 /* 연습(편집 .ed 가 아닌 것) — 미디어 칸은 제 내용만큼(끌 때 한계처럼 아래 120px 는 남긴다). 절반으로 묶어 두면 가로 아이패드에서
    재생 단추·"여기에 메모"·유튜브에서 열기가 칸 밖으로 밀리고 아래 송폼 칸만 텅 비었다 */
-.stack:not(.ed){grid-template-rows:fit-content(calc(100% - 120px)) 6px minmax(0,1fr)}
+.stack:not(.ed){grid-template-rows:fit-content(calc(100% - 200px)) 6px minmax(0,1fr)}
+/* 타임라인 메모가 쌓이면 미디어 칸이 끝없이 커져 아래 보기(세션)·메모 필터가 가려졌다 → 목록은 제 안에서 스크롤 */
+.stack:not(.ed) #tlist{max-height:28vh;overflow-y:auto;overscroll-behavior:contain}
 /* 가로로 돌린 폰처럼 낮은 화면 — 왼쪽 칸이 250~330px 뿐이라 둘로 나누면 미디어 칸이 128px 에 영상이 반만 보이고 재생 단추는 칸 밖이었다.
    왼쪽 칸을 한 줄로 흘려(송폼·필터는 아래로 이어 스크롤) 칸 속 작은 스크롤을 없애고, 재생 단추를 영상 바로 밑에 두고
    영상 높이를 화면 높이에 맞춰 영상·재생 단추가 함께 보이게 한다 */
@@ -1490,7 +1492,9 @@ function editorHTML(svc){
  const sel=SEL[svc.id]||(SEL[svc.id]={item:svc.items[0]&&svc.items[0].id,tool:'marker'});
  const it=svc.items.find(i=>i.id===sel.item)||svc.items[0];if(it)sel.item=it.id;
  const status=svc.published?'v'+svc.published.version+(svc.version>svc.published.version?' · 수정 중':''):'초안';
- return `<div class="top"><button class="icon ghost" data-act="home" title="홈">${ic('back')}</button><h1><label class="titlewrap"><input class="titlein" data-f="svc.name" placeholder="${esc(svcName(svc))}" title="비워 두면 팀 이름 규칙으로 자동" value="${esc(svc.name)}"><span class="penic">${ic('pen')}</span></label><span class="pill st">${esc(status)}</span></h1>
+ // 폰에서는 짧게 — 'v1 · 수정 중' 이 제목 칸을 몇 글자로 줄였다 (미리보기 알약과 같은 pl/ps)
+ const statusS=svc.published?(svc.version>svc.published.version?'수정 중':'v'+svc.published.version):'초안';
+ return `<div class="top"><button class="icon ghost" data-act="home" title="홈">${ic('back')}</button><h1><label class="titlewrap"><input class="titlein" data-f="svc.name" placeholder="${esc(svcName(svc))}" title="비워 두면 팀 이름 규칙으로 자동" value="${esc(svc.name)}"><span class="penic">${ic('pen')}</span></label><span class="pill st"><span class="pl">${esc(status)}</span><span class="ps">${esc(statusS)}</span></span></h1>
   <button class="btn ghost" data-act="view-svc" data-id="${svc.id}">${ic('eye')}미리보기</button><button class="btn pri" data-act="publish">${ic('send')}발행</button></div>
  <div class="ws split" id="ws">
   <div class="stack ed" id="stack">
