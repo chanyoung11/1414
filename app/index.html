@@ -1100,6 +1100,14 @@ body.nprint #printArea svg{max-width:100%;height:auto}
  /* 연습 곡 이동 칸은 줄어야 한다 — 위 .top>* 가 뒤에 있어 이겨 긴 제목이 메트로놈·무대 버튼을 화면 밖으로 밀었다 */
  .top>.songnav{flex:1 1 0;min-width:0}
 }
+/* 곡 상세 상단: 폰에서는 연습·예배에 넣기를 아이콘만, '다른 키로'는 ≡ 안으로 — 제목이 한 글자로 잘리지 않게 (D3) */
+.smclone{display:none!important}
+@media(max-width:640px){
+ .songtop>[data-act="song-clone"]{display:none}
+ .songtop>.btn{font-size:0;padding:0 10px;gap:0}
+ .songtop>.btn svg.ic{width:18px;height:18px}
+ .smclone{display:inline-flex!important}
+}
 .chklist{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:6px}
 .chklist .chk{display:inline-flex;align-items:center;gap:5px;font-size:12.5px}
 .chklist .chk.on{color:var(--fg)}
@@ -1149,6 +1157,9 @@ body.lnopen .main>main,body.lnopen .main>.hd{padding-right:min(476px,100%)}
 .filters .sep{width:1px;height:18px;background:var(--border);margin:0 2px}
 .insight{margin-top:10px;font-size:12.5px;color:var(--muted-fg)}
 .insight b{color:var(--fg)}
+/* 찾는 중(.finding): 카드·통계를 접고 찾은 수를 보인다. 폰에서는 켜 둔 칩만 남긴다 — 칩 줄이 자판 위를 다 차지해 결과가 자판 밑에 묻혔다 (D2) */
+.libpage:not(.finding) #libHit,.libpage.finding #libHome,.libpage.finding #libIns{display:none}
+@media(max-width:640px){.libpage.finding .filters>:not(.on){display:none}}
 .linkish{background:none;border:0;padding:0;font:inherit;color:var(--primary);text-decoration:underline;cursor:pointer}
 .songrow{display:flex;align-items:center;gap:10px;padding:9px 6px;border-bottom:1px solid var(--border);cursor:pointer;border-radius:var(--r-md)}
 .songrow:hover{background:var(--secondary)}
@@ -1703,6 +1714,24 @@ function markerMenu(svc,it,mid){
   if(id==='mmLabel'){closeModal();labelPicker(it,l=>{m.label=l;touch(svc);save();drawEditorSheet(svc)});return}
  };
 }
+// 메모를 쓴 뒤 팀에 올라갔는지 본다 (D5). 전에는 끊긴 채 써도 '메모 저장'만 떠 팀과 나눈 줄 알았고, 휴대폰은 연결됐다는데
+// 서버가 안 닿는 동안(약한 와이파이·교회 포털 — NET.server 는 true 로 남는다)에는 다음 online 이벤트·화면 복귀까지 다시 올리지도 않았다.
+// 못 올렸으면 그렇다고 알리고 조금씩 늦춰(5초→1분, 여섯 번까지 — 그 뒤는 전처럼 다시 연결·화면 복귀가 올린다) 다시 올린다.
+// quiet: 앞에서 이미 알렸다(고정 메모를 이번 예배 메모로 남긴 것)
+const MEMO_RT={};
+function memoSent(svc,quiet){
+ if(!svc||svc.practice||!S.team.id){if(!quiet)toast('메모 저장');return}
+ clearTimeout(MEMO_RT[svc.id]);
+ if(!online()){if(!quiet)toast('메모 저장 · 연결되면 팀에 올려요');return}   // 다시 연결(online·다시 묻기)이 pushUnsent 로 올린다
+ if(!quiet)toast('메모 저장');
+ clearTimeout(SYNC.t);   // save() 가 건 0.7초 뒤 보내기 대신 여기서 바로 보내고 결과를 본다
+ const push=n=>SYNC.pushNotes(svc).then(ok=>{
+  if(ok!==false||n>=6||svcById(svc.id)!==svc||!notesChanged(svc))return;
+  if(!n&&!quiet)toast('메모를 아직 팀에 못 올렸어요 · 연결되면 올려요',3000);
+  MEMO_RT[svc.id]=setTimeout(()=>{if(online()&&svcById(svc.id)===svc&&notesChanged(svc))push(n+1)},Math.min(60e3,5e3*2**n))});
+ push(0)}
+// 서버에 닿지도 못한 실패(끊김)는 브라우저 말('Load failed'·'Failed to fetch')이라 우리말로 바꾼다. 서버가 거절한 것은 서버 말 그대로
+const netWhy=err=>err&&(err.status||err.timeout)?err.message:'연결이 안 돼요';
 function openComposer(svc,it,o){ // o: {marker, leader, t, mediaId}
  // 목회자 메모는 팀 설정에서 켜야 서버가 받는다. 꺼져 있으면 써도 저장에서 조용히 버려지므로 창을 열지 않는다
  if(!canMemo()){toast('목회자 메모는 팀 설정에서 켜야 해요');P.resumeIfPaused();return}
@@ -1714,7 +1743,9 @@ function openComposer(svc,it,o){ // o: {marker, leader, t, mediaId}
  // 명세 A.6: 인도자는 "이 곡에 항상"이 기본, 멤버는 "이번 예배만"이 기본
  // 예배 없이 여는 연습 화면에는 '이번 예배만' 이 없다 (명세 A.5.5)
  const onlyAlways=!!(svc&&svc.practice);
- let when=onlyAlways?'always':(o.leader?'always':'once');
+ // 연결이 없으면 인도자도 '이번 예배만'이 기본이다 — '이 곡에 항상'은 바로 서버에 남겨야 해서 끊긴 채로는 못 남긴다 (D4)
+ let when=onlyAlways?'always':(o.leader&&online()?'always':'once');
+ const whenHint=w=>w==='always'?'이 곡을 넣는 다음 예배에도 이 자리에 따라와요.':'이 예배에서만 보여요.'+(online()?'':' "이 곡에 항상"은 연결된 뒤에 남길 수 있어요.');
  const media=o.mediaId?it.media.find(x=>x.id===o.mediaId):null;
  // 영상이 특정 세션에게만 달렸으면(전체가 아니면) 타임라인 메모 대상도 그 안에서만 고른다.
  // 마커 메모는 곡 자체에 붙으므로 제한하지 않는다.
@@ -1726,7 +1757,7 @@ function openComposer(svc,it,o){ // o: {marker, leader, t, mediaId}
   <div class="row" style="margin-top:4px"><input class="field grow" id="cText" placeholder="한 줄로. 24자 안에" maxlength="60" style="font-size:16px;padding:12px 14px"><span class="hint" id="cCnt">0/24</span></div>
   ${arrOfItem(it)&&m?`<div class="lbl">어디에 남길까</div>
    <div id="cWhen"><button class="q ${when==='always'?'on':''}" data-w2="always">이 곡에 항상</button>${onlyAlways?'':`<button class="q ${when==='once'?'on':''}" data-w2="once">이번 예배만</button>`}</div>
-   <div class="hint" id="cWhenHint">${onlyAlways?'예배 없이 연습 중이라 이 곡에 항상 남아요.':(when==='always'?'이 곡을 넣는 다음 예배에도 이 자리에 따라와요.':'이 예배에서만 보여요.')}</div>`:''}
+   <div class="hint" id="cWhenHint">${onlyAlways?'예배 없이 연습 중이라 이 곡에 항상 남아요.':whenHint(when)}</div>`:''}
   <div class="lbl">${o.leader?'대상':'범위'}</div>
   <div>${o.leader?`<button class="q ${target===''?'on':''}" data-s="">${mdT.length?'태그된 전체':'전체'}</button>`+pickable.map(s=>`<button class="q ${target===s?'on':''}" data-s="${esc(s)}">${esc(s)}</button>`).join('')
    :`<button class="q on" data-sc="mine">나만</button>${canSess?`<button class="q" data-sc="session">${esc(my.session)}에 공유</button>`:''}<div class="hint" id="cScHint" hidden>세션과 함께 보는 고정 메모는 세션 리더만 남겨요${onlyAlways?'':' — "이번 예배만"을 고르면 세션에 공유할 수 있어요'}</div>`}</div>
@@ -1747,7 +1778,7 @@ function openComposer(svc,it,o){ // o: {marker, leader, t, mediaId}
   const sb=e.target.closest('[data-s]');if(sb){target=sb.dataset.s;$$('[data-s]').forEach(b=>b.classList.toggle('on',b.dataset.s===target));return}
   const scb=e.target.closest('[data-sc]');if(scb){scope=scb.dataset.sc;$$('[data-sc]').forEach(b=>b.classList.toggle('on',b.dataset.sc===scope));return}
   const wb=e.target.closest('[data-w2]');if(wb){when=wb.dataset.w2;$$('[data-w2]').forEach(b=>b.classList.toggle('on',b.dataset.w2===when));
-   const h=$('#cWhenHint');if(h)h.textContent=when==='always'?'이 곡을 넣는 다음 예배에도 이 자리에 따라와요.':'이 예배에서만 보여요.';syncScope();return}
+   const h=$('#cWhenHint');if(h)h.textContent=whenHint(when);syncScope();return}
   if(e.target.closest('#cSave')){const text=inp.value.trim();if(!text){inp.focus();return}
    const layer=o.leader?'leader':(scope==='session'?'session':'mine');
    let session=o.leader?(target||null):(scope==='session'?my.session:null);
@@ -1757,22 +1788,29 @@ function openComposer(svc,it,o){ // o: {marker, leader, t, mediaId}
    const arr=arrOfItem(it);
    const redraw=()=>{if(route().name==='edit')render();else redrawPlay()};
    if(m&&when==='always'&&arr){   // 편곡에 붙여 다음 예배에도 따라오게 (명세 A.6.2)
+    // 곡 없이 여는 연습 화면은 '이 곡에 항상'뿐이라 끊긴 채로는 남길 곳이 없다 — 창을 닫지 않아 친 글을 잃지 않게 한다 (D4)
+    if(onlyAlways&&!online()){toast('연결이 안 돼 저장하지 못했어요 · 연결된 뒤 다시 저장해 주세요',3500);return}
     // 서버가 받은 뒤에 알리고 다시 그린다. 먼저 "남겨요"라고 해 놓고 거절되면 말과 결과가 달라진다
     api('/arrangements/'+arr.id+'/notes',{method:'POST',body:{teamId:S.team.id,markerLabel:m.label,
      layer:layer==='leader'?'all':layer,session:session||undefined,text}})
      .then(r=>{arr.notes=(arr.notes||[]).concat(r.note);save();LIB.detail=null;toast('이 곡에 항상 남겨요');redraw()})
      .catch(err=>{
       // 곡 없이 여는 연습 화면의 곡은 가짜 예배라 예배 메모로 남기면 엉뚱한 곳에 쌓인다
-      if(onlyAlways){toast('고정 메모를 저장하지 못했어요: '+err.message);return}
-      it.notes.push({...note,marker:m.id});save();toast('고정 메모를 저장하지 못해 이번 예배에만 남겼어요: '+err.message);redraw()});
+      if(onlyAlways){toast('고정 메모를 저장하지 못했어요: '+netWhy(err),3500);return}
+      // 못 남기면 글을 잃지 않게 이번 예배 메모로 남긴다. 끊겨서면 그렇다고 우리말로 말하고(전에는 'Load failed'), 다음 예배에는
+      // 안 따라간다는 것도 알린다 — 전에는 말없이 '이번 예배만'이 되어 다음 예배에서 찾지 못했다 (D4). 그 메모는 연결되면 올라간다(memoSent)
+      it.notes.push({...note,marker:m.id});save();
+      toast(err&&(err.status||err.timeout)?'"이 곡에 항상"으로 못 남겨 이번 예배에만 남겼어요: '+err.message
+       :'연결이 안 돼 이번 예배에만 남겼어요 · 연결되면 팀에 올려요 ("이 곡에 항상"은 연결된 뒤 다시)',4500);
+      memoSent(svc,true);redraw()});
     // 재생 시각에도 붙이기 — 타임라인 메모는 영상에 붙어 이 예배에 남는다
-    const also=$('#cAlsoT');if(!onlyAlways&&also&&also.checked&&media){media.notes.push({...note,id:uid(),t:tSec,marker:m.id});save()}
+    const also=$('#cAlsoT');if(!onlyAlways&&also&&also.checked&&media){media.notes.push({...note,id:uid(),t:tSec,marker:m.id});save();memoSent(svc,true)}
     closeModal();redraw();if(route().name!=='edit')P.resumeIfPaused();
     return}
    if(onlyAlways){toast('이 연습 화면에서는 "이 곡에 항상"만 남길 수 있어요');return}
    if(m){it.notes.push({...note,marker:m.id});const also=$('#cAlsoT');if(also&&also.checked&&media)media.notes.push({...note,id:uid(),t:tSec,marker:m.id})}
    else if(media){media.notes.push({...note,t:tSec})}
-   save();closeModal();toast('메모 저장');
+   save();closeModal();memoSent(svc);   // '메모 저장' — 못 올렸으면 그렇다고 알리고 다시 올린다 (D5)
    if(route().name==='edit')render();else{redrawPlay();P.resumeIfPaused()}
   }
  };
@@ -3319,6 +3357,9 @@ async function switchScope(next){if(next===CUR_SCOPE)return;
  if(applyJournal(s||(s={}),next))setTimeout(save,0);   // 이 팀에서 닫히기 전에 못 쓴 변경을 되살리고 곧 다 쓴다
  S.services=uniqSvcs(s&&s.services);S.library=(s&&s.library)||[];S.songs=(s&&s.songs)||[];S.songsAt=(s&&s.songsAt)||'';S.seenVer=(s&&s.seenVer)||{};S.noteShadow=(s&&s.noteShadow)||{};S.seedAt=(s&&s.seedAt)||0;S.dropped=(s&&s.dropped)||[];S.delPending=(s&&s.delPending)||[];S.libAt=(s&&s.libAt)||'';S.libDeleted=(s&&s.libDeleted)||[];S.team=Object.assign(DEF_TEAM(),(s&&s.team)||{});JR_HOLD=false;
  S.songsV=(s&&s.songsV)||0;   // 이 스코프의 곡 목록을 받은 꼴 (SONGS_V)
+ // 인도자의 글을 어디까지 읽었는지도 사람(스코프)마다다. 전에는 앞 사람 것이 그대로 남아, 같은 기기에서 인도자가 로그아웃한 뒤
+ // 가입한 멤버는 글 창도 안 읽음 점도 못 봤다 (서버의 0 은 Math.max 라 못 고친다). 로그아웃한 빈 스코프도 비운다
+ S.readRev=(s&&s.readRev)||{};
  if(typeof SYNC!=='undefined')Object.keys(SYNC.pulledAt).forEach(k=>delete SYNC.pulledAt[k]);
  // 팀·계정이 바뀌면 화면 캐시도 모두 비운다 (이전 팀 일정·말씀·녹음이 남지 않게)
  if(typeof NOTI!=='undefined'){NOTI.list=[];NOTI.unread=0;NOTI.at=0;NOTI.sig=''}
@@ -3368,7 +3409,9 @@ const normTitle=t=>String(t||'').toLowerCase().replace(/\([^)]*\)|\[[^\]]*\]/g,'
 const NET={server:null,user:null,teams:[],blocked:null,enforcePlan:false};   // server: true=있음, false=없음(정적 호스팅), null=모름(네트워크 불가)
 /* ---------- 알림 (§1): 알림함 ① + 홈 카드 ②. 푸시 ③는 앱 단계 ---------- */
 const NOTI={list:[],unread:0,at:0,sig:'',timer:null,open:false};
-const NOTI_ICON={publish:'send','note.updated':'note','date.opened':'users','date.closed':'moon','lineup.notify':'users','lineup.changed':'users','avail.request':'list','avail.maybe':'list','avail.conflict':'marker','word.request':'note','word.received':'note','rehearsal.uploaded':'mic'};
+const NOTI_ICON={publish:'send','note.updated':'note','date.opened':'users','date.closed':'moon','lineup.notify':'users','lineup.changed':'users','avail.request':'list','avail.maybe':'list','avail.conflict':'marker','word.request':'note','word.received':'note','rehearsal.uploaded':'mic',
+ // 팀·멤버 알림은 사람 아이콘 — 없으면 메모 아이콘으로 떨어져 '…들어왔어요'가 메모처럼 보였다 (D9)
+ 'member.join':'users','member.left':'users','invite.full':'users','team.transfer':'users','team.delete':'trash','rehearsal.expiring':'mic'};
 const fmtRel=t=>{const d=Date.now()-new Date(t).getTime();if(!(d>=0))return '';if(d<60e3)return '방금';if(d<3600e3)return Math.floor(d/60e3)+'분 전';if(d<86400e3)return Math.floor(d/3600e3)+'시간 전';if(d<7*86400e3)return Math.floor(d/86400e3)+'일 전';const x=new Date(t);return (x.getMonth()+1)+'/'+x.getDate()};
 async function pullNoti(){if(!online()||!S.team.id||!NET.user)return false;try{const r=await api('/notifications?team='+S.team.id);NOTI.list=r.notifications||[];NOTI.unread=r.unread||0;NOTI.at=Date.now();const sig=NOTI.list.map(n=>n.id+(n.readAt?'r':'')+(n.ackAt?'a':'')).join(',');const ch=sig!==NOTI.sig;NOTI.sig=sig;return ch}catch(e){return false}}
 function refreshNoti(){return pullNoti().then(ch=>{updateBadges();if(ch&&route().name==='home')render();return ch})}
@@ -4525,8 +4568,12 @@ function matchSong(s,qq){const raw=String(qq||'').trim();if(raw.length<2)return 
  if(isCho(raw)){const c=nrm(raw);const tc=s.titleCho||chos(nrm(s.title));
   if(tc.startsWith(c))return {rank:1,where:''};
   if(tc.includes(c))return {rank:2,where:''};
-  const al=(s.aliases||[]).find(x=>chos(nrm(x)).includes(c));
-  return al?{rank:3,where:'다른 이름: '+al}:{rank:0,where:''}}
+  // 다른 이름뿐 아니라 아티스트·가사·태그도 초성으로 본다 — 찾기 칸은 '제목 · 가사 · 아티스트 · 태그 — 초성도 됩니다'인데
+  // ㅇㅇㅎ(영원히)·ㅇㅌㅅㅌ(아티스트)가 '찾는 곡이 없어요'였다 (D6). 가사는 길어 두 글자 초성은 거의 다 걸리니 세 글자부터
+  for(let i=0;i<MATCH_F.length;i++){const [k,label]=MATCH_F[i];if(k==='firstLine'&&c.length<3)continue;const v=s[k];
+   const list=Array.isArray(v)?v:(v?[v]:[]);const hit=list.find(x=>chos(nrm(x)).includes(c));
+   if(hit)return {rank:3+i,where:`${label}: ${hit}`}}
+  return {rank:0,where:''}}
  const n=nrm(raw);const tn=s.titleNorm||nrm(s.title);
  if(tn.startsWith(n))return {rank:1,where:''};
  if(tn.includes(n))return {rank:2,where:''};
@@ -4923,7 +4970,10 @@ function libThumbs(){
  Promise.all(ids.map(blobURL)).then(us=>{if(us.some(Boolean)&&route().name==='library')render()}).catch(()=>{})}
 function libraryHTML(){
  const lead=isLeader();const list=libFiltered();const q=LIB.q.trim();
- const plain=!q&&!LIB.key&&!LIB.tempo&&!LIB.tag&&!LIB.folder&&!LIB.last&&!LIB.archived&&!LIB.season&&LIB.pick!=='multi';
+ // 찾는 중(두 글자부터 거른다)에는 최근·오래된 곡 카드와 '전체 N곡'·통계 줄을 접고 찾은 수를 보인다. 폰에서는 이것들이
+ // 자판 위 화면을 다 차지해 친 글자에 맞는 곡이 자판 밑에 있었고, 제목은 여전히 '전체 3곡'이었다 (D2). 폰에서는 칩도 켜 둔 것만 남긴다(.finding)
+ const finding=q.length>=2;
+ const plain=!LIB.key&&!LIB.tempo&&!LIB.tag&&!LIB.folder&&!LIB.last&&!LIB.archived&&!LIB.season&&LIB.pick!=='multi';
  const narrow=!!(LIB.key||LIB.tempo||LIB.tag||LIB.folder||LIB.last||LIB.archived||LIB.season);   // 칩으로 좁혀서 빈 것 — 곡이 없는 게 아니다
  const all=(S.songs||[]).filter(s=>!s.archived);
  const year=new Date().getFullYear();
@@ -4947,7 +4997,7 @@ function libraryHTML(){
     <button class="btn sm" data-act="lib-move">${ic('list')}폴더로 옮기기</button>`:''}
    <button class="btn sm" data-act="lib-receive">${ic('import')}코드로 받기</button>
    <button class="btn sm pri" data-act="lib-new">${ic('plus')}새 곡</button>`:'';
- const body=`<div class="libpage">
+ const body=`<div class="libpage${finding?' finding':''}">
   <div class="row" style="gap:6px"><input class="field grow" id="libQ" value="${esc(LIB.q)}" placeholder="제목 · 가사 · 아티스트 · 태그 — 초성도 됩니다 (ㅇㅅㄹ)">${LIB.q?`<button class="btn sm ghost" data-act="lib-clear">지우기</button>`:''}</div>
   <div class="filters">
    ${KEYS7.map(k=>chip(LIB.key===k,'key',k,k)).join('')}
@@ -4959,16 +5009,17 @@ function libraryHTML(){
    <div class="seg">${[['recent','최근 부른'],['count','많이 부른'],['title','가나다'],['added','최근 고친']].map(([v,l])=>`<button class="${(LIB.sort||'recent')===v?'on':''}" data-act="lib-sort" data-v="${v}">${l}</button>`).join('')}</div>
    ${chip(LIB.archived,'archived','1','보관함')}${LIB.season?`<button class="q on" data-act="lib-season-off">작년 이맘때 ✕</button>`:''}
   </div>
-  <div class="insight">총 ${all.length}곡 · 올해 ${thisYear}곡${top&&top.useCount?` · 가장 많이 <b>${esc(top.title)}</b> ${top.useCount}회`:''}
+  <div class="insight" id="libIns">총 ${all.length}곡 · 올해 ${thisYear}곡${top&&top.useCount?` · 가장 많이 <b>${esc(top.title)}</b> ${top.useCount}회`:''}
    ${stale.length?` · <button class="linkish" data-lf="last" data-v="180">반년 넘게 안 부른 곡 ${stale.length}곡</button>`:''}
    ${season.length?` · <button class="linkish" data-act="lib-season">작년 이맘때 ${season.length}곡</button>`:''}
    ${lead?` · <button class="linkish" data-act="lib-shares">내가 만든 공유 코드</button>`:''}</div>
   ${lead&&LIB.dups&&LIB.dups.length?`<div class="card" style="background:var(--amber-soft);color:var(--amber)"><b>비슷한 곡이 ${LIB.dups.length}쌍 있어요</b><div class="row" style="margin-top:6px"><button class="btn sm" data-act="lib-merge">정리하기</button></div></div>`:''}
-  ${plain?`
+  ${plain?`<div id="libHome">
    ${all.filter(s=>s.lastUsed).length?`<div class="lbl">최근 부른 곡</div><div class="scards">${all.slice().sort((a,b)=>(b.lastUsed||'').localeCompare(a.lastUsed||'')).slice(0,8).map(card).join('')}</div>`:''}
    ${stale.length?`<div class="lbl">오래 안 부른 곡 <span class="hint">반년 넘음 · 다시 꺼낼 만한 것</span></div><div class="scards">${stale.slice(0,8).map(card).join('')}</div>`:''}
    ${season.length?`<div class="lbl">작년 이맘때 부른 곡</div><div class="scards">${season.slice(0,8).map(card).join('')}</div>`:''}
-   <div class="lbl">전체 ${all.length}곡</div>`:''}
+   <div class="lbl">전체 ${all.length}곡</div></div>`:''}
+  <div class="lbl" id="libHit">찾은 곡 ${list.length}곡</div>
   <div id="libList">${list.length?list.map(x=>songRow(x,{multi:LIB.pick==='multi',picked:LIB.sel.includes(x.s.id)})).join('')
    :`<div class="empty"><span class="icon">${ic('music')}</span><b>${q?'찾는 곡이 없어요':narrow?'고른 조건에 맞는 곡이 없어요':'아직 곡이 없어요'}</b>${q?'다른 말로 찾아 보세요':narrow?'위에서 켜 둔 칩을 한 번 더 누르면 풀려요':(lead?'"새 곡"으로 만들면 라이브러리에 들어가요':'인도자가 곡을 넣으면 여기 보여요')}${!q&&!narrow&&lead?`<div><button class="btn" data-act="lib-new">${ic('plus')}새 곡</button></div>`:''}</div>`}</div>
  </div>`;
@@ -5032,11 +5083,12 @@ function songHTML(s){const lead=isLeader();const d=LIB.detail||{};const arrs=s.a
  const withs=()=>{const c=d.companions||[];
   return c.length?c.map(x=>`<div class="mrow"><span class="grow">${x.dir==='next'?`이 곡 <b>→</b> ${esc(x.title)}`:`${esc(x.title)} <b>→</b> 이 곡`}</span><span class="hint">${x.n}번</span><button class="btn sm ghost" data-songopen="${esc(x.songId)}">열기</button></div>`).join('')
    :'<div class="empty">아직 패턴이 없어요. 두 번 이상 같은 순서로 부르면 생겨요.</div>'};
- return `<div class="top"><button class="icon ghost" title="뒤로" aria-label="뒤로" data-act="lib-back">${ic('back')}</button>
+ // 폰에서는 단추를 아이콘만 두고 '다른 키로'는 ≡ 로 옮긴다(songtop) — 글자 단추 셋이 줄을 다 차지해 제목이 '주' 한 글자로 잘렸다 (D3)
+ return `<div class="top songtop"><button class="icon ghost" title="뒤로" aria-label="뒤로" data-act="lib-back">${ic('back')}</button>
   <h1>${esc(s.title||'(제목 없음)')}${s.archived?'<span class="pill">보관됨</span>':''}</h1>
-  ${lead?`<button class="btn sm" data-act="song-clone">${ic('plus')}다른 키로</button>`:''}
-  <button class="btn sm" data-arrplay="${esc(defArr(s).id||'')}">${ic('play')}연습</button>
-  ${lead?`<button class="btn pri" data-arradd="${esc(defArr(s).id||'')}">${ic('plus')}예배에 넣기</button>
+  ${lead?`<button class="btn sm" data-act="song-clone" title="다른 키로">${ic('plus')}다른 키로</button>`:''}
+  <button class="btn sm" data-arrplay="${esc(defArr(s).id||'')}" title="연습" aria-label="연습">${ic('play')}연습</button>
+  ${lead?`<button class="btn pri" data-arradd="${esc(defArr(s).id||'')}" title="예배에 넣기" aria-label="예배에 넣기">${ic('plus')}예배에 넣기</button>
   <button class="icon ghost" title="더 보기" aria-label="더 보기" data-act="song-more">${ic('list')}</button>`:''}</div>
  <div class="ws" style="grid-template-columns:minmax(0,1fr)"><div class="panel"><div class="pbody"><div class="libpage">
   <div class="row" style="gap:14px;align-items:flex-start">
@@ -5244,9 +5296,16 @@ function songInfoModal(s){
    Object.assign(s,{title:f.title,artist:f.artist,origKey:f.origKey,folder:f.folder,tempo:f.tempo,tags:f.tags,aliases:f.aliases,firstLine:f.firstLine,
     titleNorm:nrm(f.title),titleCho:chos(nrm(f.title))});
    await saveSong(s,f);closeModal();render()}}}
+// 기본 편곡을 다른 키로 복사 (상단 '다른 키로' · 폰에서는 ≡ 안)
+async function songClone(s2){
+ const k=prompt('어느 키로 만들까요? (예: A)','');if(k==null)return;
+ try{const rr=await api(`/songs/${s2.id}/arrangements`,{method:'POST',body:{teamId:S.team.id,fromId:defArr(s2).id,key:k.trim(),name:k.trim()||'새 편곡'}});
+  s2.arrangements=(s2.arrangements||[]).concat(rr.arrangement);save();LIB.detail=null;await pullSong(s2.id);render();toast('편곡을 만들었어요')}
+ catch(e){toast(e.message)}}
 function songMoreModal(s){
  modal(`<b style="font-size:17px">${esc(s.title)}</b>
   <div class="row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:14px">
+   <button class="btn smclone" id="smClone">${ic('plus')}다른 키로</button>
    <button class="btn" id="smInfo">${ic('pen')}정보 수정</button>
    <button class="btn" id="smShare">${ic('export')}곡 코드 만들기</button>
    <button class="btn" id="smMerge">${ic('users')}합치기…</button>
@@ -5256,6 +5315,7 @@ function songMoreModal(s){
   <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" data-close="1">닫기</button></div>`,{center:true});
  $('#modal').onclick=async e=>{try{
   if(e.target.closest('[data-close]')){closeModal();return}
+  if(e.target.closest('#smClone')){closeModal();await songClone(s);return}   // 폰에서는 상단 대신 여기 (D3)
   if(e.target.closest('#smInfo')){closeModal();songInfoModal(s);return}
   if(e.target.closest('#smShare')){closeModal();shareMakeModal(s);return}
   if(e.target.closest('#smMerge')){closeModal();mergeModal();return}
@@ -5540,8 +5600,11 @@ function afterLibrary(){
  if(q){q.oninput=debounce(()=>{LIB.q=q.value;const l=$('#libList');if(!l)return;
    const list=libFiltered();
    l.innerHTML=list.length?list.map(x=>songRow(x,{multi:LIB.pick==='multi',picked:LIB.sel.includes(x.s.id)})).join('')
-    :`<div class="empty">${LIB.q.trim()?'찾는 곡이 없어요':'없어요'}</div>`},150);
-  // 글자를 지웠다가 다시 치면 섹션이 나왔다 사라지는 게 어지러워서, 화면은 목록만 갈아 끼운다
+    :`<div class="empty">${LIB.q.trim()?'찾는 곡이 없어요':'없어요'}</div>`;
+   // 찾는 동안(두 글자부터)은 카드·통계를 접고 찾은 수를 보인다 — 폰에서 결과가 자판 밑에 묻히지 않게 (D2). 다시 그리지는 않는다(자판이 닫힌다)
+   const box=l.closest('.libpage'),hit=$('#libHit');if(box)box.classList.toggle('finding',LIB.q.trim().length>=2);
+   if(hit)hit.textContent=`찾은 곡 ${list.length}곡`},150);
+  // 글자를 지웠다가 다시 치면 섹션이 나왔다 사라지는 게 어지러워서, 화면은 목록만 갈아 끼운다 (접고 펴는 것은 두 글자를 넘나들 때만)
   q.onchange=()=>{if(!LIB.q.trim())render()}}
 }
 function afterTeam(){
@@ -9536,11 +9599,7 @@ document.addEventListener('click',async e=>{
   case 'lib-sort':{LIB.sort=el.dataset.v;render();break}
   case 'lib-season-off':{LIB.season=false;LIB.pick=null;LIB.sel=[];render();break}
   case 'song-more':{const s2=songById(r.a);if(s2)songMoreModal(s2);break}
-  case 'song-clone':{const s2=songById(r.a);if(!s2)break;
-   const k=prompt('어느 키로 만들까요? (예: A)','');if(k==null)break;
-   try{const rr=await api(`/songs/${s2.id}/arrangements`,{method:'POST',body:{teamId:S.team.id,fromId:defArr(s2).id,key:k.trim(),name:k.trim()||'새 편곡'}});
-    s2.arrangements=(s2.arrangements||[]).concat(rr.arrangement);save();LIB.detail=null;await pullSong(s2.id);render();toast('편곡을 만들었어요')}
-   catch(e){toast(e.message)}break}
+  case 'song-clone':{const s2=songById(r.a);if(s2)await songClone(s2);break}
   /* ---- 팀 화면 (B부) ---- */
   case 'tm-invite':inviteModal();break;
   case 'tm-transfer':transferModal(null);break;
@@ -9651,11 +9710,18 @@ document.addEventListener('click',async e=>{
    const p=LQ[d.id]&&LQ[d.id].run;const p2=queueLineup(d,out);render();if(p!==p2)lineupSaved(p2);if(await p2)toast('기본 편성으로 되돌렸어요');break}
   case 'lkakao':{const d=SCH.dates.find(x=>x.id===route().a);if(!d)break;try{const r2=await api(`/teams/${S.team.id}/dates/${d.id}/text`);await copyText(r2.text);toast('카톡용 문구를 복사했어요')}catch(e){toast(e.message)}break}
   case 'lnotify':{const d=SCH.dates.find(x=>x.id===route().a);if(!d)break;
-   const ms=SCH.members;const names=[...new Set((d.lineup||[]).filter(x=>x.memberId).map(x=>{const m3=ms.find(y=>y.userId===x.memberId);return m3?m3.name:''}))].filter(Boolean);
-   if(!confirm(`${names.join(', ')} 에게 편성을 알릴까요?`))return;
+   // 누르는 인도자 자신은 빼고 묻는다 — 서버도 자신에게는 안 보낸다. '에게'는 이름에 붙인다(띄우면 iOS 창이 조사만 다음 줄로 넘겼다) (D8)
+   // 편성에서 빠진 사람(전에 통보받은 사람)도 '빠졌어요' 알림을 받으니 함께 적는다
+   const ms=SCH.members,myId=(NET.user||{}).id,inNow=(d.lineup||[]).map(x=>x.memberId).filter(Boolean);
+   const ids=inNow.concat((d.notified||[]).filter(x=>x&&!inNow.includes(x))).filter(x=>x!==myId);
+   const names=[...new Set(ids.map(id=>{const m3=ms.find(y=>y.userId===id);return m3?m3.name:''}))].filter(Boolean);
+   if(!confirm(names.length?`${names.join(', ')}에게 편성을 알릴까요?`:'알릴 다른 사람이 없어요. 통보한 것으로 표시할까요?'))return;
    // 보내는 중인 편성이 있으면 다 저장된 뒤에 알린다 (먼저 알리면 방금 고른 사람이 빠진 편성으로 통보된다)
    if(LQ[d.id]&&!await LQ[d.id].run)break;
-   try{const r2=await api(`/teams/${S.team.id}/dates/${d.id}/notify`,{method:'POST',body:{}});await pullSchedule(SCH.month,true);render();toast(r2.sent?`${r2.sent}명에게 알렸어요`:'바뀐 사람이 없어요')}catch(e){toast(e.message)}break}
+   // 다시 그려도 보던 자리를 지킨다 — 인도자 줄까지 내려 통보하면 1초 뒤 패널이 맨 위(드럼)로 튀었다 (D7). 받는 사이 옮긴 자리도 그대로
+   try{const r2=await api(`/teams/${S.team.id}/dates/${d.id}/notify`,{method:'POST',body:{}});await pullSchedule(SCH.month,true);
+    const bd=$('.lnbody'),top=bd?bd.scrollTop:0;render();const b2=$('.lnbody');if(b2)b2.scrollTop=top;
+    toast(r2.sent?`${r2.sent}명에게 알렸어요`:names.length?'바뀐 사람이 없어요':'통보한 것으로 표시했어요')}catch(e){toast(e.message)}break}
   case 'word-req':{const svc2=svcById(route().a);if(!svc2)break;
    try{const r2=await api('/services/'+svc2.id+'/word-request',{method:'POST',body:{teamId:S.team.id}});toast(`목사님 ${r2.sent}분께 수정 요청을 보냈어요`)}
    catch(e){await copyText(`[${svcName(svc2)}] 말씀 수정 요청\n${svc2.word&&svc2.word.passage?svc2.word.passage+' · ':''}${(svc2.word&&svc2.word.title)||''}\n이 부분을 다시 봐 주실 수 있을까요?`);

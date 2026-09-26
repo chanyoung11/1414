@@ -1421,8 +1421,8 @@ on('GET', '/services/:id', async ({ uid, url, params }) => {
   const wantDraft = url.searchParams.get('draft') === '1';
   if (wantDraft && (await membership(uid, teamId)).role !== 'leader') throw forbidden('초안은 인도자만 볼 수 있어요');
   const row = wantDraft
-    ? await one('select doc, 0 as version, updated_at as "updatedAt" from drafts where team_id=$1 and id=$2', [teamId, params.id])
-    : await one('select doc, version, updated_at as "updatedAt" from services where team_id=$1 and id=$2', [teamId, params.id]);
+    ? await one('select doc, 0 as version, updated_at as "updatedAt", null as "by" from drafts where team_id=$1 and id=$2', [teamId, params.id])
+    : await one('select doc, version, updated_at as "updatedAt", updated_by as "by" from services where team_id=$1 and id=$2', [teamId, params.id]);
   if (!row) throw notFound(wantDraft ? '초안이 없어요' : '발행된 콘티가 없어요');
   safeDoc(row.doc);   // 숫자 칸에 글자가 든 문서가 팀원 화면에 그대로 끼워지지 않게 (lib/docsafe.js)
   // 발행본 안에 들어 있는 말씀은 스냅샷이라 메모까지 담겨 있을 수 있다 → 보는 사람 권한으로 다시 거른다
@@ -1434,7 +1434,9 @@ on('GET', '/services/:id', async ({ uid, url, params }) => {
   const blobs = ids.length ? await q('select id, url, pathname from blobs where team_id=$1 and id = any($2::text[])', [teamId, ids]) : [];
   const w = await one('select word, updated_at as "updatedAt" from service_words where team_id=$1 and service_id=$2', [teamId, params.id]);
   const rd = await one('select rev from service_reads where team_id=$1 and service_id=$2 and user_id=$3', [teamId, params.id, uid]);
-  return { doc: row.doc, version: row.version, updatedAt: row.updatedAt, blobs: await readUrls(blobs), word: wordView(w && w.word, await membership(uid, teamId)), readRev: rd ? rd.rev : 0 };
+  // 이 판을 발행한 사람은 그 글을 쓰고 올린 사람이라 읽은 것으로 친다 — 발행 때 적어 두기(PUT) 전에 발행한 콘티도 (E6)
+  const mine = row.by && String(row.by) === String(uid) ? Math.max(0, Math.round(+(row.doc && row.doc.messageRev) || 0)) : 0;
+  return { doc: row.doc, version: row.version, updatedAt: row.updatedAt, blobs: await readUrls(blobs), word: wordView(w && w.word, await membership(uid, teamId)), readRev: Math.max(rd ? rd.rev : 0, mine) };
 });
 function fixedView(doc, m, uid) {
   const lead = !!(m && m.role === 'leader'), mine = new Set(m ? mySessions(m) : []);
@@ -1667,6 +1669,15 @@ on('PUT', '/services/:id', async ({ uid, params, body }) => {
     const now = await curOf();
     if (now && now.version === (+doc.version || 0) && now.same) return { ok: true, version: now.version, same: true };
     throw conflict((now || { version: +doc.version || 0 }).version);
+  }
+  // 발행한 사람은 제 글을 읽은 것으로 적어 둔다. 읽음은 기기에만 있어, 새 기기·다시 설치한 앱에서 인도자에게
+  // 제 글이 '읽었어요' 창과 안 읽음 점으로 떴다 (E6). 뒤에 다른 인도자가 같은 글로 다시 발행해도 남는다
+  const mrev = Math.max(0, Math.round(+doc.messageRev || 0));
+  if (mrev) {
+    try {
+      await q(`insert into service_reads(team_id, service_id, user_id, rev, at) values($1,$2,$3,$4,now())
+               on conflict (team_id, service_id, user_id) do update set rev=greatest(service_reads.rev, excluded.rev), at=now()`, [teamId, params.id, uid, mrev]);
+    } catch (e) { console.error('publish read', e); }
   }
   // §1 알림: publish(팀 전원, 발행자 제외) · note.updated(인도자의 글이 이전 발행과 다를 때)
   try {
@@ -3627,13 +3638,16 @@ on('POST', '/teams/:id/dates/:did/notify', async ({ uid, params }) => {
   const sessionsOf = (mid) => lineup.filter((r) => r.memberId === mid).map((r) => r.session).join('·');
   const timeLine = row.time ? `${row.time} 시작` : '';
   let sent = 0;
-  for (const mid of (firstTime ? [...nowIn] : [...added, ...moved])) {
+  // 통보를 누른 인도자 자신에게는 보내지 않는다 — 제 편성을 제가 짜고 누르는데 '인도자로 섭니다' 알림·할 일 카드가 또 왔다.
+  // 통보한 사람 목록(notified)에는 그대로 넣어 '통보 후 변경' 셈은 같다
+  const others = (list) => list.filter((x) => String(x) !== String(uid));
+  for (const mid of others(firstTime ? [...nowIn] : [...added, ...moved])) {
     sent += await notify(params.id, [mid], firstTime ? 'lineup.notify' : 'lineup.changed', row.id, {
       title: `${where} · ${josa(sessionsOf(mid), '으로', '로')} 섭니다`, body: timeLine, link, actionable: true, expiresAt: new Date(row.date + 'T23:59:59+09:00'),
     });
   }
   // 빠진 사람에게도 알린다. 계정을 지웠거나 팀을 떠난 사람은 notify 가 건너뛴다 (셈에도 안 들어간다)
-  for (const mid of dropped) {
+  for (const mid of others(dropped)) {
     sent += await notify(params.id, [mid], 'lineup.changed', row.id, { title: `${md} 편성에서 빠졌어요`, body: row.label, link: '#/cal', actionable: true, expiresAt: new Date(row.date + 'T23:59:59+09:00') });
   }
   // 세션이 바뀌었거나 빠진 사람의 처음 통보 카드('드럼으로 섭니다')는 이제 틀렸다 → 처리한 것으로 내린다 (알림함에는 남는다)
