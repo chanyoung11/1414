@@ -74,7 +74,9 @@ button,input,select,textarea{font:inherit;color:inherit}
    송폼·편성 칸은 그대로 확대됐다 → 확대 자체는 viewport 의 maximum-scale=1 이 막는다
    (사파리는 손가락 확대는 계속 허용하고, 앱 웹뷰는 원래 페이지 확대를 막아 두었다) */
 @supports (-webkit-touch-callout:none){input,select,textarea{font-size:16px}}
-button{cursor:pointer;background:none;border:0;padding:0}
+/* 버튼은 길게 눌러도 글자가 잡히지 않게 — 앱(웹뷰)에서 탭바·버튼을 0.5초쯤 누르고 있으면 돋보기와 선택 손잡이가 뜨고
+   누르기(click)는 사라졌다. 입력칸·본문 글은 그대로 고를 수 있다 */
+button{cursor:pointer;background:none;border:0;padding:0;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 button:active:not(:disabled){transform:scale(.98)}
 a{color:inherit}
 ::selection{background:rgba(10,10,10,.14)}html.dark ::selection{background:rgba(240,240,240,.14)}
@@ -85,6 +87,13 @@ svg.ic{width:20px;height:20px;flex:0 0 auto;display:block}
 html,body{touch-action:pan-x pan-y}
 html.noscroll{overflow:hidden}   /* 시트가 떠 있는 동안 뒤 화면 고정 */
 body.authbg{background:#111213}   /* 로그인 화면은 테마와 상관없이 어둡다 — 상태바 뒤까지 */
+/* 상태바 자리 가림막. 위 여백(--sat)은 #app 의 안쪽 여백이라 긴 쪽(설정·약관)을 내리거나 자판이 문서를 밀어 올리면
+   같이 올라가 버려, 글이 투명한 상태바(시계·배터리) 밑으로 지나갔다 (ios.contentInset never · 상태바 뒤 색은 iOS 에서 못 칠한다).
+   화면에 붙은 띠로 그 자리를 늘 바탕색으로 덮는다. 창(.ov)·무대·인쇄 미리보기는 이보다 위에서 제 여백을 챙긴다. 인쇄에는 빠진다 */
+body::before{content:"";position:fixed;left:0;right:0;top:0;height:var(--sat);background:var(--bg);z-index:41;pointer-events:none}
+body.authbg::before{background:#111213}
+body.nprint::before{display:none}
+@media print{body::before{display:none}}
 #app{height:100%;display:flex;flex-direction:column;color:var(--fg);padding-top:var(--sat);padding-bottom:var(--sab);padding-left:var(--sal);padding-right:var(--sar)} /* iOS 홈 화면 설치 시 상태바·홈 인디케이터 피함 (가로면 노치도) */
 .display{font-family:"Satoshi","Pretendard Variable","Pretendard",sans-serif}
 .tnum{font-variant-numeric:tabular-nums}
@@ -290,7 +299,9 @@ html.dark .a-ok{color:#5FBF8A}html.dark .a-maybe{color:#E9C35C}html.dark .a-no{c
 
 /* ---------- 홈 대시보드 셸 ---------- */
 .shell{flex:1;min-height:0;display:flex;gap:20px;width:100%;max-width:1400px;margin:0 auto;padding:16px 24px 92px}
-.side{display:none;position:sticky;top:16px;width:224px;flex:0 0 auto;height:calc(100vh - 32px)}
+/* 높이는 안전 영역을 뺀다 — #app 이 위아래 --sat·--sab 를 이미 비워서, 100vh-32 면 아이패드에서 사이드바가 화면 아래로 넘쳐
+   문서가 밀리고 프로필 줄이 홈 인디케이터 자리에 깔렸다 (웹은 둘 다 0 이라 그대로) */
+.side{display:none;position:sticky;top:16px;width:224px;flex:0 0 auto;height:calc(100vh - 32px - var(--sat) - var(--sab))}
 .side .box{display:flex;flex-direction:column;height:100%;padding:12px;background:var(--card);border:1px solid var(--surface-border);border-radius:var(--r-xl);box-shadow:var(--shadow-card)}
 .side .head{display:flex;align-items:center;gap:8px;padding:6px 8px 8px}
 .side .head .pill{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;line-height:20px}   /* 긴 팀 이름·'오프라인 · 팀'이 사이드바 밖으로 나가지 않게 끝을 줄인다 */
@@ -2601,9 +2612,11 @@ function publishModal(svc){
  modal(`<div class="row sb"><b style="font-size:17px">발행 — v${nextV}</b><span class="pill">${svc.items.length}곡</span></div>
   <div class="lbl">카톡에 붙여넣을 텍스트</div><textarea class="field mono" id="kk" rows="${Math.min(14,txt.split('\n').length+1)}">${esc(txt)}</textarea>
   <div class="hint" style="margin-top:8px">${online()?'발행하면 팀원 앱에 자동으로 내려갑니다. 카톡에는 위 텍스트(링크 포함)만 보내면 돼요.':S.team.id?'지금은 서버에 연결되지 않았어요. 발행해 두면 다시 연결될 때 팀에 올라가요.':'발행하면 이 버전이 멤버가 보는 콘티가 됩니다. 멤버에게는 내보내기 파일을 카톡으로 보내세요 (서버 연동 전).'}</div>
-  <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" id="kkCopy">텍스트 복사</button>${online()?`<button class="btn pri" id="pubOnly">${ic('send')}발행하고 팀에 공유</button>`:`<button class="btn" id="pubOnly">${ic('check')}발행만</button><button class="btn pri" id="pubOk">${ic('send')}발행 + 파일 내보내기</button>`}</div>`);
+  <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px;flex-wrap:wrap"><button class="btn" id="kkCopy">텍스트 복사</button>${canShareSheet()?`<button class="btn" id="kkShare">${ic('export')}보내기</button>`:''}${online()?`<button class="btn pri" id="pubOnly">${ic('send')}발행하고 팀에 공유</button>`:`<button class="btn" id="pubOnly">${ic('check')}발행만</button><button class="btn pri" id="pubOk">${ic('send')}발행 + 파일 내보내기</button>`}</div>`);
  $('#modal').onclick=async e=>{
   if(e.target.closest('#kkCopy')){try{await navigator.clipboard.writeText($('#kk').value);toast('복사됨')}catch{$('#kk').select();document.execCommand('copy');toast('복사됨')}}
+  // 카톡 문구를 공유 시트로 (복사 → 카톡 → 붙여넣기 대신). 창은 그대로 둔다 — 발행은 따로 누른다
+  if(e.target.closest('#kkShare')){shareSheet($('#kk').value).catch(()=>toast('보내지 못했어요. 텍스트 복사로 보내 주세요'));return}
   const only=e.target.closest('#pubOnly'),withFile=e.target.closest('#pubOk');if(only||withFile){
    if(songsP){const btn=only||withFile;if(btn.disabled)return;btn.disabled=true;   // 기다리는 사이 또 눌러 두 번 발행하지 않게
     const slow=setTimeout(()=>toast('라이브러리 곡에 잇는 중…'),600);
@@ -3339,10 +3352,10 @@ async function deleteAccountModal(){
  $('#modal').onclick=async e=>{
   if(e.target.closest('[data-close]')){closeModal();return}
   if(e.target.closest('#daGo')){const err=$('#daErr');err.textContent='';
-   if($('#daUser').value.trim()!==((NET.user&&NET.user.username)||'')){err.textContent='아이디가 맞지 않아요';return}
+   if(hanKeys($('#daUser').value).trim()!==((NET.user&&NET.user.username)||'')){err.textContent='아이디가 맞지 않아요';return}
    if(!confirm('정말 지울까요? 되돌릴 수 없어요.'))return;
    try{const who=needPw?{password:$('#daPw').value}:await socialReauth();
-    await api('/auth/delete',{method:'POST',body:{username:$('#daUser').value.trim(),...who}});
+    await api('/auth/delete',{method:'POST',body:{username:hanKeys($('#daUser').value).trim(),...who}});
     NET.user=null;NET.teams=[];await switchScope(scopeKey('',''));S.team=Object.assign(DEF_TEAM(),{id:'',invite:''});save();
     dropJournals('');try{indexedDB.deleteDatabase('conti-v1')}catch(e2){}
     closeModal();location.hash='#/home';location.reload()}
@@ -3986,6 +3999,12 @@ function joinHTML(tok){const p=GATE.preview&&GATE.preview.tok===tok?GATE.preview
   ${p.role==='pastor'||p.rejoin?'':`<div class="lbl">내 세션 <span class="hint">여러 개 고를 수 있어요</span></div><div id="gtSess">${(p.sessions||DEF_SESS).map(x=>`<button class="q ${(GATE.sessList||[]).includes(x)?'on':''}" data-s="${esc(x)}">${esc(x)}</button>`).join('')}</div>`}
   <div class="err" id="jnErr"></div><button class="btn pri wide" data-act="team-join" data-tok="${esc(tok)}">${ic('check')}${esc(p.teamName)} 팀에 ${p.rejoin?'다시 들어가기':'가입'}</button>`}
  <div class="foot"><span class="hint">${esc(u.username||'')}</span><button class="btn sm ghost" data-act="logout">${ic('logout')}로그아웃</button></div></div>`)}
+// 아이디·복구 코드는 영문 소문자·숫자만 받는다. 아이폰은 입력칸이 자판 언어를 고를 수 없어(마지막에 쓴 자판이 뜬다 —
+// inputmode·lang 으로도 안 바뀐다) 한글 자판 그대로 'abc12' 를 치면 '뮻12' 가 되어 가입·로그인이 막혔다 →
+// 한글은 두벌식 자판에서 누른 글쇠(영문)로 되돌린다. 한글 아이디는 없으니 되돌려서 잃는 것이 없다
+const HAN_KEY=(()=>{const m={};'ㄱr ㄲr ㄳrt ㄴs ㄵsw ㄶsg ㄷe ㄸe ㄹf ㄺfr ㄻfa ㄼfq ㄽft ㄾfx ㄿfv ㅀfg ㅁa ㅂq ㅃq ㅄqt ㅅt ㅆt ㅇd ㅈw ㅉw ㅊc ㅋz ㅌx ㅍv ㅎg ㅏk ㅐo ㅑi ㅒo ㅓj ㅔp ㅕu ㅖp ㅗh ㅘhk ㅙho ㅚhl ㅛy ㅜn ㅝnj ㅞnp ㅟnl ㅠb ㅡm ㅢml ㅣl'.split(' ').forEach(x=>{m[x[0]]=x.slice(1)});return m})();
+function hanKeys(s){return String(s==null?'':s).replace(/[\uac00-\ud7a3\u3131-\u3163]/g,ch=>{const c=ch.charCodeAt(0)-0xac00;if(c<0)return HAN_KEY[ch]||ch;
+ return HAN_KEY['ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ'[Math.floor(c/588)]]+HAN_KEY['ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ'[Math.floor(c%588/28)]]+(c%28?HAN_KEY['_ㄱㄲㄳㄴㄵㄶㄷㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅄㅅㅆㅇㅈㅊㅋㅌㅍㅎ'[c%28]]:'')})}
 async function afterGate(){const gs=$('#gtSess');if(gs)gs.onclick=e=>{const b=e.target.closest('[data-s]');if(!b)return;
   // 첫 세션을 미리 골라 두되, 처음 누른 것이 그 자리를 대신한다. 그 뒤로는 켜고 끄기(겸임)
   const v=b.dataset.s;const cur=GATE.sessTouched?(GATE.sessList||[]):[];GATE.sessTouched=true;
@@ -3994,9 +4013,13 @@ async function afterGate(){const gs=$('#gtSess');if(gs)gs.onclick=e=>{const b=e.
  // 로그인 화면은 다른 일(동기화·알림)로 다시 그려질 수 있다. 그때 치던 값이 날아가지 않게 담아 둔다
  const lu=$('#lgUser'),lp=$('#lgPass'),ln=$('#lgName');
  if(lu)lu.oninput=()=>{GATE.user=lu.value};
+ [lu,$('#rcCode')].forEach(el=>{if(el)el.onchange=()=>{const v=hanKeys(el.value);if(v===el.value)return;   // 칸을 떠날 때 (치는 중인 글자는 건드리지 않는다)
+  el.value=v;if(el===lu)GATE.user=v;toast('한글 자판으로 친 글자를 영문으로 바꿨어요')}});
  if(lp)lp.oninput=()=>{GATE.pw=lp.value};
  if(ln)ln.oninput=()=>{GATE.name=ln.value};
- const f=$('#lgUser')||$('#gtTeam')||$('#jnName');if(f&&!f.value)f.focus();
+ // 첫 칸에 커서를 두는 건 마우스 쓰는 컴퓨터에서만. 앱·터치 기기는 포커스만으로 자판이 올라와(Capacitor 는 손길 없이도 띄운다)
+ // 켜자마자·가입 직후 화면 절반을 가리고, 닫아도 다시 그릴 때마다 또 올라왔다 — 구글·애플 버튼과 초대 링크 칸이 먼저 보여야 한다
+ const f=$('#lgUser')||$('#gtTeam')||$('#jnName');if(f&&!f.value&&!NATIVE&&!matchMedia('(pointer:coarse)').matches)f.focus();
  if(online())mountSocial();   // 구글·애플 버튼. 오프라인이면 붙이지 않는다 — 설정을 못 받은 빈 답이 굳어 다시 연결돼도 버튼이 안 떴다
  // 받는 사이 다른 초대로 옮겨 갔으면 늦게 온 앞 초대는 버린다 (옮긴 주소의 그리기가 따로 받는다)
  const r=route(),tok=r.a,here=()=>{const q=route();return q.name==='join'&&q.a===tok};
@@ -4381,8 +4404,8 @@ async function doGate(act,el){
    if(!$('#lgUser'))return;
    vals.forEach(([id,v])=>{const f=$('#'+id);if(f&&v!=null)f.value=v});const a2=$('#lgAgree');if(a2)a2.checked=ag}
   if(act==='lg-mode'){GATE.mode=el.dataset.m;GATE.err='';GATE.user=($('#lgUser')||{value:''}).value;GATE.pw=($('#lgPass')||{value:''}).value;GATE.agree=!!($('#lgAgree')||{}).checked;render();return}
-  if(act==='rc-submit'){const username=$('#lgUser').value.trim(),code=$('#rcCode').value.trim(),next=$('#lgPass').value;GATE.user=username;const m=await api('/auth/recover',{method:'POST',body:{username,code,next}});GATE.err='';GATE.mode='login';await takeMe(m);toast('비밀번호를 바꿨어요. 설정에서 복구 코드를 새로 발급해 두세요');render();return}
-  if(act==='lg-submit'){const username=$('#lgUser').value.trim(),password=$('#lgPass').value;GATE.user=username;
+  if(act==='rc-submit'){const username=hanKeys($('#lgUser').value).trim(),code=hanKeys($('#rcCode').value).trim(),next=$('#lgPass').value;GATE.user=username;const m=await api('/auth/recover',{method:'POST',body:{username,code,next}});GATE.err='';GATE.mode='login';await takeMe(m);toast('비밀번호를 바꿨어요. 설정에서 복구 코드를 새로 발급해 두세요');render();return}
+  if(act==='lg-submit'){const username=hanKeys($('#lgUser').value).trim(),password=$('#lgPass').value;GATE.user=username;
    if(GATE.mode==='signup'){const ag=$('#lgAgree');GATE.agree=!!(ag&&ag.checked);
     if(!GATE.agree){GATE.err='이용약관과 개인정보처리방침에 동의해 주세요';render();return}}
    const m=GATE.mode==='login'?await api('/auth/login',{method:'POST',body:{username,password}}):await api('/auth/signup',{method:'POST',body:{username,password,name:$('#lgName').value.trim(),agreedAt:new Date().toISOString()}});
@@ -4405,6 +4428,13 @@ async function doGate(act,el){
  }catch(e){const box=$('#lgErr')||$('#jnErr')||$('#gtErr2')||$('#gtErr');if(box)box.textContent=e.message;else toast(e.message)}
 }
 function copyText(t){if(navigator.clipboard&&navigator.clipboard.writeText)return navigator.clipboard.writeText(t);const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();return Promise.resolve()}
+// 글을 휴대폰 공유 시트로 (카톡·문자·메일). 복사만 있으면 복사 → 카톡 열기 → 붙여넣기를 거쳐야 했고, 앱은 서버를 다녀온 뒤의
+// 자동 복사가 늘 막혀 한 번 더 눌러야 했다. 앱은 네이티브 공유(@capacitor/share) — 누른 손길을 따지지 않아 그 뒤에도 곧바로 뜬다.
+// 휴대폰 브라우저는 웹 공유. 마우스 쓰는 컴퓨터는 복사만 둔다. 끝까지 보냈으면 true, 닫았으면 false
+const canShareSheet=()=>NATIVE?!!((CapPlug().Share&&CapPlug().Share.share)||navigator.share):!!navigator.share&&matchMedia('(pointer:coarse)').matches;
+async function shareSheet(text){const Sh=CapPlug().Share;
+ try{if(NATIVE&&Sh&&Sh.share)await Sh.share({text});else await navigator.share({text});return true}
+ catch(e){if((e&&e.name==='AbortError')||/cancel/i.test(String(e&&e.message)))return false;throw e}}
 const inviteLink=()=>SITE+'#/join/'+(S.team.invite||'');
 /* ---------- 라이브러리 A부: 곡 → 편곡 → 사용 이력 ---------- */
 // 서버가 진실이고 기기에는 거울을 둔다(오프라인에서 보기 위해). 고친 것은 dirty 표를 달아 나중에 올린다.
@@ -5343,7 +5373,7 @@ function teamHTML(){
   return `<div class="mrow ${v.dead?'off':''}">
    <span class="grow" style="min-width:0"><b>${RL[v.role]||'멤버'} 링크</b>
     <div class="hint">${v.revoked?'회수됨':ex?(ex<new Date()?'기한 지남':`${ex.toLocaleDateString('ko-KR',{month:'numeric',day:'numeric'})}까지`):'만료 없음'} · ${v.maxUses===1?'1회용':'무제한'} · ${v.uses}명 들어옴</div></span>
-   ${v.dead?'':`<button class="btn sm" data-icopy="${esc(v.code)}">${ic('export')}복사</button><button class="btn sm ghost" data-ikakao="${esc(v.code)}">카톡 문구</button><button class="icon sm ghost" data-irevoke="${esc(v.id)}" title="회수">${ic('x')}</button>`}
+   ${v.dead?'':`${canShareSheet()?`<button class="btn sm" data-ishare="${esc(v.code)}">${ic('export')}보내기</button>`:''}<button class="btn sm${canShareSheet()?' ghost':''}" data-icopy="${esc(v.code)}">${ic('link')}복사</button>${canShareSheet()?'':`<button class="btn sm ghost" data-ikakao="${esc(v.code)}">카톡 문구</button>`}<button class="icon sm ghost" data-irevoke="${esc(v.id)}" title="회수">${ic('x')}</button>`}
   </div>`};
  const slotOf=s=>(st.slots&&st.slots[s]!=null)?st.slots[s]:(s==='싱어'?3:1);
  const acts=`${NET.teams.length>1?`<button class="btn sm" data-act="team-switch">${ic('users')}팀 전환</button>`:''}${lead?`<button class="btn sm pri" data-act="tm-invite">${ic('plus')}멤버 초대</button>`:''}`;
@@ -5560,14 +5590,18 @@ function inviteModal(){let role='member',days=30,once=false;
    closeModal();try{await pullTeam(true)}catch(err){}TM.open.invites=true;render();
    // 서버를 세 번 다녀온 뒤라 '누른 순간'이 지나 앱(iOS 웹뷰)은 복사를 막는다. 링크는 이미 만들어졌으니
    // 영어 오류 대신 링크를 보여 주고 버튼(새로 누르는 것)으로 복사한다 — 실패로 알고 또 만들면 링크 수만 는다 (F134)
-   const url=joinLink(r2.invite.code);
-   try{await copyText(url);toast('링크를 만들고 복사했어요')}
-   catch(e2){modal(`<b style="font-size:17px">초대 링크를 만들었어요</b><div class="hint" style="margin-top:4px">자동 복사가 안 됐어요. 아래 버튼으로 복사해 카톡방에 올려 주세요</div>
+   // 앱·휴대폰은 결과 창에서 공유 시트로 바로 보낸다 (자동 복사는 앱에서 늘 막혀 이 창이 떴고, 어차피 카톡으로 보낼 링크다)
+   const code=r2.invite.code,url=joinLink(code),share=canShareSheet();
+   if(!share)try{await copyText(url);toast('링크를 만들고 복사했어요');return}catch(e2){}
+   modal(`<b style="font-size:17px">초대 링크를 만들었어요</b><div class="hint" style="margin-top:4px">${share?'보내기로 카톡방에 바로 올리거나 복사해 주세요':'자동 복사가 안 됐어요. 아래 버튼으로 복사해 카톡방에 올려 주세요'}</div>
      <div class="linkbox" style="margin-top:12px;word-break:break-all">${esc(url)}</div>
-     <div class="row" style="margin-top:14px;justify-content:flex-end;gap:8px"><button class="btn" id="ivCopy">${ic('export')}링크 복사</button><button class="btn pri" data-close="1">닫기</button></div>`,{center:true});
-    $('#modal').onclick=async ev=>{if(ev.target.closest('#ivCopy')){try{await copyText(url);toast('복사했어요')}catch(e3){toast('복사하지 못했어요. 링크를 길게 눌러 복사해 주세요')}}if(ev.target.closest('[data-close]'))closeModal()}}}}};
+     <div class="row" style="margin-top:14px;justify-content:flex-end;gap:8px;flex-wrap:wrap">${share?`<button class="btn" data-close="1">닫기</button><button class="btn" id="ivCopy">${ic('link')}링크 복사</button><button class="btn pri" id="ivShare">${ic('export')}보내기</button>`:`<button class="btn" id="ivCopy">${ic('link')}링크 복사</button><button class="btn pri" data-close="1">닫기</button>`}</div>`,{center:true});
+   $('#modal').onclick=async ev=>{
+    if(ev.target.closest('#ivShare')){try{if(await shareSheet(inviteMsg(code)))closeModal()}catch(e3){toast('보내지 못했어요. 링크를 복사해 보내 주세요')}return}
+    if(ev.target.closest('#ivCopy')){try{await copyText(url);toast('복사했어요')}catch(e3){toast('복사하지 못했어요. 링크를 길게 눌러 복사해 주세요')}}if(ev.target.closest('[data-close]'))closeModal()}}}};
  wire()}
 const joinLink=code=>SITE+'#/join/'+code;
+const inviteMsg=code=>`${S.team.name}에 초대해요. 아래 링크로 들어와서 이름과 세션만 고르면 끝!\n${joinLink(code)}`;
 
 /* ---------- 정기 예배 · 사역 날짜 (§2) ---------- */
 const WD=['일','월','화','수','목','금','토'];
@@ -7223,6 +7257,8 @@ async function appPushRegister(){
    P.addListener('pushNotificationActionPerformed',a=>{
     const d=(a&&a.notification&&a.notification.data)||{};
     openPushLink(d.link,d.teamId)});
+   // 앱이 앞에 떠 있을 때 온 알림: 시스템 배너는 capacitor.config.json 의 presentationOptions 가 띄운다
+   // (없으면 iOS·안드로이드 모두 아무것도 안 보여 '잠시 뒤 알림이 떠요' 시험 알림이 사라졌다). 여기서는 알림함·종만 새로
    P.addListener('pushNotificationReceived',()=>{refreshNoti&&refreshNoti()});
   }
   await P.register();
@@ -7319,16 +7355,22 @@ async function nativeSetup(){
  document.body.classList.add('native');
  const P=CapPlug();
  // 상태바 색을 테마에 맞춘다 (흰 배경에 흰 글씨로 묻히던 것)
+ let barNow='';
  const paintBar=async()=>{try{if(!P.StatusBar)return;
-  // 로그인 화면은 테마와 상관없이 늘 어둡다 → 상태바도 어둡게 (밝은 테마 폰에서 흰 띠가 뜨던 것)
-  const dark=document.documentElement.classList.contains('dark')||!NET.user||!!document.querySelector('.auth-main');
-  await P.StatusBar.setStyle({style:dark?'DARK':'LIGHT'});
+  // 로그인 화면은 테마와 상관없이 늘 어둡다 → 상태바도 어둡게 (밝은 테마 폰에서 흰 띠가 뜨던 것).
+  // 무대도 테마와 상관없이 검은 바탕이다 → 밝은 테마에서 시계·배터리가 검은 글씨로 묻혔다
+  const dark=document.documentElement.classList.contains('dark')||!NET.user||!!document.querySelector('.auth-main')||document.body.classList.contains('stgon');
+  // 바뀔 때만 네이티브를 부른다. 창을 열고 닫을 때마다(html.noscroll) 같은 색을 또 불렀는데, 그 답이 브리지로 돌아오면
+  // 웹뷰가 '방금 누른 손길'을 지워 곧이어 부른 공유(navigator.share · 파일 내보내기)가 거절돼 한 번 더 눌러야 했다
+  const want=dark?'DARK':'LIGHT';if(barNow===want)return;barNow=want;
+  await P.StatusBar.setStyle({style:want});
   if(window.Capacitor.getPlatform&&window.Capacitor.getPlatform()==='android'){
    // 15 부터는 setBackgroundColor 가 안 먹고 상태바 뒤에 '창 배경'이 보인다 → 창 배경을 테마 색으로
    try{await P.StatusBar.setBackgroundColor({color:dark?'#111213':'#FAFAFA'})}catch(e){}
-   if(P.Printer&&P.Printer.setWindowBackground)await P.Printer.setWindowBackground({color:dark?'#111213':'#FAFAFA'})}}catch(e){}};
+   if(P.Printer&&P.Printer.setWindowBackground)await P.Printer.setWindowBackground({color:dark?'#111213':'#FAFAFA'})}}catch(e){barNow=''}};   // 실패하면 다음에 다시
  paintBar();window.__paintBar=paintBar;
  new MutationObserver(paintBar).observe(document.documentElement,{attributes:true,attributeFilter:['class']});
+ new MutationObserver(paintBar).observe(document.body,{attributes:true,attributeFilter:['class']});   // 무대(stgon)를 열고 닫을 때
  // 안드로이드 뒤로가기: 겹쳐 있는 것부터 닫고, 홈에서 누르면 앱을 내린다
  try{P.App&&P.App.addListener('backButton',()=>{
   if($('#stageWrap')){stageExit();return}
@@ -9322,8 +9364,9 @@ document.addEventListener('click',async e=>{
   const mem=id=>((TM.data||{}).members||[]).find(m=>m.userId===id);
   const ed=e.target.closest('[data-medit]');if(ed){const m=mem(ed.dataset.medit);if(m)memberEditModal(m);return}
   const mo=e.target.closest('[data-mmore]');if(mo){const m=mem(mo.dataset.mmore);if(m)memberMoreModal(m);return}
-  const ic2=e.target.closest('[data-icopy]');if(ic2){copyText(joinLink(ic2.dataset.icopy)).then(()=>toast('링크를 복사했어요'));return}
-  const ik=e.target.closest('[data-ikakao]');if(ik){copyText(`${S.team.name}에 초대해요. 아래 링크로 들어와서 이름과 세션만 고르면 끝!\n${joinLink(ik.dataset.ikakao)}`).then(()=>toast('카톡 문구를 복사했어요'));return}
+  const ic2=e.target.closest('[data-icopy]');if(ic2){copyText(joinLink(ic2.dataset.icopy)).then(()=>toast('링크를 복사했어요'),()=>toast('복사하지 못했어요'));return}
+  const ik=e.target.closest('[data-ikakao]');if(ik){copyText(inviteMsg(ik.dataset.ikakao)).then(()=>toast('카톡 문구를 복사했어요'),()=>toast('복사하지 못했어요'));return}
+  const ish=e.target.closest('[data-ishare]');if(ish){shareSheet(inviteMsg(ish.dataset.ishare)).catch(()=>toast('보내지 못했어요. 복사해서 보내 주세요'));return}   // 카톡 문구 그대로 공유 시트로
   const ir=e.target.closest('[data-irevoke]');if(ir){if(!confirm('이 링크를 회수할까요? 이 링크로는 더 들어올 수 없어요'))return;
    api('/teams/'+S.team.id+'/invites/'+ir.dataset.irevoke,{method:'DELETE'}).then(async()=>{await pullTeam(true);TM.open.invites=true;render();toast('회수했어요')}).catch(err=>toast(err.message));return}
   const sd=e.target.closest('[data-sdel]');if(sd){const row=sd.closest('.mrow');const nm=(row.querySelector('[data-sname]')||{}).value||'';
@@ -9450,8 +9493,9 @@ document.addEventListener('click',async e=>{
     // 복사가 안 될 수 있으니 링크를 화면에도 보여준다 (한 번 만들면 다시 볼 수 없으므로)
     modal(`<b style="font-size:17px">목사님께 보낼 링크</b><div class="hint" style="margin-top:4px">7일 안에, 한 번만 쓸 수 있어요. 이 창을 닫으면 다시 못 보니 지금 보내 주세요</div>
      <div class="linkbox" style="margin-top:12px;word-break:break-all">${esc(url2)}</div>
-     <div class="row" style="margin-top:14px;justify-content:flex-end;gap:8px"><button class="btn" id="wlCopy">${ic('export')}카톡 문구 복사</button><button class="btn pri" data-close="1">닫기</button></div>`,{center:true});
-    $('#modal').onclick=async ev=>{if(ev.target.closest('#wlCopy')){await copyText(txt);toast('복사했어요')}if(ev.target.closest('[data-close]'))closeModal()}}
+     <div class="row" style="margin-top:14px;justify-content:flex-end;gap:8px;flex-wrap:wrap">${canShareSheet()?`<button class="btn" data-close="1">닫기</button><button class="btn" id="wlCopy">카톡 문구 복사</button><button class="btn pri" id="wlShare">${ic('export')}보내기</button>`:`<button class="btn" id="wlCopy">카톡 문구 복사</button><button class="btn pri" data-close="1">닫기</button>`}</div>`,{center:true});
+    $('#modal').onclick=async ev=>{if(ev.target.closest('#wlShare')){try{if(await shareSheet(txt))closeModal()}catch(e3){toast('보내지 못했어요. 카톡 문구를 복사해 보내 주세요')}return}
+     if(ev.target.closest('#wlCopy')){try{await copyText(txt);toast('복사했어요')}catch(e3){toast('복사하지 못했어요. 링크를 길게 눌러 복사해 주세요')}}if(ev.target.closest('[data-close]'))closeModal()}}
    catch(e){toast(e.message)}break}
   case 'cal':go('cal');break;
   case 'sched':go('sched');break;
