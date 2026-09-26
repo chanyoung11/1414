@@ -164,8 +164,16 @@ body.nprint::before{display:none}
 .kicker{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted-fg)}
 
 /* ---------- 폼 ---------- */
-.lbl{font-size:12px;color:var(--fg);margin:14px 0 6px;font-weight:600;display:flex;align-items:center;gap:6px}
+.lbl{font-size:12px;color:var(--fg);margin:14px 0 6px;font-weight:600;display:flex;align-items:center;gap:6px;word-break:keep-all}
 .lbl .hint{font-weight:400}
+/* 라벨 글은 줄지 않고 옆 안내만 남는 폭에서 줄바꿈한다 — 둘이 같이 줄어 글자 크기 130%(안드로이드)에서 '기타 카' / '포'로 꺾였다 (AND1-16) */
+.lbl>.hint{flex:1 1 0;min-width:0;overflow-wrap:anywhere}
+/* 비밀번호 보기(눈) 단추 — 안드로이드만 (pwInput · AND1-18). .row 안에서는 칸처럼 늘어난다 */
+.pwbox{position:relative;display:block;flex:1 1 0;min-width:0}
+.pwbox>.field{padding-right:42px}
+.pweye{position:absolute;top:0;right:0;bottom:0;width:42px;display:flex;align-items:center;justify-content:center;color:var(--muted-fg);border-radius:0 var(--r-md) var(--r-md) 0;-webkit-tap-highlight-color:transparent}
+.pweye svg.ic{width:18px;height:18px}
+.pweye[aria-pressed="true"]{color:var(--fg)}
 .field{width:100%;border:1px solid var(--border);border-radius:var(--r-md);padding:0 12px;height:38px;background:var(--input);outline:none;color:var(--fg);transition:border-color .15s,box-shadow .15s}
 .field::placeholder{color:var(--faint-fg)}
 .field:focus{border-color:var(--fg);box-shadow:0 0 0 3px var(--ring)}
@@ -513,7 +521,7 @@ html.dark .pill.role-pastor{color:#B4A7F5}
 .schrow .d{flex:0 0 46px;text-align:center}
 .schrow .d b{display:block;font-size:15px;font-weight:800;letter-spacing:-.02em}
 .schrow .d small{font-size:11px;color:var(--muted-fg)}
-.schrow .grow b{display:block;font-size:14px;font-weight:600}
+.schrow .grow b{display:block;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}   /* 예배 이름 그대로, 넘치면 말줄임 (AND1-14) */
 .schrow .grow small{font-size:12px;color:var(--muted-fg)}
 .schrow .av{display:flex;gap:6px;flex:0 0 auto;font-size:12px;font-weight:700;font-style:normal}
 .schrow .av i{font-style:normal}
@@ -744,8 +752,15 @@ html.kbup .ov{top:var(--kbt,0px);bottom:var(--kb,0px)}
 /* 위는 상태바(시계·다이내믹 아일랜드) 밑에서 멈춘다 — 전에는 8px 까지 올라가 시트 머리(제목·닫기)가 시계 밑에 깔렸다 */
 html.kbup .ov:not(.center){padding-top:var(--sat)}
 html.kbup .ov .sheetm{max-height:calc(100% - 8px);padding-bottom:16px}
+/* 창이 같이 줄어드는 안드로이드(kbnav)도 시트 머리는 상태바 밑에서 멈춘다 — 폰 가로(자판 위 150px)에서 92vh 시트가 시계 밑까지 올라갔다 */
+html.kbnav .ov:not(.center){padding-top:var(--sat)}
+html.kbnav .ov .sheetm{max-height:calc(100% - 8px)}
 /* 저장 줄(.kbact)은 시트 바닥에 붙어 있다 — 연습 화면 메모 창은 '재생 시각' 줄까지 있어 자판 위 빈자리보다 커, 저장이 시트 안 스크롤 밑에 숨었다 (B3) */
-html.kbup .sheetm .kbact{position:sticky;bottom:-16px;z-index:1;background:var(--card);margin-bottom:-16px;padding:10px 0 16px;box-shadow:0 -10px 12px -10px rgba(0,0,0,.35)}
+html.kbup:not(.kbtight) .sheetm .kbact{position:sticky;bottom:-16px;z-index:1;background:var(--card);margin-bottom:-16px;padding:10px 0 16px;box-shadow:0 -10px 12px -10px rgba(0,0,0,.35)}
+/* 안드로이드 폰 가로처럼 자판 위 빈자리가 아주 작으면(150px) 저장 줄(62px)을 바닥에 붙이지 않는다 — 붙이면 입력 칸을 덮어 친 글자가
+   안 보였다 (AND2-05). 대신 입력 칸 옆에 저장(.kbsave)을 낸다 (kbFit 이 kbtight 를 켠다) */
+.kbsave{display:none}
+html.kbtight .kbsave{display:inline-flex;flex:0 0 auto}
 .sheetm>b:first-child{font-size:18px;font-weight:800;letter-spacing:-.04em}
 @keyframes fade-in{from{opacity:0}to{opacity:1}}
 @keyframes pop-in{from{opacity:0;transform:translate3d(0,10px,0) scale(.97)}to{opacity:1;transform:none}}
@@ -764,7 +779,7 @@ html.kbup .sheetm .kbact{position:sticky;bottom:-16px;z-index:1;background:var(-
 /* 토스트는 어떤 판보다 위다 — 무대(210)·인쇄 미리보기(200) 안에서 낸 결과·오류도 보여야 한다. 누르기는 안 받는다 */
 .toast{position:fixed;left:50%;bottom:calc(88px + var(--sab));transform:translateX(-50%);width:max-content;max-width:calc(100vw - 32px);background:var(--fg);color:var(--bg);padding:10px 18px;border-radius:var(--r-lg);font-size:13.5px;font-weight:600;z-index:300;opacity:0;transition:opacity .2s;pointer-events:none;box-shadow:0 12px 32px rgba(0,0,0,.25)}
 .toast.show{opacity:1}
-html.kbup .bnav{display:none}   /* 자판이 뜬 동안 아래 탭바가 자판 바로 위에 떠서 칸을 가리지 않게 */
+html.kbup .bnav,html.kbnav .bnav{display:none}   /* 자판이 뜬 동안 아래 탭바가 자판 바로 위에 떠서 칸을 가리지 않게 (kbnav: 창이 줄어드는 안드로이드) */
 /* 자판이 떠 있으면 보이는 화면 맨 위(상태바 밑)에 — 바닥 기준(88px)이면 자판 뒤에 숨어 '영문으로 바꿨어요' 같은 알림을 못 봤다 (N1).
    자판 바로 위는 iOS 가 치는 칸을 올려 두는 자리라 거기 띄우면 치던 칸을 가린다 */
 html.kbup .toast{bottom:auto;top:calc(var(--kbt,0px) + var(--sat) + 10px)}
@@ -1372,13 +1387,33 @@ const ICONS={
  note:'<path d="M5 5.5A1.5 1.5 0 0 1 6.5 4h11A1.5 1.5 0 0 1 19 5.5v9l-4.5 4.5h-8A1.5 1.5 0 0 1 5 17.5z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/><path d="M14.5 19v-4.5H19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/>',
  send:'<path d="M4 12l16-8-6 16-2.5-6.5z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/>',
  eye:'<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" fill="none" stroke="currentColor" stroke-width="1.9"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.9"/>',
+ eyeoff:'<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" fill="none" stroke="currentColor" stroke-width="1.9"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M4 4l16 16" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>',
  list:'<path d="M5 7h14M5 12h14M5 17h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
  back5:'<path d="M11 8.5L7 12l4 3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><text x="14.5" y="15.5" font-size="9" font-weight="700" fill="currentColor" font-family="sans-serif">5</text>',
  fwd5:'<path d="M13 8.5l4 3.5-4 3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><text x="5" y="15.5" font-size="9" font-weight="700" fill="currentColor" font-family="sans-serif">5</text>',
  open:'<path d="M14 4h6v6M20 4l-9 9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M19 14v5H5V5h5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>'
 };
 const ic=(n,cls)=>`<svg class="ic ${cls||''}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n]||''}</svg>`;
+// 안드로이드(앱 웹뷰·크롬). 자판·비밀번호 칸처럼 안드로이드에서만 다르게 움직이는 곳에 쓴다 — iOS·컴퓨터는 그대로.
+// 앱은 Capacitor 가 페이지 스크립트보다 먼저 들어와 있다
+const ANDROID=/android/i.test(navigator.userAgent||'')||(()=>{try{return window.Capacitor.getPlatform()==='android'}catch(e){return false}})();
+// 비밀번호 칸. 안드로이드 웹뷰는 비밀번호 보기 단추를 주지 않아 친 값을 확인할 길이 없었다 — 가입은 한 번만 쳐서 오타가 곧
+// 못 들어오는 계정이 됐다 (AND1-18) → 안드로이드에서만 칸 오른쪽에 보기(눈) 단추를 둔다. autocomplete 등 칸 속성은 그대로
+function pwInput(attrs){const i=`<input class="field" type="password" ${attrs}>`;
+ return ANDROID?`<span class="pwbox">${i.replace('<input ','<input autocapitalize="none" spellcheck="false" ')}<button type="button" class="pweye" tabindex="-1" aria-label="비밀번호 보기" aria-pressed="false">${ic('eye')}</button></span>`:i}
+// 눈 단추는 칸의 포커스(자판)를 빼앗지 않는다(mousedown 을 막는다) — 가림만 바꾸고 커서는 끝에
+if(ANDROID){
+ document.addEventListener('mousedown',e=>{if(e.target.closest&&e.target.closest('.pweye'))e.preventDefault()},true);
+ document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('.pweye');if(!b)return;e.preventDefault();e.stopPropagation();
+  const i=b.parentElement&&b.parentElement.querySelector('input');if(!i)return;const show=i.type==='password',f=document.activeElement===i;
+  i.type=show?'text':'password';b.setAttribute('aria-pressed',show?'true':'false');b.setAttribute('aria-label',show?'비밀번호 가리기':'비밀번호 보기');b.innerHTML=ic(show?'eyeoff':'eye');
+  if(f){const n=i.value.length;try{i.setSelectionRange(n,n)}catch(e2){}}},true)}
 const fmtDate=d=>{if(!d)return {md:'—',w:''};const t=new Date(d+'T00:00:00');if(isNaN(t))return {md:d,w:''};return {md:(t.getMonth()+1)+'/'+t.getDate(),w:['일','월','화','수','목','금','토'][t.getDay()]}};
+// 이름 앞에 그 날짜(10/4)를 붙인다 — 이름에 이미 그 날짜가 들어 있으면(팀 이름 규칙 기본값 '{월}/{일} {이름}' · '10월 4일 …') 또 붙이지 않는다
+// ('10/4 10/4 주일 오전예배 콘티가 비어 있어요' — AND1-15). 10/4 와 10/40 은 다르다
+function withDate(date,name){name=String(name||'').trim();const t=new Date((date||'')+'T00:00:00');if(isNaN(t))return name;
+ const m=t.getMonth()+1,d=t.getDate();if(new RegExp(`(^|[^0-9])${m}[./]${d}(?![0-9])|${m}월\\s*${d}일`).test(name))return name;
+ return name?`${m}/${d} ${name}`:`${m}/${d}`}
 
 /* ---------- HOME ---------- */
 /* ---------- EDITOR ---------- */
@@ -1463,9 +1498,13 @@ function shellHTML(active,o){
   </div></div>${bnavHTML(active)}`}
 // 그릴 때마다 한 번: 하단바가 실제로 차지하는 높이를 재서 본문 아래 여백으로 (마지막 카드가 바에 가리던 것),
 // 앱에서는 화면이 꺼지지 않게 (연습·무대 중 자동 잠금이 성가시다는 요청)
+// 숨은 바(display:none)는 top 이 0 이라 창 높이 전체를 여백으로 잡았다 — 폭 768~820(800dp 태블릿 세로 · 아이패드 820 세로)은 바를 숨기고도
+// 본문 아래 여백 규칙(max-width:820)이 걸려 홈·설정이 화면 높이(1280)만큼 빈 곳까지 넘어갔다 (AND2-04) → 안 보이는 바는 0.
+// 자판 때문에 잠깐 숨긴 동안(kbup·kbnav)은 여백을 그대로 둔다 (본문이 줄었다 늘며 치던 칸이 움직이지 않게)
 function afterPaint(){
- const nav=$('.bnav');const h=nav?Math.max(0,window.innerHeight-nav.getBoundingClientRect().top):0;
- document.documentElement.style.setProperty('--bnavh',h+'px');
+ const nav=$('.bnav'),de=document.documentElement,shown=!!nav&&nav.getClientRects().length>0;
+ if(shown||!(de.classList.contains('kbup')||de.classList.contains('kbnav')))
+  de.style.setProperty('--bnavh',(shown?Math.max(0,window.innerHeight-nav.getBoundingClientRect().top):0)+'px');
  if(NATIVE&&!afterPaint.awake){afterPaint.awake=true;keepAwake(true)}
  document.body.classList.toggle('authbg',!!document.querySelector('.auth-main'));
  // 첫 화면이 그려졌다 — 이제 화면(로그인이면 authbg)이 바탕을 정한다. 켜는 동안 창 크기가 바뀌어(resize) 불릴 때는 아직 빈 화면이라 두고 본다
@@ -1702,17 +1741,32 @@ let KB_ARM=0,KB_Y=null,KB_PEND=null,KB_DONE=null;   // kbPlace: 포커스 시각
 // 알려 주어, innerHeight 로 재면 offsetTop 을 두 번 빼 --kb 가 0 이 되고 시트의 저장이 자판 밑에 남았다 (B3)
 function kbFit(ev){const vv=window.visualViewport;if(!vv)return;const ae=document.activeElement,de=document.documentElement;
  const typing=!!ae&&(ae.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName));
- const flat=(vv.scale||1)<1.05,on=typing&&flat,H=de.clientHeight||innerHeight;
+ const flat=(vv.scale||1)<1.05,on=typing&&flat,H=de.clientHeight||innerHeight,full=ANDROID?kbFull(typing,H):H;
  const set=off=>{off=flat?Math.max(0,Math.round(off)):0;const kb=on?Math.max(0,Math.round(H-vv.height-off)):0;
   // 상태바 띠(body::before)는 보이는 화면 맨 위에 붙는다 — 레이아웃 화면에 붙어 있으면 iOS 가 밀어 올린 만큼 같이 올라가 글이 시계 밑으로 지나갔다 (A3·N3·N4)
   de.style.setProperty('--vvt',off+'px');
   // 사용자가 칸을 눌러 iOS 가 화면을 밀어 올렸으면(offsetTop) 시트 위쪽도 보이는 화면 위에 맞춘다 — 안 그러면 시트 윗부분이 화면 위로 잘린다
-  de.style.setProperty('--kb',kb+'px');de.style.setProperty('--kbt',(on?off:0)+'px');de.classList.toggle('kbup',on&&H-vv.height>40)};
+  const up=on&&H-vv.height>40,shrunk=ANDROID&&on&&!up&&full-H>KB_MIN;
+  de.style.setProperty('--kb',kb+'px');de.style.setProperty('--kbt',(on?off:0)+'px');de.classList.toggle('kbup',up);de.classList.toggle('kbnav',shrunk);
+  // 안드로이드 폰 가로처럼 자판 위에 남는 자리가 아주 작다(150px) — 저장 줄을 시트 바닥에 붙이지 않고 입력 칸 옆에 (AND2-05)
+  de.classList.toggle('kbtight',ANDROID&&(up||shrunk)&&vv.height<KB_TIGHT)};
  // 창을 옮긴(scrollBy) 뒤 몇 틀 동안 offsetTop 은 옛 값이다 — 그 값으로 또 옮기면 두 번·네 번 움직이고, 시트도 옛 자리에 붙어 칸이 가렸다고 잘못 잰다
  if(KB_PEND){if(Math.abs(vv.offsetTop-KB_PEND.from)<1&&Date.now()-KB_PEND.t<400){set(KB_PEND.to);return}KB_PEND=null}
  set(vv.offsetTop);
  // 포커스 바로 뒤(자판·iOS 의 밀기 전)에는 고르지 않는다 — 먼저 옮기면 iOS 가 그 위에 또 밀어 두 번 움직였다. 화면 사건이나 0.35초 뒤에 고른다
  if(on&&(ev||Date.now()-KB_ARM>300)){const to=kbPlace(vv,ae,vv.offsetTop);if(to!=null)set(to)}}
+// 안드로이드 앱은 자판이 뜨면 창(웹뷰) 자체가 준다 — Capacitor SystemBars 가 자판 높이만큼 웹뷰 아래를 비워 레이아웃 화면과 보이는 화면이
+// 같이 줄어(915 → 578) H-vv.height 가 늘 0 이다. kbup 이 안 켜져 탭바가 자판 바로 위에 남아 보이는 578px 중 70px 를 차지했다 (AND1-13)
+// → 칸에 커서가 있고 창이 자판 없이 잰 높이(같은 폭)보다 KB_MIN 넘게 줄었으면 자판이 뜬 것으로 보고 kbnav(탭바 숨김)만 켠다.
+// 시트·창의 자리는 웹뷰가 이미 줄어든 창에 맞춰 두므로 kbup(--kb·창 밀기)은 켜지 않는다. 배너 광고가 뜬 뒤(애드몹이 insets 리스너를
+// 갈아 끼운다)에는 창은 그대로이고 보이는 화면만 줄어 iOS 처럼 kbup 이 켜진다
+const KB_MIN=120,KB_TIGHT=260,KB_FULL={w:0,h:0};   // 자판으로 볼 줄어듦 · 이보다 낮으면 빠듯한 자판 위 · 자판 없이 잰 창(폭·높이)
+// 자판 없이 잰 창 높이. 칸에 커서가 없을 때 잰 것을 적어 두되, 칸을 떠난 순간 아직 자판이 안 내려가 크게 줄어 있는 값은 적지 않는다.
+// 커서가 있는 동안 창이 더 커지면(자판을 내림) 그것도 적는다. 이 폭으로 잰 적이 없으면(자판이 뜬 채 돌렸다) 화면(screen)의 반대쪽 길이로 어림한다
+function kbFull(typing,H){const W=innerWidth,same=Math.abs(KB_FULL.w-W)<2;
+ if(!typing&&(!same||H>KB_FULL.h-KB_MIN)){KB_FULL.w=W;KB_FULL.h=H;return H}
+ if(same){if(H>KB_FULL.h)KB_FULL.h=H;return KB_FULL.h}
+ const sw=(window.screen&&screen.width)||0,sh=(window.screen&&screen.height)||0;return Math.max(H,Math.abs(W-sw)<=Math.abs(W-sh)?sh:sw)}
 // iOS 는 칸에 포커스가 가면 칸이 이미 자판 위에 보여도 창 전체를 밀어 올린다(로그인 아이디 160·편집기 곡 제목 188·하드웨어 자판 44). 앱 머리
 // (편집기 바·설정 머리)까지 화면 위로 밀려 시계 밑으로 들어갔다 → 포커스 직후(1.5초 안, 손가락으로 끌지 않았을 때)에만 창 밀림을 고른다:
 //  · 칸이 밀지 않아도 자판 위에 보이면 되돌린다
@@ -1723,16 +1777,19 @@ function kbFit(ev){const vv=window.visualViewport;if(!vv)return;const ae=documen
 // 자판이 뜬 채 사용자가 끌어 올린 화면은 건드리지 않는다
 function kbPlace(vv,ae,off){
  if(!KB_ARM||Date.now()-KB_ARM>1500||!ae||!ae.getBoundingClientRect)return null;
- if(off<1&&(document.documentElement.clientHeight||innerHeight)-vv.height<=40)return null;   // 자판이 화면을 가리지 않는다(컴퓨터·안드로이드 앱은 창이 같이 준다)
+ const de=document.documentElement,nav=de.classList.contains('kbnav');   // 안드로이드: 창이 같이 줄었다 — 창은 웹뷰가 맞춘다, 시트 안만 본다
+ if(off<1&&(de.clientHeight||innerHeight)-vv.height<=40&&!nav)return null;   // 자판이 화면을 가리지 않는다(컴퓨터·안드로이드 앱은 창이 같이 준다)
  // 포커스 직후 아직 안 밀렸으면 iOS 가 밀기를 기다린다 — 자판이 올라오는 사이 먼저 칸을 올리면 iOS 가 그 위에 또 밀어(옛 자리로 잰 만큼) 칸이 화면 맨 위로 갔다
  if(off<1&&Date.now()-KB_ARM<300)return null;
  const r=ae.getBoundingClientRect();if(!r.height)return null;
  const top=satPx()+4,bot=vv.height-12;
- if(ae.closest('.ov')&&document.documentElement.classList.contains('kbup')){const sm=ae.closest('.sheetm');
-  if(sm){let lim=bot;const act=sm.querySelector('.kbact');if(act&&!act.contains(ae)){const ar=act.getBoundingClientRect();if(ar.height)lim=Math.min(lim,ar.top-8)}
+ if(ae.closest('.ov')&&(nav||de.classList.contains('kbup'))){const sm=ae.closest('.sheetm');
+  // 바닥에 붙은 저장 줄(kbup · 빠듯하지 않을 때만 붙는다) 위로
+  if(sm){let lim=bot;const act=de.classList.contains('kbup')&&!de.classList.contains('kbtight')&&sm.querySelector('.kbact');if(act&&!act.contains(ae)){const ar=act.getBoundingClientRect();if(ar.height)lim=Math.min(lim,ar.top-8)}
    const d=Math.ceil(r.bottom-lim),room=sm.scrollHeight-sm.clientHeight-sm.scrollTop,up=Math.floor(r.top-sm.getBoundingClientRect().top-4);
    if(d>0&&room>=1&&up>=1)sm.scrollTop+=Math.min(d,room,up)}
-  return kbPanTo(ae,off,0,false)}
+  return nav?null:kbPanTo(ae,off,0,false)}
+ if(nav)return null;
  const done=!!KB_DONE&&KB_DONE.el===ae,hidden=r.top<top||r.bottom>bot;
  if(done&&!hidden&&off<=KB_DONE.pan+1)return null;   // 이미 맞췄다 — 칸이 다시 가렸거나 iOS 가 더 밀었을 때만 다시
  const top0=r.top+off,bot0=r.bottom+off;   // 창을 안 밀었을 때 칸 자리
@@ -1749,6 +1806,7 @@ function kbPanTo(ae,off,to,moved){to=Math.max(0,Math.round(to));const d=to-off;
  if(Math.abs(d)<1){if(moved)KB_DONE={el:ae,pan:to};return moved?to:null}
  KB_DONE={el:ae,pan:to};scrollBy(0,d);KB_PEND={from:off,to,t:Date.now()};setTimeout(kbFit,420);return to}
 if(window.visualViewport){visualViewport.addEventListener('resize',kbFit);visualViewport.addEventListener('scroll',kbFit);
+ if(ANDROID)kbFull(false,document.documentElement.clientHeight||innerHeight);   // 켤 때의 창 (자판 없음)
  document.addEventListener('focusin',()=>{KB_ARM=Date.now();KB_DONE=null;setTimeout(kbFit,0);setTimeout(kbFit,350)});document.addEventListener('focusout',()=>setTimeout(kbFit,60));
  document.addEventListener('touchstart',e=>{KB_Y=e.touches&&e.touches[0]?e.touches[0].clientY:null},{passive:true});
  document.addEventListener('touchmove',e=>{const t=e.touches&&e.touches[0];if(KB_Y!=null&&t&&Math.abs(t.clientY-KB_Y)>10)KB_ARM=0},{passive:true})}
@@ -1854,7 +1912,7 @@ function openComposer(svc,it,o){ // o: {marker, leader, t, mediaId}
  if(o.leader&&mdT.length&&target&&!mdT.includes(target))target='';
  modal(`<div class="row sb"><div class="row">${m?`<span class="mk">${esc(m.label)}</span><b style="font-size:17px">${esc(m.label)}에 메모</b><span class="pill">${esc(mods[m.label]||'섹션')}</span>`:`<b style="font-size:17px">${fmtT(o.t)}에 타임라인 메모</b>`}</div><button class="icon sm ghost" title="닫기" aria-label="닫기" data-close="1">${ic('x')}</button></div>
   <div style="margin-top:12px">${S.team.phrases.map(p=>`<button class="q" data-p="${esc(p)}">${esc(p)}</button>`).join('')}</div>
-  <div class="row" style="margin-top:4px"><input class="field grow" id="cText" placeholder="한 줄로. 24자 안에" maxlength="60" style="font-size:16px;padding:12px 14px"><span class="hint" id="cCnt">0/24</span></div>
+  <div class="row" style="margin-top:4px"><input class="field grow" id="cText" placeholder="한 줄로. 24자 안에" maxlength="60" style="font-size:16px;padding:12px 14px"><span class="hint" id="cCnt">0/24</span><button class="btn pri kbsave" id="cSave2" type="button">${ic('check')}저장</button></div>
   ${arrOfItem(it)&&m?`<div class="lbl">어디에 남길까</div>
    <div id="cWhen"><button class="q ${when==='always'?'on':''}" data-w2="always">이 곡에 항상</button>${onlyAlways?'':`<button class="q ${when==='once'?'on':''}" data-w2="once">이번 예배만</button>`}</div>
    <div class="hint" id="cWhenHint">${onlyAlways?'예배 없이 연습 중이라 이 곡에 항상 남아요.':whenHint(when)}</div>`:''}
@@ -1879,7 +1937,7 @@ function openComposer(svc,it,o){ // o: {marker, leader, t, mediaId}
   const scb=e.target.closest('[data-sc]');if(scb){scope=scb.dataset.sc;$$('[data-sc]').forEach(b=>b.classList.toggle('on',b.dataset.sc===scope));return}
   const wb=e.target.closest('[data-w2]');if(wb){when=wb.dataset.w2;$$('[data-w2]').forEach(b=>b.classList.toggle('on',b.dataset.w2===when));
    const h=$('#cWhenHint');if(h)h.textContent=whenHint(when);syncScope();return}
-  if(e.target.closest('#cSave')){const text=inp.value.trim();if(!text){inp.focus();return}
+  if(e.target.closest('#cSave,#cSave2')){const text=inp.value.trim();if(!text){inp.focus();return}
    const layer=o.leader?'leader':(scope==='session'?'session':'mine');
    let session=o.leader?(target||null):(scope==='session'?my.session:null);
    if(o.leader&&mdT.length&&session&&!mdT.includes(session))session=null;
@@ -2458,7 +2516,10 @@ const myAv=(uid,date)=>{const r=avRow(uid,date);return r?r.state:'unset'};
 const avMemo=(uid,date)=>{const r=avRow(uid,date);return r?(r.memo||''):''};
 const dateSessionsOf=(d,uid)=>(d.lineup||[]).filter(r=>r.memberId===uid).map(r=>r.session);
 const abbr=s=>String(s||'').slice(0,1);
-const shortLabel=s=>String(s||'').replace(/예배|집회/g,'').trim().slice(0,4)||String(s||'').slice(0,3);
+// 표 머리·달력 칸의 짧은 이름: '예배'·'집회'를 빼고 네 글자 안으로. 넘치면 띄어쓰기부터 빼 낱말 가운데에서 자르지 않는다
+// ('주일 오전예배' → '주일오전'. 전에는 '주일 오' — AND1-14). 폭이 넉넉한 폰 편성 카드는 이름 그대로 쓴다
+const shortLabel=s=>{const t=String(s||'').replace(/예배|집회/g,'').replace(/\s+/g,' ').trim();if(!t)return String(s||'').slice(0,3);
+ if(t.length<=4)return t;const n=t.replace(/ /g,'');return n.slice(0,4)};
 async function pullSchedule(month,force){const k=month||SCH.month||monthKey();
  if(!online()||!S.team.id)return false;
  if(!force&&SCH.month===k&&Date.now()-SCH.at<15000)return false;
@@ -2477,9 +2538,9 @@ async function pullSchedule(month,force){const k=month||SCH.month||monthKey();
 function monthNavHTML(base){const [y,m]=base.split('-').map(Number);const e=monthAdd(base,2).split('-').map(Number);
  return `<div class="row" style="gap:6px;align-items:center;margin:0 0 10px">
   <button class="icon sm ghost" title="이전 달" aria-label="이전 달" data-act="sch-mv" data-d="-1">${ic('left')}</button>
-  <b style="font-size:14px">${y}.${String(m).padStart(2,'0')} – ${e[0]===y?'':e[0]+'.'}${String(e[1]).padStart(2,'0')}</b>
+  <b style="font-size:14px;white-space:nowrap;flex:0 0 auto">${y}.${String(m).padStart(2,'0')} – ${e[0]===y?'':e[0]+'.'}${String(e[1]).padStart(2,'0')}</b>
   <button class="icon sm ghost" title="다음 달" aria-label="다음 달" data-act="sch-mv" data-d="1">${ic('right')}</button>
-  ${base!==monthKey()?`<button class="btn sm" data-act="sch-now">이번 달</button>`:'<span class="hint">앞뒤로 옮겨 지난 달도 볼 수 있어요</span>'}
+  ${base!==monthKey()?`<button class="btn sm" data-act="sch-now">이번 달</button>`:'<span class="hint" style="min-width:0;word-break:keep-all;overflow-wrap:anywhere">앞뒤로 옮겨 지난 달도 볼 수 있어요</span>'}
   <span class="grow"></span></div>`}
 function calMonthHTML(k){const me0=me();const lead=isLeader();
  const [y,mo]=k.split('-').map(Number);const first=new Date(Date.UTC(y,mo-1,1));const days=new Date(Date.UTC(y,mo,0)).getUTCDate();const pad=first.getUTCDay();
@@ -2569,7 +2630,7 @@ function schListHTML(ds,ms){
   const dd=fmtDate(d.date);
   return `<button class="schrow ${route().name==='lineup'&&route().a===d.id?'on':''}" ${isLeader()?`data-act="lineup" data-id="${esc(d.id)}"`:'disabled style="opacity:1"'}>
    <span class="d"><b>${esc(dd.md)}</b><small>${esc(dd.w)}</small></span>
-   <span class="grow"><b>${esc(shortLabel(d.label))}</b>
+   <span class="grow"><b>${esc(d.label||'')}</b>
     <small>편성 ${filled}/${total(d)} · ${notified?'통보함':'통보 전'}</small></span>
    <span class="av">${lead?`<i class="a-ok">${cnt.ok||0}</i><i class="a-maybe">${cnt.maybe||0}</i><i class="a-no">${cnt.no||0}</i>${cnt.unset?`<i class="a-unset">${cnt.unset}</i>`:''}`
     :`<i class="${AVN[mySt].cls}" title="내 답">${AVN[mySt].sym} ${AVN[mySt].label}</i>`}</span>
@@ -2703,8 +2764,7 @@ function heroHTML(){if(!online()||!S.team.id)return '';
  // 이음이 다른 날 행에 가 있어, 9/27 이라고 쓰고 9/26 의 빈 편성·시간을 붙였다
  const d=useSvc?(SCH.dates.find(x=>x.open&&x.serviceId===useSvc.id&&x.date===date)||SCH.dates.find(x=>x.open&&x.date===date&&!x.serviceId)||null):(d0&&d0.date===date?d0:null);
  // 날짜 이름에 이미 '9/20' 이 들어 있으면 또 붙이지 않는다 ('9/20 9/20 예배' 방지)
- const md0=d?fmtDate(d.date).md:'';
- const name=useSvc?svcName(useSvc):(d?((d.label||'').startsWith(md0)?d.label:`${md0} ${d.label}`):'');
+ const name=useSvc?svcName(useSvc):(d?withDate(d.date,d.label):'');
  const dd=fmtDate(date);const days=Math.round((new Date(date+'T00:00:00')-new Date(t+'T00:00:00'))/86400000);
  const when=days===0?'오늘':days===1?'내일':`D-${days}`;
  const lineup=(d&&d.lineup)||[];
@@ -2719,7 +2779,7 @@ function heroHTML(){if(!online()||!S.team.id)return '';
   <span class="row" style="gap:8px;flex-wrap:wrap">${side}${useSvc&&useSvc.published?`<button class="btn sm pri" data-act="view-svc" data-id="${esc(useSvc.id)}">${ic('eye')}콘티</button>`:(isLeader()&&useSvc?`<button class="btn sm pri" data-act="edit-svc" data-id="${esc(useSvc.id)}">${ic('pen')}콘티 채우기</button>`:(isLeader()?`<button class="btn sm pri" data-act="new-svc" data-date="${esc(date)}">${ic('plus')}콘티 만들기</button>`:'<span class="pill">콘티 준비 중</span>'))}</span></div></div>`}
 function todoCards(){const cards=[];
  if(isLeader()&&online()){const weeks=+(S.team.settings&&S.team.settings.serviceAutoCreateWeeks)||4;const lim=new Date();lim.setDate(lim.getDate()+weeks*7);const limIso=lim.toISOString().slice(0,10);const t=today();
-  S.services.filter(s=>!s.published&&!s.items.length&&(s.date||'')>=t&&(s.date||'')<=limIso).sort((a,b)=>(a.date||'').localeCompare(b.date||'')).forEach(s=>cards.push({icon:'pen',title:`${fmtDate(s.date).md} ${svcName(s)} 콘티가 비어 있어요`,body:'곡을 채우고 발행하세요',btn:'편집',act:'edit-svc',arg:s.id}))}
+  S.services.filter(s=>!s.published&&!s.items.length&&(s.date||'')>=t&&(s.date||'')<=limIso).sort((a,b)=>(a.date||'').localeCompare(b.date||'')).forEach(s=>cards.push({icon:'pen',title:`${withDate(s.date,svcName(s))} 콘티가 비어 있어요`,body:'곡을 채우고 발행하세요',btn:'편집',act:'edit-svc',arg:s.id}))}
  // §1.5 카드 안에서 바로 처리 — 종류마다 할 일이 다르고, 할 일이 끝나면 카드는 사라진다
  const CARD_ACT={'avail.request':{btn:'달력 열기',act:'noti-go'},'date.opened':{btn:'달력 열기',act:'noti-go'},
   'avail.conflict':{btn:'편성 보기',act:'noti-go'},'word.request':{btn:'입력하기',act:'noti-go'}};
@@ -3220,11 +3280,11 @@ function settingsHTML(){
    <div class="hint" style="margin-top:2px">알림함은 끌 수 없어요. 여기서 끄면 폰 알림만 꺼져요</div>
    <div id="sNoti" style="margin-top:10px">${Object.entries(NOTI_LABEL).map(([k,v])=>`<label class="mrow" style="cursor:pointer"><span class="grow">${esc(v)}</span><input type="checkbox" data-noti="${k}" ${notiOn(k)?'checked':''}></label>`).join('')}</div></div>`}
  else if(t==='account')pane=`${on?`<div class="card" id="linkCard"><b>연결된 계정</b>
-   <div class="hint" style="margin-top:2px">구글·애플로도 같은 계정에 들어올 수 있어요</div>
+   <div class="hint" style="margin-top:2px" id="linkHint">${esc(linkHint())}</div>
    <div id="linkList" class="linklist"><div class="hint" style="padding:10px 0">불러오는 중…</div></div></div>`:''}
   <div class="card"><b>${LINK.hasPassword===false?'비밀번호 만들기':'비밀번호'}</b>
    <div class="hint" style="margin-top:2px">${LINK.hasPassword===false?'비밀번호를 정하면 아이디로도 들어올 수 있어요':'비워 두면 그대로예요'}</div>
-   <div class="row" style="margin-top:10px">${LINK.hasPassword===false?'':`<input class="field" id="sPw0" type="password" autocomplete="current-password" placeholder="현재 비밀번호">`}<input class="field" id="sPw1" type="password" autocomplete="new-password" placeholder="새 비밀번호 6자 이상"></div>
+   <div class="row" style="margin-top:10px">${LINK.hasPassword===false?'':`${pwInput('id="sPw0" autocomplete="current-password" placeholder="현재 비밀번호"')}`}${pwInput('id="sPw1" autocomplete="new-password" placeholder="새 비밀번호 6자 이상"')}</div>
    <div class="err" id="sErr2"></div>
    <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn pri" id="sPwOk">${ic('check')}비밀번호 바꾸기</button></div></div>
   <div class="card"><b>복구 코드</b>
@@ -3556,7 +3616,7 @@ async function recoveryCodeModal(){
  // 소셜로만 가입한 계정은 비밀번호 대신 연결된 구글·애플로 한 번 더 로그인해 확인한다
  if(!await knowHasPassword()){try{show((await api('/auth/recovery',{method:'POST',body:await socialReauth()})).code)}catch(err){if(!reauthCancelled(err))toast(msgOf(err))}return}
  modal(`<b style="font-size:17px">복구 코드</b><div class="hint" style="margin-top:6px">본인인지 확인할게요. 현재 비밀번호를 적어 주세요.${again?'<br>새로 받으면 전에 받은 코드는 더 못 써요.':''}</div>
-  <div class="lbl">현재 비밀번호</div><input class="field" id="rcPw" type="password" autocomplete="current-password">
+  <div class="lbl">현재 비밀번호</div>${pwInput('id="rcPw" autocomplete="current-password"')}
   <div class="err" id="rcErr"></div>
   <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" data-close="1">취소</button><button class="btn pri" id="rcGo">${again?'새로 발급':'발급'}</button></div>`,{center:true});
  const go=async()=>{const err=$('#rcErr');if(!err)return;err.textContent='';
@@ -3569,7 +3629,7 @@ async function deleteAccountModal(){
  modal(`<b style="font-size:17px">계정 삭제</b><div class="hint" style="margin-top:6px">이 계정과 내가 쓴 메모가 지워져요. 되돌릴 수 없습니다.<br>내가 인도자인 팀은 <b>먼저 다른 사람을 인도자로 지정</b>하거나 팀을 지워야 해요.</div>
   <div class="lbl">확인을 위해 아이디를 적어 주세요 <span class="hint">${esc((NET.user&&NET.user.username)||'')}</span></div>
   <input class="field" id="daUser" autocapitalize="none" spellcheck="false" placeholder="${esc((NET.user&&NET.user.username)||'')}">
-  ${needPw?'<div class="lbl">비밀번호</div><input class="field" id="daPw" type="password" autocomplete="current-password">':''}
+  ${needPw?'<div class="lbl">비밀번호</div>'+pwInput('id="daPw" autocomplete="current-password"'):''}
   <div class="err" id="daErr"></div>
   <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" data-close="1">취소</button><button class="btn ghost danger" id="daGo">${ic('trash')}영구 삭제</button></div>`,{center:true});
  $('#modal').onclick=async e=>{
@@ -4190,7 +4250,7 @@ function authShell(inner){return `<div class="auth"><aside class="auth-side"><di
 function recoverHTML(){return authShell(`<div class="auth-card"><div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div><h1>비밀번호 재설정</h1><p class="sub">설정에서 발급받아 둔 복구 코드로 새 비밀번호를 정합니다. 코드가 없으면 인도자에게 초기화를 부탁하세요.</p>${offNote()}
  <div class="lbl">아이디</div><input class="field" id="lgUser" autocomplete="username" autocapitalize="none" spellcheck="false" value="${esc(GATE.user)}">
  <div class="lbl">복구 코드</div><input class="field mono" id="rcCode" autocapitalize="none" spellcheck="false" placeholder="xxxx-xxxx-xxxx">
- <div class="lbl">새 비밀번호</div><input class="field" id="lgPass" type="password" autocomplete="new-password" placeholder="6자 이상">
+ <div class="lbl">새 비밀번호</div>${pwInput('id="lgPass" autocomplete="new-password" placeholder="6자 이상"')}
  <div class="err" id="lgErr" role="alert">${esc(GATE.err)}</div>
  <button class="btn pri wide" data-act="rc-submit">${ic('check')}비밀번호 바꾸고 로그인</button>
  <p class="fine"><a href="#" data-act="lg-mode" data-m="login">로그인으로 돌아가기</a></p></div>`)}
@@ -4199,7 +4259,7 @@ const offNote=()=>online()?'':`<div class="lnote" id="offNote" role="status">인
 function loginHTML(){const m=GATE.mode;if(m==='recover')return recoverHTML();return authShell(`<div class="auth-card"><div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div><h1>${m==='login'?'로그인':'회원가입'}</h1><p class="sub">${m==='login'?'팀 계정으로 로그인해 콘티를 함께 봅니다.':'아이디와 비밀번호만 있으면 바로 시작할 수 있어요.'}</p>${offNote()}
  <div class="tabs"><button class="${m==='login'?'on':''}" data-act="lg-mode" data-m="login">로그인</button><button class="${m==='signup'?'on':''}" data-act="lg-mode" data-m="signup">회원가입</button></div>
  <div class="lbl">아이디</div><input class="field" id="lgUser" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="영문 소문자·숫자 3~20자" value="${esc(GATE.user)}">
- <div class="lbl">비밀번호</div><input class="field" id="lgPass" type="password" autocomplete="${m==='login'?'current-password':'new-password'}" placeholder="6자 이상" value="${esc(GATE.pw||'')}">
+ <div class="lbl">비밀번호</div>${pwInput(`id="lgPass" autocomplete="${m==='login'?'current-password':'new-password'}" placeholder="6자 이상" value="${esc(GATE.pw||'')}"`)}
  ${m==='signup'?`<div class="lbl">이름 <span class="hint">팀원에게 보이는 이름</span></div><input class="field" id="lgName" placeholder="하은" value="${esc(GATE.name||'')}">`:''}
  ${m==='signup'?`<label class="agree"><input type="checkbox" id="lgAgree" ${GATE.agree?'checked':''}><span><a data-act="legal" data-k="terms">이용약관</a>과 <a data-act="legal" data-k="privacy">개인정보처리방침</a>에 동의합니다. <b>(필수)</b><br>만 14세 이상만 가입할 수 있어요.</span></label>`:''}
  <div class="err" id="lgErr" role="alert">${esc(GATE.err)}</div>
@@ -4354,14 +4414,22 @@ async function loadLinks(){
     drawLinks();
   }catch(e){ if($('#linkList'))$('#linkList').innerHTML=`<div class="hint" style="padding:10px 0">${esc(e.message)}</div>`; }
 }
-function drawLinks(){
-  const box=$('#linkList'); if(!box||!LINK.linked)return;
+// 이 기기에서 보이는 연결 제공자 — 서버가 켠 것만(받기 전이면 둘 다로 본다), 안드로이드 앱에서는 애플을 숨긴다
+function linkProviders(){
   const ios=/iphone|ipad|ipod/i.test(navigator.userAgent||'');
-  const rows=['google','apple'].filter(pv=>{
-    if(!LINK.available||!LINK.available[pv])return false;
+  return ['google','apple'].filter(pv=>{
+    if(LINK.available&&!LINK.available[pv])return false;
     if(pv==='apple'&&NATIVE&&!ios)return false;      // 안드로이드 앱에서는 애플을 숨긴다
     return true;
-  }).map(pv=>{
+  });
+}
+// 연결된 계정 안내 — 보이는 제공자로 만든다. 안드로이드 앱에 '구글·애플로도'라고 해 놓고 구글 줄만 있었다 (AND1-17)
+function linkHint(){const n=linkProviders().map(pv=>({google:'구글',apple:'애플'})[pv]);
+  return n.length?josaRo(n.join('·'))+'도 같은 계정에 들어올 수 있어요':'연결할 수 있는 계정이 없어요'}
+function drawLinks(){
+  const box=$('#linkList'); if(!box||!LINK.linked)return;
+  const hint=$('#linkHint'); if(hint)hint.textContent=linkHint();
+  const rows=(LINK.available?linkProviders():[]).map(pv=>{
     const it=LINK.linked.find(x=>x.provider===pv);
     const only=!LINK.hasPassword&&LINK.linked.length<=1;   // 이걸 떼면 들어올 길이 없다
     const icon=pv==='google'?G_SVG:A_SVG;
@@ -4427,7 +4495,7 @@ async function socialReauth(){
 function askPassword(title){
   return new Promise(ok=>{
     modal(`<b style="font-size:17px">${esc(title)}</b><div class="hint" style="margin-top:6px">본인인지 확인할게요. 현재 비밀번호를 적어 주세요.</div>
-     <div class="lbl">현재 비밀번호</div><input class="field" id="raPw" type="password" autocomplete="current-password">
+     <div class="lbl">현재 비밀번호</div>${pwInput('id="raPw" autocomplete="current-password"')}
      <div class="err" id="raErr"></div>
      <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" data-close="1">취소</button><button class="btn pri" id="raGo">확인</button></div>`,{center:true});
     const go=()=>{const v=$('#raPw').value;if(!v){$('#raErr').textContent='비밀번호를 적어 주세요';return}closeModal();ok(v)};
