@@ -696,10 +696,10 @@ on('POST', '/push/unsubscribe', async ({ uid, body }) => {
   if (ep) await q('delete from push_subs where endpoint=$1 and user_id=$2', [ep, uid]);
   return { ok: true };
 });
-// 이 기기로 시험 발송
+// 이 기기로 시험 발송. 본인이 직접 누른 것이라 조용한 시간에도 보낸다 (force)
 on('POST', '/push/test', async ({ uid }) => {
   if (!uid) throw noAuth();
-  const n = await sendPush([uid], { title: '알림 시험', body: '이렇게 보여요', link: '#/home', type: 'test' });
+  const n = await sendPush([uid], { title: '알림 시험', body: '이렇게 보여요', link: '#/home', type: 'test' }, { force: true });
   return { sent: n };
 });
 

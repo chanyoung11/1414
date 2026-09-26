@@ -371,7 +371,7 @@ html.dark .side .box,html.dark .hd{background:#17181A}   /* §3.1 surface-1: 사
 .ddit small{display:block;font-size:12px;color:var(--muted-fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ddit .when{flex:0 0 auto;color:var(--faint-fg);font-size:11.5px}
 .ddempty{padding:28px 16px;text-align:center;color:var(--muted-fg)}
-.ddempty svg.ic{width:24px;height:24px;color:var(--faint-fg);margin-bottom:6px}
+.ddempty svg.ic{width:24px;height:24px;color:var(--faint-fg);margin:0 auto 6px}   /* svg.ic 는 block 이라 text-align 으로는 안 가운데 — 글만 가운데고 종은 왼쪽 끝에 붙었다 */
 .ddempty b{display:block;color:var(--fg);font-size:15px;margin-bottom:2px}
 .ddempty small{font-size:13px}
 .ddall{display:block;width:100%;padding:9px;margin-top:4px;border-top:1px solid var(--border);font-size:13px;font-weight:600;color:var(--muted-fg)}
@@ -1401,9 +1401,11 @@ function afterPaint(){
  if(NATIVE&&window.__paintBar)window.__paintBar()}   // 로그인 ↔ 앱 화면이 바뀌면 상태바 색도
 new MutationObserver(()=>requestAnimationFrame(afterPaint)).observe(document.getElementById('app'),{childList:true});
 window.addEventListener('resize',()=>requestAnimationFrame(afterPaint));
+// 더보기로 들어가는 페이지(설정·팀·말씀)에서는 「더보기」를 켠다 — 전에는 다섯 탭이 모두 꺼져 지금 어디인지 안 보였다
+// (탭 넘기기 swTabs 는 더보기 단추를 빼고 세므로 영향이 없다)
 function bnavHTML(active){const on=online();const A=v=>active===v?'on':'';
  const mid=on&&!isPastor()?`<button class="${A('cal')}" data-act="cal">${ic('cal2')}일정</button><button class="${A('sched')}" data-act="sched">${ic('stage')}편성</button><button class="${A('library')}" data-act="nav-lib">${ic('lib')}라이브러리</button>`:'';
- return `<nav class="bnav"><button class="${A('home')}" data-act="home">${ic('setlist')}예배</button>${mid}<button data-act="more-menu">${ic('more')}더보기</button></nav>`}
+ return `<nav class="bnav"><button class="${A('home')}" data-act="home">${ic('setlist')}예배</button>${mid}<button class="${/^(settings|team|word)$/.test(active)?'on':''}" data-act="more-menu">${ic('more')}더보기</button></nav>`}
 
 /* ---------- HOME ---------- */
 const HOME={pick:false,sel:[],folder:''};
@@ -1606,7 +1608,33 @@ if(window.visualViewport){visualViewport.addEventListener('resize',kbFit);visual
  document.addEventListener('focusin',()=>setTimeout(kbFit,0));document.addEventListener('focusout',()=>setTimeout(kbFit,60))}
 function modal(html,o){if(NATIVE&&typeof adsHide==='function')adsHide();   // 아래에서 올라오는 시트가 배너에 가리지 않게
  document.documentElement.classList.add('noscroll');   // 뒤 화면이 따라 움직이면 시트를 내리려다 목록이 넘어간다
- $('#modal').innerHTML=`<div class="ov ${o&&o.center?'center':''}${o&&o.sheet?' up':''}"><div class="sheetm">${o&&o.center?'':'<div class="handle"></div>'}${html}</div></div>`;$('#modal').firstChild.addEventListener('click',e=>{if(e.target.classList.contains('ov'))closeModal()})}
+ $('#modal').innerHTML=`<div class="ov ${o&&o.center?'center':''}${o&&o.sheet?' up':''}"><div class="sheetm">${o&&o.center?'':'<div class="handle"></div>'}${html}</div></div>`;const ov=$('#modal').firstChild;ov.addEventListener('click',e=>{if(e.target.classList.contains('ov'))closeModal()});
+ if(!(o&&o.center))sheetDrag(ov)}
+// 손잡이가 있는 아래 시트는 끌어내려 닫는다 (iOS 시트처럼). 전에는 손잡이만 그려 두고 끌어도 그대로라 바깥을 눌러야만 닫혔다.
+// 리스너는 모두 passive 이고 아무것도 막지 않는다 — 누르기·스크롤은 그대로. 시트 안이 맨 위일 때 아래로 끈 것만 따라가고,
+// 위·옆으로 움직이거나 입력칸·그림판 위에서 시작한 것은 건드리지 않는다. 조금 끌면 제자리로, 멀리(시트 1/3 · 120px) 끌거나 휙 내리면 닫힌다
+function sheetDrag(ov){const sh=ov.firstChild;let d=null;
+ const back=()=>{if(d&&d.on){sh.style.transition='transform .22s cubic-bezier(.22,1,.36,1)';sh.style.transform=''}d=null};
+ ov.addEventListener('touchstart',e=>{d=null;
+  if(e.touches.length!==1||!sh.contains(e.target)||e.target.closest('input,textarea,select,[contenteditable],canvas,.cropwrap,[data-noswipe]'))return;
+  for(let n=e.target;n&&n!==ov;n=n.parentElement)if(n.scrollTop>0)return;   // 안쪽을 위로 되감는 중이면 스크롤이다
+  const t=e.touches[0];d={x0:t.clientX,y0:t.clientY,py:t.clientY,pt:e.timeStamp,v:0,on:false}},{passive:true});
+ ov.addEventListener('touchmove',e=>{if(!d)return;if(e.touches.length!==1){back();return}
+  const t=e.touches[0],dx=t.clientX-d.x0,dy=t.clientY-d.y0;
+  if(e.timeStamp>d.pt){d.v=(t.clientY-d.py)/(e.timeStamp-d.pt);d.py=t.clientY;d.pt=e.timeStamp}
+  if(!d.on){if(dy<-8||Math.abs(dx)>Math.max(10,dy)){d=null;return}   // 위로(안쪽 스크롤)·옆으로(가로 목록)는 놓아준다
+   if(dy<10)return;d.on=true;sh.style.animation='none';sh.style.transition='none'}   // 올라오는 중이어도 손가락을 따른다
+  sh.style.transform=`translate3d(0,${Math.max(0,dy)}px,0)`},{passive:true});
+ ov.addEventListener('touchend',e=>{if(!d||!d.on){d=null;return}
+  const dy=e.changedTouches[0].clientY-d.y0,fling=dy>40&&d.v>.5&&e.timeStamp-d.pt<100;
+  if(dy>Math.min(120,sh.offsetHeight/3)||fling){d=null;sheetAway(ov,sh,Math.max(0,dy))}else back()},{passive:true});
+ ov.addEventListener('touchcancel',back,{passive:true})}
+// 끈 자리에서 이어 내려가며 닫는다. closeModal 의 내려가기(.out)는 제자리(0)에서 시작해 한 번 튀어 올라 보여서 CSS 애니메이션은 끄고 직접 움직인다
+function sheetAway(ov,sh,y){sh.style.animation='none';ov.style.animation='none';closeModal();
+ if(reduceMotion()||!sh.animate){ov.remove();return}
+ if(!ov.isConnected){ov.style.pointerEvents='none';document.body.appendChild(ov);setTimeout(()=>ov.remove(),400)}   // .up 이 아닌 시트는 closeModal 이 곧바로 떼어 낸다
+ sh.animate([{transform:`translate3d(0,${y}px,0)`},{transform:'translate3d(0,100%,0)'}],{duration:200,easing:'cubic-bezier(.4,0,1,1)',fill:'forwards'});
+ ov.animate([{opacity:1},{opacity:0}],{duration:200,easing:'ease-in',fill:'forwards'})}
 function labelPicker(it,cb){
  const used=new Set(it.pieces.flatMap(p=>p.markers.map(m=>m.label)));
  const letters=['A','B','C','D','E','F','G','H'];
@@ -3951,6 +3979,10 @@ const SYNC={t:null,pulledAt:{},missing:new Set(),getting:new Map(),notePut:{},no
  SYNC.pullServices=function(){const k=S.team.id;if(cur&&cur.k===k)return cur.p;
   const p=run.call(SYNC).finally(()=>{if(cur&&cur.p===p)cur=null});cur={k,p};return p}}
 const GATE={mode:'login',err:'',user:'',pw:'',name:'',sess:'',preview:null,agree:false};
+// 로그인·가입이 끝나면(그리고 로그아웃하면) 로그인 화면을 처음 모양으로 되돌린다. 가입 탭·동의 체크가 그대로 남아
+// 로그아웃하면 '회원가입'에 동의가 켜진 채로 열렸다 — 공용 기기에서는 다음 사람의 약관 동의가 미리 찍혀 있었고,
+// 그 화면에서 누른 구글·애플 가입은 동의 창도 건너뛰었다. 팀 만들기 세션 고른 것도 다음 사람에게 넘기지 않는다
+function gateFresh(){Object.assign(GATE,{mode:'login',err:'',pw:'',name:'',sess:'',preview:null,agree:false})}
 function authShell(inner){return `<div class="auth"><aside class="auth-side"><div class="logostack">${logoSymbol(56)}${logoWordmark(47,'')}</div><div><p class="kick">찬양팀 콘티 · 연습 · 무대 — 1414</p><blockquote>“콘티 한 장으로<br>팀 전체가 같은 곳을 봅니다.”</blockquote><p class="desc">곡 순서와 키, 송폼, 악보, 참고 영상을 한 화면에. 인도자가 발행하면 팀원은 자기 세션 메모와 함께 연습하고 무대에 섭니다.</p>
  <ul><li>${ic('send')}발행 한 번으로 카톡 공유 문구까지 자동 생성</li><li>${ic('marker')}악보 위 마커에 붙는 세션별 메모</li><li>${ic('moon')}네트워크 없이도 열리는 무대 모드</li></ul></div><p class="copy">© 2026 1414 · lets1414.com</p></aside><div class="auth-main"><div class="auth-box">${inner}</div></div></div>`}
 function recoverHTML(){return authShell(`<div class="auth-card"><div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div><h1>비밀번호 재설정</h1><p class="sub">설정에서 발급받아 둔 복구 코드로 새 비밀번호를 정합니다. 코드가 없으면 인도자에게 초기화를 부탁하세요.</p>${offNote()}
@@ -3980,7 +4012,7 @@ function gateHTML(){const u=NET.user||{};return authShell(`<div class="auth-card
 const teamCreateCard=u=>`<div class="auth-card"><h2>팀 만들기</h2><p class="sub">인도자가 팀을 만들고 초대 링크를 카톡에 붙여요.</p>
  <div class="lbl">팀 이름</div><input class="field" id="gtTeam" placeholder="LIKE 찬양팀">
  <div class="lbl">내 이름</div><input class="field" id="gtName" value="${esc(u.name||'')}">
- <div class="lbl">내 세션</div><div id="gtSess">${DEF_SESS.map(x=>`<button class="q ${x===(GATE.sess||'인도자')?'on':''}" data-s="${esc(x)}">${esc(x)}</button>`).join('')}</div>
+ <div class="lbl">내 세션</div><div id="gtSess" data-one="1">${DEF_SESS.map(x=>`<button class="q ${x===(GATE.sess||'인도자')?'on':''}" data-s="${esc(x)}">${esc(x)}</button>`).join('')}</div>
  <div class="err" id="gtErr2"></div><button class="btn pri wide" data-act="team-create">${ic('plus')}팀 만들고 인도자로 시작</button>
  <div class="foot"><span class="hint">${esc(u.username||'')}</span><button class="btn sm ghost" data-act="logout">${ic('logout')}로그아웃</button></div></div>`;
 // 인도자가 비활성으로 둔 사람. 자료는 남아 있고 다시 활성으로 바꾸면 그대로 돌아온다.
@@ -4006,8 +4038,12 @@ const HAN_KEY=(()=>{const m={};'ㄱr ㄲr ㄳrt ㄴs ㄵsw ㄶsg ㄷe ㄸe ㄹf 
 function hanKeys(s){return String(s==null?'':s).replace(/[\uac00-\ud7a3\u3131-\u3163]/g,ch=>{const c=ch.charCodeAt(0)-0xac00;if(c<0)return HAN_KEY[ch]||ch;
  return HAN_KEY['ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ'[Math.floor(c/588)]]+HAN_KEY['ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ'[Math.floor(c%588/28)]]+(c%28?HAN_KEY['_ㄱㄲㄳㄴㄵㄶㄷㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅄㅅㅆㅇㅈㅊㅋㅌㅍㅎ'[c%28]]:'')})}
 async function afterGate(){const gs=$('#gtSess');if(gs)gs.onclick=e=>{const b=e.target.closest('[data-s]');if(!b)return;
+  const v=b.dataset.s;
+  // 팀 만들기는 세션 하나 (서버가 session 하나만 받는다). 초대 가입용 겸임 고르기(sessList)만 바꾸고 GATE.sess 는 그대로라
+  // 무엇을 눌러도 인도자로 만들어졌고, 둘을 누르면 둘 다 켜져 보였다
+  if(gs.dataset.one){GATE.sess=v;$$('.q',gs).forEach(x=>x.classList.toggle('on',x.dataset.s===v));return}
   // 첫 세션을 미리 골라 두되, 처음 누른 것이 그 자리를 대신한다. 그 뒤로는 켜고 끄기(겸임)
-  const v=b.dataset.s;const cur=GATE.sessTouched?(GATE.sessList||[]):[];GATE.sessTouched=true;
+  const cur=GATE.sessTouched?(GATE.sessList||[]):[];GATE.sessTouched=true;
   GATE.sessList=cur.includes(v)?cur.filter(x=>x!==v):cur.concat(v);
   $$('.q',gs).forEach(x=>x.classList.toggle('on',(GATE.sessList||[]).includes(x.dataset.s)))};
  // 로그인 화면은 다른 일(동기화·알림)로 다시 그려질 수 있다. 그때 치던 값이 날아가지 않게 담아 둔다
@@ -4308,7 +4344,7 @@ async function socialLogin(provider, idToken, name, agreedAt, extra){
     let m;
     try{m=await api('/auth/social',{method:'POST',body})}
     catch(e){if(e.code==='needs_consent'&&!body.agreedAt){socialConsent(provider,idToken,name,extra);return}throw e}
-    GATE.err='';GATE.preview=null;GATE.pw='';GATE.name='';await takeMe(m);render();probeOmr();
+    gateFresh();await takeMe(m);render();probeOmr();
     if(S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()});
   }catch(e){ if(err)err.textContent=e.message; else toast(e.message); }
 }
@@ -4404,12 +4440,12 @@ async function doGate(act,el){
    if(!$('#lgUser'))return;
    vals.forEach(([id,v])=>{const f=$('#'+id);if(f&&v!=null)f.value=v});const a2=$('#lgAgree');if(a2)a2.checked=ag}
   if(act==='lg-mode'){GATE.mode=el.dataset.m;GATE.err='';GATE.user=($('#lgUser')||{value:''}).value;GATE.pw=($('#lgPass')||{value:''}).value;GATE.agree=!!($('#lgAgree')||{}).checked;render();return}
-  if(act==='rc-submit'){const username=hanKeys($('#lgUser').value).trim(),code=hanKeys($('#rcCode').value).trim(),next=$('#lgPass').value;GATE.user=username;const m=await api('/auth/recover',{method:'POST',body:{username,code,next}});GATE.err='';GATE.mode='login';await takeMe(m);toast('비밀번호를 바꿨어요. 설정에서 복구 코드를 새로 발급해 두세요');render();return}
+  if(act==='rc-submit'){const username=hanKeys($('#lgUser').value).trim(),code=hanKeys($('#rcCode').value).trim(),next=$('#lgPass').value;GATE.user=username;const m=await api('/auth/recover',{method:'POST',body:{username,code,next}});gateFresh();await takeMe(m);toast('비밀번호를 바꿨어요. 설정에서 복구 코드를 새로 발급해 두세요');render();return}
   if(act==='lg-submit'){const username=hanKeys($('#lgUser').value).trim(),password=$('#lgPass').value;GATE.user=username;
    if(GATE.mode==='signup'){const ag=$('#lgAgree');GATE.agree=!!(ag&&ag.checked);
     if(!GATE.agree){GATE.err='이용약관과 개인정보처리방침에 동의해 주세요';render();return}}
    const m=GATE.mode==='login'?await api('/auth/login',{method:'POST',body:{username,password}}):await api('/auth/signup',{method:'POST',body:{username,password,name:$('#lgName').value.trim(),agreedAt:new Date().toISOString()}});
-   GATE.err='';GATE.preview=null;GATE.pw='';GATE.name='';await takeMe(m);render();probeOmr();if(S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()});return}
+   gateFresh();await takeMe(m);render();probeOmr();if(S.team.id)SYNC.pullServices().then(ch=>{if(ch)render()});return}
   if(act==='logout'){
    // 세션 쿠키는 HttpOnly 라 서버만 지울 수 있다. 실패했는데 로그아웃된 척하면 다시 열 때 그 사람으로 들어가고,
    // 로그인 화면에서 누른 다음 사람의 구글 로그인이 그 계정에 붙었다 → 한 번 더 해 보고, 안 되면 알리고 그대로 둔다.
@@ -4417,7 +4453,7 @@ async function doGate(act,el){
    const uid0=NET.user&&NET.user.id;const body=await pushIdent();let out=false;
    for(let i=0;i<2&&!out;i++){try{await api('/auth/logout',{method:'POST',body});out=true}catch(e){if(i===0)await new Promise(r=>setTimeout(r,800))}}
    if(!out){toast('로그아웃하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요');return}
-   setAppToken('');NET.user=null;NET.teams=[];await switchScope(scopeKey('',''));S.team=Object.assign(DEF_TEAM(),{id:'',invite:''});save();await wipeAccountData(uid0);GATE.preview=null;if(route().name!=='home')go('home');render();return}
+   setAppToken('');NET.user=null;NET.teams=[];await switchScope(scopeKey('',''));S.team=Object.assign(DEF_TEAM(),{id:'',invite:''});save();await wipeAccountData(uid0);gateFresh();GATE.user='';if(route().name!=='home')go('home');render();return}   // 다음 사람에게 로그인 탭·빈 아이디로
   if(act==='join-go'){const v=$('#gtLink').value.trim();const tok=(v.match(/join\/([A-Za-z0-9_-]+)/)||[])[1]||v;if(!tok){$('#gtErr').textContent='링크나 코드를 붙여넣어 주세요';return}GATE.preview=null;go('join/'+tok);return}
   if(act==='team-create'){const t=await api('/teams',{method:'POST',body:{name:$('#gtTeam').value.trim(),myName:$('#gtName').value.trim(),session:GATE.sess||'인도자'}});await applyMembership(t);NET.teams.push(t);toast('팀을 만들었어요');go('home');render();return}
   if(act==='team-join'){const p=GATE.preview;
