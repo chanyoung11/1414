@@ -127,7 +127,7 @@ def run():
     # ---- A3 로그인 화면의 띠는 어둡다 ----
     bg = pg.evaluate("getComputedStyle(document.body,'::before').backgroundColor")
     h = pg.evaluate("getComputedStyle(document.body,'::before').height")
-    if bg != 'rgb(17, 18, 19)' or h != '62px': fail('A3 로그인 화면 상태바 띠가 어두운 62px 가 아님: %s %s' % (bg, h))
+    if bg != 'rgb(10, 10, 10)' or h != '62px': fail('A3 로그인 화면 상태바 띠가 로그인 바탕(#0A0A0A)과 같은 62px 가 아님: %s %s' % (bg, h))
     print('A5 켤 때 커서 없음 · A3 로그인 띠 %s %s ok' % (bg, h))
 
     # ---- A13 한글 자판으로 친 아이디 ----
