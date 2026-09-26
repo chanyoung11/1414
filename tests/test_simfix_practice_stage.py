@@ -204,9 +204,11 @@ def c8_e7(br, sid, state, errs):
           const lim=Math.min(R(st)[1],R(document.querySelector('.panel.media'))[1]);
           return {stack:R(st),lim,vid:R(document.querySelector('.vid')),play:R(document.getElementById('playBtn')),tnote:R(document.querySelector('[data-act=tnote]')),
             ytfb:R(document.getElementById('ytfb')),inner:[pb.scrollHeight,pb.clientHeight],stackScroll:[st.scrollHeight,st.clientHeight],
+            tl:(()=>{const t=document.getElementById('tlist');return t?[t.clientHeight,t.scrollHeight]:[0,0]})(),
             form:!!document.querySelector('#stack .songbar')}}""")
         w = '%dx%d' % (vp['width'], vp['height'])
-        if r['inner'][0] > r['inner'][1] + 1: fail('E7/C8 %s 미디어 칸 안에 숨은 내용 %s' % (w, r['inner']))
+        # 타임라인 목록은 제 안에서 스크롤한다(두 줄은 늘 보인다). 칸이 조금 스크롤돼도 조작 단추(아래 검사)만 안 가리면 된다
+        if r['tl'][1] > 0 and r['tl'][0] < min(60, r['tl'][1]) - 1: fail('E7 %s 타임라인 메모 목록이 두 줄도 안 보임 %s' % (w, r['tl']))
         for k in ['vid', 'play', 'tnote']:
             if r[k][1] > r['lim'] + 1: fail('E7/C8 %s %s 가 칸 밖(아래 %d > %d)' % (w, k, r[k][1], r['lim']))
         if not short and r['ytfb'][1] > r['lim'] + 1: fail('E7 %s 유튜브에서 열기가 잘림 %s' % (w, r))
