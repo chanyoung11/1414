@@ -923,10 +923,15 @@ body.stgon{overflow:hidden}
  .pvbar .pvtip,.pvbar>.grow{display:none}.pvbar>b{flex:1 1 0}
  .pvbar>.hint{order:9;flex:1 1 100%;min-width:0;overflow:hidden;text-overflow:ellipsis}}
 /* 쪽은 실제 크기라 폰보다 넓을 수 있다. 가운데 정렬(align-items:center)은 넘친 왼쪽을 스크롤로도 못 가는 곳에 두었다 →
-   자리가 남을 때만 auto 여백으로 가운데, 넘치면 왼쪽부터. 가로 스크롤은 쪽 묶음 안에서만 해서 위 바는 늘 그 자리에 있다 */
-.pvout{padding:20px 0 60px;display:flex;flex-direction:column;align-items:flex-start;gap:20px;overflow-x:auto}
-.pvout>.ppage{margin-left:auto;margin-right:auto}
+   자리가 남을 때만 auto 여백으로 가운데, 넘치면 왼쪽부터. 가로 스크롤은 쪽 묶음 안에서만 해서 위 바는 늘 그 자리에 있다.
+   폰·좁은 창에서는 쪽을 화면 폭에 맞춰 줄여(--pvz · printPreview) 한 장을 통째로 본다 — 실제 크기로는 가로 쪽의 왼쪽 ⅓ 만 보이고
+   확대·축소(핀치)도 막혀 있어 한 장을 한눈에 볼 수 없었다 (C7). 종이에는 늘 실제 크기 (nprint · print 에서 zoom 1) */
+.pvout{padding:20px calc(12px + var(--sar)) 60px calc(12px + var(--sal));display:flex;flex-direction:column;align-items:flex-start;gap:20px;overflow-x:auto}
+.pvout>.ppage{margin-left:auto;margin-right:auto;zoom:var(--pvz,1)}
 .ppage{position:relative;background:#fff;color:#000;box-shadow:0 6px 24px rgba(0,0,0,.35);flex:0 0 auto;overflow:hidden}
+/* 배경색도 종이에 그대로 — 하이라이트 · 검은 송폼 띠 · 번호 동그라미 · 메모 띠 딱지. 기본(economy)은 잉크를 아낀다며 배경을 흰색으로 지우고
+   흰 글씨를 옅은 회색으로 바꾼다. 앱(WKWebView) 인쇄 창에는 '배경 그래픽' 스위치가 없어 하이라이트가 사라지고 글이 안 보였다 (C2) */
+.ppage{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .ppage .pinner{position:absolute;inset:0}
 .ppage .blk{position:absolute}
 .ppage .pslice{position:absolute;left:0;overflow:hidden}
@@ -1031,6 +1036,7 @@ body.nprint #app,body.nprint #modal,body.nprint #toast,body.nprint .pvbar,body.n
 body.nprint #printArea{display:block!important;position:static!important;background:#fff!important;overflow:visible!important}
 body.nprint .pvout{padding:0;gap:0;display:block;align-items:stretch;overflow:visible}
 body.nprint .ppage{box-shadow:none;break-after:page;page-break-after:always;margin:0 auto}
+body.nprint .pvout>.ppage{zoom:1}
 body.nprint .ppage:last-child{break-after:auto;page-break-after:auto}
 body.nprint #printArea.osmdout{position:static!important;left:auto!important;top:auto!important;width:auto!important}
 body.nprint .osmdpage{page-break-after:always;break-after:page}
@@ -1041,6 +1047,7 @@ body.nprint #printArea svg{max-width:100%;height:auto}
  body.printing #printArea{display:block!important;position:static!important;background:#fff!important;overflow:visible!important}
  body.printing .pvout{padding:0;gap:0;display:block;overflow:visible}
  body.printing .ppage{box-shadow:none;break-after:page;page-break-after:always;margin:0}
+ body.printing .pvout>.ppage{zoom:1}
  body.printing .ppage:last-child{break-after:auto;page-break-after:auto}
  body.printing #printArea.osmdout{position:static!important;left:auto!important;top:auto!important;width:auto!important}
  #printArea .osmdpage{page-break-after:always;break-after:page}#printArea .osmdpage:last-child{page-break-after:auto}
@@ -8962,13 +8969,15 @@ function stageExport(){
 
 // 앱(WebView)에서는 window.print() 가 아무 일도 하지 않는다. 네이티브 인쇄로 넘긴다.
 // 인쇄 CSS 가 이미 #printArea 만 남기므로 화면 그대로가 종이에 나온다
-async function doPrint(name){
+// page: 조판 쪽의 방향·종이·크기 {orient,paper,pageW,pageH}. 앱 인쇄는 CSS @page 를 안 따른다 — 안 넘기면 늘 세로 A4 한 장에
+// 가로 쪽이 위 절반에 반 크기로 찍혔다 (C1). 앱이 인쇄 방향을 맞추고 쪽 한 장을 종이 한 장에 담는다 (PrinterPlugin.swift)
+async function doPrint(name,page){
  const P=CapPlug().Printer;
  if(NATIVE&&P){
   // 앱은 화면에 보이는 것을 찍으므로, 찍는 동안 인쇄 조판만 남긴다
   document.body.classList.add('nprint');
   try{await new Promise(r=>setTimeout(r,120));
-   await P.print({name:name||document.title||'1414'});return true}
+   await P.print({...(page||{}),name:name||document.title||'1414'});return true}
   catch(e){if(!/취소|cancel/i.test((e&&e.message)||''))toast('인쇄를 열지 못했어요 · '+((e&&e.message)||''));return false}
   finally{setTimeout(()=>document.body.classList.remove('nprint'),1500)}}
  window.print();return true}
@@ -8983,6 +8992,9 @@ async function printService(svc,opts){
 function printSheet(svc){
  const pub=pubOrDraft(svc);
  const sessions=['전체'].concat((S.team.sessions||[]).filter(x=>x!=='인도자'));
+ // 팀을 만든 사람의 기본 세션 '인도자'는 고르는 목록에 없다 → 아무 것도 안 켜진 채 열리고 미리보기·바닥글에 '인도자'가 찍혔다 (C6).
+ // 목록에 없는 세션이면 '전체' — 인도자 메모(전체 대상)는 그대로 나오고, 켜진 단추와 찍히는 것이 같다
+ if(!sessions.includes(PRT.session))PRT.session='전체';
  const seg=(act,list,cur)=>`<div class="seg">${list.map(([v,l])=>`<button class="${String(cur)===String(v)?'on':''}" data-po="${act}" data-v="${esc(String(v))}">${esc(l)}</button>`).join('')}</div>`;
  const sw=(k,label,hint)=>`<label class="mrow" style="cursor:pointer"><span class="grow">${esc(label)}${hint?`<div class="hint">${esc(hint)}</div>`:''}</span><input type="checkbox" data-pt="${k}" ${PRT[k]?'checked':''}></label>`;
  const draw=()=>{
@@ -9045,7 +9057,7 @@ function printPreview(svc){
    <b>${esc(pub.name||'예배')}</b>
    <span class="hint">${PRT.paper} ${PRT.orient==='portrait'?'세로':'가로'} · ${pages.length}장 · ${esc(PRT.session)}</span>
    <span class="grow"></span>
-   <span class="hint pvtip">인쇄 창에서 <b>배경 그래픽 켜기</b> · 여백 없음</span>
+   <span class="hint pvtip">인쇄 창에서 <b>여백 없음</b></span>
    <button class="btn" data-pv="opt">${ic('gear')}설정</button>
    <button class="btn pri" data-pv="print">${ic('print')}인쇄 · PDF</button></div>
   <div class="pvout">${pgPagesHTML(pages)}</div>`;
@@ -9058,7 +9070,12 @@ function printPreview(svc){
   const a=b.dataset.pv;
   if(a==='close'){done();return}
   if(a==='opt'){done();printSheet(svc);return}
-  if(a==='print'){doPrint(printName(pub.name,pub.date,pub.version));return}};
+  if(a==='print'){doPrint(printName(pub.name,pub.date,pub.version),{orient:PRT.orient,paper:PRT.paper,pageW:PG.pw,pageH:PG.ph});return}};
+ // 폰·좁은 창: 쪽을 보이는 폭에 맞춰 줄인다 (C7 · CSS .pvout>.ppage 의 --pvz). 넓은 화면은 실제 크기 그대로(1). 돌리면 다시 맞춘다
+ const fit=()=>{if(!area.isConnected){removeEventListener('resize',fit);return}
+  const out=area.querySelector('.pvout');if(!out||!PG.pw)return;const cs=getComputedStyle(out);
+  const w=out.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight);if(w>0)out.style.setProperty('--pvz',String(Math.min(1,Math.floor(w/PG.pw*1e4)/1e4)))};
+ fit();addEventListener('resize',fit);
  area.scrollTop=0}
 // 브라우저가 'PDF로 저장' 할 때 쓰는 이름. 파일 이름에 못 쓰는 글자는 뺀다
 function printName(name,date,version){

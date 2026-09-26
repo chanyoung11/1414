@@ -242,9 +242,11 @@ def run():
       const t=document.elementFromPoint(cb.left+cb.width/2,cb.top+cb.height/2);const closeHit=!!t&&!!t.closest('[data-pv="close"]');
       if(sc)sc.scrollLeft=0;
       return {left:r.left,w:r.width,right2:r2.right,vw:innerWidth,scroller:sc?(sc.id||sc.className):null,closeHit}})()""")
-    if pv['w'] <= 390: fail('F62 시험 전제: 쪽이 화면보다 넓어야 함 %s' % pv)
+    # 폰에서는 쪽을 보이는 폭에 맞춰 줄인다 (시뮬레이터 점검 C7) — 실제 크기(1123px)로 두면 한 장을 한눈에 못 봤다.
+    # 넘치지 않으니 밀 곳이 없고, 쪽 왼쪽·오른쪽이 다 화면 안에 있어야 한다 (F62 의 '왼쪽을 못 감'은 그대로 막힌다)
     if pv['left'] < -0.5: fail('F62 쪽 왼쪽이 화면 밖(%s)에 있고 거기로 스크롤할 수 없음' % pv)
-    if not pv['scroller'] or pv['right2'] > pv['vw'] + 1: fail('F62 끝까지 밀어도 쪽 오른쪽이 안 보임: %s' % pv)
+    if pv['right2'] > pv['vw'] + 1: fail('F62 쪽 오른쪽이 안 보임: %s' % pv)
+    if pv['scroller'] or pv['w'] < (pv['vw'] - 24) * 0.97: fail('C7 폰 미리보기 쪽이 보이는 폭에 맞지 않음: %s' % pv)
     if not pv['closeHit']: fail('F62 옆으로 밀면 위 바(닫기)가 같이 밀려 나감: %s' % pv)
     shot(pg, 'f62_f127_preview')
     print('F62 phone ok', pv)
