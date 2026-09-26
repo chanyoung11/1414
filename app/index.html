@@ -760,6 +760,7 @@ html.kbup .sheetm .kbact{position:sticky;bottom:-16px;z-index:1;background:var(-
 /* 토스트는 어떤 판보다 위다 — 무대(210)·인쇄 미리보기(200) 안에서 낸 결과·오류도 보여야 한다. 누르기는 안 받는다 */
 .toast{position:fixed;left:50%;bottom:calc(88px + var(--sab));transform:translateX(-50%);width:max-content;max-width:calc(100vw - 32px);background:var(--fg);color:var(--bg);padding:10px 18px;border-radius:var(--r-lg);font-size:13.5px;font-weight:600;z-index:300;opacity:0;transition:opacity .2s;pointer-events:none;box-shadow:0 12px 32px rgba(0,0,0,.25)}
 .toast.show{opacity:1}
+html.kbup .bnav{display:none}   /* 자판이 뜬 동안 아래 탭바가 자판 바로 위에 떠서 칸을 가리지 않게 */
 /* 자판이 떠 있으면 보이는 화면 맨 위(상태바 밑)에 — 바닥 기준(88px)이면 자판 뒤에 숨어 '영문으로 바꿨어요' 같은 알림을 못 봤다 (N1).
    자판 바로 위는 iOS 가 치는 칸을 올려 두는 자리라 거기 띄우면 치던 칸을 가린다 */
 html.kbup .toast{bottom:auto;top:calc(var(--kbt,0px) + var(--sat) + 10px)}
@@ -3506,7 +3507,9 @@ const NOTI_ICON={publish:'send','note.updated':'note','date.opened':'users','dat
  // 팀·멤버 알림은 사람 아이콘 — 없으면 메모 아이콘으로 떨어져 '…들어왔어요'가 메모처럼 보였다 (D9)
  'member.join':'users','member.left':'users','invite.full':'users','team.transfer':'users','team.delete':'trash','rehearsal.expiring':'mic'};
 const fmtRel=t=>{const d=Date.now()-new Date(t).getTime();if(!(d>=0))return '';if(d<60e3)return '방금';if(d<3600e3)return Math.floor(d/60e3)+'분 전';if(d<86400e3)return Math.floor(d/3600e3)+'시간 전';if(d<7*86400e3)return Math.floor(d/86400e3)+'일 전';const x=new Date(t);return (x.getMonth()+1)+'/'+x.getDate()};
-async function pullNoti(){if(!online()||!S.team.id||!NET.user)return false;try{const r=await api('/notifications?team='+S.team.id);NOTI.list=r.notifications||[];NOTI.unread=r.unread||0;NOTI.at=Date.now();const sig=NOTI.list.map(n=>n.id+(n.readAt?'r':'')+(n.ackAt?'a':'')).join(',');const ch=sig!==NOTI.sig;NOTI.sig=sig;return ch}catch(e){return false}}
+async function pullNoti(){if(!online()||!S.team.id||!NET.user)return false;try{const r=await api('/notifications?team='+S.team.id);NOTI.list=r.notifications||[];NOTI.unread=r.unread||0;NOTI.at=Date.now();const sig=NOTI.list.map(n=>n.id+(n.readAt?'r':'')+(n.ackAt?'a':'')).join(',');const ch=sig!==NOTI.sig;NOTI.sig=sig;return ch}catch(e){
+ // 로그인이 풀렸으면(다른 기기에서 탈퇴·세션 끝) /me 로 한 번 더 확인하고 로그인 창으로 — 그대로 두면 1분마다 401 을 계속 묻는다
+ if(e&&e.status===401){await refreshMe();if(!NET.user)render()}return false}}
 function refreshNoti(){return pullNoti().then(ch=>{updateBadges();if(ch&&route().name==='home')render();return ch})}
 function startNotiPoll(){clearInterval(NOTI.timer);NOTI.timer=setInterval(()=>{if(document.hidden||!online())return;refreshNoti()},60000);
  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&online()&&Date.now()-NOTI.at>10000)refreshNoti()})}
