@@ -565,16 +565,24 @@ html.dark .pill.role-pastor{color:#B4A7F5}
 .stack:not(.ed) #tlist{max-height:28vh;min-height:70px;overflow-y:auto;overscroll-behavior:contain}   /* 스크롤 목록은 flex 에서 0 까지 줄어든다 — 두 줄은 남긴다 */
 /* 가로로 돌린 폰처럼 낮은 화면 — 왼쪽 칸이 250~330px 뿐이라 둘로 나누면 미디어 칸이 128px 에 영상이 반만 보이고 재생 단추는 칸 밖이었다.
    왼쪽 칸을 한 줄로 흘려(송폼·필터는 아래로 이어 스크롤) 칸 속 작은 스크롤을 없애고, 재생 단추를 영상 바로 밑에 두고
-   영상 높이를 화면 높이에 맞춰 영상·재생 단추가 함께 보이게 한다 */
-@media (max-height:500px) and (min-width:821px){
- .stack:not(.ed){display:flex;flex-direction:column;gap:8px;overflow-y:auto;-webkit-overflow-scrolling:touch}
- .stack:not(.ed)>.panel{flex:0 0 auto}
- .stack:not(.ed) .pbody{flex:0 0 auto;overflow:visible}
- .stack:not(.ed)>.vgutter{display:none}
- .stack:not(.ed) #mediaBox{display:contents}
- .stack:not(.ed) #ctrls{order:1}.stack:not(.ed) #mediaBox>.row{order:2}.stack:not(.ed) #tlist{order:3}
- .stack:not(.ed) .vid{max-height:max(90px,calc(100vh - 290px))}
+   영상 높이를 화면 높이에 맞춰 영상·재생 단추·시간 줄이 함께 보이게 한다.
+   .flow 는 fitPlay 가 붙인다 — 높이 500 이하 가로 화면, 또는 나눈 칸에서 영상을 120px 아래로 줄여야 할 만큼 낮을 때(아이패드 미니 가로 + 배너).
+   영상 높이는 fitPlay 가 칸 높이(배너를 뺀)로 잰다 — 100vh 로 어림하면 배너만큼 시간 줄·여기에 메모가 잘렸다(14px 만 보임) */
+@media (min-width:821px){
+ .stack.flow:not(.ed){display:flex;flex-direction:column;gap:8px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+ .stack.flow:not(.ed)>.panel{flex:0 0 auto}
+ .stack.flow:not(.ed) .pbody{flex:0 0 auto;overflow:visible}
+ .stack.flow:not(.ed)>.vgutter{display:none}
+ .stack.flow:not(.ed) #mediaBox{display:contents}
+ .stack.flow:not(.ed) #ctrls{order:1}.stack.flow:not(.ed) #mediaBox>.row{order:2}.stack.flow:not(.ed) #tlist{order:3}
+ .stack.flow:not(.ed) .vid{max-height:max(90px,calc(100vh - 290px))}
+ /* 재생 단추 줄을 조금 좁혀 그만큼 영상에 준다 */
+ .stack.flow:not(.ed) .transport{margin:0}
+ .stack.flow:not(.ed) .tbtn.pri{width:46px;height:46px}
+ .stack.flow:not(.ed) #ctrls>.row{margin-top:4px!important}
 }
+/* 영상을 줄일 때(fitPlay) 16:9 를 지키고 가운데에 둔다 — 높이만 자르면 검은 띠가 넓어질 뿐 영상은 더 작아진다 */
+.vid.capped{width:100%;margin-left:auto;margin-right:auto}
 .vgutter{cursor:row-resize;touch-action:none;position:relative;z-index:2}
 .vgutter::before{content:"";position:absolute;left:0;right:0;top:-8px;bottom:-8px}
 .vgutter::after{content:"";position:absolute;top:2px;left:50%;height:2px;width:36px;margin-left:-18px;border-radius:1px;background:var(--border-2)}
@@ -958,7 +966,11 @@ body.stgout #stageWrap{display:none!important}   /* 무대에서 내보내는 �
    폰·좁은 창에서는 쪽을 화면 폭에 맞춰 줄여(--pvz · printPreview) 한 장을 통째로 본다 — 실제 크기로는 가로 쪽의 왼쪽 ⅓ 만 보이고
    확대·축소(핀치)도 막혀 있어 한 장을 한눈에 볼 수 없었다 (C7). 종이에는 늘 실제 크기 (nprint · print 에서 zoom 1) */
 .pvout{padding:20px calc(12px + var(--sar)) 60px calc(12px + var(--sal));display:flex;flex-direction:column;align-items:flex-start;gap:20px;overflow-x:auto}
-.pvout>.ppage{margin-left:auto;margin-right:auto;zoom:var(--pvz,1)}
+/* 줄이는 것은 zoom 이 아니라 transform — zoom 을 쓰면 웹킷이 줄어든 글자를 최소 글자 크기(9px)로 되돌려 키워(10px 바닥글이 27.6px)
+   폰 미리보기에서만 글자가 쪽보다 2.5배 커 보였다: 메모 띠가 송폼 띠 밑으로 끼고 마커 원이 납작해졌다(N6 · 종이에는 없음).
+   transform 은 자리를 그대로 차지하므로 줄어든 만큼 오른쪽·아래 여백을 당긴다(--pvw·--pvh 는 쪽 크기 · printPreview) */
+.pvout>.ppage{margin-left:auto;margin-right:auto;transform:scale(var(--pvz,1));transform-origin:0 0;-webkit-text-size-adjust:none;text-size-adjust:none}
+.pvout.fit>.ppage{margin-left:0;margin-right:calc(var(--pvw,0px) * (var(--pvz,1) - 1));margin-bottom:calc(var(--pvh,0px) * (var(--pvz,1) - 1))}
 .ppage{position:relative;background:#fff;color:#000;box-shadow:0 6px 24px rgba(0,0,0,.35);flex:0 0 auto;overflow:hidden}
 /* 배경색도 종이에 그대로 — 하이라이트 · 검은 송폼 띠 · 번호 동그라미 · 메모 띠 딱지. 기본(economy)은 잉크를 아낀다며 배경을 흰색으로 지우고
    흰 글씨를 옅은 회색으로 바꾼다. 앱(WKWebView) 인쇄 창에는 '배경 그래픽' 스위치가 없어 하이라이트가 사라지고 글이 안 보였다 (C2) */
@@ -1069,7 +1081,7 @@ body.nprint #app,body.nprint #modal,body.nprint #toast,body.nprint .pvbar,body.n
 body.nprint #printArea{display:block!important;position:static!important;background:#fff!important;overflow:visible!important}
 body.nprint .pvout{padding:0;gap:0;display:block;align-items:stretch;overflow:visible}
 body.nprint .ppage{box-shadow:none;break-after:page;page-break-after:always;margin:0 auto}
-body.nprint .pvout>.ppage{zoom:1}
+body.nprint .pvout>.ppage{zoom:1;transform:none;margin:0 auto}
 body.nprint .ppage:last-child{break-after:auto;page-break-after:auto}
 body.nprint #printArea.osmdout{position:static!important;left:auto!important;top:auto!important;width:auto!important}
 body.nprint .osmdpage{page-break-after:always;break-after:page}
@@ -1080,7 +1092,7 @@ body.nprint #printArea svg{max-width:100%;height:auto}
  body.printing #printArea{display:block!important;position:static!important;background:#fff!important;overflow:visible!important}
  body.printing .pvout{padding:0;gap:0;display:block;overflow:visible}
  body.printing .ppage{box-shadow:none;break-after:page;page-break-after:always;margin:0}
- body.printing .pvout>.ppage{zoom:1}
+ body.printing .pvout>.ppage{zoom:1;transform:none;margin:0}
  body.printing .ppage:last-child{break-after:auto;page-break-after:auto}
  body.printing #printArea.osmdout{position:static!important;left:auto!important;top:auto!important;width:auto!important}
  #printArea .osmdpage{page-break-after:always;break-after:page}#printArea .osmdpage:last-child{page-break-after:auto}
@@ -1537,7 +1549,19 @@ function ovBarHTML(it){
  const L={key:'키',mod:'전조',form:'송폼',songNote:'곡 메모',pieces:'악보',media:'미디어',chart:'코드 차트',score:'악보 데이터'};
  return `<div class="ovbar"><span class="grow">라이브러리 편곡과 다름 <span class="hint">${keys.map(k=>L[k]||k).join(' · ')}</span></span>
   <button class="btn sm" data-act="ov-apply">${ic('check')}곡에 반영</button><button class="btn sm ghost" data-act="ov-revert">되돌리기</button></div>`}
-function paintOvBar(it){const box=$('#ovbar');if(box)box.innerHTML=ovBarHTML(it)}
+// 띠는 고친 뒤 동기화(syncLib)가 끝나는 몇 초 뒤에 생기거나 없어진다. 폰 편집기는 .ws 가 통째로 스크롤이라 그 아래에서 악보를 보던
+// 사람의 화면이 띠 높이만큼 밀려 막 놓은 마커가 튀고(N5), 하이라이트를 긋고 나면 다음 획이 엉뚱한 줄에 그어졌다(N9).
+// 띠가 보이는 자리보다 위(스크롤해 지나친 곳)에 있으면 달라진 높이만큼 스크롤을 옮겨 보던 것을 제자리에 둔다.
+// 띠가 보이는 중이면 그대로 둔다 — 새로 뜬 띠를 봐야 한다. 다시 그릴 때(render)도 keepScroll·restoreScroll 이 같은 일을 한다
+function ovBox(){const b=$('#ovbar');if(!b)return null;
+ for(let e=b.parentElement;e&&e!==document.body;e=e.parentElement){const o=getComputedStyle(e).overflowY;if(o==='auto'||o==='scroll')return {b,sc:e}}return null}
+// 띠 바로 아래 줄(제목 칸)이 스크롤 칸 위에서 얼마나 떨어져 있었나를 적어 두고 그만큼으로 되돌린다 — 띠의 아래 여백(10px)까지 들어가고,
+// 스스로 자리를 지키는 브라우저(크로미움·안드로이드 웹뷰의 scroll anchoring)에서는 이미 제자리라 두 번 옮기지 않는다
+function ovSnap(){const o=ovBox();if(!o)return null;const n=o.b.nextElementSibling||o.b,t=o.sc.getBoundingClientRect().top;
+ return {past:o.b.getBoundingClientRect().top<t-1,y:n.getBoundingClientRect().top-t}}
+function ovKeep(s){if(!s||!s.past)return;const o=ovBox();if(!o)return;const n=o.b.nextElementSibling||o.b;
+ const d=n.getBoundingClientRect().top-o.sc.getBoundingClientRect().top-s.y;if(Math.abs(d)>=1)o.sc.scrollTop+=d}
+function paintOvBar(it){const box=$('#ovbar');if(!box)return;const s=ovSnap();box.innerHTML=ovBarHTML(it);ovKeep(s)}
 function itemEditorHTML(svc,it){const sel=SEL[svc.id]||(SEL[svc.id]={});
  ovTidy(it);   // 마커를 놓았다 지운 것처럼 편곡과 도로 같아졌으면 '라이브러리 편곡과 다름'을 띄우지 않는다 (저장은 다음 save 에)
  return `<div>
@@ -1728,9 +1752,15 @@ function modal(html,o){if(NATIVE&&typeof adsHide==='function')adsHide();   // �
 // 손잡이가 있는 아래 시트는 끌어내려 닫는다 (iOS 시트처럼). 전에는 손잡이만 그려 두고 끌어도 그대로라 바깥을 눌러야만 닫혔다.
 // 리스너는 모두 passive 이고 아무것도 막지 않는다 — 누르기·스크롤은 그대로. 시트 안이 맨 위일 때 아래로 끈 것만 따라가고,
 // 위·옆으로 움직이거나 입력칸·그림판 위에서 시작한 것은 건드리지 않는다. 조금 끌면 제자리로, 멀리(시트 1/3 · 120px) 끌거나 휙 내리면 닫힌다
-function sheetDrag(ov){const sh=ov.firstChild;let d=null;
- const back=()=>{if(d&&d.on){sh.style.transition='transform .22s cubic-bezier(.22,1,.36,1)';sh.style.transform=''}d=null};
- ov.addEventListener('touchstart',e=>{d=null;
+// 손가락이 화면 아래 끝(홈 인디케이터 자리)에서 떨어지면 iOS 가 touchend 를 다음 탭까지 쥐고 있어, 시트가 반쯤 내려간 채 어둑한 막이
+// 화면을 덮고 멈춰 있었다(N2) → 끝 근처에서 손가락이 멈추면(0.45초 동안 움직임도 끝도 없음) 거기서 놓은 것으로 본다. 다음 touchstart 가
+// 끝나지 않은 끌기를 만나도 먼저 그 끌기를 끝낸다. 끝내는 판단(멀리·휙 → 닫기, 아니면 제자리)은 touchend 와 같다
+function sheetDrag(ov){const sh=ov.firstChild;let d=null,idle=0;
+ const back=()=>{clearTimeout(idle);if(d&&d.on){sh.style.transition='transform .22s cubic-bezier(.22,1,.36,1)';sh.style.transform=''}d=null};
+ const settle=(y,ts)=>{clearTimeout(idle);if(!d||!d.on){d=null;return}
+  const dy=y-d.y0,fling=dy>40&&d.v>.5&&ts-d.pt<100;
+  if(dy>Math.min(120,sh.offsetHeight/3)||fling){d=null;sheetAway(ov,sh,Math.max(0,dy))}else back()};
+ ov.addEventListener('touchstart',e=>{if(d&&d.on){settle(d.py,Infinity);return}d=null;   // 끝(touchend)을 못 받은 끌기
   if(e.touches.length!==1||!sh.contains(e.target)||e.target.closest('input,textarea,select,[contenteditable],canvas,.cropwrap,[data-noswipe]'))return;
   for(let n=e.target;n&&n!==ov;n=n.parentElement)if(n.scrollTop>0)return;   // 안쪽을 위로 되감는 중이면 스크롤이다
   const t=e.touches[0];d={x0:t.clientX,y0:t.clientY,py:t.clientY,pt:e.timeStamp,v:0,on:false}},{passive:true});
@@ -1739,10 +1769,10 @@ function sheetDrag(ov){const sh=ov.firstChild;let d=null;
   if(e.timeStamp>d.pt){d.v=(t.clientY-d.py)/(e.timeStamp-d.pt);d.py=t.clientY;d.pt=e.timeStamp}
   if(!d.on){if(dy<-8||Math.abs(dx)>Math.max(10,dy)){d=null;return}   // 위로(안쪽 스크롤)·옆으로(가로 목록)는 놓아준다
    if(dy<10)return;d.on=true;sh.style.animation='none';sh.style.transition='none'}   // 올라오는 중이어도 손가락을 따른다
-  sh.style.transform=`translate3d(0,${Math.max(0,dy)}px,0)`},{passive:true});
- ov.addEventListener('touchend',e=>{if(!d||!d.on){d=null;return}
-  const dy=e.changedTouches[0].clientY-d.y0,fling=dy>40&&d.v>.5&&e.timeStamp-d.pt<100;
-  if(dy>Math.min(120,sh.offsetHeight/3)||fling){d=null;sheetAway(ov,sh,Math.max(0,dy))}else back()},{passive:true});
+  sh.style.transform=`translate3d(0,${Math.max(0,dy)}px,0)`;
+  clearTimeout(idle);const vb=window.visualViewport?visualViewport.offsetTop+visualViewport.height:innerHeight;
+  if(vb-t.clientY<64){const y=t.clientY;idle=setTimeout(()=>{if(ov.isConnected)settle(y,Infinity);else d=null},450)}},{passive:true});
+ ov.addEventListener('touchend',e=>settle(e.changedTouches[0].clientY,e.timeStamp),{passive:true});
  ov.addEventListener('touchcancel',back,{passive:true})}
 // 끈 자리에서 이어 내려가며 닫는다. closeModal 의 내려가기(.out)는 제자리(0)에서 시작해 한 번 튀어 올라 보여서 CSS 애니메이션은 끄고 직접 움직인다
 function sheetAway(ov,sh,y){sh.style.animation='none';ov.style.animation='none';closeModal();
@@ -3535,18 +3565,25 @@ async function deleteAccountModal(){
     dropJournals('');try{indexedDB.deleteDatabase('conti-v1')}catch(e2){}
     closeModal();location.hash='#/home';location.reload()}
    catch(e2){err.textContent=reauthCancelled(e2)?'':msgOf(e2)}}}}
-// 조사 붙이기: 한글 받침과 숫자 읽는 소리를 보고 은/는, 이/가, 으로/로 를 고른다
-const DIGIT_BAT=[true,true,false,true,false,false,true,true,true,false];
-function hasBat(v){const t=String(v||'').trim();if(!t)return false;const c=t.charCodeAt(t.length-1);
- if(c>=0xac00&&c<=0xd7a3)return (c-0xac00)%28!==0;
+// 조사 붙이기: 한글 받침, 숫자·로마자 읽는 소리를 보고 은/는, 이/가, 으로/로 를 고른다 (api/index.js 의 batchimOf 와 같다)
+// 받침 번호는 한글 종성 순서 — 0 없음 · 1 ㄱ · 4 ㄴ · 8 ㄹ · 16 ㅁ · 17 ㅂ · 21 ㅇ
+const DIGIT_BAT=[21,8,0,16,0,0,1,8,8,0];   // 영 일 이 삼 사 오 육 칠 팔 구
+// 로마자 이름은 끝 소리로 — 로마자를 모두 받침 없음으로 봐 'Qadrum가 드럼으로 들어왔어요'가 됐다(N11).
+// 대문자 세 글자 이하는 글자 이름으로 읽는다(DJ·MC → 제이·씨 · BTS → 에스 · 끝이 L·R → 엘·알 · M → 엠 · N → 엔).
+// 낱말은 -ng(ㅇ) · -l(ㄹ) · -m(ㅁ) · -n(ㄴ) · -ck(ㄱ) · -b(ㅂ) 만 받침으로 본다 — Paul·Tom·John·Kang·Nick·Bob.
+// 그 밖(-r·-t·-d·-k·-e …)은 대개 모음으로 끝나게 읽어(피터·데이비드·마크) 받침 없음
+function latinBat(w){
+ if(w.length<=3&&w===w.toUpperCase())return {L:8,R:8,M:16,N:4}[w.slice(-1)]||0;
+ const l=w.toLowerCase();
+ return /ng$/.test(l)?21:/ck$/.test(l)?1:({l:8,m:16,n:4,b:17})[l.slice(-1)]||0}
+function batOf(v){const t=String(v||'').trim();if(!t)return 0;const c=t.charCodeAt(t.length-1);
+ if(c>=0xac00&&c<=0xd7a3)return (c-0xac00)%28;
  if(c>=0x30&&c<=0x39)return DIGIT_BAT[c-0x30];
- return false}
+ const w=t.match(/[A-Za-z]+$/);return w?latinBat(w[0]):0}
+const hasBat=v=>batOf(v)!==0;
 const josa=(v,withB,withoutB)=>`${v}${hasBat(v)?withB:withoutB}`;
-// '으로/로' 는 ㄹ 받침이면 '로' 다 (일렉으로 X → 일렉으로 O, 싱어로 O, 건반으로 O)
-function josaRo(v){const t=String(v||'').trim();if(!t)return t;
- const c=t.charCodeAt(t.length-1);
- if(c>=0xac00&&c<=0xd7a3){const b=(c-0xac00)%28;return t+(b===0||b===8?'로':'으로')}
- return t+(hasBat(t)?'으로':'로')}
+// '으로/로' 는 ㄹ 받침이면 '로' 다 (일렉으로 X → 일렉으로 O, 싱어로 O, 건반으로 O · 보컬로 · Paul로 · 1로)
+function josaRo(v){const t=String(v||'').trim();if(!t)return t;const b=batOf(t);return t+(b===0||b===8?'로':'으로')}
 const online=()=>NET.server===true;
 // 서버가 있는 앱(웹·네이티브)을 서버 없이(모름) 열었는데 팀이 없다 — 로그인 안 했거나 팀이 없는 사람. 전에는 모름을 '서버 없음'(정적 호스팅)과
 // 같이 봐 기기 전용 첫 설정(이름·세션·인도자/멤버)이 떠, 로그인할 길 없이 기기에만 쓰는 사람이 됐다 → 로그인 화면과 오프라인 안내를 보인다.
@@ -5147,7 +5184,7 @@ function songHTML(s){const lead=isLeader();const d=LIB.detail||{};const arrs=s.a
    :'<div class="empty">아직 패턴이 없어요. 두 번 이상 같은 순서로 부르면 생겨요.</div>'};
  // 폰에서는 단추를 아이콘만 두고 '다른 키로'는 ≡ 로 옮긴다(songtop) — 글자 단추 셋이 줄을 다 차지해 제목이 '주' 한 글자로 잘렸다 (D3)
  return `<div class="top songtop"><button class="icon ghost" title="뒤로" aria-label="뒤로" data-act="lib-back">${ic('back')}</button>
-  <h1>${esc(s.title||'(제목 없음)')}${s.archived?'<span class="pill">보관됨</span>':''}</h1>
+  <h1><span class="vttl" title="${esc(s.title||'')}">${esc(s.title||'(제목 없음)')}</span>${s.archived?'<span class="pill">보관됨</span>':''}</h1>
   ${lead?`<button class="btn sm" data-act="song-clone" title="다른 키로">${ic('plus')}다른 키로</button>`:''}
   <button class="btn sm" data-arrplay="${esc(defArr(s).id||'')}" title="연습" aria-label="연습">${ic('play')}연습</button>
   ${lead?`<button class="btn pri" data-arradd="${esc(defArr(s).id||'')}" title="예배에 넣기" aria-label="예배에 넣기">${ic('plus')}예배에 넣기</button>
@@ -6192,7 +6229,7 @@ function scoreHTML(svc,it){const sc=it.score;const my=me();const capo=SC.edit?0:
  const shown=base+semi?keyShiftName(sc.key,base+semi,it.key):sc.key;
  const bad=badMeasuresOf(sc);
  return `<div class="top"><button class="icon ghost" title="뒤로" aria-label="뒤로" data-act="score-back" data-id="${svc.id}">${ic('back')}</button>
-  <h1>${esc(it.title||sc.title||'악보')}<span class="pill key">${esc(shown||'')}</span>${semi?`<span class="pill amber">${semi>0?'+':''}${semi}</span>`:''}${capo?`<span class="pill">카포 ${capo}</span>`:''}${base?`<span class="hint" style="font-size:12px;font-weight:400">악보 ${esc(sc.key)} → 연주 ${esc(it.key)}</span>`:''}${SC.edit&&scoreSemis(it)?`<span class="hint" style="font-size:12px;font-weight:400">고치는 동안은 적힌 키(${esc(sc.key)})로 보여요</span>`:''}</h1>
+  <h1><span class="vttl">${esc(it.title||sc.title||'악보')}</span><span class="pill key">${esc(shown||'')}</span>${semi?`<span class="pill amber">${semi>0?'+':''}${semi}</span>`:''}${capo?`<span class="pill">카포 ${capo}</span>`:''}${base?`<span class="hint" style="font-size:12px;font-weight:400">악보 ${esc(sc.key)} → 연주 ${esc(it.key)}</span>`:''}${SC.edit&&scoreSemis(it)?`<span class="hint" style="font-size:12px;font-weight:400">고치는 동안은 적힌 키(${esc(sc.key)})로 보여요</span>`:''}</h1>
   <div class="seg"><button data-act="score-tr" data-d="-1" title="반음 내림" ${SC.edit?'disabled':''}>${ic('down')}</button><button data-act="score-tr" data-d="0" title="${scorePlayOff(it)?'연주 키로':'원래 키로'}" ${SC.edit?'disabled':''}>원본</button><button data-act="score-tr" data-d="1" title="반음 올림" ${SC.edit?'disabled':''}>${ic('up')}</button></div>
   ${isLeader()&&scoreItem(route()).editable?`<button class="switch ${SC.edit?'on':''}" data-act="score-edit"><i></i>고치기</button>`:''}
   <button class="icon ghost" data-act="score-print" title="인쇄 (A4)">${ic('export')}</button>
@@ -6637,9 +6674,11 @@ window.addEventListener('hashchange',()=>{P.stop();render()});
 let SEL={};// editor selection: {sid:{item,tool}}
 // 좁은 화면(≤820px)에서는 패널 대신 .ws 가 통째로 세로로 넘어가고(.pbody·.sheetwrap 은 overflow:visible), 패널 머리(.ptab)는 옆으로 넘어간다.
 // 그 둘을 안 적어 두어 폰 편집기에서 도구·사진 추가·메모 저장·자르기처럼 다시 그릴 때마다 맨 위(예배·날짜)로 튀어 올랐다 → 같이 지킨다
-const SCROLL={};function keepScroll(){SCROLL.sheet=($('#sheetwrap')||{}).scrollTop||0;SCROLL.bodies=$$('.pbody').map(b=>b.scrollTop);SCROLL.ws=($('#app .ws')||{}).scrollTop||0;SCROLL.tabs=$$('#app .ptab').map(t=>t.scrollLeft)}
+// ov: 편집기 '라이브러리 편곡과 다름' 띠의 높이·자리 (ovSnap) — 다시 그리며 띠가 생기거나 없어져도 아래에서 보던 악보를 제자리에 (N5·N9)
+const SCROLL={};function keepScroll(){SCROLL.sheet=($('#sheetwrap')||{}).scrollTop||0;SCROLL.bodies=$$('.pbody').map(b=>b.scrollTop);SCROLL.ws=($('#app .ws')||{}).scrollTop||0;SCROLL.tabs=$$('#app .ptab').map(t=>t.scrollLeft);SCROLL.ov=ovSnap()}
 function restoreScroll(){const sw=$('#sheetwrap');if(sw&&SCROLL.sheet)sw.scrollTop=SCROLL.sheet;$$('.pbody').forEach((b,i)=>{if(SCROLL.bodies&&SCROLL.bodies[i])b.scrollTop=SCROLL.bodies[i]})
- const ws=$('#app .ws');if(ws&&SCROLL.ws)ws.scrollTop=SCROLL.ws;$$('#app .ptab').forEach((t,i)=>{if(SCROLL.tabs&&SCROLL.tabs[i])t.scrollLeft=SCROLL.tabs[i]})}
+ const ws=$('#app .ws');if(ws&&SCROLL.ws)ws.scrollTop=SCROLL.ws;$$('#app .ptab').forEach((t,i)=>{if(SCROLL.tabs&&SCROLL.tabs[i])t.scrollLeft=SCROLL.tabs[i]});
+ ovKeep(SCROLL.ov);SCROLL.ov=null}
 let lastRoute='';
 let svcOnHash='';   // 콘티 화면을 온라인으로 다 그린(메모·말씀·초안을 받은) 주소. 오프라인으로 그리거나 콘티 밖으로 나가면 비운다
 // 서버를 기다리되 오래 걸리면 가진 것으로 먼저 그린다 (online() 은 켤 때 한 번 정해져 약한 망에서도 참이다).
@@ -6671,7 +6710,7 @@ async function render(){
  if(FRESH_ARR.size)freshRoute();
  if(NATIVE)setTimeout(adsSync,0);else setTimeout(webAdsRender,0);   // 화면이 바뀔 때마다 광고를 켜고 끈다 (예배 화면에서는 내린다)
  const prevHash=lastRoute;
- if(r.name!=='lineup')document.body.classList.remove('lnopen');const same=lastRoute===location.hash;lastRoute=location.hash;if(same)keepScroll();else{SCROLL.sheet=0;SCROLL.bodies=null;SCROLL.ws=0;SCROLL.tabs=null}
+ if(r.name!=='lineup')document.body.classList.remove('lnopen');const same=lastRoute===location.hash;lastRoute=location.hash;if(same)keepScroll();else{SCROLL.sheet=0;SCROLL.bodies=null;SCROLL.ws=0;SCROLL.tabs=null;SCROLL.ov=null}
  if(!/^(edit|view|play)$/.test(r.name))svcOnHash='';
  // §4.6 목회자 링크: 로그인 없이 여는 페이지
  // 약관·방침은 로그인 없이 볼 수 있다
@@ -8984,8 +9023,10 @@ function stageRender(){
      const on=STG.menu===b.id,sel=STG.sel.includes(b.id);
      // 아주 얇은 블록(마커 위 몇 px 남은 악보 조각 등)은 고르기 전에는 이름표·위 손잡이를 안 단다 — 옆 블록 이름표·손잡이와 겹쳐 쌓였다
      const thin=(b.type==='slice'&&nb.height>0?nb.height:bh)<24;
+     // 이름표는 블록 위 18px 에 뜬다. 화면 맨 위 블록이면 쪽 밖(캔버스 위 12px 틈)을 넘어 무대 바 밑에 반쯤 숨었다(N8·N12) → 틈 안(쪽 위 10px 까지)으로 내린다
+     const tagTop=-Math.min(18,Math.max(0,nb.top||0)+10);
      return `<div class="sblk ${on?'on':''} ${sel?'sel':''} ${thin?'thin':''}" data-sid="${esc(b.id)}" style="left:${left}px;top:${nb.top}px;width:${w}px">
-      <span class="stag">${b.type==='head'?'송폼 '+(b.idx+1):b.type==='strip'?'메모':b.type==='text'?'글':'악보'}</span>
+      <span class="stag"${tagTop>-18?` style="top:${tagTop}px"`:''}>${b.type==='head'?'송폼 '+(b.idx+1):b.type==='strip'?'메모':b.type==='text'?'글':'악보'}</span>
       ${inner}${['se','nw','ne','sw'].map(c=>`<span class="sgrip" data-c="${c}"></span>`).join('')}
       ${on?stgBlockMenu(b,pos):''}</div>`}).join('')}</div></div>
   ${STG.edit&&STG.sel.length>1?`<div class="stgsel">${STG.sel.length}개 선택 · ⌘C 복사 · ⌘V 붙이기 · Delete 숨기기 · 화살표 이동</div>`:''}
@@ -9256,7 +9297,9 @@ function printPreview(svc){
  // 폰·좁은 창: 쪽을 보이는 폭에 맞춰 줄인다 (C7 · CSS .pvout>.ppage 의 --pvz). 넓은 화면은 실제 크기 그대로(1). 돌리면 다시 맞춘다
  const fit=()=>{if(!area.isConnected){removeEventListener('resize',fit);return}
   const out=area.querySelector('.pvout');if(!out||!PG.pw)return;const cs=getComputedStyle(out);
-  const w=out.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight);if(w>0)out.style.setProperty('--pvz',String(Math.min(1,Math.floor(w/PG.pw*1e4)/1e4)))};
+  const w=out.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight);if(!(w>0))return;
+  const z=Math.min(1,Math.floor(w/PG.pw*1e4)/1e4);out.style.setProperty('--pvz',String(z));
+  out.style.setProperty('--pvw',PG.pw+'px');out.style.setProperty('--pvh',PG.ph+'px');out.classList.toggle('fit',z<1)};
  fit();addEventListener('resize',fit);
  area.scrollTop=0}
 // 브라우저가 'PDF로 저장' 할 때 쓰는 이름. 파일 이름에 못 쓰는 글자는 뺀다
@@ -9401,9 +9444,36 @@ function playSession(s){const cur=PL.session||me().session;if(!s||s===cur)return
 function redrawPlay(){const svc=PL.svc;if(!svc)return;const pub=pubOrDraft(svc);const it=pub.items[PL.idx];if(!it)return;const live=svc.items.find(x=>x.id===it.id)||it;const sh=$('#sheet');if(!sh)return;const sw0=$('#sheetwrap');const base=(sw0?sw0.clientWidth-28:sh.clientWidth)-56;const z=PL.zoom||1;const W=Math.round(base*z);sh.style.width=z>1?(W+56)+'px':'';$$('.zoomlbl').forEach(e=>e.textContent=Math.round(z*100)+'%');
  // structure from published item, notes from live
  const merged={...it,notes:live.notes||[]};const sw=$('#sheetwrap');const st=sw?sw.scrollTop:0;sh.innerHTML=sheetHTML(merged,Math.max(200,W),playCtx());if(sw)sw.scrollTop=st;updateTL()}
+// 연습 왼쪽 칸 맞추기 (E7·N7) — 낮은 화면에서 영상은 제 폭만큼(16:9) 높이를 다 차지해, 가로 아이패드 + 광고 배너면 재생·±5 단추가
+// 미디어 칸 끝에 반쯤 잘렸고(11인치: 칸 432px 에 내용 527px) 가로 폰 + 배너면 시간 줄·여기에 메모가 14px 만 보였다.
+//  · 나눈 칸: 미디어 칸이 넘치는 만큼 영상을 줄인다(16:9 그대로 가운데). 120px 아래로 줄어야 하면 왼쪽 칸을 한 줄로 흘린다(.flow)
+//    — 손으로 끌어 높이를 정했으면 흘리지 않고 120px 에서 멈춘다(칸 속 스크롤)
+//  · 한 줄로 흐를 때: 영상 + 재생 단추 + 시간 줄이 첫 화면(배너를 뺀 칸 높이)에 들어오게. 나머지(유튜브에서 열기·타임라인·송폼)는 아래로
+// 칸 크기(창·배너·세로 막대)나 미디어 칸 내용(영상↔녹음·안내 글)이 바뀌면 다시 잰다
+let fitPlayRO=null,fitPlayRaf=0;
+function fitPlaySoon(){cancelAnimationFrame(fitPlayRaf);fitPlayRaf=requestAnimationFrame(fitPlay)}
+function fitPlay(){
+ const st=$('#stack');if(!st||st.classList.contains('ed')){if(fitPlayRO){fitPlayRO.disconnect();fitPlayRO=null}return}
+ const pb=$('.panel.media>.pbody',st),v=$('#mediaBox .vid',st),c=$('#ctrls',st);
+ const wide=matchMedia('(min-width:821px)').matches,short=wide&&matchMedia('(max-height:500px)').matches;
+ const sy=st.scrollTop;st.classList.toggle('flow',short);
+ if(v){v.classList.remove('capped');v.style.maxHeight=v.style.maxWidth=''}
+ if(!wide||!v||!pb||!st.offsetHeight){st.scrollTop=sy;return}   // 폰 세로·좁은 창은 화면 전체가 스크롤 · 녹음은 영상이 없다 · 무대에서는 숨어 있다
+ const cap=h=>{h=Math.floor(h);v.classList.add('capped');v.style.maxHeight=h+'px';v.style.maxWidth=Math.round(h*16/9)+'px'};
+ if(!short){
+  const over=pb.scrollHeight-pb.clientHeight;if(over<=1)return;
+  const h=v.offsetHeight-over;
+  if(h>=120||st.style.gridTemplateRows){cap(Math.max(h,120));return}
+  st.classList.add('flow');
+ }
+ v.style.maxHeight='none';
+ if(c&&c.offsetHeight){const r=st.getBoundingClientRect(),need=c.getBoundingClientRect().bottom-r.top+st.scrollTop+6,over=need-st.clientHeight;if(over>0)cap(Math.max(72,v.offsetHeight-over))}
+ st.scrollTop=sy}
 function afterPlay(svc,idx){
  const app=$('#app');app.classList.toggle('stage',PL.stage);if(PL.stage&&PL.wantFs){PL.wantFs=false;setStage(true)}
- redrawPlay();selectMedia(0);initGutter(redrawPlay);
+ redrawPlay();selectMedia(0);initGutter(()=>{redrawPlay();fitPlay()});fitPlay();
+ if(fitPlayRO)fitPlayRO.disconnect();fitPlayRO=null;
+ if(window.ResizeObserver){const st=$('#stack'),pb=st&&$('.panel.media>.pbody',st);if(st){fitPlayRO=new ResizeObserver(fitPlaySoon);fitPlayRO.observe(st);if(pb)fitPlayRO.observe(pb)}}
  const sh=$('#sheet');
  sh.onclick=e=>{const pub=pubOrDraft(svc);const it=pub.items[PL.idx];const live=svc.items.find(x=>x.id===it.id)||it;
   const nc=e.target.closest('[data-note]');if(nc){P.pauseForComposer();noteMenu(svc,live,nc.dataset.note);return}
@@ -9976,7 +10046,7 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
  if(!online()){REPROBE.n=0;scheduleReprobe()}   // 켜는 동안 건너뛴 다시 묻기가 간격만 늘려 놨다 — 5초부터 다시
  setInterval(()=>{if(NET.server===null&&!document.hidden)recheckServer()},20000);
  probeOmr();startNotiPoll();nativeSetup();
- window.CONTI={REWARD,rewardAvailable,rewardSheet,pullUsage,ADSTATE,modal,closeModal,ADS,WEBADS,AD_HOSTS,setZoom,P,pl:()=>PL,STG,stageOpen,stageExit,adsAllowed,webAdsAllowed,MET,PIANO,metOpen,metStart,metStop,metSet,pianoOpen,HOME,PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go,PLANQ,planCls,ytOriginParam,ytEmbedSrc,YT};
+ window.CONTI={REWARD,rewardAvailable,rewardSheet,pullUsage,ADSTATE,modal,closeModal,ADS,WEBADS,AD_HOSTS,setZoom,P,pl:()=>PL,STG,stageOpen,stageExit,adsAllowed,webAdsAllowed,MET,PIANO,metOpen,metStart,metStop,metSet,pianoOpen,HOME,PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go,PLANQ,planCls,ytOriginParam,ytEmbedSrc,YT,josa,josaRo,fitPlay,paintOvBar};
 })();
 })();
 </script>

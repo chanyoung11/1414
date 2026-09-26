@@ -91,16 +91,27 @@ const teamUserIds = async (teamId, { exceptRole, except } = {}) =>
   (await q('select user_id, role from members where team_id=$1 and active', [teamId]))
     .filter((m) => m.role !== exceptRole && m.user_id !== except).map((m) => m.user_id);
 const mdOf = (d) => { const m = String(d || '').match(/^\d{4}-(\d{2})-(\d{2})/); return m ? `${+m[1]}/${+m[2]}` : ''; };
-// 조사 붙이기: 한글 받침과 숫자 읽는 소리를 보고 이/가, 을/를 을 고른다
-const DIGIT_BATCHIM = [true, true, false, true, false, false, true, true, true, false]; // 영 일 이 삼 사 오 육 칠 팔 구
-function hasBatchim(s) {
-  const t = String(s || '').trim(); if (!t) return false;
-  const c = t.charCodeAt(t.length - 1);
-  if (c >= 0xac00 && c <= 0xd7a3) return (c - 0xac00) % 28 !== 0;
-  if (c >= 0x30 && c <= 0x39) return DIGIT_BATCHIM[c - 0x30];
-  return false;
+// 조사 붙이기: 한글 받침, 숫자·로마자 읽는 소리를 보고 이/가, 을/를, 으로/로 를 고른다 (app/index.html 의 batOf 와 같다)
+// 받침 번호는 한글 종성 순서 — 0 없음 · 1 ㄱ · 4 ㄴ · 8 ㄹ · 16 ㅁ · 17 ㅂ · 21 ㅇ
+const DIGIT_BATCHIM = [21, 8, 0, 16, 0, 0, 1, 8, 8, 0]; // 영 일 이 삼 사 오 육 칠 팔 구
+// 로마자 이름은 끝 소리로 — 모두 받침 없음으로 봐 'Qadrum가 드럼으로 들어왔어요'가 됐다(N11).
+// 대문자 세 글자 이하는 글자 이름으로(DJ → 제이 · 끝이 L·R → 엘·알 · M → 엠 · N → 엔), 낱말은 -ng·-l·-m·-n·-ck·-b 만 받침(Kang·Paul·Tom·John·Nick·Bob)
+function latinBatchim(w) {
+  if (w.length <= 3 && w === w.toUpperCase()) return { L: 8, R: 8, M: 16, N: 4 }[w.slice(-1)] || 0;
+  const l = w.toLowerCase();
+  return /ng$/.test(l) ? 21 : /ck$/.test(l) ? 1 : ({ l: 8, m: 16, n: 4, b: 17 })[l.slice(-1)] || 0;
 }
+function batchimOf(s) {
+  const t = String(s || '').trim(); if (!t) return 0;
+  const c = t.charCodeAt(t.length - 1);
+  if (c >= 0xac00 && c <= 0xd7a3) return (c - 0xac00) % 28;
+  if (c >= 0x30 && c <= 0x39) return DIGIT_BATCHIM[c - 0x30];
+  const w = t.match(/[A-Za-z]+$/); return w ? latinBatchim(w[0]) : 0;
+}
+const hasBatchim = (s) => batchimOf(s) !== 0;
 const josa = (s, withB, withoutB) => `${s}${hasBatchim(s) ? withB : withoutB}`;
+// '으로/로' 는 ㄹ 받침이면 '로' (보컬로 · Paul로 · 1로 — 받침만 보면 '보컬으로')
+const josaRo = (s) => { const b = batchimOf(s); return `${s}${b === 0 || b === 8 ? '로' : '으로'}`; };
 async function membership(uid, teamId) {
   return one(`select t.*, m.user_id, m.name as mname, m.session, m.sessions as msessions, m.role, m.capo, m.active from members m join teams t on t.id=m.team_id
               where m.user_id=$1 ${teamId ? 'and m.team_id=$2' : ''} order by m.active desc, m.created_at asc limit 1`, teamId ? [uid, teamId] : [uid]);
@@ -1396,7 +1407,7 @@ on('POST', '/invite/:token/join', async ({ uid, params, body }) => {
   // 인도자에게 알림
   const leader = await one(`select user_id from members where team_id=$1 and role='leader' and active limit 1`, [t.id]);
   if (leader && leader.user_id !== uid) await notify(t.id, [leader.user_id], 'member.join', uid,
-    { title: `${josa(name, '이', '가')} ${pastor ? '목회자로' : (session ? josa(session, '으로', '로') : '멤버로')} 들어왔어요`, link: '#/team' });
+    { title: `${josa(name, '이', '가')} ${pastor ? '목회자로' : (session ? josaRo(session) : '멤버로')} 들어왔어요`, link: '#/team' });
   return viewOf(await membership(uid, t.id));
 });
 
@@ -3573,7 +3584,7 @@ on('PUT', '/teams/:id/availability', async ({ uid, params, body }) => {
         leaders = leaders || (await q(`select user_id from members where team_id=$1 and role='leader'`, [params.id])).map((r) => r.user_id);
         const where = ds.length > 1 ? `${d.label} ` : '';
         await notify(params.id, leaders, 'avail.conflict', d.id + ':' + uid, {
-          title: `${josa(m.mname, '이', '가')} ${josa(mdOf(date), '을', '를')} 불가능으로 바꿨어요`, body: [memo ? `"${memo}"` : '', `${where}${josa(mine.map((r) => r.session).join('·'), '으로', '로')} 편성돼 있음`].filter(Boolean).join(' · '),
+          title: `${josa(m.mname, '이', '가')} ${josa(mdOf(date), '을', '를')} 불가능으로 바꿨어요`, body: [memo ? `"${memo}"` : '', `${where}${josaRo(mine.map((r) => r.session).join('·'))} 편성돼 있음`].filter(Boolean).join(' · '),
           link: '#/lineup/' + d.id, actionable: true, expiresAt: new Date(date + 'T23:59:59+09:00'),
         });
       }
@@ -3643,7 +3654,7 @@ on('POST', '/teams/:id/dates/:did/notify', async ({ uid, params }) => {
   const others = (list) => list.filter((x) => String(x) !== String(uid));
   for (const mid of others(firstTime ? [...nowIn] : [...added, ...moved])) {
     sent += await notify(params.id, [mid], firstTime ? 'lineup.notify' : 'lineup.changed', row.id, {
-      title: `${where} · ${josa(sessionsOf(mid), '으로', '로')} 섭니다`, body: timeLine, link, actionable: true, expiresAt: new Date(row.date + 'T23:59:59+09:00'),
+      title: `${where} · ${josaRo(sessionsOf(mid))} 섭니다`, body: timeLine, link, actionable: true, expiresAt: new Date(row.date + 'T23:59:59+09:00'),
     });
   }
   // 빠진 사람에게도 알린다. 계정을 지웠거나 팀을 떠난 사람은 notify 가 건너뛴다 (셈에도 안 들어간다)
