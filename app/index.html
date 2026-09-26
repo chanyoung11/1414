@@ -8188,14 +8188,25 @@ function stgFormOnly(scs){
 // 송폼 모드가 뺀 무리 송폼(stageRender keep)을 hydrate 뒤 화면 블록 줄에 끼울 자리. 숨김 되돌리기는 무리를 블록 줄에 처음 나오는
 // 차례로 제 화면을 세운다(stgScreenAct show) — 저장본에서 센 번호(i)는 hydrate 뒤에 어긋났다(콘티에서 뺀 곡의 블록이 빠지고, 새 메모 띠가
 // 악보를 나눈다). 한 화면에 무리가 둘 이상이면 무리 차례가 바뀌어 되돌린 화면 순서가 틀렸다 (09-26 검증).
-// 그래서 번호가 아니라 무리로 찾는다 (gs = 저장본의 무리 차례): 제 무리 블록 앞 · 없으면(악보 없는 곡의 송폼뿐인 무리) 저장본에서
-// 뒤에 오던 무리의 첫 블록 앞 · 그것도 없으면 앞에 오던 무리의 끝 블록 뒤 · 다른 무리가 없으면 번호대로
-function stgKeepAt(bl,gs,g,i){
- const first=h=>bl.findIndex(x=>x.hidden&&String(x.lone)===h);
- let k=first(g);if(k>=0)return k;
+// 그래서 번호가 아니라 무리·곡으로 찾는다 (k = stageRender keep: g 무리 · q 곡 · r 저장본에서 이 송폼 앞에 있던 같은 무리 제 곡 블록 수 ·
+// qs 저장본 무리 안 곡 차례 · gs 저장본의 무리 차례): 무리 안 제 곡 블록 사이(r — 보통 제 곡 첫 블록 앞) · 무리에 제 곡 블록이
+// 없으면(악보 없는 곡) 무리 안에서 뒤에 오던 곡의 첫 블록 앞 · 앞에 오던 곡의 끝 블록 뒤 · 무리 첫 블록 앞 · 무리가 비었으면(송폼뿐인
+// 무리) 뒤에 오던 무리의 첫 블록 앞 · 앞에 오던 무리의 끝 블록 뒤 · 다른 무리가 없으면 번호대로.
+// 무리 첫 블록 앞에만 끼우면 두 곡이 든 무리(데스크톱 — 한 화면에 곡 둘)가 하나 송폼·둘 송폼·하나 악보·둘 악보로 바뀌어 저장되고,
+// 겹쳐 둔 블록의 위아래(블록 줄 차례)가 main 과 달라졌다 — 하나 악보 위에 둔 둘 송폼이 악보 밑에 묻혔다 (09-26 검증)
+const stgSongOf=b=>b.iid!=null?String(b.iid):b.type==='head'&&b.pid!=null?String(b.pid):null;
+function stgKeepAt(bl,gs,k){
+ const {g,q,r,qs,i}=k;
+ const at=(h,p)=>{const n=[];bl.forEach((x,j)=>{if(x.hidden&&String(x.lone)===h&&(p===undefined||stgSongOf(x)===p))n.push(j)});return n};
+ let n;
+ if(q!=null){n=at(g,q);if(n.length)return r<n.length?n[r]:n[n.length-1]+1;
+  const j=qs.indexOf(q);
+  for(const p of qs.slice(j+1)){n=at(g,p);if(n.length)return n[0]}
+  for(const p of qs.slice(0,Math.max(0,j)).reverse()){n=at(g,p);if(n.length)return n[n.length-1]+1}}
+ n=at(g);if(n.length)return n[0];
  const j=gs.indexOf(g);
- for(const h of gs.slice(j+1)){k=first(h);if(k>=0)return k}
- for(const h of gs.slice(0,Math.max(0,j)).reverse()){let e=-1;bl.forEach((x,n)=>{if(x.hidden&&String(x.lone)===h)e=n});if(e>=0)return e+1}
+ for(const h of gs.slice(j+1)){n=at(h);if(n.length)return n[0]}
+ for(const h of gs.slice(0,Math.max(0,j)).reverse()){n=at(h);if(n.length)return n[n.length-1]+1}
  return Math.min(i,bl.length)}
 // 🗑 (조각 위) — 보이는 블록이 없는 화면 i 를 지운다. 숨긴 블록은 버리지 않는다 — 조판에서 빠진 악보 줄·송폼·띠는 stgHydrate 가
 // 자동 조판 자리에 도로 세워 숨긴 것이 다시 나온다. 숨긴 채 앞 화면(첫 화면이면 뒤 화면)으로 옮기고 무리 표시(lone)를 달아
@@ -8548,19 +8559,22 @@ function stageRender(){
   // (keep — hydrate 는 모드가 뺀 송폼을 모르니 거치지 않고 뒤에 도로 끼운다. 저장본·추천 조판과 같이 쓰는 객체라 복사).
   // off 로 빼면 블록 줄 안 자리(= 무리의 화면 순서)를 잃고, 이 모드의 숨김 되돌리기가 그 송폼만 숨긴 채 남겨 무리가 갈라졌다
   const lone=b=>!!(b&&b.hidden&&b.lone);
-  const off=[],keep=[],screens=(L.screens||[]).map(sc=>({blocks:(sc.blocks||[]).slice()}));
+  const off=[],keep=[],screens=(L.screens||[]).map(sc=>({blocks:(sc.blocks||[]).slice()})),late=new Set();
+  // 예전(조각 위 🗑 무리 송폼도 off 로 뺐던 때) 저장본의 off 무리 송폼은 화면 끝에 붙는다 — 무리 안 자리는 모른다(late → 제 곡 첫 블록 앞)
   (L.off||[]).forEach(o=>{if(isOff(o.b)&&!lone(o.b)){off.push(o);return}
-   while(screens.length<=o.s)screens.push({blocks:[]});screens[o.s].blocks.push(o.b)});
+   while(screens.length<=o.s)screens.push({blocks:[]});screens[o.s].blocks.push(o.b);late.add(o.b)});
   const gs=screens.map(sc=>[...new Set(sc.blocks.filter(lone).map(b=>String(b.lone)))]);   // 화면마다 무리 차례 (끼울 자리 — stgKeepAt)
-  screens.forEach((sc,s)=>{let n=0;sc.blocks=sc.blocks.filter(b=>{if(!isOff(b)){n++;return true}
-   if(lone(b)){keep.push({s,i:n++,b:{...b}});return false}
+  screens.forEach((sc,s)=>{let n=0;const all=sc.blocks;sc.blocks=all.filter(b=>{if(!isOff(b)){n++;return true}
+   if(lone(b)){const g=String(b.lone),q=stgSongOf(b),mine=all.filter(y=>lone(y)&&String(y.lone)===g);   // 끼울 자리 (stgKeepAt)
+    keep.push({s,i:n++,g,q,r:late.has(b)?0:mine.slice(0,mine.indexOf(b)).filter(y=>stgSongOf(y)===q).length,
+     qs:[...new Set(mine.map(stgSongOf).filter(v=>v!=null))],b:{...b}});return false}
    off.push({s,b});return false})});
   STG.layout=stgHydrate(autoL,{screens},{W,H,cw:auto.cw})||(off.length||keep.length||STG.edit?{screens:screens.length?screens.map(()=>({blocks:[]})):[{blocks:[]}]}:null);
   if(STG.layout){STG.layout.off=off;
    if(keep.length){const scs=STG.layout.screens,ids=new Set([].concat(...scs.map(sc=>sc.blocks.map(b=>String(b.id))),off.map(o=>String(o.b.id))));
-    keep.forEach(({s,i,b})=>{while(scs.length<=s)scs.push({blocks:[]});
+    keep.forEach(kp=>{const {s,b}=kp;while(scs.length<=s)scs.push({blocks:[]});
      let id=String(b.id);if(ids.has(id)){let k=2;while(ids.has(id+'_'+k))k++;b.id=id+='_'+k}ids.add(id);   // 이름표는 하나뿐 (stgHydrate 와 같게)
-     const bl=scs[s].blocks;bl.splice(stgKeepAt(bl,gs[s]||[],String(b.lone),i),0,b)})}}}
+     const bl=scs[s].blocks;bl.splice(stgKeepAt(bl,gs[s]||[],kp),0,b)})}}}
  // 틀에 맞춰 줄여 그린 폭(stgBlockAt)은 그릴 때만 쓴다. 전에는 편집 중 그릴 때마다 조판에 적어, 편집을 켰다 끄기만
  // 해도(또는 편집 중 화면을 돌리면) 저장한 캔버스의 악보가 반 크기로 줄어 저장됐다. 편집은 보이는 상자로 잰다 (stgVis)
  const custom=!!STG.layout;

@@ -49,6 +49,10 @@
 #   데스크톱 1열 · 곡마다 두 화면
 #  15 조각 위에서 둘의 첫 화면·하나의 둘째 화면을 잇달아 🗑 (하나 첫 화면에 무리 둘) → 하나 첫 악보에 인도자 메모를 단 뒤(새 메모 띠가
 #     악보를 나눈다) 그 모드에서 되돌리면 하나·하나·둘·둘 차례 (전에는 하나·둘·하나·둘)
+#   데스크톱 2열 · 하나/둘/셋/넷 — 한 화면에 곡 둘
+#  16 둘 송폼을 하나 악보 위에 옮겨 둔 첫 화면을 조각 위에서 모두 숨겨 🗑 (한 무리에 두 곡) → 그 모드로 열어 편집을 끝내면(저장) 무리 안
+#     블록 차례가 main 그대로 하나 송폼·하나 악보·둘 송폼·둘 악보 (그 모드 · 저장본 · 조각 위로 돌아와 되돌린 뒤 — 둘 송폼이 하나 악보
+#     위에 그려진다). 전에는 무리 송폼을 무리 첫 블록 앞에 끼워 하나 송폼·둘 송폼·하나 악보·둘 악보가 되어 둘 송폼이 악보 밑에 묻혔다
 #   CONTI_URL=http://localhost:8766/ .venv/bin/python tests/test_stage_blank.py   (STAGE_BLANK_PART=1|2|3|4 으로 하나만)
 import os, re, sys, time, json, subprocess, threading
 from urllib.parse import urlparse
@@ -1026,15 +1030,72 @@ def run4_desk(box):
         b.close()
     box['ok'] = True
 
+# 화면 i 의 숨긴 🗑 무리 블록 id (블록 줄 차례) — 지금 조판 · 저장본
+LONE_IDS = "(i)=>(CONTI.STG.layout.screens[i]||{blocks:[]}).blocks.filter(b=>b.hidden&&b.lone).map(b=>String(b.id))"
+LONE_SAVED = """([slot,i])=>{const v=((CONTI.PREFS.data||{}).stage||{})[slot];const sc=v&&v.screens&&v.screens[i];
+ return sc?(sc.blocks||[]).filter(b=>b.hidden&&b.lone).map(b=>String(b.id)):null}"""
+# 블록 id 의 상자 가운데에 그려진 블록 (무대 쪽 · data-sblk)
+TOP_AT = """(id)=>{const S=CONTI.STG;const b=S.layout.screens[S.screen].blocks.find(x=>String(x.id)===id);if(!b)return 'no '+id;
+ const r=document.querySelector('#stageWrap .stgpage').getBoundingClientRect();
+ const e=document.elementFromPoint(r.left+(b.x+b.w/2)*r.width,r.top+(b.y+b.h/2)*r.height);const k=e&&e.closest('.blk');
+ return k?k.getAttribute('data-sblk')||'blk':String(e&&e.className)}"""
+
+def run4_desk2(box):
+    # 데스크톱 2열 · 하나/둘/셋/넷 — 한 화면에 곡 둘
+    with sync_playwright() as p:
+        b = p.chromium.launch()
+        c = b.new_context(viewport={'width': 1600, 'height': 1000}, service_workers='block')
+        pg = c.new_page()
+        errs = []; pg.on('pageerror', lambda e: errs.append(repr(e)[:200])); pg.on('dialog', lambda d: d.accept())
+        new_team_service(pg, 'y' + tag, '11/2 주일')
+        for t in ['하나', '둘', '셋', '넷']: add_song(pg, t)
+        sid = pg.evaluate("CONTI.S.services[0].id"); slot = 'lay:%s~desktop' % sid
+        publish(pg, sid)
+        open_stage(pg, sid)
+        edit_on(pg); set_form(pg, 'block'); auto_again(pg); nudge(pg); edit_off(pg)
+        order = ['h0', 's0.0.0', 'h1', 's1.0.0']
+        if pg.evaluate(SONGS) != [[0, 1], [2, 3]] or pg.evaluate("CONTI.STG.layout.screens[0].blocks.map(b=>String(b.id))") != order:
+            fail('4부 준비: 한 화면에 곡 둘(하나 송폼·하나 악보·둘 송폼·둘 악보)이 아님 %s' % pg.evaluate(LAYX))
+        base = pg.evaluate("(slot)=>CONTI.PREFS.data.stage[slot]", slot)
+        exit_stage(pg)
+        # 둘 송폼(h1)을 하나 악보(s0.0.0) 위로 — 사람이 그렇게 둔 자리
+        for bl in base['screens'][0]['blocks']:
+            if bl['id'] == 'h1': bl['x'] = 0.08; bl['y'] = 0.40
+        open_in(pg, sid, slot, base, 'block')
+        if pg.evaluate(TOP_AT, 'h1') != 'head:1': fail('4부 준비: 하나 악보 위에 둘 송폼이 안 보임 %s' % pg.evaluate(TOP_AT, 'h1'))
+        edit_on(pg); goto_screen(pg, 0); hide_all_here(pg); trash(pg)
+        if pg.evaluate(ST)['total'] != 1 or pg.evaluate(LONE_IDS, 0) != order: fail('4부 준비: 무리가 하나 송폼·하나 악보·둘 송폼·둘 악보가 아님 %s' % pg.evaluate(LAYX))
+        edit_off(pg); gb = pg.evaluate("(slot)=>CONTI.PREFS.data.stage[slot]", slot); exit_stage(pg)
+        for f in FORMS:
+            k = '16 %s' % f
+            open_in(pg, sid, slot, gb, f); edit_on(pg)
+            if pg.evaluate(LONE_IDS, 0) != order: fail('%s 그 모드 조판의 무리 차례가 바뀜: %s (main 과 같게 %s)' % (k, pg.evaluate(LONE_IDS, 0), order))
+            nudge(pg); edit_off(pg)
+            if pg.evaluate(LONE_SAVED, [slot, 0]) != order: fail('%s 그 모드로 저장한 무리 차례가 바뀜: %s (main 과 같게 %s)' % (k, pg.evaluate(LONE_SAVED, [slot, 0]), order))
+            sv = pg.evaluate("(slot)=>CONTI.PREFS.data.stage[slot]", slot); exit_stage(pg)
+            open_in(pg, sid, slot, sv, 'block'); edit_on(pg)
+            if pg.evaluate(LONE_IDS, 0) != order: fail('%s 조각 위로 돌아온 무리 차례가 바뀜: %s' % (k, pg.evaluate(LONE_IDS, 0)))
+            show_all(pg); edit_off(pg)
+            pg.evaluate("(()=>{const S=CONTI.STG;S.screen=S.nav[0];window.dispatchEvent(new Event('resize'))})()"); pg.wait_for_timeout(500)
+            if pg.evaluate("CONTI.STG.layout.screens[CONTI.STG.screen].blocks.map(b=>String(b.id))") != order or pg.evaluate(ST)['hidden']:
+                fail('%s 되돌린 화면의 블록 차례가 바뀜: %s' % (k, pg.evaluate(LAYX)))
+            if pg.evaluate(TOP_AT, 'h1') != 'head:1': fail('%s 되돌린 뒤 둘 송폼이 하나 악보 밑에 묻힘 (그 자리에 %s)' % (k, pg.evaluate(TOP_AT, 'h1')))
+            exit_stage(pg)
+            print('%s — 한 무리의 두 곡 블록 차례가 그 모드·저장본·조각 위로 돌아와 되돌린 뒤에도 main 그대로 (둘 송폼이 하나 악보 위) ok' % k, flush=True)
+        if errs: fail('4부 데스크톱 2열 콘솔 오류: %s' % errs[:3])
+        b.close()
+    box['ok'] = True
+
 def run4():
-    boxes = [('태블릿', {}), ('데스크톱', {})]
+    boxes = [('태블릿', {}), ('데스크톱', {}), ('데스크톱 2열', {})]
     ths = [threading.Thread(target=run4_tab, args=(boxes[0][1],), name='4부 태블릿', daemon=True),
-           threading.Thread(target=run4_desk, args=(boxes[1][1],), name='4부 데스크톱', daemon=True)]
+           threading.Thread(target=run4_desk, args=(boxes[1][1],), name='4부 데스크톱', daemon=True),
+           threading.Thread(target=run4_desk2, args=(boxes[2][1],), name='4부 데스크톱 2열', daemon=True)]
     for t in ths: t.start()
     for t in ths: t.join()
     bad = [n for n, bx in boxes if not bx.get('ok')]
     if bad: fail('4부 %s 가 끝까지 못 감 (위 FAIL)' % ', '.join(bad))
-    print('4부 다른 송폼 모드 — 모두 숨긴 화면은 보기에서 건너뛰고 빈 곡 화면은 남김 · 한 화면의 무리 둘을 되돌려도 제 차례 ok')
+    print('4부 다른 송폼 모드 — 모두 숨긴 화면은 보기에서 건너뛰고 빈 곡 화면은 남김 · 한 화면의 무리 둘을 되돌려도 제 차례 · 한 무리의 두 곡 블록 차례는 main 그대로 ok')
 
 if PART in ('', '1'): run1()
 if PART in ('', '2'): run2()
