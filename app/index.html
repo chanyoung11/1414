@@ -23,7 +23,10 @@
 <link rel="preconnect" href="https://api.fontshare.com" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=satoshi@700,500,400&display=swap">
-<script>(function(){try{var v=localStorage.getItem('conti-theme')||'system';if(v==='dark'||(v==='system'&&matchMedia('(prefers-color-scheme: dark)').matches))document.documentElement.classList.add('dark')}catch(e){}})()</script>
+<script>(function(){try{var v=localStorage.getItem('conti-theme')||'system';if(v==='dark'||(v==='system'&&matchMedia('(prefers-color-scheme: dark)').matches))document.documentElement.classList.add('dark')}catch(e){}
+// 안드로이드 앱을 로그인 안 한 채 켜면 어두운 스플래시(600ms)가 먼저 걷히고, 서버에 묻는 동안(약 1초) 밝은 바탕(#FAFAFA)만 보이다가
+// 어두운 로그인 화면이 떴다 (AND1-05). 앱은 로그인하면 토큰을 들고 있다 → 없으면 첫 그리기 전까지 바탕을 로그인 색으로 (afterPaint 가 뗀다)
+try{if(/Android/i.test(navigator.userAgent)&&(/^(capacitor|ionic):/.test(location.protocol)||(location.hostname==='localhost'&&!location.port&&location.protocol==='https:'))&&!localStorage.getItem('conti-app-token'))document.documentElement.classList.add('preauth')}catch(e){}})()</script>
 <style>
 /* 안전 영역(노치·홈 인디케이터·안드로이드 상태바). iOS 는 env() 가 채우고,
    안드로이드는 MainActivity 가 --sat/--sab 를 인라인으로 넣는다 (15+ 는 env 가 0) */
@@ -87,12 +90,13 @@ svg.ic{width:20px;height:20px;flex:0 0 auto;display:block}
 html,body{touch-action:pan-x pan-y}
 html.noscroll{overflow:hidden}   /* 시트가 떠 있는 동안 뒤 화면 고정 */
 body.authbg{background:#0A0A0A}   /* 로그인 화면은 테마와 상관없이 어둡다 — 상태바 뒤까지 (.auth 바탕과 같은 색 — #111213 이면 위아래 띠만 밝았다) */
+html.preauth,html.preauth body{background:#0A0A0A}   /* 안드로이드 앱, 로그인 전 첫 그리기까지 (머리의 스크립트) — 스플래시와 로그인 사이 흰 화면 */
 /* 상태바 자리 가림막. 위 여백(--sat)은 #app 의 안쪽 여백이라 긴 쪽(설정·약관)을 내리거나 자판이 문서를 밀어 올리면
    같이 올라가 버려, 글이 투명한 상태바(시계·배터리) 밑으로 지나갔다 (ios.contentInset never · 상태바 뒤 색은 iOS 에서 못 칠한다).
    화면에 붙은 띠로 그 자리를 늘 바탕색으로 덮는다. 창(.ov)·무대·인쇄 미리보기는 이보다 위에서 제 여백을 챙긴다. 인쇄에는 빠진다 */
 /* 자판이 뜨면 iOS 가 보이는 화면(visualViewport)만 아래로 밀어(offsetTop) fixed 인 띠가 화면 위로 올라가 버렸다 → kbFit 이 잰 --vvt 만큼 따라 내려온다 */
 body::before{content:"";position:fixed;left:0;right:0;top:var(--vvt,0px);height:var(--sat);background:var(--bg);z-index:41;pointer-events:none}
-body.authbg::before{background:#0A0A0A}
+body.authbg::before,html.preauth body::before{background:#0A0A0A}
 body.nprint::before{display:none}
 @media print{body::before{display:none}}
 #app{height:100%;display:flex;flex-direction:column;color:var(--fg);padding-top:var(--sat);padding-bottom:var(--sab);padding-left:var(--sal);padding-right:var(--sar)} /* iOS 홈 화면 설치 시 상태바·홈 인디케이터 피함 (가로면 노치도) */
@@ -1464,6 +1468,8 @@ function afterPaint(){
  document.documentElement.style.setProperty('--bnavh',h+'px');
  if(NATIVE&&!afterPaint.awake){afterPaint.awake=true;keepAwake(true)}
  document.body.classList.toggle('authbg',!!document.querySelector('.auth-main'));
+ // 첫 화면이 그려졌다 — 이제 화면(로그인이면 authbg)이 바탕을 정한다. 켜는 동안 창 크기가 바뀌어(resize) 불릴 때는 아직 빈 화면이라 두고 본다
+ if($('#app').firstChild)document.documentElement.classList.remove('preauth');
  if(NATIVE&&window.__paintBar)window.__paintBar()}   // 로그인 ↔ 앱 화면이 바뀌면 상태바 색도
 new MutationObserver(()=>requestAnimationFrame(afterPaint)).observe(document.getElementById('app'),{childList:true});
 window.addEventListener('resize',()=>requestAnimationFrame(afterPaint));
@@ -2283,10 +2289,11 @@ function rehAddModal(svc){
   if(e.target.closest('#rhSave')){if(!file)return;const sb=e.target.closest('#rhSave');if(sb.disabled)return;
    const ext=/mp4|m4a|aac/.test(file.type)?'m4a':/webm/.test(file.type)?'webm':/ogg/.test(file.type)?'ogg':((file.name.match(/\.(\w+)$/)||[])[1]||'m4a');
    const name=(($('#rhLabel').value.trim()||fmtDate($('#rhDate').value||today()).md+' 연습').replace(/[\\/:*?"<>|]/g,'_'))+'.'+ext;
-   // 앱(웹뷰)은 내려받기 링크가 안 먹는다 → saveFile 이 공유 시트로 넘긴다 (iOS 는 웹 공유, 안드로이드는 앱이 파일로 써서).
-   // 끝까지 건넸을 때만 '저장' 이라고 알린다 — 예전에는 안드로이드에서 아무 일도 없는데 '기기에 저장했어요'가 떠서 믿고 닫으면 녹음을 잃었다
+   // 앱(웹뷰)은 내려받기 링크가 안 먹는다 → iOS 는 웹 공유로 넘기고, 안드로이드는 저장 위치 고르기(다운로드 등)로 기기에 저장한다 —
+   // 공유 시트에는 저장할 곳이 없고 올리기에 실패한 까닭(오프라인)에서는 드라이브·메일도 안 됐다 (AND2-06).
+   // 끝까지 했을 때만 알린다 — 예전에는 안드로이드에서 아무 일도 없는데 '기기에 저장했어요'가 떠서 믿고 닫으면 녹음을 잃었다
    sb.disabled=true;
-   try{if(await saveFile(name,file,file.type||'audio/mp4'))toast(NATIVE?'녹음 파일을 보냈어요':'기기에 저장했어요')}
+   try{const r=await saveFile(name,file,file.type||'audio/mp4','device');if(r)toast(r==='saved'||!NATIVE?'기기에 저장했어요':'녹음 파일을 보냈어요')}
    catch(err){toast(err.message||'파일을 저장하지 못했어요')}
    sb.disabled=false;return}
   if(e.target.closest('#rhRec')){const btn=$('#rhRec');
@@ -2300,7 +2307,14 @@ function rehAddModal(svc){
      file=new File([b],'연습녹음',{type:b.type});dur=Math.round((Date.now()-t0)/1000);REH.draft={svcId:svc.id,file,dur};
      if(gone)return;btn.textContent='다시 녹음';setPick('방금 녹음',dur);if(noPerm)denied()};
     r0.start(1000);btn.innerHTML='■ 녹음 멈추기';$('#rhPick').textContent='녹음 중…'}
-   catch(err){toast('마이크를 쓸 수 없어요')}return}
+   catch(err){
+    // 안드로이드는 마이크를 두 번 거절하면 다시 묻지 않고 곧바로 거절한다 — 토스트만 떠서 켜는 길을 몰랐다 (AND2-10).
+    // 창 안에 설정에서 켜는 길과 앱 정보(권한) 화면을 여는 단추를 둔다
+    const p=$('#rhProg');
+    if(err&&err.name==='NotAllowedError'&&NATIVE&&window.Capacitor.getPlatform&&window.Capacitor.getPlatform()==='android'&&p&&!gone){
+     p.innerHTML=`<span style="color:var(--destructive)">마이크 권한이 꺼져 있어요</span> · 휴대폰 <b>설정 › 앱 › 1414 › 권한 › 마이크</b>에서 허용해 주세요 <button class="btn sm" id="rhPerm">${ic('gear')}설정 열기</button>`;return}
+    toast('마이크를 쓸 수 없어요')}return}
+  if(e.target.closest('#rhPerm')){const Pr=CapPlug().Printer;Promise.resolve().then(()=>Pr.openAppSettings()).catch(()=>toast('설정을 열지 못했어요 · 휴대폰 설정에서 1414 를 찾아 주세요'));return}
   if(e.target.closest('#rhOk')){if(!file||noPerm)return;const btn=$('#rhOk');btn.disabled=true;const prog=$('#rhProg');
    try{prog.textContent='올릴 자리 준비 중…';
     const u=await api('/rehearsals/upload-url',{method:'POST',body:{teamId:S.team.id,size:file.size,mime:file.type||'audio/mp4'}});
@@ -6402,7 +6416,7 @@ function scoreMenuModal(svc,it){const sc=it.score;
  $('#modal').onclick=e=>{
   if(e.target.closest('[data-close]')){closeModal();return}
   if(e.target.closest('#smXml')){const xml=scoreToMusicXML(transposeScore(sc,scoreSemis(it),it.key));
-   saveFile((it.title||sc.title||'악보')+'.musicxml',xml,'application/vnd.recordare.musicxml+xml').catch(e2=>toast(e2.message||'파일을 저장하지 못했어요'));closeModal();return}
+   saveFile((it.title||sc.title||'악보')+'.musicxml',xml,'application/vnd.recordare.musicxml+xml').then(r=>{if(r==='saved')toast('기기에 저장했어요')}).catch(e2=>toast(e2.message||'파일을 저장하지 못했어요'));closeModal();return}
   if(e.target.closest('#smZoomIn')){SC.zoom=Math.min(2,SC.zoom+0.15);closeModal();drawScore();return}
   if(e.target.closest('#smZoomOut')){SC.zoom=Math.max(0.5,SC.zoom-0.15);closeModal();drawScore();return}
   const oc=e.target.closest('#smOctUp')?1:e.target.closest('#smOctDown')?-1:0;
@@ -7617,15 +7631,14 @@ async function nativeSetup(){
  paintBar();window.__paintBar=paintBar;
  new MutationObserver(paintBar).observe(document.documentElement,{attributes:true,attributeFilter:['class']});
  new MutationObserver(paintBar).observe(document.body,{attributes:true,attributeFilter:['class']});   // 무대(stgon)를 열고 닫을 때
- // 안드로이드 뒤로가기: 겹쳐 있는 것부터 닫고, 홈에서 누르면 앱을 내린다
- try{P.App&&P.App.addListener('backButton',()=>{
+ // 안드로이드 뒤로가기: 겹쳐 있는 것부터 닫고, 화면 안의 '<' 처럼 온 곳으로 돌아가고, 더 갈 데가 없으면 앱을 내린다
+ try{P.App&&P.App.addListener('backButton',e=>{
   if($('#stageWrap')&&!STG.out){stageExit();return}   // 무대에서 내보내는 중이면 미리보기부터 닫는다 (무대는 그 뒤 돌아온다)
   const pa=$('#printArea');if(pa){pa.remove();document.body.classList.remove('printing');return}
   if($('#modal')&&$('#modal').firstChild){closeModal();return}
   if($('#sidetool.on')){sideToolClose();return}
   if(NOTI.open){NOTI.open=false;render();return}
-  if(route().name!=='home'){go('home');return}
-  P.App.exitApp&&P.App.exitApp()})}catch(e){}
+  appBack(e&&e.canGoBack)})}catch(e){}
  // 앱이 다시 앞으로 오면 알림·콘티를 새로 받는다
  try{P.App&&P.App.addListener('appStateChange',({isActive})=>{
   if(isActive&&online()&&NET.user){refreshNoti&&refreshNoti();
@@ -7642,6 +7655,29 @@ async function nativeSetup(){
   if(/^join\//.test(h))GATE.preview=null;   // 다른 팀 초대면 먼저 본 초대 미리보기를 버린다
   leaveStageFor(h);go(h)})}catch(e){}
  try{P.SplashScreen&&P.SplashScreen.hide()}catch(e){}}
+// 켜는 동안(서버에 묻고 첫 화면을 그리기 전)의 상태바. 로그인 전 안드로이드는 바탕이 어둡다(preauth) — 시스템이 라이트면
+// 상태바 아이콘이 검은색이라 스플래시가 걷힌 뒤 어두운 바탕에 묻혔다 → nativeSetup(서버에 물은 뒤)보다 먼저 밝은 아이콘으로
+if(NATIVE&&document.documentElement.classList.contains('preauth'))try{const sb=CapPlug().StatusBar;if(sb)Promise.resolve(sb.setStyle({style:'DARK'})).catch(()=>{})}catch(e){}
+// 안드로이드 뒤로 키 — 창·시트를 다 닫은 뒤 (nativeSetup 의 backButton). canGoBack: 웹뷰에 앞 기록이 있는지 (Capacitor 가 준다)
+// 전에는 어디서든 홈(예배)으로 갔다 — 곡 상세에서 누르면 라이브러리가 아니라 예배로, 설정에서 연 약관도 예배로,
+// 초대 가입 화면은 초대 코드를 버리고 빈 팀 만들기 칸으로 갔다. 홈에서 한 번 더 누르면 앱이 꺼졌다 (AND1-01·02)
+function appBack(canGoBack){
+ const r=route();
+ // 로그인·팀 없음·(팀 없이 연) 초대 화면이 앱의 첫 화면이다. 어디로 보내도 같은 화면이거나 받은 초대를 잃는다 → 앱만 내린다 (친 글·초대가 남는다)
+ const gate=!!$('#app .auth-main')&&r.name!=='word-link'&&!(r.name==='join'&&NET.user&&S.team.id);
+ if(gate&&!NET.user&&GATE.mode==='recover'){const b=$('#app [data-act="lg-mode"][data-m="login"]');if(b){b.click();return}}   // 비밀번호 재설정 → 로그인
+ if(gate||r.name==='home'){appMinimize();return}
+ // 화면 안의 '뒤로'를 그대로 누른다: 곡 상세 → 라이브러리 · 편성 패널 → 편성 탭 · 약관 → 온 곳 · 악보·연습 → 콘티 · 편집·콘티 → 예배
+ const bk=$('#app .top [aria-label="뒤로"],#app .hd [aria-label="뒤로"],#app .top>[data-act="home"]:first-child,#app [data-act="lclose"].icon,#app [data-act="legal-back"]');
+ if(bk){bk.click();return}
+ // 하단 탭의 첫 화면(일정·편성·라이브러리)과 더보기 화면(설정·팀·말씀)은 예배(홈)로 — 안드로이드 하단 탭의 뒤로
+ if(/^(cal|sched|library|settings|team|word)$/.test(r.name)){go('home');return}
+ // 그 밖(알림 목록·다른 팀 초대 등)은 온 곳으로
+ if(canGoBack)history.back();else go('home')}
+// 첫 화면에서 뒤로: 액티비티를 끝내지(exitApp) 않고 뒤로 내리기만 한다 (안드로이드 12+ 의 기본 동작). 끝내면 다음에 스플래시부터
+// 새로 켜져 친 아이디·팀 이름·보던 화면이 사라졌다. 내리기만 하면 뒤에서 나던 연습 소리도 이어진다
+function appMinimize(){const A=CapPlug().App;if(!A)return;
+ Promise.resolve().then(()=>A.minimizeApp()).catch(()=>{try{A.exitApp&&A.exitApp()}catch(e){}})}
 // 앱 링크 주소 → 앱 안 주소(# 뒤). 우리 도메인의 첫 화면 주소만 받는다 —
 // yt.html·api 같은 다른 경로는 앱 화면이 아니라서 모른 척한다 (앱은 그대로 열리기만 한다)
 function appLinkRoute(u){
@@ -9202,11 +9238,14 @@ async function doPrint(name,page){
  const P=CapPlug().Printer;
  if(NATIVE&&P){
   // 앱은 화면에 보이는 것을 찍으므로, 찍는 동안 인쇄 조판만 남긴다
-  document.body.classList.add('nprint');
+  document.body.classList.add('nprint');let res=null;
   try{await new Promise(r=>setTimeout(r,120));
-   await P.print({...(page||{}),name:name||document.title||'1414'});return true}
+   res=await P.print({...(page||{}),name:name||document.title||'1414'});return true}
   catch(e){if(!/취소|cancel/i.test((e&&e.message)||''))toast('인쇄를 열지 못했어요 · '+((e&&e.message)||''));return false}
-  finally{setTimeout(()=>document.body.classList.remove('nprint'),1500)}}
+  // 안드로이드는 인쇄 창이 닫힐 때 답한다(done, iOS 처럼). 창이 떠 있는 동안 용지·방향을 바꾸면 웹뷰가 지금 화면을 다시 조판하므로
+  // 그때까지 조판을 남겨 두고, 닫히면 바로 뗀다 (AND2-02 — 'Preparing preview…' 멈춤 자체는 앱이 얼던 것: PrinterPlugin 의 PrintKeepAlive).
+  // 예전 앱(답이 곧바로 오는 것)과 iOS 는 전처럼 1.5초 뒤
+  finally{if(res&&res.done)document.body.classList.remove('nprint');else setTimeout(()=>document.body.classList.remove('nprint'),1500)}}
  window.print();return true}
 // 인쇄 설정 시트 → 미리보기 → window.print() (§2·§5)
 async function printService(svc,opts){
@@ -9512,12 +9551,14 @@ async function exportJSON(onlySvcId){
  const json=JSON.stringify(data);
  try{if(window.claude&&window.claude.use){const dl=await window.claude.use('downloads');if(dl){await dl.save({filename:name,data:json});toast('저장됨');return}}}catch(e){console.warn(e)}
  let ok=false;try{ok=await saveFile(name,json,'application/json')}catch(e){toast(e.message||'파일을 저장하지 못했어요');return}
- if(ok)toast((NATIVE?'파일 보냄':'파일 저장')+' ('+Math.round(total/1024/1024*10)/10+'MB)');
+ if(ok)toast((ok==='saved'||!NATIVE?'파일 저장':'파일 보냄')+' ('+Math.round(total/1024/1024*10)/10+'MB)');
 }
 // 파일 건네기. 웹은 <a download>. 앱(웹뷰)에서는 그게 아무 일도 하지 않는다 — iOS 는 blob: 주소를 열려다 그만두고,
 // 안드로이드 웹뷰에는 받을 곳이 없다. 그래서 앱은 공유 시트로 넘긴다 (카톡·파일 앱·드라이브).
-// 공유를 끝까지 했을 때만 true — 그때만 '저장' 이라고 알린다
-async function saveFile(name,text,type){
+// 안드로이드 공유 시트에는 기기에 저장할 곳이 없어서 앱이 저장 위치 고르기(다운로드 등)도 연다 (AND2-06).
+// how: 'device' = '기기에 저장' 단추 (안드로이드는 바로 저장 위치 고르기) · 없으면 안드로이드는 기기에 저장·보내기 중 고르게 한다.
+// 끝까지 했을 때만 참 — 기기에 저장했으면 'saved', 보냈으면 true. 그때만 '저장'·'보냈어요' 라고 알린다
+async function saveFile(name,text,type,how){
  name=String(name||'1414').replace(/[\\/:*?"<>|\x00-\x1f]/g,'_');
  if(!NATIVE){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},4000);return true}
  // iOS 웹뷰는 웹 공유(navigator.share)로 파일을 넘길 수 있다. 앞에서 오래 준비했으면(악보 파일 읽기) 누른 손길이 만료돼
@@ -9538,8 +9579,17 @@ async function saveFile(name,text,type){
  if(bin){const B=CH/4*3;do{uri=(await Pr.saveBytes({name,data:await toB64(text.slice(i,i+B)),append:i>0})).uri;i+=B}while(i<text.size)}
  else do{let j=Math.min(text.length,i+CH);const c=text.charCodeAt(j-1);if(j<text.length&&c>=0xd800&&c<=0xdbff)j--;
   uri=(await Pr.saveFile({name,data:text.slice(i,j),append:i>0})).uri;i=j}while(i<text.length);
- try{await Sh.share({title:name,files:[uri],dialogTitle:name})}catch(e){if(/cancel/i.test(String(e&&e.message)))return false;throw e}
- return true}
+ const toDevice=async()=>{const r=await Pr.saveToDevice({name});return r&&r.saved?'saved':false};
+ const send=async()=>{try{await Sh.share({title:name,files:[uri],dialogTitle:name})}catch(e){if(/cancel/i.test(String(e&&e.message)))return false;throw e}return true};
+ // 저장 위치 고르기는 안드로이드 앱만 있다 (iOS 가 여기까지 오면 — 웹 공유가 없는 옛 iOS — 전처럼 공유 시트)
+ if(!(window.Capacitor&&window.Capacitor.getPlatform&&window.Capacitor.getPlatform()==='android'))return await send();
+ if(how==='device')return await toDevice();
+ return await new Promise((res,rej)=>{modal(`<b style="font-size:17px">파일이 준비됐어요</b><div class="hint" style="margin-top:6px">${esc(name)}</div><div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px;flex-wrap:wrap"><button class="btn" data-close="1">닫기</button><button class="btn" id="sfDev">${ic('import')}기기에 저장</button><button class="btn pri" id="sfGo">${ic('export')}보내기</button></div>`,{center:true});
+  let picked=false;const pick=f=>{picked=true;closeModal();f().then(res,rej)};
+  // 뒤로 키·바깥 누르기로 창이 닫혀도 끝낸다 (고르지 않았다)
+  const root=$('#modal').firstChild,mo=new MutationObserver(()=>{if(root&&root.parentNode===$('#modal'))return;mo.disconnect();if(!picked)res(false)});
+  mo.observe($('#modal'),{childList:true});
+  $('#modal').onclick=e=>{if(e.target.closest('#sfDev')){pick(toDevice);return}if(e.target.closest('#sfGo')){pick(send);return}if(e.target.closest('[data-close]')||e.target.classList.contains('ov'))closeModal()}})}
 function toB64(blob){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(blob)})}
 function b64Blob(b64,type){const bin=atob(b64);const u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return new Blob([u],{type})}
 // 가져오는 파일은 누가 만든 것인지 모른다(카톡으로 돈다). id 만 고쳐서는(scrubIds) 모자라, 앱이 쓰는 모양·타입으로 맞춘다.
@@ -10050,7 +10100,7 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
  if(!online()){REPROBE.n=0;scheduleReprobe()}   // 켜는 동안 건너뛴 다시 묻기가 간격만 늘려 놨다 — 5초부터 다시
  setInterval(()=>{if(NET.server===null&&!document.hidden)recheckServer()},20000);
  probeOmr();startNotiPoll();nativeSetup();
- window.CONTI={REWARD,rewardAvailable,rewardSheet,pullUsage,ADSTATE,modal,closeModal,ADS,WEBADS,AD_HOSTS,setZoom,P,pl:()=>PL,STG,stageOpen,stageExit,adsAllowed,webAdsAllowed,MET,PIANO,metOpen,metStart,metStop,metSet,pianoOpen,HOME,PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go,PLANQ,planCls,ytOriginParam,ytEmbedSrc,YT,josa,josaRo,fitPlay,paintOvBar};
+ window.CONTI={REWARD,rewardAvailable,rewardSheet,pullUsage,ADSTATE,modal,closeModal,ADS,WEBADS,AD_HOSTS,setZoom,P,pl:()=>PL,STG,stageOpen,stageExit,adsAllowed,webAdsAllowed,MET,PIANO,metOpen,metStart,metStop,metSet,pianoOpen,HOME,PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go,PLANQ,planCls,ytOriginParam,ytEmbedSrc,YT,josa,josaRo,fitPlay,paintOvBar,doPrint,saveFile,appBack,rehAddModal};
 })();
 })();
 </script>

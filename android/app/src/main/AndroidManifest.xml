@@ -7,8 +7,10 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
+        <!-- configChanges 에 든 바뀜은 액티비티를 새로 만들지 않는다 (앱을 다시 불러오면 보던 화면·친 글이 사라진다).
+             fontScale: 설정에서 글자 크기를 바꿔도 그대로 — 웹뷰 글자 확대는 MainActivity.onConfigurationChanged 가 맞춘다 -->
         <activity
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density|fontScale"
             android:name=".MainActivity"
             android:label="@string/title_activity_main"
             android:theme="@style/AppTheme.NoActionBarLaunch"
@@ -28,6 +30,12 @@
                 <data android:scheme="https" android:host="www.lets1414.com" />
             </intent-filter>
         </activity>
+
+        <!-- 인쇄 창이 떠 있는 동안 앱이 얼지 않게 (PrintKeepAlive). 얼면 용지·방향을 바꿀 때 'Preparing preview…' 에서 멈췄다 -->
+        <service
+            android:name=".PrintKeepAlive"
+            android:exported="false"
+            android:foregroundServiceType="shortService" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -59,4 +67,6 @@
     <!-- 연습 녹음(getUserMedia). 이게 없으면 웹뷰가 마이크를 바로 거절한다 -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- 인쇄 창이 떠 있는 동안의 짧은 포그라운드 서비스 (shortService 는 따로 권한이 없다) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 </manifest>

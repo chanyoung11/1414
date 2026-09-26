@@ -9,10 +9,14 @@
         <item name="colorAccent">@color/colorAccent</item>
     </style>
 
+    <!-- 창 바탕은 스플래시와 같은 어두운 색. 스플래시가 걷힌 뒤 웹뷰가 첫 화면을 그리기 전까지(외부 글꼴 CSS·서버 확인) 이 바탕이 보인다 —
+         DayNight 라이트의 #FAFAFA 라 어두운 스플래시와 어두운 로그인 사이에 흰 화면이 번쩍였다 (AND1-05).
+         앱이 뜬 뒤에는 웹이 테마 색으로 칠한다 (Printer.setWindowBackground) -->
     <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <item name="android:windowBackground">@color/splash_background</item>
     </style>
 
 
