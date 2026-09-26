@@ -92,6 +92,7 @@ body.authbg{background:#111213}   /* 로그인 화면은 테마와 상관없이 
 /* ---------- 상단 바 (편집·보기·연습) ---------- */
 .top{display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--card);border-bottom:1px solid var(--border);flex:0 0 auto;min-height:52px}
 .top h1{font-size:16px;font-weight:700;letter-spacing:-.02em;margin:0;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:10px}
+.top h1 .vttl{min-width:0;overflow:hidden;text-overflow:ellipsis}.top h1 .pill.st{flex:0 0 auto}.pill .ps{display:none}   /* 미리보기 상태 알약의 폰용 짧은 글 (폰 CSS 에서 바꿔 보인다) */
 .brand{font-family:"Satoshi","Pretendard Variable","Pretendard",sans-serif;font-weight:700;letter-spacing:-.03em;font-size:18px}
 .brand small{font-family:"Pretendard Variable","Pretendard",sans-serif;font-weight:500;color:var(--muted-fg);font-size:12.5px;margin-left:8px;letter-spacing:0}
 .titlein{background:transparent;border:0;outline:none;font-weight:700;font-size:16px;letter-spacing:-.02em;width:100%;min-width:0;padding:4px 0;border-bottom:1px solid transparent}
@@ -482,6 +483,8 @@ html.dark .pill.role-pastor{color:#B4A7F5}
  body.native .top [data-act="print"]{display:inline-flex}
  .top h1{font-size:15px}
  .top h1 .pill{display:none}
+ /* 인도자의 초안·발행 상태(편집기 '초안'·'v1 · 수정 중', 미리보기 '초안')는 남긴다 — 다 숨겨 폰에서 초안을 보고 있는지 알 수 없었다 */
+ .top h1 .pill.st{display:inline-flex;flex:0 0 auto}.top h1 .pill.st .pl{display:none}.top h1 .pill.st .ps{display:inline}
  .ptab .sesslbl{display:none}
  .ptab{gap:6px;padding:0 8px}
 }
@@ -555,6 +558,14 @@ html.dark .pill.role-pastor{color:#B4A7F5}
 .ptab::-webkit-scrollbar{display:none}
 .ptab .tab,.ptab .sub,.ptab .btn,.seg button,.ptab .chip{white-space:nowrap;flex:0 0 auto}
 .ptab .seg{flex-wrap:nowrap}   /* 줄바꿈되면 40px 안에서 잘린다. 옆으로 흐르게 */
+/* 편집기 악보 패널 머리가 한 줄에 안 들어가면(폰·아이패드 세로) 옆으로 흘려 두면 '조각 추가'·배율·메모 도구가 화면 밖에 숨고
+   아무 표시도 없었다 → 두 줄로: 위에 악보·배율·조각 추가, 아래 줄 전체에 도구. 그래도 넘치면 도구 아이콘을 뺀다 (fitEdTools 가 재서 붙인다) */
+#edsheet.narrow>.ptab{flex-wrap:wrap;height:auto;row-gap:4px;padding-top:4px;padding-bottom:4px}
+#edsheet.narrow>.ptab .tab{height:34px}
+#edsheet.narrow>.ptab>.seg{order:9;flex:1 1 100%;min-width:0;overflow-x:auto;scrollbar-width:none}
+#edsheet.narrow>.ptab>.seg::-webkit-scrollbar{display:none}
+#edsheet.narrow>.ptab>.seg button{flex:1 0 auto;justify-content:center;padding:0 8px}
+#edsheet.narrow.tight>.ptab>.seg button svg{display:none}
 .ptab .tab{height:40px;display:inline-flex;align-items:center;font-size:12px;font-weight:700;letter-spacing:.02em;color:var(--fg);position:relative}
 .ptab .sub{font-size:12px;color:var(--muted-fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .pbody{flex:1 1 auto;min-height:0;overflow:auto;padding:12px 14px;-webkit-overflow-scrolling:touch}
@@ -682,6 +693,9 @@ html.dark .sheet{box-shadow:0 10px 40px rgba(0,0,0,.5);border-color:transparent}
 .sheetm{background:var(--card);color:var(--fg);border:1px solid var(--border);width:min(720px,100%);max-height:92vh;overflow:auto;border-radius:var(--r-xl) var(--r-xl) 0 0;padding:14px 22px calc(28px + var(--sab));box-shadow:var(--shadow-card);animation:pop-in .22s cubic-bezier(.22,1,.36,1)}
 .sheetm .handle{width:38px;height:4px;border-radius:2px;background:var(--border-2);margin:0 auto 14px}
 .ov.center .sheetm{border-radius:var(--r-xl);width:min(640px,100%);padding-bottom:28px;max-height:min(92vh,100%)}
+/* 자판이 올라와 보이는 화면이 줄면(iOS) 시트를 그 위로 올린다 — --kb 는 kbFit 이 잰다. 넘치면 시트 안에서 넘긴다 */
+html.kbup .ov{top:var(--kbt,0px);bottom:var(--kb,0px)}
+html.kbup .ov .sheetm{max-height:calc(100% - 8px);padding-bottom:16px}
 .sheetm>b:first-child{font-size:18px;font-weight:800;letter-spacing:-.04em}
 @keyframes fade-in{from{opacity:0}to{opacity:1}}
 @keyframes pop-in{from{opacity:0;transform:translate3d(0,10px,0) scale(.97)}to{opacity:1;transform:none}}
@@ -778,8 +792,7 @@ html.dark .cb-credit.p-plus,html.dark .pill.p-plus{--pc:#A78BFA}
 .cb-credit.p-pro .gauge i,.cb-credit.p-plus .gauge i{background:var(--pc)}
 .cb-credit.p-unl{color:#4A3705;border:1px solid #C9971B;
  background:linear-gradient(100deg,#FBEFA8,#EFC94C 38%,#FFF7D6 52%,#E0AE22 70%,#F4DC8A);
- background-size:200% 100%;animation:cbgold 5s linear infinite;
- box-shadow:0 1px 6px rgba(201,151,27,.35)}
+ background-size:200% 100%;animation:cbgold 5s linear infinite}   /* 그림자는 뺐다 — 떠 있는 금색 알약이 옆 '코드 인식' 단추보다 더 단추처럼 보였다 */
 @keyframes cbgold{to{background-position:200% 0}}
 .pill.p-pro,.pill.p-plus{color:var(--pc);border-color:var(--pc)}
 .pill.p-unl{color:#4A3705;border-color:#C9971B;
@@ -1417,11 +1430,13 @@ function homeHTML(){
  return shellHTML('home',{title:'예배',sub:fmtToday(),body});
 }
 /* ---------- EDITOR ---------- */
+// 사진 끌어다 놓기·⌘V 붙여넣기는 마우스를 쓰는 컴퓨터에서만 된다. 폰·앱에 그 안내를 띄우면 안 되는 길을 가리킨다
+function canDropPaste(){return !NATIVE&&!!(window.matchMedia&&matchMedia('(hover:hover) and (pointer:fine)').matches)}
 function editorHTML(svc){
  const sel=SEL[svc.id]||(SEL[svc.id]={item:svc.items[0]&&svc.items[0].id,tool:'marker'});
  const it=svc.items.find(i=>i.id===sel.item)||svc.items[0];if(it)sel.item=it.id;
  const status=svc.published?'v'+svc.published.version+(svc.version>svc.published.version?' · 수정 중':''):'초안';
- return `<div class="top"><button class="icon ghost" data-act="home" title="홈">${ic('back')}</button><h1><label class="titlewrap"><input class="titlein" data-f="svc.name" placeholder="${esc(svcName(svc))}" title="비워 두면 팀 이름 규칙으로 자동" value="${esc(svc.name)}"><span class="penic">${ic('pen')}</span></label><span class="pill">${esc(status)}</span></h1>
+ return `<div class="top"><button class="icon ghost" data-act="home" title="홈">${ic('back')}</button><h1><label class="titlewrap"><input class="titlein" data-f="svc.name" placeholder="${esc(svcName(svc))}" title="비워 두면 팀 이름 규칙으로 자동" value="${esc(svc.name)}"><span class="penic">${ic('pen')}</span></label><span class="pill st">${esc(status)}</span></h1>
   <button class="btn ghost" data-act="view-svc" data-id="${svc.id}">${ic('eye')}미리보기</button><button class="btn pri" data-act="publish">${ic('send')}발행</button></div>
  <div class="ws split" id="ws">
   <div class="stack ed" id="stack">
@@ -1441,7 +1456,7 @@ function editorHTML(svc){
   <div class="gutter" title="드래그해서 폭 조절"></div>
   <div class="panel" id="edsheet">${ptab('악보',it?'':'',`<div class="seg"><button class="${sel.tool==='marker'?'on':''}" data-act="tool" data-t="marker">${ic('marker')}마커</button><button class="${sel.tool==='hl'?'on':''}" data-act="tool" data-t="hl">${ic('hl')}하이라이트</button><button class="${sel.tool==='mask'?'on':''}" data-act="tool" data-t="mask">${ic('x')}마스크</button><button class="${sel.tool==='chord'?'on':''}" data-act="tool" data-t="chord">${ic('music')}코드</button><button class="${sel.tool==='memo'?'on':''}" data-act="tool" data-t="memo">${ic('note')}메모</button></div><span class="row" style="gap:2px;margin-left:8px"><button class="icon sm ghost" data-act="edzoom" data-d="-1" title="악보 작게">${ic('down')}</button><span class="hint edzoomlbl" style="min-width:36px;text-align:center">${Math.round(edZoom()*100)}%</span><button class="icon sm ghost" data-act="edzoom" data-d="1" title="악보 크게">${ic('up')}</button></span>${it?`<label class="btn sm" for="pieceFile">${ic('camera')}조각 추가</label><input id="pieceFile" type="file" accept="image/*" multiple style="display:none">`:''}`)}
    <div class="sheetwrap" id="sheetwrap"><div class="sheet" id="sheet">${it?'':'<div class="empty">왼쪽에서 곡을 추가하세요</div>'}</div></div>
-   ${it&&it.pieces.length?`<div class="pfoot">${it.pieces.map((p,i)=>`<span class="chip t">조각 ${i+1}<button class="icon sm ghost" title="앞으로" aria-label="앞으로" data-act="mv-piece" data-id="${p.id}" data-d="-1">${ic('left')}</button><button class="icon sm ghost" title="뒤로" aria-label="뒤로" data-act="mv-piece" data-id="${p.id}" data-d="1">${ic('right')}</button><button class="icon sm ghost" data-act="span-piece" data-id="${p.id}" title="가로로 나란히 놓기 (전체 → ½ → ⅓)">${(+p.span>1?('½⅓'[Math.min(3,+p.span)-2]):'1')}</button><button class="icon sm ghost" data-act="crop-piece" data-id="${p.id}" title="사진 자르기">${ic('crop')}</button><button class="icon sm ghost" data-act="split-piece" data-id="${p.id}" title="이 조각에 곡이 여러 개면 나누기">${ic('scissors')}</button><button class="icon sm ghost" title="악보 지우기" aria-label="악보 지우기" data-act="del-piece" data-id="${p.id}">${ic('x')}</button></span>`).join('')}<span class="hint">${sel.tool==='marker'?'악보를 탭하면 마커 · 마커를 탭하면 절단선·삭제 · 사진은 끌어다 놓거나 붙여넣기(⌘V)':sel.tool==='hl'?'드래그해서 노란 사각형 · 탭하면 삭제':sel.tool==='mask'?'드래그해서 가릴 영역(반투명) · 탭하면 삭제 · 가사·다른 파트 숨기기에':sel.tool==='chord'?'코드를 탭하면 고치기·삭제 · 빈 곳을 탭하면 코드 추가 · 빨간 글씨가 연주 키로 옮긴 코드':'마커를 탭하면 인도자 메모'}</span></div>`:''}
+   ${it&&it.pieces.length?`<div class="pfoot">${it.pieces.map((p,i)=>`<span class="chip t">조각 ${i+1}<button class="icon sm ghost" title="앞으로" aria-label="앞으로" data-act="mv-piece" data-id="${p.id}" data-d="-1">${ic('left')}</button><button class="icon sm ghost" title="뒤로" aria-label="뒤로" data-act="mv-piece" data-id="${p.id}" data-d="1">${ic('right')}</button><button class="icon sm ghost" data-act="span-piece" data-id="${p.id}" title="가로로 나란히 놓기 (전체 → ½ → ⅓)">${(+p.span>1?('½⅓'[Math.min(3,+p.span)-2]):'1')}</button><button class="icon sm ghost" data-act="crop-piece" data-id="${p.id}" title="사진 자르기">${ic('crop')}</button><button class="icon sm ghost" data-act="split-piece" data-id="${p.id}" title="이 조각에 곡이 여러 개면 나누기">${ic('scissors')}</button><button class="icon sm ghost" title="악보 지우기" aria-label="악보 지우기" data-act="del-piece" data-id="${p.id}">${ic('x')}</button></span>`).join('')}<span class="hint">${sel.tool==='marker'?'악보를 탭하면 마커 · 마커를 탭하면 절단선·삭제'+(canDropPaste()?' · 사진은 끌어다 놓거나 붙여넣기(⌘V)':''):sel.tool==='hl'?'드래그해서 노란 사각형 · 탭하면 삭제':sel.tool==='mask'?'드래그해서 가릴 영역(반투명) · 탭하면 삭제 · 가사·다른 파트 숨기기에':sel.tool==='chord'?'코드를 탭하면 고치기·삭제 · 빈 곳을 탭하면 코드 추가 · 빨간 글씨가 연주 키로 옮긴 코드':'마커를 탭하면 인도자 메모'}</span></div>`:''}
   </div>
  </div>`;
 }
@@ -1456,6 +1471,7 @@ function ovBarHTML(it){
   <button class="btn sm" data-act="ov-apply">${ic('check')}곡에 반영</button><button class="btn sm ghost" data-act="ov-revert">되돌리기</button></div>`}
 function paintOvBar(it){const box=$('#ovbar');if(box)box.innerHTML=ovBarHTML(it)}
 function itemEditorHTML(svc,it){const sel=SEL[svc.id]||(SEL[svc.id]={});
+ ovTidy(it);   // 마커를 놓았다 지운 것처럼 편곡과 도로 같아졌으면 '라이브러리 편곡과 다름'을 띄우지 않는다 (저장은 다음 save 에)
  return `<div>
   <div id="ovbar">${ovBarHTML(it)}</div>
   <div class="row" style="gap:10px"><label class="titlewrap grow"><input class="titlein big" data-f="item.title" placeholder="곡 제목" value="${esc(it.title)}"><span class="penic">${ic('pen')}</span></label><button class="icon sm ghost" data-act="del-item" data-id="${it.id}" title="콘티에서 빼기">${ic('trash')}</button></div>
@@ -1479,10 +1495,20 @@ function itemEditorHTML(svc,it){const sel=SEL[svc.id]||(SEL[svc.id]={});
   <div class="lbl">이 곡을 여기 둔 이유 <span class="hint">선택 · 콘티 보기 곡 카드에 한 줄로</span></div>
   <input class="field" data-f="item.reason" placeholder="“은혜를 세어보라”는 구절과 이어지는 곡이라 여기 뒀어요" value="${esc(it.reason||'')}">
   ${it.chart?`<div class="lbl">코드 차트 <span class="hint">채보 결과 · 코드를 탭하면 고쳐요</span></div>${chartHTML(it,{edit:true})}`:''}
-  <div class="lbl">섹션 메모 <span class="hint">${it.notes.length}개 · 악보 패널의 "메모" 도구로 마커를 탭</span></div>
-  <div class="small">${it.notes.map(n=>`<div class="row" style="padding:3px 0"><span class="mk" style="width:24px;height:24px;font-size:11px">${esc((markerOf(it,n.marker)||{}).label||'?')}</span>${noteChip(n)}<span class="hint">${esc(n.session||'전체')}</span><button class="icon sm ghost" title="메모 지우기" aria-label="메모 지우기" data-act="del-note" data-id="${n.id}">${ic('x')}</button></div>`).join('')||'<span class="hint">없음</span>'}</div>
+  ${secMemoHTML(it)}
  </div>`;
 }
+// 섹션 메모 목록. 인도자가 '이 곡에 항상'(기본)으로 남긴 메모는 곡(편곡 notes)에 붙어 it.notes 에 없다 —
+// 이 예배 것(it.notes)만 세어 방금 저장한 메모가 '0개 · 없음'으로 보였고 지울 길도 없었다. 곡에 붙은 것도 마커 차례로 함께 보이고,
+// 누르면 fixedNoteMenu(이 예배에서만 숨기기 · 곡에서 지우기)로 간다
+function secMemoHTML(it){
+ const seen=new Set(),fx=[];
+ for(const p of it.pieces||[])for(const m of p.markers||[])for(const n of fixedNotesOf(it,m.id))if(!seen.has(n.id)){seen.add(n.id);fx.push({n,label:m.label})}
+ const mkS='width:24px;height:24px;font-size:11px';
+ const rows=fx.map(({n,label})=>`<div class="row" style="padding:3px 0"><span class="mk" style="${mkS}">${esc(label)}</span>${noteChip(n)}<span class="hint">${esc(n.session||'전체')} · 이 곡에 항상</span><button class="icon sm ghost" title="메모 지우기·숨기기" aria-label="메모 지우기·숨기기" data-act="fx-note" data-id="${esc(n.id)}">${ic('x')}</button></div>`)
+  .concat(it.notes.map(n=>`<div class="row" style="padding:3px 0"><span class="mk" style="${mkS}">${esc((markerOf(it,n.marker)||{}).label||'?')}</span>${noteChip(n)}<span class="hint">${esc(n.session||'전체')}</span><button class="icon sm ghost" title="메모 지우기" aria-label="메모 지우기" data-act="del-note" data-id="${n.id}">${ic('x')}</button></div>`));
+ return `<div class="lbl">섹션 메모 <span class="hint">${rows.length}개 · 악보 패널의 "메모" 도구로 마커를 탭</span></div>
+  <div class="small" id="secMemo">${rows.join('')||'<span class="hint">없음</span>'}</div>`}
 
 /* ---------- VIEWER ---------- */
 function viewerHTML(svc){
@@ -1490,7 +1516,7 @@ function viewerHTML(svc){
  const ctx={mode:'play',session:sess,f:{leader:true,session:true,mine:true,chords:true}};
  // 타임라인 메모는 live 쪽 미디어에서 읽는다. 발행본 미디어는 메모를 빼고 굳혀서(notes 없음)
  // 초안에서 그 영상을 지웠거나 라이브러리에서 영상이 바뀌어 live 에 없으면 빈 목록으로 본다
- return `<div class="top"><button class="icon ghost" title="뒤로" aria-label="뒤로" ${pub.draft&&isLeader()?`data-act="edit-svc" data-id="${esc(svc.id)}"`:'data-act="home"'}>${ic('back')}</button><h1>${esc(pub.name||'예배')}<span class="pill ${pub.draft?'':'amber'}">${pub.draft?(svc.published?`초안 미리보기 · 발행본 v${esc(svc.published.version)}${svc.version>svc.published.version?'과 다름':'과 같음'}`:'미발행 초안'):'v'+esc(pub.version)}</span></h1>
+ return `<div class="top"><button class="icon ghost" title="뒤로" aria-label="뒤로" ${pub.draft&&isLeader()?`data-act="edit-svc" data-id="${esc(svc.id)}"`:'data-act="home"'}>${ic('back')}</button><h1><span class="vttl">${esc(pub.name||svcName(svc))}</span><span class="pill ${pub.draft?'st':'amber'}">${pub.draft?`<span class="pl">${svc.published?`초안 미리보기 · 발행본 v${esc(svc.published.version)}${svc.version>svc.published.version?'과 다름':'과 같음'}`:'미발행 초안'}</span><span class="ps">초안</span>`:'v'+esc(pub.version)}</span></h1>
   ${hasNote(svc)?`<button class="icon ghost ${msgUnread(svc)?'dot':''}" data-act="msg" data-id="${svc.id}" title="예배 노트">${ic('note')}</button>`:''}<button class="icon ghost" data-act="print" data-id="${svc.id}" title="인쇄 · PDF로 저장">${ic('print')}</button><button class="btn" data-act="play" data-id="${svc.id}" data-i="0">${ic('play')}연습</button><button class="btn pri" data-act="play" data-id="${svc.id}" data-i="0" data-stage="1">${ic('moon')}무대</button></div>
   <div class="ws" style="grid-template-columns:minmax(0,1fr)">
    <div class="panel">${ptab('콘티',pub.items.length+'곡',`<span class="hint sesslbl" style="margin-right:6px">세션</span><div class="seg">${S.team.sessions.filter(s=>s!=='인도자').map(s=>`<button class="${s===sess?'on':''}" data-act="vsess" data-s="${esc(s)}">${esc(s)}</button>`).join('')}</div>`)}
@@ -1557,6 +1583,16 @@ function stripHTML(m,notes,mods,ctx){
 }
 
 /* ---------- modals ---------- */
+// iOS 는 코드로 준 포커스(메모 창처럼 열자마자 입력 칸에 커서)에는 화면을 밀어 올리지 않는다. 아래에 붙은 시트(.ov)는 자판 뒤에 남아
+// 입력 칸·저장이 가려진 채 글자를 쳐야 했다 → 보이는 화면(visualViewport)이 자판만큼 줄면 그만큼 시트 바닥을 올린다(--kb).
+// 창이 같이 줄어드는 안드로이드 앱·컴퓨터는 0 이다. 확대해 보는 중(scale>1)에는 줄어든 것이 자판 때문이 아니라 건드리지 않는다
+function kbFit(){const vv=window.visualViewport;if(!vv)return;const ae=document.activeElement;
+ const typing=!!ae&&(ae.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName));
+ const on=typing&&(vv.scale||1)<1.05,kb=on?Math.max(0,Math.round(innerHeight-vv.height-vv.offsetTop)):0;
+ // 사용자가 칸을 눌러 iOS 가 화면을 밀어 올렸으면(offsetTop) 시트 위쪽도 보이는 화면 위에 맞춘다 — 안 그러면 시트 윗부분이 화면 위로 잘린다
+ const de=document.documentElement;de.style.setProperty('--kb',kb+'px');de.style.setProperty('--kbt',(on?Math.max(0,Math.round(vv.offsetTop)):0)+'px');de.classList.toggle('kbup',on&&innerHeight-vv.height>40)}
+if(window.visualViewport){visualViewport.addEventListener('resize',kbFit);visualViewport.addEventListener('scroll',kbFit);
+ document.addEventListener('focusin',()=>setTimeout(kbFit,0));document.addEventListener('focusout',()=>setTimeout(kbFit,60))}
 function modal(html,o){if(NATIVE&&typeof adsHide==='function')adsHide();   // 아래에서 올라오는 시트가 배너에 가리지 않게
  document.documentElement.classList.add('noscroll');   // 뒤 화면이 따라 움직이면 시트를 내리려다 목록이 넘어간다
  $('#modal').innerHTML=`<div class="ov ${o&&o.center?'center':''}${o&&o.sheet?' up':''}"><div class="sheetm">${o&&o.center?'':'<div class="handle"></div>'}${html}</div></div>`;$('#modal').firstChild.addEventListener('click',e=>{if(e.target.classList.contains('ov'))closeModal()})}
@@ -4566,16 +4602,22 @@ const arrFit=(k,v)=>ARR_MAX[k]&&typeof v==='string'?v.trim().slice(0,ARR_MAX[k])
 //   편곡 쪽이 마지막으로 맞춘 값과 다르면 → 라이브러리에서 고친 것 (따라 바꾼다)
 // 인도자 기기에서만 한다. 팀원 기기의 예배 곡은 발행본 사본인데, 라이브러리를 따라 영상을 갈아 끼우면
 // 영상 id 가 발행본과 어긋나 그 영상에 단 타임라인 메모가 끊기고 콘티 보기가 발행본 영상을 못 찾는다
+// 예배에서 고쳤다가 손으로 도로 되돌려 편곡과 같아진 칸의 표시를 지운다. 지웠으면 true
+function ovTidy(it){const a=arrOfItem(it);if(!a)return false;let ch=false;
+ for(const k of ovKeys(it)){const s=ovSig(arrVal(a,k));if(ovSig(it[k])===s){delete it.ov[k];it.bs=it.bs||{};it.bs[k]=s;ch=true}}
+ return ch}
 function refreshFromArr(){let changed=false;if(!isLeader())return false;
  for(const sv of S.services){for(const it of (sv.items||[])){
   const a=arrOfItem(it);if(!a)continue;
+  if(ovTidy(it))changed=true;   // 편곡이 그대로여도 (아래에서 건너뛰면 마커를 놓았다 지운 악보에 표시가 남았다)
   // 편곡이 그대로면 견줄 것이 없다. 예배 쪽 수정은 markOverride·pushSongs 가 잡는다
   if(it.bs&&it.arrAt&&it.arrAt===a.updatedAt)continue;
   it.bs=it.bs||{};it.ov=it.ov||{};
   for(const k of OV_FIELDS){
    const av=arrVal(a,k);const sArr=ovSig(av),sCur=ovSig(it[k]);
    if(it.bs[k]==null){it.bs[k]=sArr;if(sCur!==sArr&&!ovEmpty(av)){it.ov[k]=true;changed=true}continue}
-   if(sCur!==it.bs[k]){if(!ovEmpty(av)&&!it.ov[k]){it.ov[k]=true;changed=true}continue}
+   // 방금 만든 곡(FRESH_ARR)을 마저 쓰는 중이면 덮어쓰기가 아니다 — 다음 밀기가 편곡에 써 넣는다
+   if(sCur!==it.bs[k]){if(!ovEmpty(av)&&!it.ov[k]&&!freshItem(it)){it.ov[k]=true;changed=true}continue}
    if(sArr===it.bs[k])continue;
    const nv=(k==='pieces'||k==='media')?keepIds(it[k],clone(av),k):clone(av);
    it[k]=nv;it.bs[k]=sArr;delete it.ov[k];changed=true}
@@ -4607,11 +4649,23 @@ function linkItemToArr(it,sg,a){
  it.songId=sg.id;it.arrId=a.id;it.libId=a.id;it.ov={};it.bs={};it.arrAt=a.updatedAt;
  OV_FIELDS.forEach(k=>it.bs[k]=ovSig(arrVal(a,k)));
  return it}
+// 이 편집기에서 콘티의 새 곡으로 방금 만든 라이브러리 곡. 편곡이 이 곡에서 나왔으니 편집기를 떠나기 전까지는 편곡이 비어 있을 때처럼
+// 쓰는 대로 편곡에 따라 써 넣는다 — 전에는 송폼·키를 쓰다 3초 멈추면 그 반쪽 값이 라이브러리에 들어가고, 이어 친 글자부터는
+// 방금 만든 곡에 '라이브러리 편곡과 다름'이 떴다(곡에 반영을 안 누르면 라이브러리에 반쪽이 남았다).
+// 기기 메모리에만 둔다(앱을 다시 켜면 끝). 편집기를 떠나면 닫아 두고(open:false) 그 뒤 첫 밀기가 떠나기 전에 친 것까지 올린 뒤 지운다.
+// 제목이 같은 곡에 이어 붙인 것(원래 있던 곡)은 여기 들지 않는다
+const FRESH_ARR=new Map();   // it.id → {svc, open}
+const freshItem=it=>!!it&&FRESH_ARR.has(it.id);
+// 화면을 그릴 때마다 부른다. 떠난 편집기의 곡은 닫고 곧 한 번 밀어 끝낸다(안 밀면 한참 뒤 돌아왔을 때 도로 열린다).
+// 밀기 전에 돌아왔으면(미리보기를 잠깐 보고 온 것) 그대로 이어 간다
+function freshRoute(){const r=route();let closed=false;
+ for(const f of FRESH_ARR.values()){const open=r.name==='edit'&&r.a===f.svc;if(f.open&&!open)closed=true;f.open=open}
+ if(closed){clearTimeout(freshRoute.t);freshRoute.t=setTimeout(()=>{pushSongs().catch(()=>{})},3000)}}
 function markOverride(it,k){
  if(!it||!OV_FIELDS.includes(k))return;
  const a=arrOfItem(it);if(!a)return;
  const av=arrVal(a,k);it.ov=it.ov||{};it.bs=it.bs||{};
- if(ovEmpty(av)){delete it.ov[k];return}   // 편곡이 비어 있으면 그대로 편곡에 써 넣는다
+ if(ovEmpty(av)||freshItem(it)){delete it.ov[k];return}   // 편곡이 비어 있으면(또는 방금 만든 곡이면) 그대로 편곡에 써 넣는다
  if(ovSig(it[k])===ovSig(av)){delete it.ov[k];it.bs[k]=ovSig(av)}else it.ov[k]=true}
 
 // 곡 만들기 요청의 id (uuid). 응답을 못 받아 다시 보내도 서버가 같은 곡으로 알아보게 기기에서 정해 둔다
@@ -4649,12 +4703,16 @@ async function pushSongs(){
      const sg=songById(it.songId);const a=sg&&(sg.arrangements||[]).find(x=>x.id===it.arrId);
      if(!a)continue;
      // 편곡이 아직 비어 있는 값만 채운다. 예배에서 고친 값(ov)은 "곡에 반영"을 눌러야 올라간다
-     const body={};const ov=ovOf(it);it.bs=it.bs||{};
+     // 방금 만든 곡(FRESH_ARR)은 편곡이 차 있어도 쓰는 대로 채운다 (지운 것도 — 쓰던 사람이 지운 것이다)
+     const body={};const ov=ovOf(it);it.bs=it.bs||{};const fresh=freshItem(it);let tidy=false;
      for(const k of OV_FIELDS){
-      if(ov[k])continue;
       const av=arrVal(a,k);const v=arrFit(k,snap[k]);
-      if(ovEmpty(av)&&!ovEmpty(v)&&ovSig(av)!==ovSig(v))body[k]=v;
-      else if(!ovEmpty(av)&&ovSig(av)!==ovSig(snap[k])){it.ov=it.ov||{};it.ov[k]=true;changed=true}}
+      // 고친 것을 도로 되돌려 편곡과 같아졌으면 표시를 지운다 — 마커를 놓았다 지우면 악보가 편곡과 똑같은데
+      // '라이브러리 편곡과 다름 · 악보'가 남았다(여기서는 ov 칸을 건너뛰고, refreshFromArr 는 편곡이 그대로면 견주지 않았다)
+      if(ov[k]){if(ovSig(av)===ovSig(snap[k])){delete it.ov[k];it.bs[k]=ovSig(av);changed=tidy=true}continue}
+      if((ovEmpty(av)||fresh)&&(fresh||!ovEmpty(v))&&ovSig(av)!==ovSig(v))body[k]=v;
+      else if(!ovEmpty(av)&&ovSig(av)!==ovSig(snap[k])){it.ov=it.ov||{};it.ov[k]=true;changed=tidy=true}}
+     if(tidy){const r=route();if(r.name==='edit'&&r.a===sv.id&&curItem(sv)===it)paintOvBar(it)}
      if(!Object.keys(body).length)continue;
      // 파일을 먼저 올려야 다른 팀원 라이브러리에서 악보가 보인다
      // 요청은 시작할 때의 팀(tid)으로 보낸다. 곡 하나 안에서도 파일 올리기·요청을 기다리는 사이 팀을 바꿀 수 있어 기다린 뒤마다 다시 본다
@@ -4684,7 +4742,8 @@ async function pushSongs(){
      try{const r=await api('/songs',{method:'POST',body:{teamId:tid,id:it.songReq.id,title:it.title,origKey:it.key||'',...snap}});
       // 받는 사이 팀을 바꿨으면 새 팀 라이브러리(S.songs)에 넣지 않는다. 옛 팀에 돌아가면 같은 요청 id(songReq)로 다시 보내 이어진다
       if(moved())return false;
-      delete it.songReq;if(!songById(r.song.id))S.songs.push(r.song);linkItemToArr(it,r.song,r.song.arrangements[0]||{});changed=true}
+      delete it.songReq;if(!songById(r.song.id))S.songs.push(r.song);linkItemToArr(it,r.song,r.song.arrangements[0]||{});changed=true
+      {const rt=route();if(rt.name==='edit'&&rt.a===sv.id)FRESH_ARR.set(it.id,{svc:sv.id,open:true})}}   // 편집기에서 쓰는 중에 만든 곡 — 떠날 때까지 쓰는 대로 따라간다
      // 그 id 를 다른 곡이 쓰고 있다(409)고 하면 다음엔 새 id 로. 저장은 하지 않는다 — 요청을 지우거나 저장하면 다음 바퀴가 새 요청을
      // 만들며 save() → 3초 뒤 다시 밀기 → 또 거절로 이어져, 계속 거절되는 동안(401·402·403) 사용자가 아무것도 안 해도 3초마다
      // 요청을 보내고 상태 전체를 다시 썼다. 거절된 요청은 그대로 두고 다음 저장 때 다시 민다
@@ -4693,6 +4752,8 @@ async function pushSongs(){
     }
    }
   }
+  // 편집기를 떠난 곡은 떠나기 전에 친 것까지 이번에 올렸으니 '방금 만든 곡'을 끝낸다 (못 올린 콘티 것은 다음 밀기까지 둔다)
+  for(const [iid,f] of FRESH_ARR)if(!f.open&&![...redo].some(sv=>sv.id===f.svc))FRESH_ARR.delete(iid);
   if(!relink)todo.forEach(sv=>{const t=at.get(sv);if(redo.has(sv)||(sv.songsPushedAt||0)===t)return;sv.songsPushedAt=t;stamped=true});
   // 바뀐 것이 없으면 저장하지 않는다. 저장은 다시 밀기를 부르므로, 실패가 남은 콘티를 3초마다 되풀이하게 된다
   if(changed||stamped)save();
@@ -6279,9 +6340,11 @@ function sheetHTML(item,W,ctx){
     keyonly:['','코드 인식 없이 <b>키만 설정</b> · 연주 키는 콘티에 표시돼요'],
    }[st];
    const pcls=planCls(unl);
-   const pill=unl?`<span class="cb-credit ${pcls}" title="${esc(PLAN_LABEL[PLANQ.plan]||'')} — 코드 인식이 넉넉해요">∞ 코드 인식</span>`
+   // 무제한 표시는 '∞ 무제한' 하나만 — 전에는 금색 '∞ 코드 인식' 알약 옆 진짜 단추도 '코드 인식 · 무제한'이라 같은 말이 두 번,
+   // 단추가 아닌 금색 알약이 더 눈에 띄는 두 번째 '코드 인식' 단추처럼 보였다 (그래서 무제한이면 단추의 '무제한' 값표를 뺀다 — 아래 cost)
+   const pill=unl?`<span class="cb-credit ${pcls}" role="note" title="${esc(PLAN_LABEL[PLANQ.plan]||'')} — 코드 인식이 넉넉해요">∞ 무제한</span>`
     :`<span class="cb-credit ${pcls} ${left<=2?'low':''}" title="${esc(PLAN_LABEL[PLANQ.plan]||'')} · 매월 1일에 다시 채워져요"><span>코드 인식 ${left}/${q.cap}</span><span class="gauge"><i style="width:${Math.round(left/q.cap*100)}%"></i></span></span>`;
-   const cost=`<span class="cost">${unl?'무제한':'1'}</span>`;
+   const cost=unl?'':`<span class="cost">1</span>`;
    const oq=PLANQ.omr, oleft=oq.cap==null?null:Math.max(0,oq.cap-oq.used);
    const omrBtn=(NET.omr&&p.ocr!=='pending')?`<button class="btn sm ghost" data-act="omr" data-id="${p.id}" title="코드·가사·구성을 읽어 곡 정보에 채움">${ic('music')}채보${oq.cap!=null?` <span class="cost">${oleft}/${oq.cap}</span>`:''}</button>`:'';
    let act='';
@@ -6325,7 +6388,7 @@ function sheetHTML(item,W,ctx){
   html+=`</div>`;
   if(span===1&&pi<pieces.length-1)html+='<i class="pbreak"></i>';   // 다음 조각은 새 줄에서
  });
- if(!pieces.length)html+=`<div class="muted" style="padding:40px 20px;text-align:center">${ctx.mode==='edit'?'오른쪽 위 "조각 추가"로 악보 이미지를 넣으세요.<br><span class="hint">스크린샷·스캔 권장. 사진도 됩니다.</span>':'악보가 없습니다.'}</div>`;
+ if(!pieces.length)html+=`<div class="muted" style="padding:40px 20px;text-align:center">${ctx.mode==='edit'?`"조각 추가"로 악보 이미지를 넣으세요.<br><span class="hint">스크린샷·스캔 권장. 사진도 됩니다.</span><div style="margin-top:12px"><label class="btn sm" for="pieceFile">${ic('camera')}조각 추가</label></div>`:'악보가 없습니다.'}</div>`;
  return html;
 }
 /* ---------- routing ---------- */
@@ -6335,8 +6398,11 @@ window.addEventListener('hashchange',()=>{P.stop();render()});
 
 /* ---------- render root ---------- */
 let SEL={};// editor selection: {sid:{item,tool}}
-const SCROLL={};function keepScroll(){SCROLL.sheet=($('#sheetwrap')||{}).scrollTop||0;SCROLL.bodies=$$('.pbody').map(b=>b.scrollTop)}
-function restoreScroll(){const sw=$('#sheetwrap');if(sw&&SCROLL.sheet)sw.scrollTop=SCROLL.sheet;$$('.pbody').forEach((b,i)=>{if(SCROLL.bodies&&SCROLL.bodies[i])b.scrollTop=SCROLL.bodies[i]})}
+// 좁은 화면(≤820px)에서는 패널 대신 .ws 가 통째로 세로로 넘어가고(.pbody·.sheetwrap 은 overflow:visible), 패널 머리(.ptab)는 옆으로 넘어간다.
+// 그 둘을 안 적어 두어 폰 편집기에서 도구·사진 추가·메모 저장·자르기처럼 다시 그릴 때마다 맨 위(예배·날짜)로 튀어 올랐다 → 같이 지킨다
+const SCROLL={};function keepScroll(){SCROLL.sheet=($('#sheetwrap')||{}).scrollTop||0;SCROLL.bodies=$$('.pbody').map(b=>b.scrollTop);SCROLL.ws=($('#app .ws')||{}).scrollTop||0;SCROLL.tabs=$$('#app .ptab').map(t=>t.scrollLeft)}
+function restoreScroll(){const sw=$('#sheetwrap');if(sw&&SCROLL.sheet)sw.scrollTop=SCROLL.sheet;$$('.pbody').forEach((b,i)=>{if(SCROLL.bodies&&SCROLL.bodies[i])b.scrollTop=SCROLL.bodies[i]})
+ const ws=$('#app .ws');if(ws&&SCROLL.ws)ws.scrollTop=SCROLL.ws;$$('#app .ptab').forEach((t,i)=>{if(SCROLL.tabs&&SCROLL.tabs[i])t.scrollLeft=SCROLL.tabs[i]})}
 let lastRoute='';
 let svcOnHash='';   // 콘티 화면을 온라인으로 다 그린(메모·말씀·초안을 받은) 주소. 오프라인으로 그리거나 콘티 밖으로 나가면 비운다
 // 서버를 기다리되 오래 걸리면 가진 것으로 먼저 그린다 (online() 은 켤 때 한 번 정해져 약한 망에서도 참이다).
@@ -6365,9 +6431,10 @@ let RENDER_SEQ=0;
 async function render(){
  const my=++RENDER_SEQ;const stale=()=>my!==RENDER_SEQ;
  const r=route();const app=$('#app');app.classList.remove('stage');
+ if(FRESH_ARR.size)freshRoute();
  if(NATIVE)setTimeout(adsSync,0);else setTimeout(webAdsRender,0);   // 화면이 바뀔 때마다 광고를 켜고 끈다 (예배 화면에서는 내린다)
  const prevHash=lastRoute;
- if(r.name!=='lineup')document.body.classList.remove('lnopen');const same=lastRoute===location.hash;lastRoute=location.hash;if(same)keepScroll();else{SCROLL.sheet=0;SCROLL.bodies=null}
+ if(r.name!=='lineup')document.body.classList.remove('lnopen');const same=lastRoute===location.hash;lastRoute=location.hash;if(same)keepScroll();else{SCROLL.sheet=0;SCROLL.bodies=null;SCROLL.ws=0;SCROLL.tabs=null}
  if(!/^(edit|view|play)$/.test(r.name))svcOnHash='';
  // §4.6 목회자 링크: 로그인 없이 여는 페이지
  // 약관·방침은 로그인 없이 볼 수 있다
@@ -6529,7 +6596,15 @@ function setEdZoom(d,svc){const cur=edZoom();const step=cur<0.5?0.05:0.1;
  const z=d?Math.max(0.2,Math.min(4,+(cur+d*step).toFixed(2))):1;
  try{localStorage.setItem('conti-edzoom',z)}catch(e){}
  $$('.edzoomlbl').forEach(e=>e.textContent=Math.round(z*100)+'%');drawEditorSheet(svc)}
-function drawEditorSheet(svc){const it=curItem(svc);const sh=$('#sheet');if(!it||!sh)return;
+// 악보 패널 머리가 한 줄에 다 들어가는지 재서 두 줄(narrow)·아이콘 없는 도구(tight)로 바꾼다. 폭은 화면 폭이 아니라 패널 폭이라
+// (아이패드 세로는 창이 넓어도 악보 칸이 좁다 · 가운데 막대를 끌면 바뀐다) 미디어 쿼리 대신 그릴 때마다 잰다
+// 재는 동안 잠깐 한 줄로 돌아가 머리가 낮아지면 맨 아래까지 넘긴 자리가 당겨질 수 있어 넘긴 자리를 되돌려 둔다
+function fitEdTools(){const ed=$('#edsheet');const pt=ed&&ed.querySelector('.ptab');if(!pt)return;
+ const box=[$('#app .ws'),$('#sheetwrap')].filter(Boolean).map(x=>[x,x.scrollTop]);
+ ed.classList.remove('narrow','tight');
+ if(pt.scrollWidth>pt.clientWidth+1){ed.classList.add('narrow');const sg=pt.querySelector('.seg');if(sg&&sg.scrollWidth>sg.clientWidth+1)ed.classList.add('tight')}
+ box.forEach(([x,t])=>{if(x.scrollTop!==t)x.scrollTop=t})}
+function drawEditorSheet(svc){fitEdTools();const it=curItem(svc);const sh=$('#sheet');if(!it||!sh)return;
  const sw=$('#sheetwrap');const base=(sw?sw.clientWidth-28:sh.clientWidth)-56;const z=edZoom();
  const W=Math.max(200,Math.round(base*z));
  sh.style.width=z>1?(W+56)+'px':'';
@@ -6609,8 +6684,12 @@ async function cropPieceModal(svc,it,p){
    const kx=rr.w/sw,ky=rr.h/sh;
    const inside=(x,y)=>x>=sx-2&&x<=sx+sw+2&&y>=sy-2&&y<=sy+sh+2;
    const gone=new Set();
+   // 절단선도 같이 옮긴다. 전에는 모두 지워(cut:null) 자르기만 해도 마커가 말없이 배지 모드가 됐다.
+   // 절단선이 잘려 나간 쪽에 있었으면 새 여백(rr.gaps)으로 마커를 놓을 때처럼 다시 잡는다. 처음부터 없던(배지 모드) 것은 그대로 없다
    const mk=(p.markers||[]).filter(m=>{const ok=inside(m.x,m.y);if(!ok)gone.add(m.id);return ok})
-     .map(m=>({...m,x:Math.round((m.x-sx)*kx),y:Math.round((m.y-sy)*ky),cut:null}));
+     .map(m=>{const y=Math.round((m.y-sy)*ky);let cut=null;
+      if(m.cut!=null)cut=m.cut>=sy&&m.cut<=sy+sh?Math.max(0,Math.min(rr.h-1,Math.round((m.cut-sy)*ky))):autoCut({gaps:rr.gaps},y);
+      return {...m,x:Math.round((m.x-sx)*kx),y,cut}});
    const hls=(p.hls||[]).filter(h=>inside(h.x,h.y)).map(h=>({...h,x:Math.round((h.x-sx)*kx),y:Math.round((h.y-sy)*ky),w:Math.round(h.w*kx),h:Math.round(h.h*ky)}));
    const chords=(p.chords||[]).filter(c=>inside(c.x,c.y)).map(c=>({...c,x:Math.round((c.x-sx)*kx),y:Math.round((c.y-sy)*ky),w:Math.round((c.w||0)*kx),h:Math.round((c.h||0)*ky)}));
    if(gone.size)it.notes=(it.notes||[]).filter(n=>!gone.has(n.marker));
@@ -9517,6 +9596,7 @@ document.addEventListener('click',async e=>{
   case 'md-target':{const s=svcById(r.a);const it=curItem(s);const md=it&&it.media.find(m=>m.id===el.dataset.id);if(!md)break;mediaTargetModal(s,it,md);break}
   case 'del-media':{const s=svcById(r.a);const it=curItem(s);it.media=it.media.filter(m=>m.id!==el.dataset.id);touch(s);save();syncLib(it);render();break}
   case 'del-note':{const s=svcById(r.a);const it=curItem(s);if(!confirm('이 메모를 지울까요?'))break;it.notes=it.notes.filter(n=>n.id!==el.dataset.id);save();render();break}
+  case 'fx-note':{const s=svcById(r.a);const it=s&&curItem(s);if(it)noteMenu(s,it,el.dataset.id);break}   // 곡에 붙은 메모 — 이 예배에서만 숨길지 곡에서 지울지 고른다
   case 'add-tnote':{const s=svcById(r.a);const it=curItem(s);const md=it.media.find(x=>x.id===el.dataset.mid);const box=el.closest('.tlEdit');const t=parseT(box.querySelector('[data-tl="t"]').value);const text=box.querySelector('[data-tl="text"]').value.trim();let sess=box.querySelector('[data-tl="s"]').value;if(sess&&!mdPickable(md).includes(sess))sess='';if(!text){box.querySelector('[data-tl="text"]').focus();break}md.notes.push({id:uid(),layer:'leader',session:sess||null,text,author:'인도자',t,at:Date.now()});touch(s);save();syncLib(it);render();break}
   case 'del-tnote':{const s=svcById(r.a);const it=curItem(s);const md=it.media.find(x=>x.id===el.dataset.mid);md.notes=md.notes.filter(n=>n.id!==el.dataset.id);touch(s);save();render();break}
   case 'ytopen':window.open(el.dataset.url,'_blank','noopener');break;
