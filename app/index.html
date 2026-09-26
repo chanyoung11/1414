@@ -779,6 +779,11 @@ html.kbtight .kbsave{display:inline-flex;flex:0 0 auto}
 /* 토스트는 어떤 판보다 위다 — 무대(210)·인쇄 미리보기(200) 안에서 낸 결과·오류도 보여야 한다. 누르기는 안 받는다 */
 .toast{position:fixed;left:50%;bottom:calc(88px + var(--sab));transform:translateX(-50%);width:max-content;max-width:calc(100vw - 32px);background:var(--fg);color:var(--bg);padding:10px 18px;border-radius:var(--r-lg);font-size:13.5px;font-weight:600;z-index:300;opacity:0;transition:opacity .2s;pointer-events:none;box-shadow:0 12px 32px rgba(0,0,0,.25)}
 .toast.show{opacity:1}
+/* 폰의 인터넷이 끊긴 동안 위쪽 가운데의 작은 띠 (AND1-07 — 켜 둔 채 끊기면 아무 표시가 없어 눌러 봐야 알았다).
+   누르기는 뒤로 지나간다. 무대(오프라인으로 쓰는 화면)·인쇄에는 안 나온다 */
+#netoff{position:fixed;left:50%;top:calc(var(--vvt,0px) + var(--sat) + 6px);transform:translateX(-50%);width:max-content;max-width:calc(100vw - 32px);background:var(--brand);color:var(--amberink);padding:5px 14px;border-radius:999px;font-size:12.5px;font-weight:700;z-index:299;pointer-events:none;box-shadow:0 6px 18px rgba(0,0,0,.2)}
+body.stgon #netoff,body.printing #netoff,body.nprint #netoff{display:none}
+@media print{#netoff{display:none!important}}
 html.kbup .bnav,html.kbnav .bnav{display:none}   /* 자판이 뜬 동안 아래 탭바가 자판 바로 위에 떠서 칸을 가리지 않게 (kbnav: 창이 줄어드는 안드로이드) */
 /* 자판이 떠 있으면 보이는 화면 맨 위(상태바 밑)에 — 바닥 기준(88px)이면 자판 뒤에 숨어 '영문으로 바꿨어요' 같은 알림을 못 봤다 (N1).
    자판 바로 위는 iOS 가 치는 칸을 올려 두는 자리라 거기 띄우면 치던 칸을 가린다 */
@@ -1317,6 +1322,7 @@ body.lnopen .main>main,body.lnopen .main>.hd{padding-right:min(476px,100%)}
 <div id="app"></div>
 <div id="modal"></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
+<div id="netoff" role="status" aria-live="polite" hidden>인터넷 연결이 끊겼어요</div>
 <script>
 (function(){
 'use strict';
@@ -1613,7 +1619,7 @@ function itemEditorHTML(svc,it){const sel=SEL[svc.id]||(SEL[svc.id]={});
  return `<div>
   <div id="ovbar">${ovBarHTML(it)}</div>
   <div class="row" style="gap:10px"><label class="titlewrap grow"><input class="titlein big" data-f="item.title" placeholder="곡 제목" value="${esc(it.title)}"><span class="penic">${ic('pen')}</span></label><button class="icon sm ghost" data-act="del-item" data-id="${it.id}" title="콘티에서 빼기">${ic('trash')}</button></div>
-  <div class="row" style="margin-top:10px;gap:8px"><input class="pillin" data-f="item.key" placeholder="키" maxlength="12" value="${esc(it.key)}"><span class="muted">–</span><input class="pillin" data-f="item.mod" placeholder="전조" maxlength="12" value="${esc(it.mod||'')}"><span class="hint">곡 안에서 전조하면 전조 키에 (예: G – A)</span></div>
+  <div class="row" style="margin-top:10px;gap:8px"><input class="pillin" data-f="item.key" data-keyin autocomplete="off" placeholder="키" maxlength="12" value="${esc(it.key)}"><span class="muted">–</span><input class="pillin" data-f="item.mod" data-keyin autocomplete="off" placeholder="전조" maxlength="12" value="${esc(it.mod||'')}"><span class="hint">곡 안에서 전조하면 전조 키에 (예: G – A)</span></div>
   <div class="lbl">송폼 <span class="hint">지금 쓰는 표기 그대로 한 줄</span></div>
   <div class="fbox"><textarea class="songbar" data-f="item.form" rows="1" maxlength="500" placeholder="멘트 – A1 – (Full)Int(4) – A1B – Int(2) – (Down)A3B – Outro(4)">${esc(it.form)}</textarea>
   <div id="formchips" style="margin-top:8px;min-height:22px">${chipsHTML(it.form,'t')}</div></div>
@@ -1852,7 +1858,7 @@ function labelPicker(it,cb){
  modal(`<b style="font-size:17px">마커 라벨</b><div class="hint" style="margin:4px 0 12px">송폼에 쓴 문자와 맞추세요. 절단선은 위쪽 가장 가까운 여백에 자동으로 놓입니다.</div>
   <div>${letters.map(l=>`<button class="q ${used.has(l)?'on':''}" data-l="${l}">${l}</button>`).join('')}</div>
   <div>${letters.map(l=>`<button class="q" data-l="${l}'">${l}'</button>`).join('')}</div>
-  <div class="row" style="margin-top:6px"><input class="field grow" id="customLabel" placeholder="직접 입력 (A1, B2…)" maxlength="40"><button class="btn" id="customOk">확인</button></div>`,{center:true});
+  <div class="row" style="margin-top:6px"><input class="field grow" id="customLabel" placeholder="직접 입력 (A1, B2…)" maxlength="40" enterkeyhint="done" autocomplete="off"><button class="btn" id="customOk">확인</button></div>`,{center:true});
  $('#modal').onclick=e=>{const b=e.target.closest('[data-l]');if(b){closeModal();cb(b.dataset.l)}if(e.target.id==='customOk'){const v=$('#customLabel').value.trim();if(v){closeModal();cb(v)}}};
 }
 function markerMenu(svc,it,mid){
@@ -1910,6 +1916,9 @@ function openComposer(svc,it,o){ // o: {marker, leader, t, mediaId}
  const mdT=(media&&!o.marker)?mdSess(media):[];
  const pickable=sessions.filter(x=>x!=='인도자'&&(!mdT.length||mdT.includes(x)));
  if(o.leader&&mdT.length&&target&&!mdT.includes(target))target='';
+ // 마커 메모를 재생 시각에도 붙일지: 틀어 본 영상의 그 자리(0:00 이 아닌)에서 쓸 때만 켜 둔다. 전에는 늘 켜져 있어,
+ // 영상을 안 튼 채 마커에 메모하면 타임라인 맨 위에 '0:00' 메모가 함께 생겼다 (AND2-11)
+ const alsoT=!!(media&&P.started&&(o.t||0)>0);
  modal(`<div class="row sb"><div class="row">${m?`<span class="mk">${esc(m.label)}</span><b style="font-size:17px">${esc(m.label)}에 메모</b><span class="pill">${esc(mods[m.label]||'섹션')}</span>`:`<b style="font-size:17px">${fmtT(o.t)}에 타임라인 메모</b>`}</div><button class="icon sm ghost" title="닫기" aria-label="닫기" data-close="1">${ic('x')}</button></div>
   <div style="margin-top:12px">${S.team.phrases.map(p=>`<button class="q" data-p="${esc(p)}">${esc(p)}</button>`).join('')}</div>
   <div class="row" style="margin-top:4px"><input class="field grow" id="cText" placeholder="한 줄로. 24자 안에" maxlength="60" style="font-size:16px;padding:12px 14px"><span class="hint" id="cCnt">0/24</span><button class="btn pri kbsave" id="cSave2" type="button">${ic('check')}저장</button></div>
@@ -1920,7 +1929,7 @@ function openComposer(svc,it,o){ // o: {marker, leader, t, mediaId}
   <div>${o.leader?`<button class="q ${target===''?'on':''}" data-s="">${mdT.length?'태그된 전체':'전체'}</button>`+pickable.map(s=>`<button class="q ${target===s?'on':''}" data-s="${esc(s)}">${esc(s)}</button>`).join('')
    :`<button class="q on" data-sc="mine">나만</button>${canSess?`<button class="q" data-sc="session">${esc(my.session)}에 공유</button>`:''}<div class="hint" id="cScHint" hidden>세션과 함께 보는 고정 메모는 세션 리더만 남겨요${onlyAlways?'':' — "이번 예배만"을 고르면 세션에 공유할 수 있어요'}</div>`}</div>
   ${mdT.length?`<div class="hint">이 영상은 <b>${esc(mdT.join('·'))}</b>에게만 보여요 — 메모도 그 안에서만 고를 수 있어요. '태그된 전체'는 ${esc(mdT.join('·'))} 모두에게 보입니다.</div>`:''}
-  ${media?`<div class="row" style="margin-top:12px;gap:8px">${m?`<label class="row small" style="gap:6px"><input type="checkbox" id="cAlsoT" checked> 재생 시각에도 붙이기</label>`:'<span class="hint">시각</span>'}<input class="pillin mono" id="cTime" value="${fmtT(o.t||0)}" style="width:84px"><span class="hint">분:초 — 직접 고쳐도 돼요</span></div>`:''}
+  ${media?`<div class="row" style="margin-top:12px;gap:8px">${m?`<label class="row small" style="gap:6px"><input type="checkbox" id="cAlsoT" ${alsoT?'checked':''}> 재생 시각에도 붙이기</label>`:'<span class="hint">시각</span>'}<input class="pillin mono" id="cTime" value="${fmtT(o.t||0)}" style="width:84px"><span class="hint">분:초 — 직접 고쳐도 돼요</span></div>`:''}
   <div class="row kbact" style="margin-top:16px;justify-content:flex-end"><button class="btn pri" id="cSave">${ic('check')}저장</button></div>`);
  const inp=$('#cText');setTimeout(()=>inp.focus(),50);
  inp.oninput=()=>{$('#cCnt').textContent=inp.value.length+'/24';$('#cCnt').style.color=inp.value.length>24?'var(--red)':''};
@@ -2382,9 +2391,14 @@ function rehAddModal(svc){
     if(REH.draft&&REH.draft.file===file)REH.draft=null;
     (REH.bySvc[svc.id]=REH.bySvc[svc.id]||[]).unshift(r.rehearsal);await pullRehearsals(svc.id,true);
     closeModal();render();toast('녹음을 올렸어요')}
-   catch(err){toast(err.message);
-    if(err.status===403){denied();pullTeam(true).then(()=>render()).catch(()=>{});return}   // 뒤 화면의 '녹음 올리기'도 치운다
-    prog.innerHTML=`<span style="color:var(--destructive)">${esc(err.message)}</span> <button class="btn sm" id="rhOk">다시 시도</button> <button class="btn sm" id="rhSave">${ic('import')}기기에 저장</button>`;btn.disabled=false}return}}}
+   catch(err){
+    if(err.status===403){toast(err.message);denied();pullTeam(true).then(()=>render()).catch(()=>{});return}   // 뒤 화면의 '녹음 올리기'도 치운다
+    // 끊겨서 못 올렸으면 그렇다고 우리말로 한 번 (전에는 'Failed to fetch' 가 빨간 글과 토스트로 두 번 떴다). 다시 시도는 아래 단추 하나로 —
+    // 줄에 같은 id(rhOk)의 '다시 시도'를 또 두어 올리기 단추가 둘이었다 (AND2-13). 줄에는 '기기에 저장'만 둔다
+    const why=err.net?(err.offline?'인터넷 연결이 끊겨 올리지 못했어요':'서버에 닿지 않아 올리지 못했어요'):err.timeout?'서버 응답이 늦어 올리지 못했어요':err.message;
+    if(gone||!prog.isConnected){toast(why+' · "녹음 올리기"를 다시 열면 올릴 수 있어요',3500);return}
+    prog.innerHTML=`<span style="color:var(--destructive)">${esc(why)}</span> <button class="btn sm" id="rhSave">${ic('import')}기기에 저장</button>`;
+    btn.disabled=false;btn.innerHTML=`${ic('send')}다시 올리기`}return}}}
 // 파일 하나 올리기. 서버리스 본문 한도(4.5MB)를 넘으면 Blob 스토어로 바로 올린 뒤 등록한다
 const DIRECT_OVER=3.5*1024*1024;
 // 같은 파일을 겹쳐 올리지 않는다. 초안·라이브러리·곡 자동 저장이 저마다 올리기를 시작해서
@@ -2403,7 +2417,7 @@ function uploadBlob(id,b,onProgress,force,tid){
  return p}
 async function uploadBlobOnce(id,b,onProgress,force,tid){
  if(b.size<=DIRECT_OVER){
-  const r=await fetch(API_BASE+'/api/blobs/'+id+'?team='+tid+(force?'&force=1':''),{method:'POST',headers:{'x-conti':'1',...(NATIVE?{'x-conti-app':'1'}:{}),...(NATIVE&&APP_TOKEN?{authorization:'Bearer '+APP_TOKEN}:{}),'content-type':b.type||'application/octet-stream'},body:b,credentials:NATIVE?'include':'same-origin'});
+  const r=await fetch(API_BASE+'/api/blobs/'+id+'?team='+tid+(force?'&force=1':''),{method:'POST',headers:{'x-conti':'1',...(NATIVE?{'x-conti-app':'1'}:{}),...(NATIVE&&APP_TOKEN?{authorization:'Bearer '+APP_TOKEN}:{}),'content-type':b.type||'application/octet-stream'},body:b,credentials:NATIVE?'include':'same-origin'}).catch(e=>{throw netErr(e)});
   if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.message||'파일 업로드 실패')}
   return true}
  const u=await api('/blobs/'+id+'/upload-url',{method:'POST',body:{teamId:tid,size:b.size,mime:b.type||'application/octet-stream'}});
@@ -2415,7 +2429,7 @@ function putDirect(url,file,onProgress){return new Promise((res,rej)=>{const x=n
  x.setRequestHeader('content-type',file.type||'application/octet-stream');
  x.upload.onprogress=ev=>{if(ev.lengthComputable&&onProgress)onProgress(Math.round(ev.loaded/ev.total*100))};
  x.onload=()=>x.status>=200&&x.status<300?res():rej(new Error('업로드 실패 ('+x.status+')'));
- x.onerror=()=>rej(new Error('네트워크 오류로 업로드하지 못했어요'));x.send(file)})}
+ x.onerror=()=>{const off=navigator.onLine===false,er=new Error(off?'인터넷 연결이 끊겨 올리지 못했어요':'네트워크 오류로 업로드하지 못했어요');er.net=true;er.offline=off;rej(er)};x.send(file)})}
 // 녹음 플레이어: 재생 · ±5초 · 진행바 · 여기에 메모 (연습 화면과 같은 조작)
 // at: {t:시작 초, play:바로 재생} — 메모를 적고 돌아오면 보던 자리에서 다시 연다 (예전에는 0:00 으로 돌아갔다)
 async function rehPlayer(svc,r,at){
@@ -3265,9 +3279,9 @@ function settingsHTML(){
    <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn pri" id="sOk">${ic('check')}저장</button></div></div>`;
  else if(t==='noti'){const st=pushState();const q=quietOf();
   pane=`<div class="card"><b>폰으로 알림 받기</b>
-   <div class="hint" style="margin-top:2px">${st==='unsupported'?'이 브라우저는 푸시 알림을 지원하지 않아요':st==='granted'?'켜져 있어요. 앱을 꺼 둬도 알림이 옵니다':st==='denied'?'브라우저에서 막혀 있어요. 주소창 옆 자물쇠에서 알림을 허용해 주세요':st==='off'?'이 기기에서 꺼 두었어요. 다시 켜기 전까지 이 기기로는 알림이 오지 않아요':'아직 안 켰어요'}</div>
+   <div class="hint" style="margin-top:2px">${st==='unsupported'?'이 브라우저는 푸시 알림을 지원하지 않아요':st==='granted'?'켜져 있어요. 앱을 꺼 둬도 알림이 옵니다':st==='denied'&&andApp()?'휴대폰에서 막혀 있어요. 설정 → 애플리케이션 → 1414 → 알림에서 켠 뒤 「알림 켜기」를 눌러 주세요':st==='denied'?'브라우저에서 막혀 있어요. 주소창 옆 자물쇠에서 알림을 허용해 주세요':st==='off'?'이 기기에서 꺼 두었어요. 다시 켜기 전까지 이 기기로는 알림이 오지 않아요':'아직 안 켰어요'}</div>
    <div class="row" style="margin-top:10px;gap:8px">
-    ${st==='default'||st==='off'?`<button class="btn sm pri" id="sPushOn">${ic('bell')}알림 켜기</button>`:''}
+    ${st==='default'||st==='off'||(st==='denied'&&andApp())?`<button class="btn sm pri" id="sPushOn">${ic('bell')}알림 켜기</button>`:''}
     ${st==='granted'?`<button class="btn sm" id="sPushTest">${ic('send')}시험 알림 보내기</button><button class="btn sm ghost" id="sPushOff">이 기기에서 끄기</button>`:''}</div>
    ${iosNeedsInstall()?`<div class="hint" style="margin-top:8px">${iosTip}</div>`:''}</div>
   <div class="card"><b>조용한 시간</b>
@@ -3346,7 +3360,7 @@ function afterSettings(){
    $$('#sSess2 .q').forEach(b=>b.classList.toggle('on2',extra.includes(b.dataset.s2)));return}
   const rb=e.target.closest('[data-r]');if(rb){role=rb.dataset.r;$$('#sRole .q').forEach(b=>b.classList.toggle('on',b.dataset.r===role));return}
   if(e.target.closest('#sPushOn')){markAskedPush();setPushOff(false);appPushRegister.asked=true;
-   if(NATIVE){const ok=await appPushRegister();if(ok&&NET.user)PUSH.auto=NET.user.id;toast(ok?'알림을 켰어요':'알림을 켜지 못했어요 · 휴대폰 설정에서 켤 수 있어요');render();return}
+   if(NATIVE){const ok=await appPushRegister();if(ok&&NET.user)PUSH.auto=NET.user.id;toast(ok?'알림을 켰어요':andApp()?PUSH_DENIED_AND:'알림을 켜지 못했어요 · 휴대폰 설정에서 켤 수 있어요',!ok&&andApp()?5000:0);render();return}
    let perm='denied';try{perm=await Notification.requestPermission()}catch(err){}
    if(perm==='granted'){const ok=await pushRegister();if(ok&&NET.user)PUSH.auto=NET.user.id;toast(ok?'알림을 켰어요':'알림을 켜지 못했어요')}   // 방금 등록했으니 홈이 또 보내지 않게
    else toast('브라우저에서 알림을 막았어요');render();return}
@@ -3434,9 +3448,15 @@ function selectMedia(i){
  $$('[data-act="msel"]').forEach(b=>b.classList.toggle('on',+b.dataset.i===i));
  const box=$('#mediaBox');const md=(PL.ml||[])[i];if(!md){box.innerHTML='';return}
  if(md.type==='youtube'){const id=ytId(md.url);const st=ytStart(md.url);const st0=md.start!=null?md.start:st;const en=md.end||0;P.start=st0;P.end=en;box.innerHTML=`<div class="vid"><iframe id="yt" src="${esc(ytEmbedSrc(id,st0,en))}" referrerpolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe></div><div class="row" style="margin-top:8px;justify-content:space-between"><span class="hint" id="ytHint">${YT_HINT}</span><a class="btn sm" id="ytfb" href="https://youtu.be/${id}?t=${esc(st0)}" target="_blank" rel="noopener">${ic('open')}유튜브에서 열기</a></div>`;P.t=st0;
-  P.yt=$('#yt');P.yt.onload=()=>{try{P.yt.contentWindow.postMessage(JSON.stringify({event:'listening',id:1,channel:'widget'}),'*')}catch(e){}};P.timer=setInterval(()=>{if(P.yt)ytCmd('getCurrentTime')},700);
-  // 앱은 중계 페이지(yt.html)를 한 번 더 거쳐서 늦게 준비된다(서버가 쉬다 깨면 더) → 더 기다린다. 늦게라도 준비되면 안내를 되돌린다
-  setTimeout(()=>{if(!P.ytReady){const h=$('#ytHint');if(h)h.textContent='이 영상은 여기서 바로 재생할 수 없어요(영상 주인이 임베드를 막았을 때). 메모를 탭하면 유튜브 앱이 그 시각에서 열리고, "여기에 메모"는 시각을 직접 적어요.'}},YT.relay?8000:2500);
+  // 'listening' 은 플레이어가 답(onReady·initialDelivery)할 때까지 0.4초마다 다시 보낸다 (공식 IFrame API 와 같다).
+  // 한 번만(onload) 보내면 플레이어 준비보다 먼저 닿아 버려질 때가 있어(새 기기의 첫 열기 · 중계를 거치는 앱), 재생·±5·시간 줄이
+  // 끝까지 멈춰 있었다 — 영상을 직접 눌러 틀어도 앱 시각은 0:00 이었다 (AND2-07). 다른 영상으로 바꾸거나 닫으면(P.yt) 멈춘다
+  const yt0=P.yt=$('#yt');const listen=()=>{try{yt0.contentWindow.postMessage(JSON.stringify({event:'listening',id:1,channel:'widget'}),'*')}catch(e){}};
+  yt0.onload=listen;let ln=0;const lt=setInterval(()=>{if(P.yt!==yt0||P.ytReady||P.ytErr||++ln>150){clearInterval(lt);return}listen()},400);
+  P.timer=setInterval(()=>{if(P.yt)ytCmd('getCurrentTime')},700);
+  // 앱은 중계 페이지(yt.html)를 한 번 더 거쳐서 늦게 준비된다(서버가 쉬다 깨면 더) → 더 기다린다. 늦게라도 준비되면 안내를 되돌린다.
+  // 준비가 늦은 것은 임베드 금지가 아니다 — 막힌 영상은 onError(오류 번호)로 따로 알린다. 전에는 늦기만 해도 '영상 주인이 막았다'고 했다
+  setTimeout(()=>{if(!P.ytReady&&!P.ytErr&&P.yt===yt0){const h=$('#ytHint');if(h)h.textContent=YT_SLOW}},YT.relay?8000:2500);
  }else{blobURL(md.blob).then(u=>{const bars=Array.from({length:34},(_,k)=>`<i style="height:${6+((k*7)%15)}px"></i>`).join('');box.innerHTML=`<div class="now"><span class="art">${ic('mic')}</span><div class="grow"><div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(md.name||'녹음')}</div><div class="wave">${bars}</div></div></div>`;const a=new Audio(u);a.preload='metadata';P.audio=a;a.ontimeupdate=()=>{P.t=a.currentTime;updateTL()};a.onloadedmetadata=()=>{P.dur=a.duration;updateTL()};a.onplay=()=>{P.playing=true;updateTL()};a.onpause=()=>{P.playing=false;updateTL()};a.onended=()=>{P.playing=false;updateTL()}})}
  updateTL();
 }
@@ -3749,6 +3769,12 @@ function pushChecked(svc){const h=SYNC.draftHold[svc.id];if(!h||!h.unknown)retur
 // 켤 때는 온라인이었는데(NET.server===true) 발행하다 끊긴 것은 recheckServer 가 그냥 돌아가 다시 안 올라갔다 —
 // 다시 연결되면(online)·화면이 다시 보이면 그대로 올린다 (메모·초안도 같이 — pushUnsent)
 window.addEventListener('online',()=>{clearTimeout(RECONNECT_T);RECONNECT_T=setTimeout(()=>NET.server===true?pushUnsent():recheckServer(),800)});
+// 켜 둔 채 폰의 인터넷이 끊기면(비행기 모드) 홈에 아무 표시가 없고, 누른 것이 되돌아가며 영어 'Failed to fetch' 만 떴다 (AND1-07).
+// 끊긴 동안 위쪽에 띠(#netoff)를 두고 끊긴 순간 한 번 알린다. 서버가 안 닿는 것(NET.server)과는 따로 — 폰의 연결 자체만 본다.
+// 다시 붙으면 띠를 걷는다 (올리지 못한 것은 위의 online 이 올린다)
+function netBand(){const el=$('#netoff');if(el)el.hidden=navigator.onLine!==false}
+window.addEventListener('offline',()=>{netBand();if(!document.body.classList.contains('stgon'))toast('인터넷 연결이 끊겼어요 · 받아 둔 콘티는 그대로 볼 수 있어요',3000)});   // 무대는 오프라인으로 쓰는 화면이라 악보를 가리지 않는다
+window.addEventListener('online',netBand);document.addEventListener('visibilitychange',netBand);netBand();   // 가려진 사이 바뀐 것도 (돌아오면 다시 본다)
 // 켤 때 건강검진이 한 번 실패하면(503·잠깐 끊김·와이파이 로그인 화면) 앱을 끌 때까지 '이 기기 전용'이었다.
 // 서버를 못 찾는 동안(null)은 간격을 늘려 가며(5초→1분) 다시 묻고, 화면이 다시 보일 때도 바로 묻는다.
 // false(여기엔 서버가 없다 · 정적 호스팅의 404)는 타이머로 두드리지 않는다
@@ -3775,11 +3801,16 @@ const TOKEN_KEY='conti-app-token';
 let APP_TOKEN=NATIVE?(()=>{try{return localStorage.getItem(TOKEN_KEY)||''}catch(e){return ''}})():'';
 function setAppToken(t){if(!NATIVE)return;APP_TOKEN=t||'';
  try{if(t)localStorage.setItem(TOKEN_KEY,t);else localStorage.removeItem(TOKEN_KEY)}catch(e){}}
+// 서버에 닿지도 못한 실패(끊김·비행기 모드)는 브라우저 말('Failed to fetch'·'Load failed')로 와서, 받은 쪽이 그대로 알리면
+// 영어 토스트가 떴다(일정 가능/보류·녹음 올리기 — AND1-07·AND2-13) → 우리말로 바꿔 던진다. status 가 없으니 서버가 거절한 것과는
+// 그대로 갈린다(netWhy·e.status). net 으로 끊김인 줄 알 수 있고, 원래 오류는 cause 에 둔다
+function netErr(e){const off=typeof navigator!=='undefined'&&navigator.onLine===false;
+ const err=new Error(off?'인터넷에 연결되지 않았어요':'서버에 연결하지 못했어요 · 잠시 뒤 다시 해 주세요');err.net=true;err.offline=off;err.cause=e;return err}
 async function api(path,o){const opt={method:(o&&o.method)||'GET',headers:{'x-conti':'1',...(NATIVE?{'x-conti-app':'1'}:{}),...(NATIVE&&APP_TOKEN?{authorization:'Bearer '+APP_TOKEN}:{})},credentials:NATIVE?'include':'same-origin',cache:'no-store'};if(o&&o.keepalive)opt.keepalive=true;if(o&&o.body){opt.headers['content-type']='application/json';opt.body=JSON.stringify(o.body)}
  // timeout: 켤 때처럼 기다리는 동안 화면이 막히는 부르기만 쓴다 (올리기는 오래 걸려도 정상이다)
  const ac=o&&o.timeout&&typeof AbortController!=='undefined'?new AbortController():null;let tm=0;if(ac){opt.signal=ac.signal;tm=setTimeout(()=>ac.abort(),o.timeout)}
  const late=()=>{const err=new Error('서버 응답이 늦어요');err.timeout=true;return err};
- let r,j=null;try{r=await fetch(API_BASE+'/api'+path,opt);try{j=await r.json()}catch(e){}}catch(e){if(ac&&ac.signal.aborted)throw late();throw e}finally{clearTimeout(tm)}
+ let r,j=null;try{r=await fetch(API_BASE+'/api'+path,opt);try{j=await r.json()}catch(e){}}catch(e){if(ac&&ac.signal.aborted)throw late();throw netErr(e)}finally{clearTimeout(tm)}
  if(ac&&ac.signal.aborted)throw late();
  // 로그인·가입·비밀번호 변경 때 새 토큰(appToken)이 온다. 아무 응답의 token 이나 받으면 안 된다 —
  // 말씀 링크 만들기 응답의 token(링크 값)이 로그인 토큰을 덮어 iOS 앱이 다음 실행 때 로그아웃됐다
@@ -4299,6 +4330,36 @@ function joinHTML(tok){const p=GATE.preview&&GATE.preview.tok===tok?GATE.preview
 const HAN_KEY=(()=>{const m={};'ㄱr ㄲr ㄳrt ㄴs ㄵsw ㄶsg ㄷe ㄸe ㄹf ㄺfr ㄻfa ㄼfq ㄽft ㄾfx ㄿfv ㅀfg ㅁa ㅂq ㅃq ㅄqt ㅅt ㅆt ㅇd ㅈw ㅉw ㅊc ㅋz ㅌx ㅍv ㅎg ㅏk ㅐo ㅑi ㅒo ㅓj ㅔp ㅕu ㅖp ㅗh ㅘhk ㅙho ㅚhl ㅛy ㅜn ㅝnj ㅞnp ㅟnl ㅠb ㅡm ㅢml ㅣl'.split(' ').forEach(x=>{m[x[0]]=x.slice(1)});return m})();
 function hanKeys(s){return String(s==null?'':s).replace(/[\uac00-\ud7a3\u3131-\u3163]/g,ch=>{const c=ch.charCodeAt(0)-0xac00;if(c<0)return HAN_KEY[ch]||ch;
  return HAN_KEY['ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ'[Math.floor(c/588)]]+HAN_KEY['ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ'[Math.floor(c%588/28)]]+(c%28?HAN_KEY['_ㄱㄲㄳㄴㄵㄶㄷㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅄㅅㅆㅇㅈㅊㅋㅌㅍㅎ'[c%28]]:'')})}
+// 키 칸(새 곡·편곡·곡 편집의 키·전조·조 바뀜·악보 조): 한글 자판 그대로 A 를 치면 'ㅁ' 이 들어가 곡이 '원키 ㅁ' 으로 만들어지고
+// 라이브러리·곡 목록 배지에 'ㅁ' 이 떴다 (AND1-08). 아이디 칸처럼 두벌식 글쇠를 영문으로 되돌리고(hanKeys) 근음을 대문자로 적는다
+// (ㅁ→A · ㅠㅠ→Bb · 므→Am · g - a→G - A). 키 이름으로 읽는 '장조·단조'(keyMinor)는 그대로 둔다.
+// 되돌린 글쇠가 키 조각(A·Bb·m·maj)이 아니면 일부러 적은 우리말이다('원키 D' 같은) — 그때는 친 그대로 둔다
+function keyFix(v){const s0=String(v==null?'':v),HANS=/[\uac00-\ud7a3\u3131-\u3163]+/g;
+ const cap=t=>t.replace(/♯/g,'#').replace(/♭/g,'b').replace(/(^|[\s\-–—~→/(,·])([a-g])(?=[#b]?(?:m(?:in(?:or)?)?|maj)?(?:장조|단조)?(?:$|[\s\-–—~→/),·]))/g,(_,p,r)=>p+r.toUpperCase());
+ const runs=(s0.match(HANS)||[]).filter(w=>!/^(장조|단조)$/.test(w));
+ if(runs.some(w=>!/^(?:[a-g][#b]?)?(?:m|maj|min|b)?$/i.test(hanKeys(w))))return s0;
+ return cap(s0.replace(HANS,w=>/^(장조|단조)$/.test(w)?w:hanKeys(w)))}
+// 키로 읽을 수 없는 값(A~G 로 시작하지 않는다). 비어 있으면 괜찮다
+const keyBad=v=>!!String(v||'').trim()&&keySemi(v)==null;
+const KEY_TIP='키는 A~G 로 적어 주세요 (예: G · Bb · F#m)';
+// 시간 칸(정기 예배·날짜): 안드로이드는 숫자 자판으로 연다(AND1-08 — 한글 자판으로 열려 ?123 을 눌러야 했다). 숫자 자판에는 ':' 이 없어
+// 1100·930·9·11.00·11시·오후 7시 30분 을 11:00 꼴로 바꾼다 — 서버는 H:MM 이 아니면 시간을 말없이 버린다. 못 읽으면 null
+function timeFix(v){const t=String(v==null?'':v).trim().replace(/\s+/g,' ');if(!t)return '';
+ if(/^\d{1,2}:\d{2}$/.test(t)){const [h,m]=t.split(':').map(Number);return h<24&&m<60?t:null}
+ let m=t.match(/^(오전|오후|am|pm)?\s*(\d{1,2})(?:\s*(?:[:.시h]|\s)\s*(?:(\d{1,2})\s*분?)?)?$/i),ap='',h,mi;
+ if(m){ap=(m[1]||'').toLowerCase();h=+m[2];mi=+(m[3]||0)}
+ else if((m=t.match(/^(\d{1,2})(\d{2})$/))){h=+m[1];mi=+m[2]}
+ else return null;
+ if((ap==='오후'||ap==='pm')&&h<12)h+=12;if((ap==='오전'||ap==='am')&&h===12)h=0;
+ return h<24&&mi<60?h+':'+String(mi).padStart(2,'0'):null}
+const TIME_TIP='시간은 11:00 처럼 적어 주세요';
+const IS_ANDROID=/Android/i.test(navigator.userAgent||'');
+const timeInAttr=()=>'data-timein'+(IS_ANDROID?' inputmode="numeric"':'');
+// 칸을 떠날 때 고친다 (치는 중인 글자는 건드리지 않는다). 칸마다의 onchange·oninput 보다 먼저 돌아 그쪽은 고친 값을 받는다
+document.addEventListener('change',e=>{const el=e.target;if(!el||!el.matches)return;
+ if(el.matches('input[data-keyin]')){const v=keyFix(el.value);if(v===el.value)return;const han=/[\uac00-\ud7a3\u3131-\u3163]/.test(el.value);
+  el.value=v;el.dispatchEvent(new Event('input',{bubbles:true}));if(han)toast('한글 자판으로 친 글자를 영문으로 바꿨어요');return}
+ if(el.matches('input[data-timein]')){const v=timeFix(el.value);if(v===null){toast(TIME_TIP);return}if(v!==el.value){el.value=v;el.dispatchEvent(new Event('input',{bubbles:true}))}}},true);
 async function afterGate(){const gs=$('#gtSess');if(gs)gs.onclick=e=>{const b=e.target.closest('[data-s]');if(!b)return;
   const v=b.dataset.s;
   // 팀 만들기는 세션 하나 (서버가 session 하나만 받는다). 초대 가입용 겸임 고르기(sessList)만 바꾸고 GATE.sess 는 그대로라
@@ -4315,6 +4376,8 @@ async function afterGate(){const gs=$('#gtSess');if(gs)gs.onclick=e=>{const b=e.
   el.value=v;if(el===lu)GATE.user=v;toast('한글 자판으로 친 글자를 영문으로 바꿨어요')}});
  if(lp)lp.oninput=()=>{GATE.pw=lp.value};
  if(ln)ln.oninput=()=>{GATE.name=ln.value};
+ // 동의 체크도 담는다 — 약관을 열었다 돌아오면(다시 그리기) 아이디·비밀번호·이름은 남는데 체크만 풀려 있었다 (AND1-10)
+ const la=$('#lgAgree');if(la)la.onchange=()=>{GATE.agree=la.checked};
  // 첫 칸에 커서를 두는 건 마우스 쓰는 컴퓨터에서만. 앱·터치 기기는 포커스만으로 자판이 올라와(Capacitor 는 손길 없이도 띄운다)
  // 켜자마자·가입 직후 화면 절반을 가리고, 닫아도 다시 그릴 때마다 또 올라왔다 — 구글·애플 버튼과 초대 링크 칸이 먼저 보여야 한다
  const f=$('#lgUser')||$('#gtTeam')||$('#jnName');if(f&&!f.value&&!NATIVE&&!matchMedia('(pointer:coarse)').matches)f.focus();
@@ -5293,8 +5356,8 @@ function arrEditModal(s,a){
   <div class="hint" style="margin-top:4px">여기서 고치면 이 곡을 넣은 <b>아직 발행 안 한 예배</b>에 따라가요. 발행한 콘티는 그대로예요.</div>
   <div class="row" style="gap:10px;margin-top:10px">
    <label class="grow"><div class="lbl">편곡 이름</div><input class="field" id="aeName" value="${esc(a.name||'기본')}" maxlength="40"></label>
-   <label><div class="lbl">키</div><input class="field mono" id="aeKey" value="${esc(a.key||'')}" maxlength="12" style="width:72px;text-align:center"></label>
-   <label><div class="lbl">전조</div><input class="field mono" id="aeMod" value="${esc(a.mod||'')}" maxlength="12" style="width:72px;text-align:center"></label>
+   <label><div class="lbl">키</div><input class="field mono" id="aeKey" data-keyin autocomplete="off" value="${esc(a.key||'')}" maxlength="12" style="width:72px;text-align:center"></label>
+   <label><div class="lbl">전조</div><input class="field mono" id="aeMod" data-keyin autocomplete="off" value="${esc(a.mod||'')}" maxlength="12" style="width:72px;text-align:center"></label>
    <label><div class="lbl">♩=</div><input class="field mono" id="aeBpm" value="${a.bpm||''}" inputmode="numeric" style="width:72px;text-align:center"></label></div>
   <div class="lbl">송폼</div><textarea class="songbar" id="aeForm" rows="2" maxlength="500">${esc(a.form||'')}</textarea>
   <div class="lbl">곡 메모</div><input class="field" id="aeNote" value="${esc(a.songNote||'')}" maxlength="300">
@@ -5305,7 +5368,9 @@ function arrEditModal(s,a){
   if(e.target.closest('#aeOk')){
    // ♩= 는 서버처럼 정수로 (20~400). 72.5 를 그대로 보내면 예전 서버는 저장 전체를 500 으로 버렸다
    const bpm=Math.round(+$('#aeBpm').value);
-   const f={name:$('#aeName').value.trim()||'기본',key:$('#aeKey').value.trim(),mod:$('#aeMod').value.trim(),
+   const key=keyFix($('#aeKey').value).trim(),mod=keyFix($('#aeMod').value).trim();
+   if(keyBad(key)||keyBad(mod)){toast(KEY_TIP);return}
+   const f={name:$('#aeName').value.trim()||'기본',key,mod,
     bpm:bpm>0?Math.min(400,Math.max(20,bpm)):null,form:$('#aeForm').value.trim(),songNote:$('#aeNote').value.trim()};
    const ok=await saveArr(s,a,f);a.updatedAt=new Date().toISOString();
    refreshFromArr();closeModal();render();if(ok!==false)toast('저장했어요')}}}
@@ -5384,7 +5449,7 @@ function newSongModal(afterAdd,into){
   <div id="nsDup"></div>
   <div class="row" style="gap:10px;margin-top:10px">
    <label class="grow"><div class="lbl">아티스트</div><input class="field" id="nsArtist" placeholder="마커스"></label>
-   <label><div class="lbl">키</div><input class="field mono" id="nsKey" placeholder="G" style="width:72px;text-align:center"></label></div>
+   <label><div class="lbl">키</div><input class="field mono" id="nsKey" data-keyin autocomplete="off" placeholder="G" maxlength="12" style="width:72px;text-align:center"></label></div>
   <div class="lbl">템포</div><div id="nsTempo">${TEMPOS.map(t=>`<button class="q" data-nst="${t}">${t}</button>`).join('')}</div>
   <div class="row" style="margin-top:18px;justify-content:flex-end;gap:6px"><button class="btn" data-close="1">취소</button><button class="btn pri" id="nsOk">${ic('plus')}만들기</button></div>`,{center:true});
  // 두 번 눌러도(느린 망에서 한 번 더) 곡은 하나 — 누르는 동안 막고, 같은 제목을 다시 보내면 같은 id 로 보낸다
@@ -5402,7 +5467,9 @@ function newSongModal(afterAdd,into){
   if(ok){const title=inp.value.trim();if(!title){toast('곡 제목을 적어 주세요');return}
    if(busy)return;busy=true;ok.disabled=true;
    if(!req||req.title!==title)req={id:songReqId(),title};
-   try{const r=await api('/songs',{method:'POST',body:{teamId:S.team.id,id:req.id,title,artist:$('#nsArtist').value.trim(),key:$('#nsKey').value.trim(),origKey:$('#nsKey').value.trim(),tempo}});
+   const key=keyFix($('#nsKey').value).trim();$('#nsKey').value=key;   // 칸을 안 떠나고 눌러도 (AND1-08)
+   if(keyBad(key)){busy=false;ok.disabled=false;toast(KEY_TIP);return}
+   try{const r=await api('/songs',{method:'POST',body:{teamId:S.team.id,id:req.id,title,artist:$('#nsArtist').value.trim(),key,origKey:key,tempo}});
     if(!songById(r.song.id))S.songs.push(r.song);save();closeModal();
     if(afterAdd)addToServiceSheet([r.song.id],null,into);else go('library/'+r.song.id)}
    catch(err){busy=false;ok.disabled=false;if(err.status>=400&&err.status<500)req=null;toast(err.message)}}}}
@@ -5943,7 +6010,7 @@ async function recurringModal(){
   <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap">
    <select class="field" id="rcWd" style="width:auto">${WD.map((w,i)=>`<option value="${i}">${w}요일</option>`).join('')}</select>
    <input class="field" id="rcLabel" placeholder="주일 오전예배" style="flex:1;min-width:120px">
-   <input class="field mono" id="rcTime" placeholder="11:00" style="width:76px;text-align:center">
+   <input class="field mono" id="rcTime" ${timeInAttr()} autocomplete="off" placeholder="11:00" style="width:76px;text-align:center">
    <button class="btn sm pri" id="rcAdd">${ic('plus')}추가</button>
   </div>
   <div class="hint" style="margin-top:12px">이름 규칙·자동 생성·정원·기본 편성·알림은 <b>팀 화면</b>에서 바꿔요.</div>
@@ -5952,7 +6019,7 @@ async function recurringModal(){
   <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap">
    <input class="field" id="mdDate" type="date" style="width:auto">
    <input class="field" id="mdLabel" placeholder="특별집회" style="flex:1;min-width:110px">
-   <input class="field mono" id="mdTime" placeholder="19:30" style="width:76px;text-align:center">
+   <input class="field mono" id="mdTime" ${timeInAttr()} autocomplete="off" placeholder="19:30" style="width:76px;text-align:center">
    <button class="btn sm" id="mdAdd">날짜 추가</button>
   </div>
   <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" id="rmClose2">닫기</button></div>`;
@@ -5961,12 +6028,12 @@ async function recurringModal(){
  show();
  $('#modal').onclick=async e=>{try{
   if(e.target.closest('#rmClose2')){closeModal();return}
-  if(e.target.closest('#rcAdd')){const label=$('#rcLabel').value.trim();if(!label){toast('예배 이름을 적어주세요');return}await api('/teams/'+S.team.id+'/recurring',{method:'POST',body:{weekday:+$('#rcWd').value,label,time:$('#rcTime').value.trim()}});await redraw();return}
+  if(e.target.closest('#rcAdd')){const label=$('#rcLabel').value.trim();if(!label){toast('예배 이름을 적어주세요');return}const time=timeFix($('#rcTime').value);if(time===null){toast(TIME_TIP);return}await api('/teams/'+S.team.id+'/recurring',{method:'POST',body:{weekday:+$('#rcWd').value,label,time}});await redraw();return}
   const off=e.target.closest('[data-recoff]');if(off){await api('/teams/'+S.team.id+'/recurring/'+off.dataset.recoff,{method:'PATCH',body:{active:false}});await redraw();return}
   const on=e.target.closest('[data-recon]');if(on){const r=data.recurring.find(x=>x.id===on.dataset.recon);await api('/teams/'+S.team.id+'/recurring/'+on.dataset.recon,{method:'PATCH',body:{label:r.label,time:r.time||'',active:true}});await redraw();return}
   const del=e.target.closest('[data-recdel]');if(del){if(!confirm('이 정기 예배와, 콘티가 없는 예정 날짜를 삭제할까요?'))return;await api('/teams/'+S.team.id+'/recurring/'+del.dataset.recdel,{method:'DELETE'});await redraw();return}
   const dt=e.target.closest('[data-dateoff]');if(dt){await api('/teams/'+S.team.id+'/dates/'+dt.dataset.dateoff,{method:'PATCH',body:{open:dt.dataset.open!=='1'}});await redraw();return}
-  if(e.target.closest('#mdAdd')){const date=$('#mdDate').value;const label=$('#mdLabel').value.trim();if(!date||!label){toast('날짜와 이름을 적어주세요');return}await api('/teams/'+S.team.id+'/dates',{method:'POST',body:{date,label,time:$('#mdTime').value.trim()}});await redraw();return}
+  if(e.target.closest('#mdAdd')){const date=$('#mdDate').value;const label=$('#mdLabel').value.trim();if(!date||!label){toast('날짜와 이름을 적어주세요');return}const time=timeFix($('#mdTime').value);if(time===null){toast(TIME_TIP);return}await api('/teams/'+S.team.id+'/dates',{method:'POST',body:{date,label,time}});await redraw();return}
  }catch(err){toast(err.message)}};
 }
 
@@ -6404,7 +6471,7 @@ function measureModal(svc,it,mi){const sc=it.score;const m=sc.measures[mi];if(!m
    <button class="q ${m.end?'':'on'}" data-mend="0">괄호 없음</button>
   </div>
   <div class="row" style="gap:6px;margin-top:8px;align-items:center"><span class="hint">이 마디부터 조 바뀜</span>
-   <input class="field mono" id="mKey" value="${esc(m.key||'')}" placeholder="없음 (예: Bb)" style="width:120px;text-align:center"></div>
+   <input class="field mono" id="mKey" data-keyin autocomplete="off" value="${esc(m.key||'')}" placeholder="없음 (예: Bb)" style="width:120px;text-align:center"></div>
   <div class="hr"></div>
   <div class="row" style="gap:6px;flex-wrap:wrap;justify-content:space-between">
    <span class="row" style="gap:6px"><button class="btn sm" id="mIns">${ic('plus')}앞에 마디</button><button class="btn sm" id="mIns2">${ic('plus')}뒤에 마디</button><button class="btn sm danger" id="mDel">${ic('trash')}이 마디 지우기</button></span>
@@ -6451,7 +6518,7 @@ function scoreInfoModal(svc,it){const sc=it.score;
   <div class="lbl">제목</div><input class="field" id="siTitle" value="${esc(sc.title||'')}" placeholder="곡 제목">
   <div class="lbl">작사·작곡</div><input class="field" id="siComp" value="${esc(sc.composer||'')}" placeholder="예: 홍길동">
   <div class="row" style="gap:10px;margin-top:10px">
-   <label class="grow"><div class="lbl">조</div><input class="field mono" id="siKey" value="${esc(sc.key||'C')}" placeholder="C · Am · Bb"></label>
+   <label class="grow"><div class="lbl">조</div><input class="field mono" id="siKey" data-keyin autocomplete="off" value="${esc(sc.key||'C')}" placeholder="C · Am · Bb"></label>
    <label class="grow"><div class="lbl">박자</div><input class="field mono" id="siTime" value="${esc(sc.time||'4/4')}" placeholder="4/4"></label>
    <label class="grow"><div class="lbl">빠르기 ♩=</div><input class="field mono" id="siTempo" value="${+sc.tempo||''}" placeholder="72" inputmode="numeric"></label>
   </div>
@@ -7220,7 +7287,7 @@ const P={audio:null,yt:null,ytReady:false,ytErr:false,t:0,dur:0,start:0,end:0,pl
  range(){const s0=P.start||0;const s1=P.end||P.dur||0;return [s0,Math.max(s1,s0+1)]},
  resumeIfPaused(){if(P.pausedByComposer){P.pausedByComposer=false;P.play()}},
  pauseForComposer(){if(P.playing){P.pause();P.pausedByComposer=true}},
- play(){P.started=true;audioFocus(true);if(P.audio)P.audio.play();else{if(!P.ytReady){toast('영상이 아직 준비되지 않았어요. 이 환경에선 임베드가 막혀 있을 수 있어요');return}ytCmd('playVideo')}},
+ play(){P.started=true;audioFocus(true);if(P.audio)P.audio.play();else{if(!P.ytReady){toast(P.ytErr?'이 영상은 여기서 재생할 수 없어요 · "유튜브에서 열기"로 보세요':'영상을 아직 불러오는 중이에요 · 잠시 뒤 다시 눌러 주세요');return}ytCmd('playVideo')}},
  pause(){audioFocus(false);if(P.audio)P.audio.pause();else ytCmd('pauseVideo');},
  seek(t){P.t=t;if(P.audio)P.audio.currentTime=t;else ytCmd('seekTo',[t,true]);updateTL()},
  toggle(){P.playing?P.pause():P.play()}
@@ -7236,6 +7303,7 @@ function ytOriginParam(){const o=location.origin||'';
 // 그 페이지가 유튜브를 넣는다(유튜브가 보는 곳은 lets1414.com). 메시지는 그 페이지가 양쪽으로 넘긴다
 const YT={relay:NATIVE?SITE+'yt.html':''};
 const YT_HINT='재생하며 "여기에 메모" — 메모를 탭하면 그 시각으로 이동';
+const YT_SLOW='영상 플레이어를 아직 불러오는 중이에요. 잠시 기다리거나, 안 되면 "유튜브에서 열기"로 보세요. 메모를 탭하면 유튜브 앱이 그 시각에서 열려요.';
 function ytEmbedSrc(id,st,en){const q=`start=${st||0}${en?'&end='+en:''}`;
  if(YT.relay)return `${YT.relay}?v=${encodeURIComponent(id)}&${q}`;
  return `https://www.youtube.com/embed/${id}?enablejsapi=1&playsinline=1&${q}&rel=0${ytOriginParam()}`}
@@ -7587,10 +7655,17 @@ async function appPushRegister(){
     openPushLink(d.link,d.teamId)});
    // 앱이 앞에 떠 있을 때 온 알림: 시스템 배너는 capacitor.config.json 의 presentationOptions 가 띄운다
    // (없으면 iOS·안드로이드 모두 아무것도 안 보여 '잠시 뒤 알림이 떠요' 시험 알림이 사라졌다). 여기서는 알림함·종만 새로
-   P.addListener('pushNotificationReceived',()=>{refreshNoti&&refreshNoti()});
+   P.addListener('pushNotificationReceived',n=>{refreshNoti&&refreshNoti();if(andApp())pushFresh((n&&n.data)||{})});
   }
   await P.register();
   return true}catch(e){console.warn('appPush',e);return false}}
+// 앱이 앞에 떠 있을 때 온 알림은 알림함·종만 새로 받아, 발행 알림이 와도 홈의 예배 목록에는 새 콘티가 1분 넘게 안 나타났다
+// (다른 탭에 갔다 와야 보였다 — AND1-12. 홈은 들어올 때만 목록을 받는다). 지금 팀의 알림이면 종류에 맞춰 목록·일정을 받고
+// 홈이면 다시 그린다. 다른 화면(편집·연습·무대)은 치는 것·재생을 끊지 않게 그대로 두고, 다음에 그릴 때 받은 것이 나온다
+function pushFresh(d){if(!online()||!NET.user||!S.team.id)return;if(d.teamId&&d.teamId!==S.team.id)return;
+ const t=String(d.type||''),home=()=>route().name==='home'&&!$('#stageWrap');
+ if(/^(publish|note\.updated)$/.test(t))retryPending().then(()=>SYNC.pullServices()).then(ch=>{if(ch&&home())render()}).catch(()=>{});
+ else if(/^(lineup\.|date\.|avail\.)/.test(t))pullSchedule(monthKey(),true).then(ch=>{if(ch&&home())render()}).catch(()=>{})}
 let APP_PUSH_TOKEN='';
 async function appPushUnregister(){
  const P=CapPlug().PushNotifications;if(!NATIVE||!P)return;
@@ -7646,18 +7721,36 @@ const pushOffKey=()=>'conti-push-off:'+((NET.user&&NET.user.id)||'');
 function pushOff(){try{return localStorage.getItem(pushOffKey())==='1'}catch(e){return false}}
 function setPushOff(v){try{if(v)localStorage.setItem(pushOffKey(),'1');else localStorage.removeItem(pushOffKey())}catch(e){}}
 // 홈을 그릴 때마다 불리지만(일정·콘티를 받고 다시 그리면 또) 등록은 한 세션·계정에 한 번이면 된다
+// 안드로이드 앱은 권한을 아직 안 물었으면 여기서 묻지 않는다. 전에는 홈이 뜨자마자 시스템 권한 창이 먼저 떠서
+// 앱 안 안내 창(pushOnboard — 알림을 켤지 · 밤에도 울리기)을 못 보고, 조용한 시간 기본값(밤 22~아침 8시 켜짐)이 그대로 걸려
+// 밤에는 푸시가 아예 안 갔다 (AND1-11). 이미 허락한 기기(업데이트 전에 허락 · 안드로이드 12 이하)는 전처럼 조용히 등록한다.
+// 아이폰 앱은 전과 같다
 function pushAuto(){const id=NET.user&&NET.user.id;if(!id||pushOff()||PUSH.auto===id)return;
+ if(NATIVE&&andApp()){PUSH.auto=id;appPushPerm().then(p=>{if(PUSH.auto!==id||pushOff())return;
+  if(p==='granted'){markAskedPush();appPushRegister()}else if(!p)appPushRegister()});return}   // 권한을 못 물었으면(플러그인 오류) 전처럼 등록한다
  if(NATIVE){PUSH.auto=id;appPushRegister();return}
  if(pushState()!=='granted')return;
  PUSH.auto=id;pushRegister().then(ok=>{if(!ok&&PUSH.auto===id)PUSH.auto=''})}   // 못 했으면 다음 홈에서 다시
 // 앱에 처음 들어올 때 한 번: 알림을 켤지 + 야간에도 울릴지
 function askedPush(){try{return localStorage.getItem('conti-push-asked')==='1'}catch(e){return true}}
 function markAskedPush(){try{localStorage.setItem('conti-push-asked','1')}catch(e){}}
+function andApp(){return NATIVE&&!!(window.Capacitor&&window.Capacitor.getPlatform&&window.Capacitor.getPlatform()==='android')}
+// 앱 알림 권한 (granted · prompt · prompt-with-rationale · denied). 못 물으면 ''
+async function appPushPerm(){const P=CapPlug().PushNotifications;if(!P||!P.checkPermissions)return '';
+ try{return ((await P.checkPermissions())||{}).receive||''}catch(e){return ''}}
+// 안드로이드에서 권한을 거절하면 다시 묻는 창이 뜨지 않는다 → 켜는 길을 알려 준다
+const PUSH_DENIED_AND='알림이 꺼져 있어요 · 휴대폰 설정 → 애플리케이션 → 1414 → 알림에서 켠 뒤 「알림 켜기」를 다시 눌러 주세요';
 async function pushOnboard(){
- if(!pushSupported()||!online()||!NET.user||pushOff())return;
- if(askedPush()||Notification.permission==='denied')return;
- if(Notification.permission==='granted'){markAskedPush();pushAuto();return}   // 홈이 이미 등록했으면 또 보내지 않는다
+ const app=andApp();   // 안드로이드 앱도 웹처럼 이 창부터 (AND1-11 — 웹뷰에는 Notification·PushManager 가 없어 여기서 멈췄다)
+ if((!app&&!pushSupported())||!online()||!NET.user||pushOff())return;
+ if(app){if(askedPush())return;
+  const perm=await appPushPerm();if(!perm||perm==='denied')return;
+  if(perm==='granted'){markAskedPush();pushAuto();return}
+  if(!NET.user||route().name!=='home'||$('#modal').firstChild)return}   // 권한을 묻는 사이 다른 화면·창으로 갔다
+ else{if(askedPush()||Notification.permission==='denied')return;
+  if(Notification.permission==='granted'){markAskedPush();pushAuto();return}}   // 홈이 이미 등록했으면 또 보내지 않는다
  await pullPrefs();
+ if(app&&(route().name!=='home'||$('#modal').firstChild||askedPush()))return;
  const q=quietOf();
  modal(`<b style="font-size:17px">알림을 받을까요?</b>
   <div class="hint" style="margin-top:6px">콘티가 발행되거나 편성·일정이 바뀌면 폰으로 알려 드려요. 앱을 켜 두지 않아도 옵니다.</div>
@@ -7671,7 +7764,7 @@ async function pushOnboard(){
    markAskedPush();setPushOff(false);closeModal();
    await savePrefs({quiet:{on:!night}});
    appPushRegister.asked=true;
-   if(NATIVE){const ok=await appPushRegister();if(ok&&NET.user)PUSH.auto=NET.user.id;toast(ok?'알림을 켰어요':'알림을 켜지 못했어요 · 휴대폰 설정에서 켤 수 있어요');render();return}
+   if(NATIVE){const ok=await appPushRegister();if(ok&&NET.user)PUSH.auto=NET.user.id;toast(ok?'알림을 켰어요':andApp()?PUSH_DENIED_AND:'알림을 켜지 못했어요 · 휴대폰 설정에서 켤 수 있어요',!ok&&andApp()?5000:0);render();return}
    let perm='denied';try{perm=await Notification.requestPermission()}catch(err){}
    if(perm==='granted'){const ok=await pushRegister();if(ok&&NET.user)PUSH.auto=NET.user.id;toast(ok?'알림을 켰어요':'알림을 켜지 못했어요')}
    else toast('브라우저에서 알림을 막았어요 · 설정에서 다시 켤 수 있어요');
@@ -7686,8 +7779,10 @@ async function nativeSetup(){
  let barNow='';
  const paintBar=async()=>{try{if(!P.StatusBar)return;
   // 로그인 화면은 테마와 상관없이 늘 어둡다 → 상태바도 어둡게 (밝은 테마 폰에서 흰 띠가 뜨던 것).
-  // 무대도 테마와 상관없이 검은 바탕이다 → 밝은 테마에서 시계·배터리가 검은 글씨로 묻혔다
-  const dark=document.documentElement.classList.contains('dark')||!NET.user||!!document.querySelector('.auth-main')||document.body.classList.contains('stgon');
+  // 무대도 테마와 상관없이 검은 바탕이다 → 밝은 테마에서 시계·배터리가 검은 글씨로 묻혔다.
+  // 로그인 화면인지는 그 화면(.auth-main)으로만 본다 — 사용자 없음(!NET.user)으로 보면 로그인 전에 연 약관(#legal)과
+  // 오프라인으로 켠 홈(서버를 못 봐 사용자가 없다)의 밝은 바탕(#FAFAFA)에 흰 시계·배터리가 묻혔다 (AND1-04)
+  const dark=document.documentElement.classList.contains('dark')||!!document.querySelector('.auth-main')||document.body.classList.contains('stgon');
   // 바뀔 때만 네이티브를 부른다. 창을 열고 닫을 때마다(html.noscroll) 같은 색을 또 불렀는데, 그 답이 브리지로 돌아오면
   // 웹뷰가 '방금 누른 손길'을 지워 곧이어 부른 공유(navigator.share · 파일 내보내기)가 거절돼 한 번 더 눌러야 했다
   const want=dark?'DARK':'LIGHT';if(barNow===want)return;barNow=want;
@@ -7701,7 +7796,12 @@ async function nativeSetup(){
  new MutationObserver(paintBar).observe(document.body,{attributes:true,attributeFilter:['class']});   // 무대(stgon)를 열고 닫을 때
  // 안드로이드 뒤로가기: 겹쳐 있는 것부터 닫고, 화면 안의 '<' 처럼 온 곳으로 돌아가고, 더 갈 데가 없으면 앱을 내린다
  try{P.App&&P.App.addListener('backButton',e=>{
-  if($('#stageWrap')&&!STG.out){stageExit();return}   // 무대에서 내보내는 중이면 미리보기부터 닫는다 (무대는 그 뒤 돌아온다)
+  // 무대: 위에 뜬 것부터 닫는다 — 메모 전문 → ⚙ 내 조판 창 → 편집의 블록 메뉴·선택 → 편집. 전에는 무엇이 떠 있든 곧바로 무대를 나갔다 (AND2-09)
+  if($('#stageWrap')&&!STG.out){
+   if(STG.memo){STG.memo=null;stageRender();return}
+   if(STG.open){STG.open=false;stageRender();return}
+   if(STG.edit){if(STG.menu||STG.sel.length){STG.menu=null;STG.sel=[];stageRender()}else stgEditOff();return}
+   stageExit();return}   // 무대에서 내보내는 중이면(STG.out) 미리보기부터 닫는다 (무대는 그 뒤 돌아온다)
   const pa=$('#printArea');if(pa){pa.remove();document.body.classList.remove('printing');return}
   if($('#modal')&&$('#modal').firstChild){closeModal();return}
   if($('#sidetool.on')){sideToolClose();return}
@@ -8821,7 +8921,9 @@ function stgEditBind(host,W,H,k){
  const up=e=>{
   if(!st)return;const b=st.b,el=st.el,moved=st.moved,rs=st.rs,grab=st.grab;st=null;
   try{el.releasePointerCapture(e.pointerId)}catch(_){}
-  if(!moved){STG.menu=STG.menu===b.id?null:b.id;STG.sel=[b.id];stageRender();return}
+  // 누른 블록을 고르고 메뉴를 연다. 바로 뒤에 오는 click 은 아래 stageClick 이 흘려보낸다 (STG.tapAt) —
+  // 안 그러면 그 click 이 '편집 중 빈 곳 탭 = 메뉴 닫기'로 읽혀 메뉴가 떴다가 곧바로 닫혔다 (AND2-03 · 태블릿 손가락 탭)
+  if(!moved){STG.menu=STG.menu===b.id?null:b.id;STG.sel=[b.id];STG.tapAt=Date.now();stageRender();return}
   if(rs){grab.forEach(({g})=>{g.w=stgSnapX(Math.max(0.08,g.w))});
    stgKeepIn(grab.map(o=>o.g),W,H,page);stgLayoutSave();stageRender();return}
   // 캔버스 밖으로 통째로 끌어내면 옆 화면으로 (하나만 끌 때)
@@ -9247,7 +9349,9 @@ function stageClick(e){
   if(e.target.closest('.stgpop'))return;
   // '내 조판' 창이 떠 있으면 바깥 탭은 창만 닫는다 (화면은 안 넘긴다). 화면이 하나면 닫을 길이 톱니뿐이었다
   if(STG.open){STG.open=false;stageRender();return}
-  if(STG.edit){if(STG.menu){STG.menu=null;stageRender()}return}
+  // 블록을 누른 끝의 click(블록 위 · 방금 누름)은 메뉴를 닫지 않는다 — 블록 누르기는 pointerdown·up 이 맡았다.
+  // 블록 밖 빈 곳은 pointerdown 이 이미 닫는다 (캔버스 바깥 여백의 탭만 여기서)
+  if(STG.edit){if(e.target.closest('[data-sid]')||Date.now()-(STG.tapAt||0)<400)return;if(STG.menu){STG.menu=null;stageRender()}return}
   // 폰처럼 띠가 좁아 메모가 … 로 줄었거나 띠 밖으로 밀렸으면, 그 띠를 탭해 전문을 본다 (띠에는 끝까지 읽을 길이 없었다).
   // 다 보이는 띠는 전처럼 탭 = 다음 화면
   const ps=e.target.closest('.pstrip[data-tid]');
@@ -9755,6 +9859,7 @@ document.addEventListener('keydown',e=>{
  if(e.key==='Enter'&&e.target.id==='ytUrl'){e.preventDefault();const b=$('[data-act="add-yt"]');b&&b.click();return}
  if(e.key==='Enter'&&e.target.dataset&&e.target.dataset.tl==='text'){e.preventDefault();const b=e.target.closest('.tlEdit').querySelector('[data-act="add-tnote"]');b&&b.click();return}
  if(e.key==='Enter'&&e.target.id==='cText'){e.preventDefault();const b=$('#cSave');b&&b.click();return}
+ if(e.key==='Enter'&&e.target.id==='customLabel'){e.preventDefault();const b=$('#customOk');b&&b.click();return}   // 마커 라벨 직접 입력: 자판의 → 키 = 확인 (AND2-14)
  if(route().name!=='play'||$('#modal').firstChild)return;const tag=(e.target.tagName||'').toLowerCase();if(tag==='input'||tag==='textarea'||tag==='select')return;
  // 무대 모드가 열려 있으면 그쪽(stageKey)이 화살표를 맡는다. 여기서 또 처리하면
  // 틀지도 않은 영상이 재생되거나 엉뚱한 데로 감긴다
@@ -9763,6 +9868,9 @@ document.addEventListener('keydown',e=>{
  else if(PL.stage&&(e.key==='PageDown'||e.key==='PageUp')){e.preventDefault();navSong(e.key==='PageDown'?1:-1)}
 });
 document.addEventListener('click',async e=>{
+ // 체크 칸 이름표 안의 링크(가입 동의 줄의 '이용약관'·'개인정보처리방침')를 누르면 이름표가 체크까지 뒤집었다 — 약관을 보러 가는 순간
+ // 동의가 풀려, 돌아오면 체크가 빠져 있었다 (AND1-10). 링크만 열고 체크는 그대로 둔다 (기다리기 전에 막아야 먹는다)
+ if(e.target.closest('label a[data-act]'))e.preventDefault();
  // 종 드롭다운은 바깥을 누르면 닫는다 (§5 드롭다운)
  if(NOTI.open&&!e.target.closest('.bellwrap')){NOTI.open=false;render();return}
  // 코드 차트 셀 탭 → 고치기 (편집기에서만)

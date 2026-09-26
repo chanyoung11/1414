@@ -26,10 +26,16 @@
  f.allow='autoplay; encrypted-media; picture-in-picture; fullscreen';
  f.allowFullscreen=true;
  document.body.appendChild(f);
- // 앱이 보낸 'listening' 은 유튜브가 뜨기 전에 올 수 있다 → 유튜브가 뜨면 이쪽에서 한 번 더 보낸다
- f.onload=function(){try{f.contentWindow.postMessage(JSON.stringify({event:'listening',id:1,channel:'widget'}),'*')}catch(e){}};
+ // 앱이 보낸 'listening' 은 유튜브가 뜨기 전에 올 수 있고, 뜬 뒤에도 유튜브 플레이어가 준비되기 전에 닿으면 버려진다
+ // (새 기기의 첫 열기에서 재생·시간 줄이 끝까지 멈춰 있었다 — AND2-07) → 공식 IFrame API 처럼 유튜브가 답할 때까지 0.4초마다 다시 보낸다
+ var ready=false,tries=0;
+ var listen=function(){try{f.contentWindow.postMessage(JSON.stringify({event:'listening',id:1,channel:'widget'}),'*')}catch(e){}};
+ f.onload=listen;
+ var lt=setInterval(function(){if(ready||++tries>150){clearInterval(lt);return}listen()},400);
  window.addEventListener('message',function(e){
-  if(e.source===f.contentWindow){if(parent!==window)parent.postMessage(e.data,'*');return}   // 유튜브 → 앱
+  if(e.source===f.contentWindow){
+   if(!ready){try{var d=typeof e.data==='string'?JSON.parse(e.data):e.data;if(d&&(d.event==='onReady'||d.event==='initialDelivery'||d.event==='onError'))ready=true}catch(err){}}
+   if(parent!==window)parent.postMessage(e.data,'*');return}   // 유튜브 → 앱
   if(e.source===parent&&parent!==window){try{f.contentWindow.postMessage(e.data,'*')}catch(err){}}   // 앱 → 유튜브
  });
 })();

@@ -143,6 +143,8 @@ async function aiPool(kind, uid) {
 }
 const MAX_TEAMS_PER_USER = 20;   // 요금제가 아니라 스팸·비용 사고 방지선
 const KST_DAY = `(now() at time zone 'Asia/Seoul')::date`;
+// 한국 날짜 (YYYY-MM-DD). toISOString 은 UTC 라 오전 9시 전에는 전날이 된다
+const kstDate = (t = Date.now()) => new Date(+new Date(t) + 9 * 3600e3).toISOString().slice(0, 10);
 const aiCap = (prefix, table, kind, dflt) => +process.env[prefix + kind.toUpperCase()] || table[kind] || dflt;
 // 부르기 전에 한도 안에서 n 번 쓸 자리를 먼저 잡는다 (전체 → 팀 → 사람, 한 문장씩 원자적으로).
 // 전에는 세어 보고(select) 부른 뒤에 더해서, 동시에 보내면 모두 '아직 여유'를 보고 통과했다 (한도 60 에 128번)
@@ -2311,7 +2313,7 @@ on('POST', '/share', async ({ uid, body }) => {
   for (const id of ids) songs.push(await sharePayloadOf(teamId, id, ids.length === 1 ? str(body.arrId, 64) : ''));
   const days = [7, 30, 90].includes(+body.days) ? +body.days : 30;
   const payload = { v: 1, kind: ids.length > 1 ? 'bundle' : 'song', songs,
-    from: { team: m.name, at: new Date().toISOString().slice(0, 10) } };
+    from: { team: m.name, at: kstDate() } };   // 한국 날짜 — UTC 로 적으면 오전 9시 전에 만든 코드가 '전날에서 보냈어요'로 보였다 (AND2-12)
   let code = shareCode();
   for (let i = 0; i < 5 && await one('select code from share_codes where code=$1', [code]); i++) code = shareCode();
   await q(`insert into share_codes(code, team_id, created_by, payload, kind, max_uses, expires_at)
@@ -2363,7 +2365,9 @@ on('GET', '/share/:code', async ({ uid, params }) => {
   if (r.revoked_at) throw notFound('이 코드는 회수됐어요');
   if (new Date(r.expires_at) < new Date()) throw notFound('이 코드는 기한이 지났어요');
   if (r.max_uses != null && r.uses >= r.max_uses) throw notFound('이 코드는 이미 다 쓰였어요');
-  return { payload: r.payload, uses: r.uses, maxUses: r.max_uses, expiresAt: r.expires_at };
+  // 보낸 날짜는 만든 시각의 한국 날짜로 — 전에 UTC 날짜로 적어 둔 코드(오전 9시 전에 만든 것)도 바르게 보인다 (AND2-12)
+  const payload = r.payload && r.payload.from && r.created_at ? { ...r.payload, from: { ...r.payload.from, at: kstDate(r.created_at) } } : r.payload;
+  return { payload, uses: r.uses, maxUses: r.max_uses, expiresAt: r.expires_at };
 });
 // 담기: 곡·편곡·고정 메모·유튜브 링크를 내 팀에 만든다
 on('POST', '/share/:code/take', async ({ uid, params, body }) => {
