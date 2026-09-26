@@ -1766,7 +1766,8 @@ function sheetDrag(ov){const sh=ov.firstChild;let d=null,idle=0;
   const t=e.touches[0];d={x0:t.clientX,y0:t.clientY,py:t.clientY,pt:e.timeStamp,v:0,on:false}},{passive:true});
  ov.addEventListener('touchmove',e=>{if(!d)return;if(e.touches.length!==1){back();return}
   const t=e.touches[0],dx=t.clientX-d.x0,dy=t.clientY-d.y0;
-  if(e.timeStamp>d.pt){d.v=(t.clientY-d.py)/(e.timeStamp-d.pt);d.py=t.clientY;d.pt=e.timeStamp}
+  // 손가락 자리(py)는 늘 적는다 — 같은 시각 도장의 이벤트가 이어지면(빠르게 몰린 touchmove) 자리가 처음에 머물러, touchend 없이 끝낸 끌기가 멀리 끌었어도 제자리로 돌아왔다
+  if(e.timeStamp>d.pt){d.v=(t.clientY-d.py)/(e.timeStamp-d.pt);d.pt=e.timeStamp}d.py=t.clientY;
   if(!d.on){if(dy<-8||Math.abs(dx)>Math.max(10,dy)){d=null;return}   // 위로(안쪽 스크롤)·옆으로(가로 목록)는 놓아준다
    if(dy<10)return;d.on=true;sh.style.animation='none';sh.style.transition='none'}   // 올라오는 중이어도 손가락을 따른다
   sh.style.transform=`translate3d(0,${Math.max(0,dy)}px,0)`;
