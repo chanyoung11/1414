@@ -52,6 +52,8 @@ def open_print(pg, sid):
     pg.click('#pvGo'); pg.wait_for_selector('#printArea.pv .ppage', timeout=15000); pg.wait_for_timeout(500)
 
 def open_stage(pg, sid):
+    # 무대에서 내보낸 뒤 미리보기를 닫으면 보던 무대로 돌아온다(E9) — 남아 있으면 닫고 콘티 보기에서 다시 연다
+    pg.evaluate("document.getElementById('stageWrap')&&CONTI.stageExit()")
     pg.goto(URL + '#/view/' + sid)
     pg.wait_for_selector('[data-act="play"][data-stage="1"]', timeout=10000); pg.wait_for_timeout(800)
     pg.click('[data-act="play"][data-stage="1"]')
@@ -268,6 +270,7 @@ def run():
             if x['of'] != 'hidden': fail('G36 화면 칸이 넘친 부분을 자르지 않음: %s' % x)
             if x['left'] < 40 or x['top'] < 40 or x['right'] < 40 or x['gapToFoot'] < 0: fail('G36 화면 칸이 여백·쪽번호를 침범: %s' % x)
         pg.click('#printArea [data-pv="close"]'); pg.wait_for_timeout(300)
+        pg.evaluate("document.getElementById('stageWrap')&&CONTI.stageExit()")   # 미리보기를 닫으면 무대로 돌아온다(E9) — 닫고 다음으로
         print('G36 ok — 종이에서도 화면 칸에서 잘림')
 
         # ---- F140: 송폼 블록뿐인 조판 (악보 없는 곡들) — 숨김 모드에서도 편집이 된다 ----
@@ -338,6 +341,7 @@ def run():
             if q['px'] < -0.5: fail('G36 무대에서 다 보이던 %s 상자가 종이에서 %.1fpx 잘림' % (q['c'], -q['px']))
             if max(abs(s[k] - q[k]) for k in 'ltrb') > 0.004: fail('G36 종이의 상자 자리·크기가 무대와 다름: 무대 %s · 종이 %s' % (s, q))
         pg.click('#printArea [data-pv="close"]'); pg.wait_for_timeout(300)
+        pg.evaluate("document.getElementById('stageWrap')&&CONTI.stageExit()")   # 무대로 돌아온다(E9) — 닫고 다음으로
         print('G36 ok — 큰 화면에서도 종이가 무대와 같은 비율 · 아래끝 상자가 잘리지 않음')
 
         # 자동 조판도 같다 — 악보 없는 12곡을 큰 화면에 자동으로 쌓으면 맨 아래 송폼 상자가 종이에서 잘리고(8px),

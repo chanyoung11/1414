@@ -52,6 +52,8 @@ def publish(pg):
     pg.click('#pubOnly'); pg.wait_for_timeout(3000)
 
 def open_stage(pg, sid):
+    # 무대에서 내보낸 뒤 미리보기를 닫으면 보던 무대로 돌아온다(E9) — 남아 있으면 닫고 콘티 보기에서 다시 연다
+    pg.evaluate("document.getElementById('stageWrap')&&CONTI.stageExit()")
     pg.goto(URL + '#/view/' + sid)
     pg.wait_for_selector('[data-act="play"][data-stage="1"]', timeout=15000); pg.wait_for_timeout(900)
     pg.click('[data-act="play"][data-stage="1"]')

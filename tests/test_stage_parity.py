@@ -222,6 +222,7 @@ def run():
         pg.wait_for_selector('#printArea.pv .ppage', timeout=15000); pg.wait_for_timeout(600)
         check_view('무대 내보내기', pg.evaluate(PROBE, '#printArea'), P0)
         close_print(pg)
+        close_stage(pg)   # 미리보기를 닫으면 보던 무대로 돌아온다 (E9) — 무대를 닫고 다음으로
 
         # ---------- 무대: 편집 중 · 손으로 고친 조판 ----------
         open_stage(pg, sid)

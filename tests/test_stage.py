@@ -88,13 +88,15 @@ def run():
         pg.evaluate("()=>{CONTI.STG.pref.form='block';window.dispatchEvent(new Event('resize'))}"); pg.wait_for_timeout(500)
         print('곡 이동 ok:', bar)
 
-        # ---- ⚙ 내 조판: 크기 키우면 화면이 나뉜다 · 그 곡에만 저장 ----
+        # ---- ⚙ 내 조판: 크기 바꾸기 · 그 곡에만 저장 ----
+        # ＋ 는 열 폭(자동 최대 — 곡이 다 열 폭이면 ×1.0)까지만 오른다 (그 위로는 숫자만 오르고 화면은 그대로였다 — C9).
+        # 여기 곡들은 이미 열 폭이라 − 로 줄여 저장을 본다
         open_pop(pg)
         z0 = pg.evaluate("CONTI.STG.pref.zoom")
         for _ in range(4):
-            pg.click('[data-stg="z"][data-d="1"]'); pg.wait_for_timeout(350)
+            pg.click('[data-stg="z"][data-d="-1"]'); pg.wait_for_timeout(350)
         z1 = pg.evaluate("CONTI.STG.pref.zoom")
-        if not (z1 > z0): fail('크기 키우기가 안 먹음: %s → %s' % (z0, z1))
+        if not (z1 < z0): fail('크기 줄이기가 안 먹음: %s → %s' % (z0, z1))
         print('크기 조절 ok: ×%.1f → ×%.1f, %d화면' % (z0, z1, screens()))
 
         # 인수 10: 이 조판은 그 예배·그 기기·그 사람에게만 (v2 — 한 화면에 여러 곡)
@@ -132,6 +134,9 @@ def run():
         if want and got != want: fail('화면 %s개인데 종이는 %d장 (화면 = 쪽)' % (want, got))
         print('종이 결과가 화면 설정과 같음 ok — %d장' % got)
         pg.click('[data-pv="close"]'); pg.wait_for_timeout(400)
+        # 미리보기를 닫으면 보던 무대로 돌아온다 (전에는 무대가 닫혀 연습 화면에 떨어졌다 — E9)
+        if not pg.locator('#stageWrap .stgpage').is_visible(): fail('내보내기 미리보기를 닫았는데 무대로 안 돌아옴')
+        pg.keyboard.press('Escape'); pg.wait_for_timeout(500)
 
         # ---- 세로(iPad 세로)에서도 한 화면 ----
         pg.set_viewport_size({'width':820,'height':1180})

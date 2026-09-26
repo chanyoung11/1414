@@ -231,6 +231,7 @@ def export_pages(pg):
     n = pg.locator('#printArea .ppage').count()
     blank = pg.evaluate("[...document.querySelectorAll('#printArea .ppage')].filter(p=>!p.querySelector('.blk,.pslice,.pstrip')).length")
     pg.click('#printArea [data-pv="close"]'); pg.wait_for_timeout(400)
+    pg.evaluate("document.getElementById('stageWrap')&&CONTI.stageExit()")   # 미리보기를 닫으면 무대로 돌아온다(E9) — 전처럼 닫고 뒤에서 다시 연다
     return n, blank
 
 def clean(pg, what, songs=None):
@@ -490,6 +491,7 @@ def export_all(pg):
     r = pg.evaluate(r"""()=>[...document.querySelectorAll('#printArea .ppage')].map(p=>[p.querySelectorAll('.pslice').length,p.querySelectorAll('.pstrip').length,
       p.querySelectorAll('.blk').length,p.innerText.replace(/\s+/g,' ').trim()])""")
     pg.click('#printArea [data-pv="close"]'); pg.wait_for_timeout(400)
+    pg.evaluate("document.getElementById('stageWrap')&&CONTI.stageExit()")   # 미리보기를 닫으면 무대로 돌아온다(E9) — 전처럼 닫고 뒤에서 다시 연다
     return r
 
 def trash_rec(pg):
