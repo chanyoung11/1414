@@ -127,9 +127,9 @@ def signup(pg, user, name):
     pg.check('#lgAgree')
     pg.fill('#lgName', name); pg.fill('#lgUser', user); pg.fill('#lgPass', 'secret1'); pg.click('[data-act="lg-submit"]')
 
-def new_team_service(pg, user, svc):
+def new_team_service(pg, user, svc, sess='건반'):
     signup(pg, user, '하은')
-    pg.wait_for_selector('#gtTeam'); pg.fill('#gtTeam', '무대팀'); pg.click('#gtSess .q:has-text("건반")'); pg.click('[data-act="team-create"]')
+    pg.wait_for_selector('#gtTeam'); pg.fill('#gtTeam', '무대팀'); pg.click('#gtSess .q:has-text("%s")' % sess); pg.click('[data-act="team-create"]')
     pg.wait_for_selector('.shell[data-page]', timeout=10000)
     pg.click('[data-act="new-svc"]'); pg.wait_for_selector('[data-f="svc.name"]', timeout=8000)
     pg.fill('[data-f="svc.name"]', svc)
@@ -492,7 +492,8 @@ def export_all(pg):
       p.querySelectorAll('.blk').length,p.innerText.replace(/\s+/g,' ').trim()])""")
     pg.click('#printArea [data-pv="close"]'); pg.wait_for_timeout(400)
     pg.evaluate("document.getElementById('stageWrap')&&CONTI.stageExit()")   # 미리보기를 닫으면 무대로 돌아온다(E9) — 전처럼 닫고 뒤에서 다시 연다
-    return r
+    # 바닥글의 세션 이름은 견주지 않는다 — 인도자는 인쇄 목록에 없어 이제 '전체'로 찍힌다(C6 · main 은 '인도자'). 쪽·조각·블록은 그대로 견준다
+    return [x[:3] + [re.sub(r' · (인도자|전체) (\d+ / \d+)', r' · 세션 \2', x[3])] for x in r]
 
 def trash_rec(pg):
     # 🗑 을 누르고 [알림, 조판]
@@ -516,7 +517,8 @@ def run2_build(who, base, box):
                     lambda r: r.fulfill(status=200, content_type='text/html; charset=utf-8', body=base))
         pg = c.new_page()
         errs = []; pg.on('pageerror', lambda e: errs.append(repr(e)[:200])); pg.on('dialog', lambda d: d.accept())
-        new_team_service(pg, ('sm' if base is not None else 'sn') + tag, '10/5 주일')
+        # main 은 팀 만들기에서 고른 세션을 무시하고 늘 '인도자'로 만든다(A1 고치기 전) — 두 앱의 내 세션(내보내기 바닥글에 찍힘)이 같게 인도자로 고른다
+        new_team_service(pg, ('sm' if base is not None else 'sn') + tag, '10/5 주일', '인도자')
         if pg.evaluate(HAS_FIX) != (base is None): fail('준비: %s 앱이 아님 (빈 화면 고침 %s)' % (who, pg.evaluate(HAS_FIX)))
         add_song(pg, '하나'); add_song_bare(pg, '둘'); add_song(pg, '셋'); add_song(pg, '넷')
         sid = pg.evaluate("CONTI.S.services[0].id")
