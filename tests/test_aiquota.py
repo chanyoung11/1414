@@ -3,13 +3,22 @@
 # - 같은 달에 같은 곡을 다시 인식해도 더 차감하지 않는다
 # - 한도를 넘으면 402 ai_limit 로 막힌다
 # ENFORCE_PLAN=1 일 때만 의미가 있으므로, 꺼져 있으면 건너뛴다
-import os, sys, time, json
+import os, sys, time, json, subprocess
 from playwright.sync_api import sync_playwright
 
 URL = os.environ.get('CONTI_URL', 'http://localhost:8766/')
 tag = str(int(time.time()))[-6:]
 H = {'x-conti': '1'}
 def fail(m): print('FAIL:', m); sys.exit(1)
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB = os.environ.get('CONTI_DB') or os.environ.get('DATABASE_URL') or 'postgres://postgres:pg@localhost:54329/postgres'
+# 처음 만든 팀은 7일 Pro 체험(2026-09-27)이다. 이 검사는 무료 한도를 보므로 만든 팀을 무료로 돌린다 (CONTI_DB 는 서버와 같은 DB)
+def free_team(team_id):
+  js = """import('pg').then(async ({default:pg})=>{const c=new pg.Client({connectionString:process.env.DB});await c.connect();
+    await c.query("update teams set plan='free', plan_until=null, plan_source=null where id=$1",[process.env.TEAM]);console.log('{}');await c.end()})
+    .catch(e=>{console.log(JSON.stringify({error:e.message}));process.exit(1)})"""
+  out = subprocess.run(['node', '-e', js], cwd=ROOT, capture_output=True, text=True, env={**os.environ, 'DB': DB, 'TEAM': team_id})
+  if out.returncode != 0: fail('팀을 무료로 못 돌림 (CONTI_DB 확인): %s %s' % (out.stdout[-200:], out.stderr[-200:]))
 
 def run():
   with sync_playwright() as p:
@@ -24,6 +33,7 @@ def run():
     L.wait_for_selector('#gtTeam', timeout=8000); L.fill('#gtTeam', '한도팀'); L.click('[data-act="team-create"]')
     L.wait_for_selector('.shell[data-page]', timeout=8000)
     team = L.evaluate('CONTI.S.team.id')
+    free_team(team)
 
     health = ctx.request.get(URL + 'api/health').json()
     if not health.get('enforcePlan'):

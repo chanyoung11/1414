@@ -2,13 +2,23 @@
 #  - 인도자만 쓸 수 있다
 #  - 같은 팀이 같은 코드를 두 번 못 쓴다
 #  - 한도가 유료 기준으로 바뀐다
-import os, sys, time, json
+import os, sys, time, json, subprocess
 from playwright.sync_api import sync_playwright
 
 URL = os.environ.get('CONTI_URL', 'http://localhost:8766/')
 CODE = os.environ.get('PROMO_CODE', 'TEST30')
 tag = str(int(time.time()))[-6:]
 def fail(m): print('FAIL:', m); sys.exit(1)
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB = os.environ.get('CONTI_DB') or os.environ.get('DATABASE_URL') or 'postgres://postgres:pg@localhost:54329/postgres'
+# 처음 만든 팀은 7일 Pro 체험(2026-09-27)이다. 이 검사는 무료 팀에 코드를 넣으므로 만든 팀을 무료로 돌린다
+# (CONTI_DB 는 서버와 같은 DB. 체험 위에 넣는 코드는 tests/test_plans_trial.py)
+def free_team(team_id):
+  js = """import('pg').then(async ({default:pg})=>{const c=new pg.Client({connectionString:process.env.DB});await c.connect();
+    await c.query("update teams set plan='free', plan_until=null, plan_source=null where id=$1",[process.env.TEAM]);console.log('{}');await c.end()})
+    .catch(e=>{console.log(JSON.stringify({error:e.message}));process.exit(1)})"""
+  out = subprocess.run(['node', '-e', js], cwd=ROOT, capture_output=True, text=True, env={**os.environ, 'DB': DB, 'TEAM': team_id})
+  if out.returncode != 0: fail('팀을 무료로 못 돌림 (CONTI_DB 확인): %s %s' % (out.stdout[-200:], out.stderr[-200:]))
 
 def run():
   with sync_playwright() as p:
@@ -24,6 +34,7 @@ def run():
 
     if not L.evaluate("CONTI.NET.enforcePlan"):
       print('SKIP — ENFORCE_PLAN 이 꺼져 있음'); b.close(); return
+    free_team(L.evaluate("CONTI.S.team.id")); L.reload(); L.wait_for_selector('.shell[data-page]', timeout=8000); L.wait_for_timeout(800)
 
     L.evaluate("()=>location.hash='#/settings'"); L.wait_for_timeout(1500)
     L.click('[data-act="set-tab"][data-t="plan"]'); L.wait_for_timeout(2500)

@@ -217,6 +217,8 @@ async function meView(uid) {
   // 비활성인 팀은 목록에 넣지 않는다. 다만 그 팀뿐이면 왜 안 보이는지 알려 준다 (B.4.3)
   const live = rows.filter((r) => r.active !== false);
   const out = { user: { id: u.id, username: u.username, name: u.display_name, agreedVer: u.agreed_ver || '', legalVer: LEGAL_VERSION }, team: live[0] ? viewOf(live[0]) : null, teams: live.map(viewOf) };
+  // 운영자면 웹 설정에 '운영자 화면' 길을 연다 (앱에서는 화면이 숨기고, 서버도 /admin/* 를 앱에서 받지 않는다)
+  if (isAdminName(u.username)) out.user.admin = true;
   if (!live.length && rows.length) {
     // 스스로 나간 팀만 남았으면 막힌 게 아니다 — 팀이 없는 사람처럼 새 팀을 만들거나 초대로 들어간다.
     // 나가기도 비활성(active=false)으로 남기므로 기록(team_audit)의 마지막 동작으로 가른다. 기록이 없으면 예전처럼 막힘으로 본다
@@ -771,6 +773,31 @@ on('PATCH', '/me', async ({ uid, body }) => {
   return viewOf(await membership(uid, teamId));
 });
 
+// 7일 Pro 체험 (2026-09-27 운영자 결정). 처음 팀을 만드는 사람의 그 팀만, 한 사람에 한 번 (users.trial_at).
+// 받았다고 적는 것과 팀을 만드는 것을 한 문장으로 한다 — 동시에 두 팀을 만들어도 한 팀만 받는다.
+// 팀을 지우고 다시 만들거나 다른 팀에 들어가도 다시 받지 않는다. TRIAL_DAYS=0 이면 끈다 (기본 7)
+const trialDays = () => {
+  const v = process.env.TRIAL_DAYS;
+  const n = v == null || v === '' ? 7 : Math.round(+v);
+  return Number.isFinite(n) ? Math.max(0, Math.min(30, n)) : 7;
+};
+async function createTeamRow(name, uid) {
+  const days = trialDays();
+  try {
+    return await one(`with tr as (update users set trial_at=now() where id=$3 and trial_at is null and $4::int > 0 returning 1)
+      insert into teams(name, invite_token, created_by, plan, plan_until, plan_source)
+      select $1, $2, $3,
+             case when exists (select 1 from tr) then 'pro' else 'free' end,
+             case when exists (select 1 from tr) then now() + make_interval(days => $4::int) end,
+             case when exists (select 1 from tr) then 'trial' end
+      returning *`, [name, randomToken(12), uid, days]);
+  } catch (e) {
+    // 스키마(users.trial_at)를 아직 안 깐 채 배포됐으면 체험 없이 예전처럼 만든다 — 팀 만들기가 500 이 되지 않게
+    if (!e || e.code !== '42703') throw e;
+    console.error('trial: users.trial_at 없음 — node scripts/migrate.mjs 를 돌려 주세요');
+    return one('insert into teams(name, invite_token, created_by) values($1,$2,$3) returning *', [name, randomToken(12), uid]);
+  }
+}
 on('POST', '/teams', async ({ uid, body }) => {
   if (!uid) throw noAuth();
   const name = str(body.name, 60), myName = str(body.myName, 40);
@@ -780,7 +807,7 @@ on('POST', '/teams', async ({ uid, body }) => {
   if (ENFORCE_PLAN && owned.n >= PLAN.free.teamsOwned) throw new HttpError(402, 'plan_limit', `무료로는 팀을 ${PLAN.free.teamsOwned}개까지 만들 수 있어요`);
   // 요금제가 꺼져 있어도 이건 막는다 — 팀을 늘려 팀당 AI 한도를 우회하는 것을 방지
   if (owned.n >= MAX_TEAMS_PER_USER) throw new HttpError(429, 'too_many_teams', '팀을 너무 많이 만들었어요');
-  const t = await one('insert into teams(name, invite_token, created_by) values($1,$2,$3) returning *', [name, randomToken(12), uid]);
+  const t = await createTeamRow(name, uid);
   const session = pickSession(t, str(body.session, 40) || '인도자');
   await q('insert into members(user_id, team_id, name, session, sessions, role) values($1,$2,$3,$4,$5,$6)', [uid, t.id, myName, session, [session], 'leader']);
   // 만들자마자 쓸 수 있는 기본 초대 링크 하나 (역할 멤버·만료 없음·무제한)
@@ -3051,8 +3078,11 @@ on('POST', '/promo/redeem', async ({ uid, body }) => {
   await requireMember(uid, teamId, 'leader');   // 인도자만
   const code = str(body.code, 40).trim().toUpperCase();
   if (!code) throw bad('코드를 입력해 주세요');
+  // 코드를 하나씩 넣어 보며 맞히지 못하게 사람마다 15분에 20번까지 (운영자 화면에서 긴 코드를 만들기 시작했다)
+  await takeAttempt([[`promo:${uid}`, 20]], '코드를 너무 여러 번 넣었어요. 15분 뒤에 다시 해 주세요');
   const c = await one('select * from promo_codes where upper(code)=$1', [code]);
   if (!c) throw new HttpError(404, 'bad_code', '없는 코드예요');
+  if (c.disabled_at) throw bad('더 이상 쓸 수 없는 코드예요');
   if (c.expires_at && new Date(c.expires_at) < new Date()) throw bad('기간이 지난 코드예요');
   if (c.used >= c.max_uses) throw bad('이미 다 쓰인 코드예요');
   if (await one('select 1 from promo_redemptions where code=$1 and team_id=$2', [c.code, teamId]))
@@ -3077,7 +3107,7 @@ on('POST', '/promo/redeem', async ({ uid, body }) => {
   try {
     row = await one(`with u as (
         update promo_codes set used = used + 1
-        where code=$1 and used < max_uses and (expires_at is null or expires_at > now())
+        where code=$1 and used < max_uses and (expires_at is null or expires_at > now()) and disabled_at is null
         returning code, plan, days
       ), r as (
         insert into promo_redemptions(code, team_id, user_id, days) select code, $2::uuid, $3::uuid, days from u returning code
@@ -3097,6 +3127,119 @@ on('POST', '/promo/redeem', async ({ uid, body }) => {
   if (!row) throw bad('이미 다 쓰인 코드예요');
   await audit(teamId, uid, 'promo.redeem', c.code, { plan: row.plan, days: c.days });
   return { plan: row.plan, days: c.days, until: row.until };
+});
+
+/* ---------- 운영자 화면 (웹 lets1414.com/#/admin 전용) ---------- */
+// 운영자는 서버 환경변수 ADMIN_USERS 에 적은 아이디(쉼표로 여럿)다. 비어 있으면 아무도 아니다.
+// 지인 팀에 무료 코드를 만들어 주고, 코드 없이 바로 플랜을 줄 때 쓴다.
+// 앱(iOS·Android)에서는 열지 않는다 — 스토어 정책(App Store 3.1.1 · Google Play 결제 정책)상 앱 안에서 우리 코드로
+// 유료 기능을 여는 길을 보이면 안 된다. 앱 화면은 숨기고, 서버도 앱이 보낸 요청(x-conti-app)은 받지 않는다
+const isAdminName = (username) => !!username && String(process.env.ADMIN_USERS || '').split(',')
+  .map((s) => s.trim().toLowerCase()).filter(Boolean).includes(String(username).toLowerCase());
+// /admin/* 는 부를 때마다 여기부터 — 운영자인지 매번 다시 본다 (세션만 믿지 않는다).
+// 운영자가 아니어도 센다(두드려 보기 막기): 15분에 읽기 300번 · 쓰기 60번
+async function requireAdmin(req, uid, write) {
+  if (!uid) throw noAuth();
+  await takeAttempt([[`admin${write ? 'w' : 'r'}:${uid}`, write ? 60 : 300]], '운영자 요청이 너무 많아요. 15분 뒤에 다시 해 주세요');
+  if (isApp(req)) throw forbidden('운영자 화면은 웹에서만 열 수 있어요');
+  const u = await one('select id, username from users where id=$1', [uid]);
+  if (!u || !isAdminName(u.username)) throw forbidden('운영자만 쓸 수 있어요');
+  return u;
+}
+// 운영자 동작은 DB(admin_audit)와 서버 로그 둘 다에 남긴다
+async function adminAudit(actorId, action, target, meta) {
+  console.log('[admin]', action, target || '', JSON.stringify(meta || {}));
+  try { await q('insert into admin_audit(actor_id, action, target, meta) values($1,$2,$3,$4)', [actorId, action, target ? String(target) : null, JSON.stringify(meta || {})]); }
+  catch (e) { console.error('admin audit', e.message); }
+}
+// 헷갈리는 글자(0/O, 1/I)를 뺀 32자 — scripts/promo.mjs 와 같은 글자. 운영자 화면 코드는 10자
+const CODE_ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const genCode = (n = 10) => Array.from(randomBytes(n)).map((b) => CODE_ABC[b % 32]).join('');
+const codeView = (r) => ({
+  code: r.code, plan: r.plan, days: r.days, maxUses: r.max_uses, used: r.used, note: r.note || '',
+  expiresAt: r.expires_at || null, createdAt: r.created_at, disabledAt: r.disabled_at || null,
+  redeemed: (Array.isArray(r.redeemed) ? r.redeemed : []).map((x) => ({ teamId: x.teamId, team: x.team || '(지워진 팀)', at: x.at })),
+});
+const CODES_SQL = `select c.*, coalesce((select json_agg(json_build_object('teamId', r.team_id, 'team', t.name, 'at', r.created_at) order by r.created_at)
+                    from promo_redemptions r left join teams t on t.id=r.team_id where r.code=c.code), '[]'::json) as redeemed
+                  from promo_codes c`;
+on('GET', '/admin/codes', async ({ req, uid }) => {
+  await requireAdmin(req, uid, false);
+  const rows = await q(`${CODES_SQL} order by c.created_at desc limit 300`);
+  return { codes: rows.map(codeView) };
+});
+// 코드 만들기: 플랜(pro·plus) · 기간(1~3650일) · 쓸 수 있는 팀 수(1~1000) · 메모. 코드는 비우면 새로 만든다
+on('POST', '/admin/codes', async ({ req, uid, body }) => {
+  const a = await requireAdmin(req, uid, true);
+  const plan = str(body.plan, 10), days = +body.days, uses = body.uses == null || body.uses === '' ? 1 : +body.uses;
+  const note = str(body.note, 100);
+  if (!['pro', 'plus'].includes(plan)) throw bad('플랜은 Pro 또는 Pro Plus 예요');
+  if (!Number.isInteger(days) || days < 1 || days > 3650) throw bad('기간은 1~3650일이에요');
+  if (!Number.isInteger(uses) || uses < 1 || uses > 1000) throw bad('쓸 수 있는 팀 수는 1~1000이에요');
+  const want = str(body.code, 40).toUpperCase();
+  if (want && !/^[A-Z0-9]{4,20}$/.test(want)) throw bad('코드는 영문 대문자·숫자 4~20자예요');
+  let row = null;
+  for (let i = 0; i < 5 && !row; i++) {
+    row = await one(`insert into promo_codes(code, plan, days, max_uses, note, created_by) values($1,$2,$3,$4,$5,$6)
+                     on conflict (code) do nothing returning *`, [want || genCode(), plan, days, uses, note || null, a.id]);
+    if (!row && want) throw new HttpError(409, 'taken', '이미 있는 코드예요');
+  }
+  if (!row) throw new HttpError(500, 'server', '코드를 만들지 못했어요. 다시 해 주세요');
+  await adminAudit(a.id, 'code.create', row.code, { plan, days, uses, note });
+  return { code: codeView({ ...row, redeemed: [] }) };
+});
+// 코드 끄기·다시 켜기. 끈 코드는 더 쓸 수 없고, 이미 쓴 팀의 기간은 그대로다
+on('PATCH', '/admin/codes/:code', async ({ req, uid, params, body }) => {
+  const a = await requireAdmin(req, uid, true);
+  const code = str(params.code, 40).toUpperCase();
+  const on_ = body.active === true;
+  const row = await one(`update promo_codes set disabled_at = case when $2::boolean then null else coalesce(disabled_at, now()) end
+                         where upper(code)=$1 returning code`, [code, on_]);
+  if (!row) throw notFound('없는 코드예요');
+  await adminAudit(a.id, on_ ? 'code.enable' : 'code.disable', row.code, {});
+  const full = await one(`${CODES_SQL} where c.code=$1`, [row.code]);
+  return { code: codeView(full) };
+});
+// 팀 목록: 이름 · 인도자 · 활성 멤버 수 · 곡 수 · 플랜(기한·어디서) · 만든 날. q 는 팀 이름·인도자 이름·아이디로 찾기
+on('GET', '/admin/teams', async ({ req, uid, url }) => {
+  await requireAdmin(req, uid, false);
+  const raw = str(url.searchParams.get('q') || '', 60);
+  const like = raw ? '%' + raw.replace(/[\\%_]/g, (c) => '\\' + c) + '%' : '';
+  const rows = await q(`select t.id, t.name, t.plan, t.plan_until, t.plan_source, t.created_at, t.deleted_at,
+        (select count(*)::int from members m where m.team_id=t.id and m.active) as members,
+        (select count(*)::int from songs s where s.team_id=t.id and s.deleted_at is null) as songs,
+        coalesce((select json_agg(json_build_object('name', m.name, 'username', u.username) order by m.created_at)
+                  from members m join users u on u.id=m.user_id where m.team_id=t.id and m.role='leader' and m.active), '[]'::json) as leaders
+      from teams t
+      where $1::text = '' or t.name ilike $1 or exists (select 1 from members m join users u on u.id=m.user_id
+                                                        where m.team_id=t.id and (u.username ilike $1 or m.name ilike $1))
+      order by t.created_at desc limit 300`, [like]);
+  return { teams: rows.map((t) => ({ id: t.id, name: t.name, plan: planName(t), rawPlan: t.plan, planUntil: t.plan_until || null,
+    planSource: t.plan_source || null, createdAt: t.created_at, deletedAt: t.deleted_at || null,
+    members: t.members, songs: t.songs, leaders: t.leaders || [] })) };
+});
+// 코드 없이 팀에 바로 플랜 주기 (지인 팀). days 는 같은 플랜의 남은 기간(체험 포함)에 이어 붙인다. 0 이면 기한 없음.
+// plan 'free' 는 되돌리기(무료로). 스토어 구독 중인 팀은 건드리지 않는다 (갱신·만료가 꼬인다)
+on('POST', '/admin/teams/:id/grant', async ({ req, uid, params, body }) => {
+  const a = await requireAdmin(req, uid, true);
+  if (!UUID_RE.test(params.id)) throw notFound('없는 팀이에요');
+  const plan = str(body.plan, 10), days = body.days == null || body.days === '' ? NaN : +body.days;
+  if (!['free', 'pro', 'plus'].includes(plan)) throw bad('플랜은 무료 · Pro · Pro Plus 중 하나예요');
+  if (plan !== 'free' && (!Number.isInteger(days) || days < 0 || days > 3650)) throw bad('기간은 0~3650일이에요 (0 은 기한 없음)');
+  const t = await one('select id, name, plan, plan_until, plan_source from teams where id=$1', [params.id]);
+  if (!t) throw notFound('없는 팀이에요');
+  if (storePaid(t)) throw bad('스토어 구독 중인 팀이에요. 구독이 끝난 뒤에 주세요');
+  const row = plan === 'free'
+    ? await one(`update teams set plan='free', plan_until=null, plan_source=null where id=$1 returning plan, plan_until, plan_source`, [t.id])
+    : !days
+      ? await one(`update teams set plan=$2, plan_until=null, plan_source='manual' where id=$1 returning plan, plan_until, plan_source`, [t.id, plan])
+      : await one(`update teams set plan=$2,
+            plan_until = (case when plan=$2 and plan_until > now() then plan_until else now() end) + make_interval(days => $3::int),
+            plan_source='manual' where id=$1 returning plan, plan_until, plan_source`, [t.id, plan, days]);
+  const meta = { plan, days: plan === 'free' ? null : days, until: row.plan_until, before: { plan: planName(t), until: t.plan_until, source: t.plan_source } };
+  await adminAudit(a.id, 'team.grant', t.id, { team: t.name, ...meta });
+  await audit(t.id, a.id, 'admin.grant', t.id, meta);
+  return { team: { id: t.id, plan: planName(row), planUntil: row.plan_until || null, planSource: row.plan_source || null } };
 });
 
 /* ---------- §2 정기 예배 · 사역 날짜 ---------- */

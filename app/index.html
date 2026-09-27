@@ -2884,6 +2884,11 @@ function todoCards(){const cards=[];
   if(n.type==='avail.maybe'){cards.push({icon:NOTI_ICON[n.type],title:n.title,body:n.body,btn:'가능',act:'av-yes',arg:n.targetId,btn2:'불가능',act2:'av-no'});return}
   const c=CARD_ACT[n.type]||{btn:'확인',act:'noti-ack'};
   cards.push({icon:NOTI_ICON[n.type]||'note',title:n.title,body:n.body,btn:c.btn,act:c.act,arg:n.id})});
+ // 7일 Pro 체험이 이틀 안에 끝나면 인도자에게 조용히 한 번 (누르면 이 체험에서는 다시 안 뜬다).
+ // 한도 검사가 꺼져 있으면(결제 전) 끝나도 달라지는 게 없어 띄우지 않는다
+ const tl=isLeader()&&online()&&NET.enforcePlan?trialLeft():0;
+ if(tl&&tl<=2){let seen='';try{seen=localStorage.getItem('conti-trial-seen:'+S.team.id)||''}catch(e){}
+  if(seen!==String(S.team.planUntil||''))cards.push({icon:'check',title:`Pro 체험이 ${tl}일 남았어요`,body:'끝나면 무료 플랜으로 돌아가요 · 자동으로 결제되지 않아요',btn:'플랜 보기',act:'trial-plan',arg:''})}
  return cards}
 function todoHTML(){const cards=todoCards();if(!cards.length)return '';
  return `<div class="todo rise"><div class="todo-hd"><b>지금 할 일</b><span class="pill">${cards.length}</span></div>${cards.slice(0,3).map(c=>`<div class="todo-card"><span class="icon sm">${ic(c.icon)}</span><div class="grow"><b>${esc(c.title)}</b>${c.body?`<div class="hint">${esc(c.body)}</div>`:''}</div><span class="row" style="gap:6px">${c.btn2?`<button class="btn sm" data-act="${c.act2}" data-id="${esc(c.arg)}">${esc(c.btn2)}</button>`:''}<button class="btn sm pri" data-act="${c.act}" data-id="${esc(c.arg)}">${esc(c.btn)}</button></span></div>`).join('')}${cards.length>3?`<button class="btn sm ghost" data-act="inbox">+${cards.length-3} 더 보기</button>`:''}</div>`}
@@ -3068,6 +3073,7 @@ const BIZ={name:'바디페인팅',ceo:'박찬영',regNo:'469-06-03606',
 // 결제를 붙이기 전까지 '결제 담당' 화면을 숨긴다. 결제가 없는데 이 말이 보이면
 // 앱 심사에서 외부 결제로 오해받는다. 서버의 billing_user_id 기록은 그대로 둔다
 const BILLING_UI=false;
+const TERMS_AT='2026-09-27';       // 이용약관만 — 제5조에 7일 Pro 체험을 더했다 (이용자에게 유리한 변경이라 다시 동의는 받지 않는다)
 const LEGAL_AT='2026-09-24';       // 문서에 적는 시행일(마지막 개정). 다시 동의를 받는 기준은 서버 LEGAL_VERSION 이라 따로 간다
 function legalHTML(kind){
  const K=kind==='terms'?'terms':kind==='delete'?'delete':'privacy';
@@ -3192,6 +3198,8 @@ function legalHTML(kind){
   <p>서비스는 <b>무료 플랜</b>과 <b>유료 플랜</b>으로 나뉩니다. 각 플랜에서 쓸 수 있는 범위(팀원 수, 저장 용량,
    AI 인식 횟수 등)는 앱 안 <b>설정 → 플랜</b>에서 볼 수 있습니다.</p>
   <p><b>무료 플랜에는 광고가 나옵니다.</b> 유료 플랜에서는 광고가 나오지 않습니다.</p>
+  <p>처음 팀을 만들면 그 팀은 <b>7일 동안 Pro 플랜을 무료로 체험</b>합니다(계정당 한 번). 체험이 끝나면 무료 플랜으로 돌아가며,
+   자동으로 결제되지 않습니다.</p>
   <p>유료 플랜 결제는 애플 App Store·구글 Play를 통한 <b>인앱결제</b>로만 이루어집니다. 결제·갱신·환불은 각 스토어의
    정책을 따르며, 해지는 스토어의 구독 관리 화면에서 언제든 할 수 있습니다. 해지해도 이미 결제한 기간이 끝날 때까지는
    유료 기능을 그대로 쓰실 수 있습니다.</p>
@@ -3237,7 +3245,7 @@ function legalHTML(kind){
 
   <h3>제12조 (문의)</h3>
   ${bizRow}
-  <p class="lnote">시행일: ${esc(LEGAL_AT)}</p>`;
+  <p class="lnote">시행일: ${esc(TERMS_AT)}</p>`;
 
  // 계정 삭제 안내 — 스토어(구글·애플)가 요구하는 '로그인 없이 열리는 삭제 절차 페이지'
  const del=`<h2>계정 삭제</h2>
@@ -3304,28 +3312,149 @@ function upgradeModal(){
   <div style="display:grid;gap:10px">${PLANS.map(card).join('')}</div>
   ${NATIVE?'':`<div class="cb-note" style="margin-top:12px">결제는 <b>앱에서만</b> 할 수 있어요 · 1414 앱을 설치한 뒤 같은 계정으로 로그인하세요</div>`}`);
 }
+// 7일 Pro 체험(처음 만든 팀, 한 사람에 한 번) 중이면 남은 날 (올림). 체험이 아니거나 끝났으면 0
+function trialLeft(){const t=S.team||{};if(t.planSource!=='trial'||!t.planUntil||(t.plan||'free')==='free')return 0;
+ const ms=new Date(t.planUntil).getTime()-Date.now();return ms>0?Math.ceil(ms/864e5):0}
 function planCardHTML(){
- const q=PLANQ,pl=q.plan||'free';
+ const q=PLANQ,pl=q.plan||'free';const trial=pl==='pro'?trialLeft():0;
  const line=(name,x)=>x.cap==null?`<div class="row"><span class="hint grow">${name}</span><b>넉넉함</b></div>`
   :`<div class="row"><span class="hint grow">${name}</span><b>${x.used}/${x.cap}곡</b></div>`;
  const until=S.team.planUntil?new Date(S.team.planUntil):null;
  return `<div class="card"><b>플랜</b>
-  <div class="row" style="margin-top:8px"><span class="pill ${planCls(q.ocr.cap==null&&q.omr.cap==null)}">${PLAN_LABEL[pl]||pl}</span>
-   ${until?`<span class="hint">${until.getFullYear()}.${until.getMonth()+1}.${until.getDate()}까지</span>`:''}<span class="grow"></span></div>
+  <div class="row" style="margin-top:8px"><span class="pill ${planCls(q.ocr.cap==null&&q.omr.cap==null)}" id="sPlanPill">${trial?'Pro 체험 중':(PLAN_LABEL[pl]||pl)}</span>
+   ${trial?`<span class="hint">${trial}일 남음</span>`:until?`<span class="hint">${until.getFullYear()}.${until.getMonth()+1}.${until.getDate()}까지</span>`:''}<span class="grow"></span></div>
+  ${trial?`<div class="hint" style="margin-top:6px">체험이 끝나면 무료 플랜으로 돌아가요 · 자동으로 결제되지 않아요</div>`:''}
   <div class="hr"></div>
   <div class="hint" style="margin-bottom:6px">이번 달 사용량${q.resetAt?` · ${esc(q.resetAt)}에 다시 채워져요`:''}</div>
   ${line('코드 인식',q.ocr)}${line('채보',q.omr)}
   <div class="hr"></div>
-  ${(pl==='free'&&NET.enforcePlan)?`<div class="hr"></div>
-   <div class="row"><span class="hint grow">더 많은 멤버 · 더 많은 인식이 필요하면</span>
+  ${((pl==='free'||trial)&&NET.enforcePlan)?`<div class="hr"></div>
+   <div class="row"><span class="hint grow">${trial?'체험이 끝난 뒤에도 Pro 를 쓰려면':'더 많은 멤버 · 더 많은 인식이 필요하면'}</span>
     <button class="btn pri" data-act="upgrade">${ic('check')}플랜 올리기</button></div>`:''}
   ${q.creditOmr?`<div class="row" style="margin-top:8px"><span class="hint grow">크레딧(채보)</span><b>${q.creditOmr}곡</b></div>`:''}
-  <div class="hr"></div>
+  ${NATIVE?'':`<div class="hr"></div>
   <div class="lbl">프로모션 코드</div>
   <div class="row" style="gap:6px"><input class="field grow" id="sPromo" placeholder="받으신 코드" maxlength="40" autocapitalize="characters">
    <button class="btn" id="sPromoGo">${ic('check')}적용</button></div>
-  <div class="hint" id="sPromoMsg" style="margin-top:6px"></div></div>`;
+  <div class="hint" id="sPromoMsg" style="margin-top:6px"></div>`}</div>`;
 }
+// 앱(iOS·Android)에는 코드 칸을 두지 않는다 — 스토어 정책(App Store 3.1.1 · Google Play 결제 정책)상 앱 안에서 우리 코드로
+// 유료 기능을 열 수 없다. 코드는 웹(lets1414.com)에서만 넣고, 그렇게 올라간 플랜은 앱에서 그대로 보인다.
+// 운영자 화면(#/admin)도 웹에서만 — 서버 환경변수 ADMIN_USERS 의 아이디만 (서버가 부를 때마다 다시 본다)
+const isAdminUI=()=>!NATIVE&&online()&&!!(NET.user&&NET.user.admin);
+/* ---------- 운영자 화면 (#/admin · 웹 전용) ---------- */
+// 지인 팀에 줄 무료 코드를 만들고(플랜 · 기간 · 쓸 수 있는 팀 수 · 메모), 누가 썼는지 보고, 끄고, 코드 없이 팀에 바로 플랜을 준다
+const ADM={at:0,codes:[],teams:[],q:'',err:'',last:'',busy:false,form:{plan:'pro',days:365,uses:1,note:''}};
+const ADM_DAYS=[30,90,365,3650];
+const admDate=x=>{if(!x)return '';const d=new Date(x);return `${d.getFullYear()}.${d.getMonth()+1}.${d.getDate()}`};
+const admDays=d=>+d>=365&&+d%365===0?`${+d/365}년`:`${+d}일`;
+const ADM_SRC={trial:'',promo:'코드',iap:'스토어 결제',manual:'직접 줌'};
+async function adminPull(){
+ try{const [c,t]=await Promise.all([api('/admin/codes'),api('/admin/teams?q='+encodeURIComponent(ADM.q))]);
+  ADM.codes=c.codes||[];ADM.teams=t.teams||[];ADM.err='';ADM.at=Date.now()}
+ catch(e){ADM.err=e.message||'불러오지 못했어요';ADM.at=Date.now()}}
+function admCodeRow(c){
+ const st=c.disabledAt?'<span class="badge neutral">꺼짐</span>':c.used>=c.maxUses?'<span class="badge neutral">다 씀</span>':'<span class="badge ok">쓸 수 있음</span>';
+ const who=(c.redeemed||[]).map(r=>esc(r.team)).join(', ');
+ return `<div class="mrow" style="flex-wrap:wrap;align-items:flex-start" data-code="${esc(c.code)}">
+  <div class="grow" style="min-width:220px"><div class="row" style="gap:6px;flex-wrap:wrap"><b class="mono">${esc(c.code)}</b>
+   <span class="pill ${c.plan==='plus'?'p-plus':'p-pro'}">${esc(PLAN_LABEL[c.plan]||c.plan)} · ${esc(admDays(c.days))}</span>${st}<span class="hint">${c.used}/${c.maxUses} 사용</span></div>
+   <div class="hint" style="margin-top:3px">${c.note?esc(c.note)+' · ':''}${esc(admDate(c.createdAt))} 만듦</div>
+   ${who?`<div class="hint" style="margin-top:2px">쓴 팀: ${who}</div>`:''}</div>
+  <span class="row" style="gap:6px"><button class="btn sm" data-adm="copy" data-code="${esc(c.code)}">복사</button>
+   <button class="btn sm ghost${c.disabledAt?'':' danger'}" data-adm="${c.disabledAt?'enable':'disable'}" data-code="${esc(c.code)}">${c.disabledAt?'다시 켜기':'끄기'}</button></span></div>`}
+function admTeamRow(t){
+ const lead=(t.leaders||[]).map(l=>`${esc(l.name)}(${esc(l.username)})`).join(', ')||'인도자 없음';
+ const trial=t.planSource==='trial'&&t.plan==='pro';
+ const pill=`<span class="pill ${t.plan==='plus'?'p-plus':t.plan==='pro'?'p-pro':''}">${trial?'Pro 체험':esc(PLAN_LABEL[t.plan]||t.plan)}</span>`;
+ const until=t.plan!=='free'?(t.planUntil?`${esc(admDate(t.planUntil))}까지`:'기한 없음'):'';
+ return `<div class="mrow" style="flex-wrap:wrap;align-items:flex-start" data-team="${esc(t.id)}">
+  <div class="grow" style="min-width:220px"><div class="row" style="gap:6px;flex-wrap:wrap"><b>${esc(t.name)}</b>${pill}
+   ${until?`<span class="hint">${until}${t.planSource&&ADM_SRC[t.planSource]!==''?' · '+esc(ADM_SRC[t.planSource]||t.planSource):''}</span>`:''}${t.deletedAt?'<span class="badge warn">삭제 예약</span>':''}</div>
+   <div class="hint" style="margin-top:3px">${lead} · 멤버 ${t.members} · 곡 ${t.songs} · ${esc(admDate(t.createdAt))} 만듦</div></div>
+  <button class="btn sm" data-adm="grant" data-id="${esc(t.id)}">플랜 주기</button></div>`}
+function adminHTML(){
+ const f=ADM.form;
+ const plans=[['pro','Pro'],['plus','Pro Plus']].map(([v,l])=>`<button class="q ${f.plan===v?'on':''}" data-adm="plan" data-v="${v}">${l}</button>`).join('');
+ const days=ADM_DAYS.map(d=>`<button class="q ${+f.days===d?'on':''}" data-adm="days" data-v="${d}">${admDays(d)}</button>`).join('');
+ const body=`${ADM.err?`<div class="card"><div class="err" style="margin:0">${esc(ADM.err)}</div></div>`:''}
+  <div class="card" id="admNew"><b>무료 코드 만들기</b>
+   <div class="hint" style="margin-top:2px">받은 인도자가 웹(lets1414.com) 설정 → 플랜에 넣으면 그 팀이 이 기간만큼 유료가 돼요. 이미 유료면 남은 기간에 이어 붙어요</div>
+   <div class="lbl">플랜</div><div>${plans}</div>
+   <div class="lbl">기간</div><div class="row" style="gap:6px;flex-wrap:wrap">${days}<input class="field mono" id="admDays" type="number" min="1" max="3650" value="${esc(f.days)}" style="width:96px;text-align:center"><span class="hint">일</span></div>
+   <div class="lbl">쓸 수 있는 팀 수 <span class="hint">한 팀은 같은 코드를 한 번만 써요</span></div>
+   <div class="row" style="gap:6px"><input class="field mono" id="admUses" type="number" min="1" max="1000" value="${esc(f.uses)}" style="width:96px;text-align:center"><span class="hint">팀</span></div>
+   <div class="lbl">메모 <span class="hint">누구에게 줬는지 — 나만 봐요</span></div>
+   <input class="field" id="admNote" maxlength="100" value="${esc(f.note)}" placeholder="예: 새빛교회 청년부">
+   <div class="err" id="admErr"></div>
+   ${ADM.last?`<div class="row" style="gap:8px;margin-top:4px;flex-wrap:wrap"><span class="hint">방금 만든 코드</span><b class="mono" id="admLast" style="font-size:18px">${esc(ADM.last)}</b><button class="btn sm" data-adm="copy" data-code="${esc(ADM.last)}">복사</button><button class="btn sm" data-adm="copymsg" data-code="${esc(ADM.last)}">카톡 안내 복사</button></div>`:''}
+   <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn pri" data-adm="create" ${ADM.busy?'disabled':''}>${ic('plus')}코드 만들기</button></div></div>
+  <div class="card" id="admCodes"><div class="row"><b class="grow">코드 목록</b><span class="pill">${ADM.codes.length}</span><button class="btn sm ghost" data-adm="reload">${ic('refresh')}새로고침</button></div>
+   <div style="margin-top:6px">${ADM.codes.length?ADM.codes.map(admCodeRow).join(''):'<div class="hint" style="padding:10px 0">아직 만든 코드가 없어요</div>'}</div></div>
+  <div class="card" id="admTeams"><div class="row"><b class="grow">팀</b><span class="pill">${ADM.teams.length}</span></div>
+   <div class="hint" style="margin-top:2px">코드 없이 바로 플랜을 줄 수 있어요. 같은 플랜이 남아 있으면 그 뒤에 이어 붙어요</div>
+   <div class="row" style="gap:6px;margin-top:8px"><input class="field grow" id="admQ" value="${esc(ADM.q)}" placeholder="팀 이름 · 인도자 이름 · 아이디" maxlength="60"><button class="btn" data-adm="search">찾기</button></div>
+   <div style="margin-top:6px">${ADM.teams.length?ADM.teams.map(admTeamRow).join(''):'<div class="hint" style="padding:10px 0">팀이 없어요</div>'}</div></div>`;
+ return shellHTML('settings',{title:'운영자',sub:'무료 코드 · 팀 플랜 · 웹에서만',body:`<div class="setpane admpane">${body}</div>`})}
+function admGrantModal(t){
+ const g={plan:t.plan==='plus'?'plus':'pro',days:365};
+ const draw=()=>{const b=$('#admG');if(!b)return;
+  b.querySelectorAll('[data-gp]').forEach(x=>x.classList.toggle('on',x.dataset.gp===g.plan));
+  b.querySelectorAll('[data-gd]').forEach(x=>x.classList.toggle('on',+x.dataset.gd===+g.days));
+  $('#admGDaysRow').hidden=g.plan==='free';$('#admGDays').value=g.days};
+ modal(`<div id="admG"><b style="font-size:17px">${esc(t.name)} · 플랜 주기</b>
+  <div class="hint" style="margin:4px 0 8px">지금 ${esc(t.planSource==='trial'&&t.plan==='pro'?'Pro 체험':PLAN_LABEL[t.plan]||t.plan)}${t.plan!=='free'?(t.planUntil?` · ${esc(admDate(t.planUntil))}까지`:' · 기한 없음'):''}</div>
+  <div class="lbl">플랜</div><div>${[['pro','Pro'],['plus','Pro Plus'],['free','무료로 되돌리기']].map(([v,l])=>`<button class="q" data-gp="${v}">${l}</button>`).join('')}</div>
+  <div id="admGDaysRow"><div class="lbl">기간 <span class="hint">0 이면 기한 없음</span></div>
+   <div class="row" style="gap:6px;flex-wrap:wrap">${ADM_DAYS.concat([0]).map(d=>`<button class="q" data-gd="${d}">${d?admDays(d):'기한 없음'}</button>`).join('')}
+    <input class="field mono" id="admGDays" type="number" min="0" max="3650" style="width:96px;text-align:center"><span class="hint">일</span></div></div>
+  <div class="err" id="admGErr"></div>
+  <div class="row" style="margin-top:12px;justify-content:flex-end;gap:8px"><button class="btn ghost" id="admGNo">취소</button><button class="btn pri" id="admGOk">${ic('check')}주기</button></div></div>`);
+ draw();
+ $('#admG').onclick=e=>{const p=e.target.closest('[data-gp]');if(p){g.plan=p.dataset.gp;draw();return}
+  const d=e.target.closest('[data-gd]');if(d){g.days=+d.dataset.gd;draw();return}};
+ $('#admGDays').oninput=e=>{g.days=e.target.value};
+ $('#admGNo').onclick=closeModal;
+ $('#admGOk').onclick=async()=>{const btn=$('#admGOk'),er=$('#admGErr');
+  const days=Math.round(+g.days);
+  if(g.plan!=='free'&&!(days>=0&&days<=3650)){er.textContent='기간은 0~3650일이에요';return}
+  btn.disabled=true;er.textContent='';
+  try{const r=await api('/admin/teams/'+t.id+'/grant',{method:'POST',body:{plan:g.plan,days}});
+   Object.assign(t,r.team||{});closeModal();
+   toast(g.plan==='free'?`${t.name} 팀을 무료로 되돌렸어요`:`${t.name} 팀에 ${PLAN_LABEL[g.plan]} ${days?admDays(days):'기한 없음'}을 줬어요`);
+   if(S.team.id===t.id)refreshMe().then(()=>{});
+   if(route().name==='admin')render()}
+  catch(e){er.textContent=e.message||'주지 못했어요';btn.disabled=false}}}
+function afterAdmin(){
+ const box=$('.admpane');if(!box)return;const f=ADM.form;
+ const num=(id,k)=>{const el=$('#'+id);if(el)el.oninput=()=>{f[k]=el.value}};
+ num('admDays','days');num('admUses','uses');
+ const nt=$('#admNote');if(nt)nt.oninput=()=>{f.note=nt.value};
+ const qi=$('#admQ');if(qi)qi.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();box.querySelector('[data-adm="search"]').click()}};
+ box.onclick=async e=>{const b=e.target.closest('[data-adm]');if(!b)return;const k=b.dataset.adm;
+  if(k==='plan'){f.plan=b.dataset.v;render();return}
+  if(k==='days'){f.days=+b.dataset.v;render();return}
+  if(k==='copy'){copyText(b.dataset.code).then(()=>toast('코드를 복사했어요'),()=>toast('복사하지 못했어요'));return}
+  // 받는 사람은 앱이 아니라 웹에서 넣어야 한다 (앱에는 코드 칸이 없다) — 그 길을 문구에 같이 적는다
+  if(k==='copymsg'){const c=ADM.codes.find(x=>x.code===b.dataset.code);if(!c)return;
+   const msg=`1414 ${PLAN_LABEL[c.plan]||c.plan} ${admDays(c.days)} 무료 코드: ${c.code}\n\n인도자 계정으로 lets1414.com 에 로그인 → 설정 → 플랜 → 프로모션 코드에 넣어 주세요. 앱에서도 같은 계정이면 바로 ${PLAN_LABEL[c.plan]||c.plan} 로 보여요.`;
+   copyText(msg).then(()=>toast('안내 문구를 복사했어요'),()=>toast('복사하지 못했어요'));return}
+  if(k==='reload'){await adminPull();render();return}
+  if(k==='search'){ADM.q=(($('#admQ')||{}).value||'').trim();b.disabled=true;await adminPull();render();return}
+  if(k==='grant'){const t=ADM.teams.find(x=>x.id===b.dataset.id);if(t)admGrantModal(t);return}
+  if(k==='disable'||k==='enable'){b.disabled=true;
+   try{const r=await api('/admin/codes/'+encodeURIComponent(b.dataset.code),{method:'PATCH',body:{active:k==='enable'}});
+    const i=ADM.codes.findIndex(c=>c.code===b.dataset.code);if(i>=0&&r.code)ADM.codes[i]=r.code;
+    toast(k==='enable'?'코드를 다시 켰어요':'코드를 껐어요 · 이미 쓴 팀의 기간은 그대로예요');render()}
+   catch(err){toast(err.message);b.disabled=false}return}
+  if(k==='create'){const er=$('#admErr');const days=Math.round(+f.days),uses=Math.round(+f.uses);
+   if(!(days>=1&&days<=3650)){er.textContent='기간은 1~3650일이에요';return}
+   if(!(uses>=1&&uses<=1000)){er.textContent='쓸 수 있는 팀 수는 1~1000이에요';return}
+   ADM.busy=true;b.disabled=true;er.textContent='';
+   try{const r=await api('/admin/codes',{method:'POST',body:{plan:f.plan,days,uses,note:String(f.note||'').trim()}});
+    ADM.last=r.code.code;ADM.codes.unshift(r.code);f.note='';toast('코드를 만들었어요')}
+   catch(err){ADM.busy=false;er.textContent=err.message||'만들지 못했어요';b.disabled=false;return}
+   ADM.busy=false;render();return}}}
 function settingsHTML(){
  const m=me();const on=online();const lead=isLeader();
  const t=ST_TABS.some(([k])=>k===SET.tab)?SET.tab:'profile';
@@ -3358,7 +3487,9 @@ function settingsHTML(){
   <div class="card"><b>알림 종류</b>
    <div class="hint" style="margin-top:2px">알림함은 끌 수 없어요. 여기서 끄면 폰 알림만 꺼져요</div>
    <div id="sNoti" style="margin-top:10px">${Object.entries(NOTI_LABEL).map(([k,v])=>`<label class="mrow" style="cursor:pointer"><span class="grow">${esc(v)}</span><input type="checkbox" data-noti="${k}" ${notiOn(k)?'checked':''}></label>`).join('')}</div></div>`}
- else if(t==='account')pane=`${on?`<div class="card" id="linkCard"><b>연결된 계정</b>
+ else if(t==='account')pane=`${isAdminUI()?`<div class="card" id="adminCard"><b>운영자</b>
+   <div class="row" style="margin-top:8px"><span class="hint grow">무료 코드 만들기 · 코드 목록 · 팀에 플랜 주기</span><button class="btn" data-act="admin">${ic('check')}운영자 화면</button></div></div>`:''}
+  ${on?`<div class="card" id="linkCard"><b>연결된 계정</b>
    <div class="hint" style="margin-top:2px" id="linkHint">${esc(linkHint())}</div>
    <div id="linkList" class="linklist"><div class="hint" style="padding:10px 0">불러오는 중…</div></div></div>`:''}
   <div class="card"><b>${LINK.hasPassword===false?'비밀번호 만들기':'비밀번호'}</b>
@@ -3899,7 +4030,7 @@ async function applyMembership(t){const next=scopeKey(NET.user&&NET.user.id,t.te
   if(typeof SYNC!=='undefined'&&online())setTimeout(()=>{SYNC.pullLibrary();if(typeof pullSongs!=='undefined')pullSongs(true)},0)}   // 팀이 바뀌면 그 팀 라이브러리를 받아온다
  // 역할·세션이 바뀌면 받을 수 있는 고정 메모가 달라진다(세션 메모는 그 세션과 인도자만). since 로는 안 오니 곡 목록을 통째로 다시 받게
  {const pm=S.team.me||{};if(S.songsAt&&S.team.id===t.teamId&&(pm.role!==t.me.role||String(pm.mySessions||[])!==String(t.me.mySessions||[])))S.songsAt=''}
- S.team.id=t.teamId;S.team.name=t.teamName;S.team.plan=t.plan||'free';S.team.planUntil=t.planUntil||null;S.team.invite=t.invite||'';S.team.sessions=t.sessions.slice();S.team.phrases=t.phrases.slice();S.team.settings=t.settings||S.team.settings||{};S.team.me={userId:t.me.userId,name:t.me.name,session:t.me.session,mySessions:t.me.mySessions||[],role:t.me.role,capo:+t.me.capo||0};
+ S.team.id=t.teamId;S.team.name=t.teamName;S.team.plan=t.plan||'free';S.team.planUntil=t.planUntil||null;S.team.planSource=t.planSource||null;S.team.invite=t.invite||'';S.team.sessions=t.sessions.slice();S.team.phrases=t.phrases.slice();S.team.settings=t.settings||S.team.settings||{};S.team.me={userId:t.me.userId,name:t.me.name,session:t.me.session,mySessions:t.me.mySessions||[],role:t.me.role,capo:+t.me.capo||0};
  // 내려오는 순간만 보지 않고 지금 모습을 본다 — 예전 앱(웹 배포 전·스토어 업데이트 전 앱)이 역할을 먼저 바꿔 둔 기기는
  // 이미 인도자가 아니라 '내려오는 순간'이 다시 오지 않아 영영 굳어 있었다. 인도자가 아니면 곡에 수정 표시를 세울 수 없으니(saveSong·saveArr)
  // 남아 있는 것은 모두 못 올린 옛 수정이다
@@ -7028,6 +7159,11 @@ async function render(){
   if(SET.tab==='noti'&&online()&&NET.user){const was=JSON.stringify(PREFS.data);
    PREFS_Q.then(()=>pullPrefs(true)).then(()=>{if(route().name==='settings'&&SET.tab==='noti'&&JSON.stringify(PREFS.data)!==was)render()})}
   app.innerHTML=settingsHTML();afterSettings();restoreScroll();return}
+ // 운영자 화면 (웹 전용 · 서버 ADMIN_USERS). 앱이거나 운영자가 아니면 설정으로
+ if(r.name==='admin'){
+  if(!isAdminUI())return go('settings');
+  if(!ADM.at||!same){app.innerHTML='<div class="empty" style="margin:40px auto;max-width:420px"><b>불러오는 중…</b></div>';await adminPull();if(stale())return}
+  app.innerHTML=adminHTML();afterAdmin();restoreScroll();return}
  // 알림 페이지 (§6.7)
  if(r.name==='inbox'){
   if(!online()||!S.team.id)return go('home');
@@ -10192,6 +10328,8 @@ document.addEventListener('click',async e=>{
   case 'pick-off':{HOME.pick=false;HOME.sel=[];render();break}
   case 'pick-svc':{const id=el.dataset.id;HOME.sel=HOME.sel.includes(id)?HOME.sel.filter(x=>x!==id):HOME.sel.concat(id);render();break}
   case 'upgrade':upgradeModal();break;
+  case 'admin':go('admin');break;
+  case 'trial-plan':{try{localStorage.setItem('conti-trial-seen:'+S.team.id,String(S.team.planUntil||''))}catch(e){}SET.tab='plan';go('settings');break}
   case 'buy':{
    if(!NATIVE){toast('결제는 앱에서만 할 수 있어요');break}
    toast('결제 준비 중이에요');break}
@@ -10343,7 +10481,7 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
  if(!online()){REPROBE.n=0;scheduleReprobe()}   // 켜는 동안 건너뛴 다시 묻기가 간격만 늘려 놨다 — 5초부터 다시
  setInterval(()=>{if(NET.server===null&&!document.hidden)recheckServer()},20000);
  probeOmr();startNotiPoll();nativeSetup();
- window.CONTI={REWARD,rewardAvailable,rewardSheet,pullUsage,ADSTATE,modal,closeModal,ADS,WEBADS,AD_HOSTS,setZoom,P,pl:()=>PL,STG,stageOpen,stageExit,adsAllowed,webAdsAllowed,MET,PIANO,metOpen,metStart,metStop,metSet,pianoOpen,HOME,PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go,PLANQ,planCls,ytOriginParam,ytEmbedSrc,YT,josa,josaRo,fitPlay,paintOvBar,doPrint,saveFile,appBack,rehAddModal};
+ window.CONTI={REWARD,rewardAvailable,rewardSheet,pullUsage,ADSTATE,modal,closeModal,ADS,WEBADS,AD_HOSTS,setZoom,P,pl:()=>PL,STG,stageOpen,stageExit,adsAllowed,webAdsAllowed,MET,PIANO,metOpen,metStart,metStop,metSet,pianoOpen,HOME,PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go,PLANQ,planCls,trialLeft,isAdminUI,ADM,adminPull,ytOriginParam,ytEmbedSrc,YT,josa,josaRo,fitPlay,paintOvBar,doPrint,saveFile,appBack,rehAddModal};
 })();
 })();
 </script>

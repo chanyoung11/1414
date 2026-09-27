@@ -234,6 +234,8 @@ def new_leader(i):
   if st != 200: fail('코드팀 만들기 실패 %s %s' % (st, t))
   s.team = t['teamId']; return s
 leaders = par([(lambda i=i: new_leader(i)) for i in range(10)], 10)
+# 처음 만든 팀은 7일 Pro 체험(2026-09-27)이라 코드가 그 뒤에 이어 붙는다. 이 검사는 무료 팀의 기간(30일)을 보므로 무료로 돌린다
+db("update teams set plan='free', plan_until=null, plan_source=null where id = any($1::uuid[])", [[s.team for s in leaders]])
 res = par([(lambda s=s: s.req('POST', '/promo/redeem', {'teamId': s.team, 'code': C1})) for s in leaders])
 okn = sum(1 for st, _ in res if st == 200)
 used = db('select used from promo_codes where code=$1', [C1])[0]['used']
@@ -270,6 +272,8 @@ print('F119 ok — 기한 없는/더 높은 플랜은 그대로 · 같은 플랜
 # ---------- F52 · F107 · F106 · F51 서버 안에서 (fetch 막음) ----------
 INPROC = r"""
 process.env.ENFORCE_PLAN = '1'; process.env.GEMINI_API_KEY = 'fake'; process.env.RC_WEBHOOK_SECRET = 'audit-secret';
+// 결제 웹훅이 어느 팀으로 가는지만 본다 — 7일 Pro 체험(첫 팀)은 끈다 (체험 위의 결제는 tests/test_plans_trial.py)
+process.env.TRIAL_DAYS = '0';
 process.env.DATABASE_URL = process.env.DB; process.env.AUTH_SECRET = process.env.AUTH_SECRET || 'local-dev-secret-0123456789';
 process.env.BLOB_LOCAL_DIR = process.env.BLOB_LOCAL_DIR || (process.env.ROOT + '/.localblob');
 delete process.env.GOOGLE_VISION_KEY; delete process.env.GOOGLE_APPLICATION_CREDENTIALS;

@@ -20,12 +20,22 @@
 #  5 폰 건반: 여는 동안 배너를 내리고 닫거나 메트로놈으로 바꾸면 다시 · 태블릿 건반은 그대로
 #  6 폰: 배너 위 8px 여백
 #  늘: 보이는 배너 ⇔ body.hasad (빈 띠도, 본문을 덮는 배너도 없다)
-import os, sys, time
+import os, sys, time, json, subprocess
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
 
 URL = os.environ.get('CONTI_URL', 'http://localhost:8766/')
 SRV = urlparse(URL)
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB = os.environ.get('CONTI_DB') or os.environ.get('DATABASE_URL') or 'postgres://postgres:pg@localhost:54329/postgres'
+# 처음 만든 팀은 7일 Pro 체험이라(2026-09-27) 광고가 나오지 않는다. 이 검사는 무료 팀의 배너를 보므로 만든 팀을 무료로 돌린다
+# (CONTI_DB 는 서버와 같은 DB)
+def free_team(team_id):
+  js = """import('pg').then(async ({default:pg})=>{const c=new pg.Client({connectionString:process.env.DB});await c.connect();
+    await c.query("update teams set plan='free', plan_until=null, plan_source=null where id=$1",[process.env.TEAM]);console.log('{}');await c.end()})
+    .catch(e=>{console.log(JSON.stringify({error:e.message}));process.exit(1)})"""
+  out = subprocess.run(['node', '-e', js], cwd=ROOT, capture_output=True, text=True, env={**os.environ, 'DB': DB, 'TEAM': team_id})
+  if out.returncode != 0: print('FAIL: 팀을 무료로 못 돌림 (CONTI_DB 확인):', out.stdout[-200:], out.stderr[-200:]); sys.exit(1)
 tag = str(int(time.time()))[-6:]
 N = {'n': 0}
 SOFT = os.environ.get('SOFT') == '1'   # 고치기 전 코드에서 전부 재현해 볼 때: 실패해도 끝까지 간다
@@ -149,6 +159,8 @@ def run():
       pg.fill('#lgName', '배너'); pg.fill('#lgUser', 'bn%s%d' % (tag, N['n'])); pg.fill('#lgPass', 'secret12'); pg.click('[data-act="lg-submit"]')
       pg.wait_for_selector('#gtTeam', timeout=15000); pg.fill('#gtTeam', '배너팀%s%d' % (tag, N['n'])); pg.click('[data-act="team-create"]')
       pg.wait_for_selector('.shell[data-page]', timeout=15000)
+      free_team(pg.evaluate("CONTI.S.team.id"))
+      pg.evaluate("()=>{CONTI.S.team.plan='free';CONTI.S.team.planUntil=null;CONTI.S.team.planSource=null}")
       pg.click('[data-act="new-svc"]'); pg.wait_for_selector('[data-f="svc.name"]', timeout=8000)
       pg.fill('[data-f="svc.name"]', '배너 예배'); pg.click('[data-act="add-item"]'); pg.wait_for_selector('[data-f="item.title"]')
       pg.fill('[data-f="item.title"]', '첫 곡'); pg.wait_for_timeout(500)

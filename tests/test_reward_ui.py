@@ -68,7 +68,8 @@ def start_server():
   blob = tempfile.mkdtemp(prefix='rwui-blob-')
   env = {k: v for k, v in os.environ.items() if not k.startswith(('BLOB_READ_WRITE', 'R2_', 'GOOGLE_VISION', 'GOOGLE_APPLICATION'))}
   env.update({'ROOT': ROOT, 'DATABASE_URL': DB, 'AUTH_SECRET': 'local-dev-secret-0123456789', 'PORT': str(port), 'KEYPORT': str(kport),
-              'ENFORCE_PLAN': '1', 'GEMINI_API_KEY': 'mock', 'BLOB_LOCAL_DIR': blob, 'BLOB_LOCAL_BASE': 'http://localhost:%d' % port,
+              'ENFORCE_PLAN': '1', 'TRIAL_DAYS': '0',   # 보상은 무료 팀 몫 — 첫 팀의 7일 Pro 체험(2026-09-27)은 끈다
+              'GEMINI_API_KEY': 'mock', 'BLOB_LOCAL_DIR': blob, 'BLOB_LOCAL_BASE': 'http://localhost:%d' % port,
               'ADMOB_REWARD_UNITS': 'ca-app-pub-5011605715320185/' + UNIT, 'ADMOB_KEYS_URL': 'http://127.0.0.1:%d/keys.json' % kport})
   subprocess.run(['node', 'scripts/migrate.mjs'], cwd=ROOT, env=env, capture_output=True, timeout=60, check=True)
   log = open(os.path.join(blob, 'server.log'), 'w')

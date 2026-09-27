@@ -473,7 +473,7 @@ alter table ai_songs add column if not exists source text;
 
 -- 유료 기간과 어디서 왔는지. plan_until 이 지나면 무료로 돌아간다
 alter table teams add column if not exists plan_until  timestamptz;
-alter table teams add column if not exists plan_source text;   -- iap | promo | manual
+alter table teams add column if not exists plan_source text;   -- iap | promo | manual | trial (7일 체험)
 
 -- 프로모션 코드. 코드를 넣으면 그 팀이 일정 기간 유료가 된다
 create table if not exists promo_codes (
@@ -673,3 +673,25 @@ create table if not exists ad_ssv_seen (
   result     text not null,                    -- ok | capped | unit | stale | token | token_expired | kind | member
   created_at timestamptz not null default now()
 );
+
+-- 7일 Pro 체험 (2026-09-27). 처음 팀을 만든 사람의 그 팀이 7일 동안 Pro (plan_source='trial').
+-- 한 사람에 한 번이라 받은 때를 사람에게 적는다 — 팀을 지우고 다시 만들어도, 다른 팀을 또 만들어도 다시 받지 않는다.
+-- 팀에 들어가는 것(초대)으로는 받지 않는다. 비어 있으면 아직 안 받은 사람 (예전부터 있던 사람도 비어 있다)
+alter table users add column if not exists trial_at timestamptz;
+
+-- 운영자 화면(웹 /#/admin)에서 만든 무료 코드. 끈 코드는 더 쓸 수 없다 (이미 쓴 팀의 기간은 그대로).
+-- 누가 만들었는지는 사람이 지워지면 비운다 (계정 삭제가 막히지 않게)
+alter table promo_codes add column if not exists disabled_at timestamptz;
+alter table promo_codes add column if not exists created_by uuid references users(id) on delete set null;
+
+-- 운영자 동작 기록 (코드 만들기·끄기·켜기, 팀에 플랜 주기). 팀이 없는 동작도 있어 team_audit 와 따로 둔다.
+-- 팀에 준 플랜은 그 팀의 team_audit 에도 남는다
+create table if not exists admin_audit (
+  id       bigserial primary key,
+  actor_id uuid references users(id) on delete set null,
+  action   text not null,                    -- code.create | code.disable | code.enable | team.grant
+  target   text,
+  meta     jsonb not null default '{}',
+  at       timestamptz not null default now()
+);
+create index if not exists admin_audit_at on admin_audit(at desc);

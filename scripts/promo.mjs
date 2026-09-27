@@ -24,8 +24,9 @@ if (cmd === 'new') {
   await q('insert into promo_codes(code, plan, days, max_uses, note) values($1,$2,$3,$4,$5)', [code, plan, days, uses, note]);
   console.log(`만들었습니다 — ${code}  (${plan} ${days}일 · ${uses}회 · ${note})`);
 } else {
-  const rows = await q('select code, plan, days, used, max_uses, note, created_at from promo_codes order by created_at desc limit 50');
+  // 운영자 화면(웹 #/admin)에서 끈 코드는 '꺼짐'
+  const rows = await q('select code, plan, days, used, max_uses, note, created_at, disabled_at from promo_codes order by created_at desc limit 50');
   if (!rows.length) console.log('(코드 없음)');
-  rows.forEach((r) => console.log(`${r.code.padEnd(10)} ${r.plan.padEnd(5)} ${String(r.days).padStart(3)}일  ${r.used}/${r.max_uses}  ${r.note || ''}`));
+  rows.forEach((r) => console.log(`${r.code.padEnd(10)} ${r.plan.padEnd(5)} ${String(r.days).padStart(4)}일  ${r.used}/${r.max_uses}  ${r.disabled_at ? '꺼짐  ' : ''}${r.note || ''}`));
 }
 process.exit(0);

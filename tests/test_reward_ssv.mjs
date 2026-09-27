@@ -25,6 +25,7 @@ process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgres://postgres:pg@l
 if (!/@(localhost|127\.0\.0\.1)[:/]/.test(process.env.DATABASE_URL)) { console.error('로컬 DB 에서만 돌린다'); process.exit(1); }
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 process.env.ENFORCE_PLAN = '1';
+process.env.TRIAL_DAYS = '0';   // 보상은 무료 팀 몫 — 첫 팀의 7일 Pro 체험(2026-09-27)은 끈다
 process.env.GEMINI_API_KEY = 'fake';   // 아래에서 fetch 를 가로채 원하는 결과를 준다 (진짜로 부르지 않는다)
 delete process.env.GOOGLE_VISION_KEY; delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
 process.env.AUTH_SECRET = process.env.AUTH_SECRET || 'local-dev-secret-0123456789';

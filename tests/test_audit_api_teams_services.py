@@ -401,8 +401,10 @@ def f117_r2():
   print('F117 r2 ok — 크론이 다시 자른 옛 판·뺀 파일을 치움 (orphans=%s), 쓰이는 것·새 것은 남김' % out.get('orphans'))
 
 # ---------------- ENFORCE_PLAN=1 일 때만 ----------------
+# 처음 만든 팀은 7일 Pro 체험(2026-09-27)이다. 무료 한도를 보는 검사는 만든 팀을 무료로 돌린다
+def free(team): sql("update teams set plan='free', plan_until=null, plan_source=null where id=$1", [team])
 def f39_f112():
-  L = Who('채보'); team, _ = team_of(L)
+  L = Who('채보'); team, _ = team_of(L); free(team)
   omr = lambda key=None, b64='iVBOR' + 'A' * 200: L.call('POST', '/omr', dict({'teamId': team, 'b64': b64, 'mime': 'image/png'}, **({'songKey': key} if key else {})))
   st, d = omr()
   if st != 200: fail('F39 첫 채보 %s %s' % (st, d))
@@ -436,7 +438,7 @@ def f40():
   print('F40 ok — 기한 지난 유료는 무료 한도')
 
 def f41():
-  L = Who('정원'); team, code = team_of(L)
+  L = Who('정원'); team, code = team_of(L); free(team)
   ms = [Who('m%d' % i) for i in range(9)]
   for m in ms: join(m, code)                      # 인도자 + 9 = 10 (무료 정원)
   L.ok('PATCH', '/teams/%s/members/%s' % (team, ms[0].id), {'active': False})
