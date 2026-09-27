@@ -313,7 +313,8 @@ def reh_checks(b):
   if errs: fail('녹음 페이지 오류: %s' % errs[:3])
   cL.close(); cM.close()
 
-# ---- G27 안드로이드 앱: 웹 공유도 <a download> 도 없다 → 앱(Printer.saveBytes)이 base64 조각을 바이트로 써서 공유 시트로 넘긴다 ----
+# ---- G27 안드로이드 앱: 웹 공유도 <a download> 도 없다 → 앱(Printer.saveBytes)이 base64 조각을 바이트로 쓰고
+# 저장 위치 고르기(Printer.saveToDevice — AND2-06 부터. 전에는 공유 시트)로 기기에 저장한다 ----
 # https://localhost (포트 없음) 로 열면 앱으로 본다. 앱은 운영 주소(lets1414.com)의 API 를 부르므로 그 요청은 로컬 서버로 돌리고,
 # 그 밖의 바깥 요청은 막는다 (운영에는 하나도 나가지 않는다)
 def android_save_checks(b):
@@ -339,10 +340,11 @@ def android_save_checks(b):
     leaked.append(u); route.abort()
   n.route('**/*', gate)
   n.add_init_script("""
-    window.__chunks=[];window.__shared=[];window.__shareMode='ok';
+    window.__chunks=[];window.__shared=[];window.__dev=[];window.__shareMode='ok';
     window.Capacitor={getPlatform:()=>'android',Plugins:{
       Printer:{saveFile:async o=>{window.__chunks.push({text:1,...o});return {uri:'file:///data/cache/exports/'+o.name}},
-               saveBytes:async o=>{window.__chunks.push(o);return {uri:'file:///data/cache/exports/'+o.name}}},
+               saveBytes:async o=>{window.__chunks.push(o);return {uri:'file:///data/cache/exports/'+o.name}},
+               saveToDevice:async o=>{window.__dev.push(o.name);return {saved:window.__shareMode!=='cancel'}}},
       Share:{share:async o=>{if(window.__shareMode==='cancel')throw new Error('Share canceled');window.__shared.push(o.files);return {activityType:'x'}}}}};
     Object.defineProperty(Navigator.prototype,'canShare',{value:undefined,configurable:true});
     Object.defineProperty(Navigator.prototype,'share',{value:undefined,configurable:true});
@@ -357,14 +359,14 @@ def android_save_checks(b):
   a.click('#rhOk'); a.wait_for_selector('#rhSave', timeout=8000)
   toast = lambda: a.evaluate("document.getElementById('toast').textContent")
   a.evaluate("document.getElementById('toast').textContent=''")
-  a.click('#rhSave'); a.wait_for_function('window.__shared.length>0', timeout=15000); a.wait_for_timeout(300)
+  a.click('#rhSave'); a.wait_for_function('window.__dev.length>0', timeout=15000); a.wait_for_timeout(300)
   ch = a.evaluate("window.__chunks.map(c=>({text:!!c.text,n:c.name,a:c.append}))")
   data = b''.join(base64.b64decode(x) for x in a.evaluate("window.__chunks.map(c=>c.data)"))
   if data != WAV or len(ch) < 2 or any(x['text'] for x in ch) or ch[0]['a'] or not all(x['a'] for x in ch[1:]) or {x['n'] for x in ch} != {'앱 합주.wav'}:
     fail('G27 안드로이드: 녹음이 그대로 써지지 않음 (%d/%d 바이트) %s' % (len(data), len(WAV), ch[:3]))
-  if a.evaluate('window.__shared') != [['file:///data/cache/exports/앱 합주.wav']]: fail('G27 안드로이드: 공유 시트에 안 넘어감: %s' % a.evaluate('window.__shared'))
-  if '보냈어요' not in toast(): fail('G27 안드로이드: 넘겼는데 알림이 없음: %r' % toast())
-  # 공유를 닫으면(취소) 저장했다고 하지 않는다 — 예전에는 아무 일도 없는데 '기기에 저장했어요'가 떴다
+  if a.evaluate('window.__dev') != ['앱 합주.wav'] or a.evaluate('window.__shared'): fail('G27 안드로이드: 저장 위치 고르기로 안 감: dev=%s shared=%s' % (a.evaluate('window.__dev'), a.evaluate('window.__shared')))
+  if '기기에 저장했어요' not in toast(): fail('G27 안드로이드: 저장했는데 알림이 없음: %r' % toast())
+  # 저장 위치 고르기를 닫으면(취소) 저장했다고 하지 않는다 — 예전에는 아무 일도 없는데 '기기에 저장했어요'가 떴다
   a.evaluate("window.__shareMode='cancel';document.getElementById('toast').textContent=''"); a.click('#rhSave'); a.wait_for_timeout(1500)
   if '저장' in toast() or '보냈' in toast(): fail('G27 안드로이드: 취소했는데 알림: %r' % toast())
   # saveBytes 가 없는 앱이면 깨진 파일(글로 쓴 녹음)을 넘기지 않고 업데이트하라고 한다

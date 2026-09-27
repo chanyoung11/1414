@@ -16,6 +16,7 @@
 #  F4 녹음 올리기는 한 번만: 느린 올리기 중에 창을 닫고 다시 열면 '올리는 중'(올리기·녹음 막힘) · 막힌 단추를 억지로 눌러도 새로 안 올림 ·
 #     끝나면 다시 연 창이 닫히고 올리지 않은 녹음이 사라짐 · 서버에 하나 · 등록 응답을 잃고 '다시 올리기'를 눌러도 서버에 하나(같은 표) ·
 #     서버: 같은 표(clientId)는 같은 파일 자리 · 같은 자리를 두 번 등록하면 같은 녹음(dup) · 표 없는 옛 앱은 예전처럼 새 자리
+#     느린 망: 웹뷰가 커널 버퍼에 한꺼번에 넘긴(88%) 뒤 오래 소식이 없어도 멀쩡한 올리기를 60초에 끊지 않는다 (재검증 — 기기에서 2MB 가 60초에 끊김)
 import os, sys, re, time, json, struct, datetime
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
@@ -71,6 +72,16 @@ SLOWPUT = r"""
 (() => { const o = XMLHttpRequest.prototype.open, s = XMLHttpRequest.prototype.send; window.__puts = 0; window.__slowPut = 0;
   XMLHttpRequest.prototype.open = function (m) { this.__put = String(m).toUpperCase() === 'PUT'; return o.apply(this, arguments); };
   XMLHttpRequest.prototype.send = function (b) { if (this.__put) { window.__puts++; const d = window.__slowPut; if (d) { setTimeout(() => s.call(this, b), d); return; } }
+    return s.call(this, b); }; })();
+"""
+
+# 느린 망의 커널 버퍼 흉내: __stallPut 이면 PUT 을 보내지 않고, 곧 88%를 한꺼번에 넘긴 진행 소식 하나만 주고 멈춘다
+# (에뮬레이터 umts 에서 2MB 녹음이 0.5초에 88% → 65초 뒤에야 100% · 451초에 끝남). 올리기의 멈춤 감시(kick 이 건 30초 이상 setTimeout)를 적는다
+STALLPUT = r"""
+(() => { const s = XMLHttpRequest.prototype.send, st = window.setTimeout; window.__stallPut = 0; window.__stallX = null; window.__tmo = [];
+  window.setTimeout = function (f, ms) { if (+ms >= 30000 && /\bkick\b/.test(new Error().stack || '')) window.__tmo.push(+ms); return st.apply(this, arguments); };
+  XMLHttpRequest.prototype.send = function (b) { if (this.__put && window.__stallPut) { const x = this; window.__stallX = x; const n = (b && b.size) || 0;
+      st(() => { if (x.upload.onprogress) x.upload.onprogress({ lengthComputable: true, loaded: Math.round(n * 0.88), total: n }); }, 100); return; }
     return s.call(this, b); }; })();
 """
 
@@ -135,8 +146,10 @@ def run():
       pg.tap('%s ~ .pweye' % sel); pg.wait_for_timeout(700)
       s2 = pg.evaluate("(s)=>{const i=document.querySelector(s);return {type:i.type,focus:document.activeElement===i,ss:i.selectionStart,se:i.selectionEnd}}", sel)
       pg.keyboard.type('8'); pg.wait_for_timeout(100); v2 = pg.input_value(sel)
-      # 눈 단추 바로 뒤에 전체를 골라 새로 쳐도(칸 채우기) 커서 되돌리기가 고른 것을 풀어 뒤에 덧붙이지 않는다
-      pg.tap('%s ~ .pweye' % sel); pg.wait_for_timeout(20); pg.fill(sel, 'secret12'); pg.wait_for_timeout(700); v3 = pg.input_value(sel)
+      # 눈 단추 바로 뒤에 전체를 골라 새로 쳐도(칸 채우기) 커서 되돌리기가 고른 것을 풀어 뒤에 덧붙이지 않는다.
+      # 자판 흉내(30·90ms 에 커서 0)가 끝난 뒤(150ms)에 채운다 — 20ms 에 채우면 흉내가 fill 의 '전체 고르기'와 '넣기' 사이에 끼어
+      # 고른 것을 접어 가끔 덧붙었다(앱이 아니라 흉내의 틈 · 네 번에 한 번꼴). 되돌리기가 전체 선택을 푸는지는 selectionchange 로 그대로 걸린다
+      pg.tap('%s ~ .pweye' % sel); pg.wait_for_timeout(150); pg.fill(sel, 'secret12'); pg.wait_for_timeout(700); v3 = pg.input_value(sel)
       pg.tap('%s ~ .pweye' % sel); pg.wait_for_timeout(700)
       if v1 != 'abc1239': fail('F1 %s 눈 단추(보기) 뒤 친 글자가 맨 앞에 들어감: %r (커서 %s)' % (label, v1, s1))
       elif v2 != 'abc12398': fail('F1 %s 눈 단추(가리기) 뒤 친 글자가 맨 앞에 들어감: %r (커서 %s)' % (label, v2, s2))
@@ -227,7 +240,7 @@ def run():
     c = b.new_context(service_workers='block', **PHONE)
     c.grant_permissions(['microphone'], origin='%s://%s' % (SRV.scheme, SRV.netloc))
     c.add_init_script("try{localStorage.setItem('conti-theme','light');localStorage.setItem('conti-push-asked','1')}catch(e){}")
-    c.add_init_script(SLOWPUT)
+    c.add_init_script(SLOWPUT); c.add_init_script(STALLPUT)
     pg = c.new_page(); pg.on('pageerror', lambda e: errs.append(str(e))); pg.on('dialog', lambda d: d.accept())
     reqs = []
     pg.on('request', lambda rq_: reqs.append((rq_.method, urlparse(rq_.url).path)) if rq_.method in ('POST', 'PUT') else None)
@@ -332,6 +345,27 @@ def run():
     elif (k3.get('rehearsal') or {}).get('id') != id1: fail('F4 서버: 이미 등록된 표로 upload-url 을 물었는데 그 녹음을 안 돌려줌 %s' % k3)
     elif server_n() != 3: fail('F4 서버: 녹음 수 %d (셋이어야)' % server_n())
     else: print('F4 서버: 옛 앱 새 자리 · 같은 표 같은 자리 · 두 번 등록 = 같은 녹음(dup) · 이미 등록된 표 ok')
+
+    # ---- 4. 느린 망: 커널 버퍼에 한꺼번에 넘어간 뒤 오래 소식이 없어도 멀쩡한 올리기를 60초에 끊지 않는다 ----
+    # (멈춤 감시가 88%에서 60초에 끊어 느린 망에서는 다시 올려도 늘 실패했다 — 재검증에서 기기로 확인)
+    WAV2 = wav_bytes(60, 16000)   # 약 1.9MB
+    sheet()
+    pg.set_input_files('#rhFile', files=[{'name': 'big.wav', 'mimeType': 'audio/wav', 'buffer': WAV2}]); pg.wait_for_timeout(1200)
+    pg.evaluate("()=>{window.__stallPut=1;window.__tmo=[]}")
+    pg.tap('#rhOk')
+    try: pg.wait_for_function("window.__stallX&&document.getElementById('rhProg').textContent.indexOf('88%')>=0", timeout=15000)
+    except Exception: fail('F4 느린 망 준비: 88%% 진행이 안 보임: %s' % st())
+    pg.wait_for_timeout(300)
+    tmo = pg.evaluate('window.__tmo'); s4 = st()
+    need = 60000 + 0.8 * len(WAV2) / 4096 * 1000   # 넘어간 1.7MB 가 4KB/s 로 빠질 시간
+    if 60000 not in tmo: fail('F4 느린 망: 아무것도 안 넘어갔을 때의 멈춤 감시(60초)가 없음: %s' % tmo)
+    elif not tmo or tmo[-1] < need: fail('F4 느린 망: 88%%를 넘긴 뒤 멈춤 감시가 %.0f초 — 커널 버퍼(%.1fMB)가 빠질 시간(%.0f초 이상)을 안 기다림' % ((tmo[-1] if tmo else 0) / 1000, len(WAV2) * 0.88 / 1048576, need / 1000))
+    elif '88%' not in s4['prog'] or not s4['ok']: fail('F4 느린 망: 올리는 중 표시가 아님 %s' % s4)
+    else: print('F4 느린 망: 88%% 뒤 멈춤 감시 %.0f초 (60초에 안 끊음) ok' % (tmo[-1] / 1000))
+    pg.evaluate("()=>{window.__stallPut=0;const x=window.__stallX;if(x&&x.onerror)x.onerror()}")   # 끝내기: 끊긴 것으로
+    try: pg.wait_for_function("(()=>{const b=document.getElementById('rhOk');return b&&!b.disabled&&b.textContent.indexOf('다시')>=0})()", timeout=8000)
+    except Exception: fail('F4 느린 망: 끊긴 뒤 다시 올리기가 안 뜸: %s' % st())
+    pg.evaluate("CONTI.closeModal()")
     c.close()
 
     if errs: fail('JS 오류: %s' % errs[:3])

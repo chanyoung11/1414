@@ -2484,9 +2484,13 @@ async function uploadBlobOnce(id,b,onProgress,force,tid){
 function putDirect(url,file,onProgress,o){return new Promise((res,rej)=>{const x=new XMLHttpRequest();x.open('PUT',url);
  x.setRequestHeader('content-type',file.type||'application/octet-stream');
  const netFail=()=>{const off=navigator.onLine===false,er=new Error(off?'인터넷 연결이 끊겨 올리지 못했어요':'네트워크 오류로 업로드하지 못했어요');er.net=true;er.offline=off;return er};
- let tm=0,sent=false;const lim=()=>sent?120000+Math.min(file.size||0,8*1048576)/4096*1000:o.stall;
+ // 보내는 중(100% 전)에도 같다: 웹뷰는 파일을 커널 버퍼에 한꺼번에 넘기고(2MB 녹음이 0.5초에 88%) 그 버퍼가 빠질 때까지 진행 소식이 없다.
+ // 느린 망(에뮬레이터 umts, 실제로 6KB/s)에서는 88%에서 65초 동안 소식 없이 보내는 중이었는데 60초에 끊어, 다시 올려도 늘 같은 자리에서 실패했다 →
+ // 한 번에 넘어간 가장 큰 덩이(≈ 커널 버퍼)가 4KB/s 로 빠질 시간만큼 더 기다린다. 아무것도 안 넘어갔으면 그대로 o.stall
+ let tm=0,sent=false,last=0,buf=0;const lim=()=>sent?120000+Math.min(file.size||0,8*1048576)/4096*1000:o.stall+Math.min(buf,8*1048576)/4096*1000;
  const kick=()=>{if(!(o&&o.stall))return;clearTimeout(tm);tm=setTimeout(()=>{try{x.abort()}catch(e){}rej(netFail())},lim())};
- x.upload.onprogress=ev=>{if(ev.lengthComputable&&ev.loaded>=ev.total)sent=true;kick();if(ev.lengthComputable&&onProgress)onProgress(Math.round(ev.loaded/ev.total*100))};
+ x.upload.onprogress=ev=>{if(ev.lengthComputable){buf=Math.max(buf,ev.loaded-last);last=ev.loaded;if(ev.loaded>=ev.total)sent=true}
+  kick();if(ev.lengthComputable&&onProgress)onProgress(Math.round(ev.loaded/ev.total*100))};
  x.upload.onload=()=>{sent=true;kick()};
  x.onreadystatechange=kick;
  x.onload=()=>{clearTimeout(tm);x.status>=200&&x.status<300?res():rej(new Error('업로드 실패 ('+x.status+')'))};
