@@ -1,5 +1,5 @@
 {
-  "originHash" : "98f2c2b4f047edbbfec3b63f1e9916383fc31c7ceabb515f09222e27f9c9da27",
+  "originHash" : "62c3a5fe82a2c87e9e7506ca508b6420437ab62b323853626cbfe4abd79eaab8",
   "pins" : [
     {
       "identity" : "alamofire",
@@ -98,6 +98,24 @@
       "state" : {
         "revision" : "f4a19a3c313dc2616c70bb49d29a799fb16be837",
         "version" : "2.4.1"
+      }
+    },
+    {
+      "identity" : "purchases-hybrid-common",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/RevenueCat/purchases-hybrid-common.git",
+      "state" : {
+        "revision" : "ef64243380d6880e94e3aa16fd272c97c9fccdf9",
+        "version" : "19.3.1"
+      }
+    },
+    {
+      "identity" : "purchases-ios-spm",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/RevenueCat/purchases-ios-spm",
+      "state" : {
+        "revision" : "4faa17c4a290954fbdbf8f8a6bf0f58e48a8256c",
+        "version" : "5.90.2"
       }
     },
     {

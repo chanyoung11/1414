@@ -11,7 +11,7 @@ import { ocrBands, visionConfigured } from '../lib/vision.js';
 import { sendPush, pushConfigured, vapidPublicKey, pushEndpointOk } from '../lib/push.js';
 import { fcmConfigured } from '../lib/fcm.js';
 import { apnsConfigured } from '../lib/apns.js';
-import { rcAuthOk, rcConfigured, planFromEvent } from '../lib/iap.js';
+import { rcAuthOk, rcConfigured, rcPublicKeys, planFromEvent } from '../lib/iap.js';
 import { verifySsv, rewardToken, readRewardToken } from '../lib/admob.js';
 import { transcribeSheet, transcribeScore, geminiConfigured, geminiModel, estimateUSD, ocrChordsGemini } from '../lib/gemini.js';
 import { norm as normSong, cho as choSong } from '../lib/song.js';
@@ -84,6 +84,9 @@ const memberView = (t, m) => ({
   settings: { ...DEF_SETTINGS, ...(t.settings || {}) },
   plan: planName(t), planUntil: t.plan_until || null, planSource: t.plan_source || null,
   billingUserId: t.billing_user_id || t.created_by,
+  // 스토어 구독으로 유료인 팀이면 그 구독을 산 사람 (앱 결제 화면이 '내 구독'·'다른 사람 구독'을 가른다).
+  // 구독은 산 사람의 애플·구글 계정에 붙어 있어 결제 담당(billingUserId)을 넘겨도 바뀌지 않는다
+  payerId: t.plan_source === 'iap' && planName(t) !== 'free' ? (t.iap_user_id || null) : null,
   deletedAt: t.deleted_at || null,
   me: { userId: m.user_id, name: m.name, session: m.session, mySessions: mySessions(m), role: m.role, capo: +m.capo || 0, active: m.active !== false },
 });
@@ -240,7 +243,12 @@ function pickSession(team, s) {
 const routes = [];
 const on = (method, pattern, fn) => routes.push({ method, re: new RegExp('^' + pattern.replace(/:(\w+)/g, '(?<$1>[^/]+)') + '$'), fn });
 
-on('GET', '/health', async () => ({ ok: true, app: 'conti', enforcePlan: ENFORCE_PLAN }));
+// 로그인 없이 부른다. iap: 앱 결제(RevenueCat) 공개 SDK 키 — 앱 안에 들어가는 값이라 비밀이 아니다.
+// 웹훅(RC_WEBHOOK_SECRET)이 없으면 주지 않고, 키가 없으면 앱의 결제 화면은 예전처럼 '결제 준비 중'이다 (lib/iap.js)
+on('GET', '/health', async () => {
+  const iap = rcPublicKeys();
+  return { ok: true, app: 'conti', enforcePlan: ENFORCE_PLAN, ...(iap ? { iap } : {}) };
+});
 
 on('POST', '/auth/signup', async ({ req, body }) => {
   const username = str(body.username, 40).toLowerCase(), password = String(body.password || ''), name = str(body.name, 40);

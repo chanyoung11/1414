@@ -24,6 +24,7 @@
     "@capacitor/status-bar": "^8.0.3",
     "@capgo/capacitor-social-login": "^8.5.10",
     "@neondatabase/serverless": "^1.0.2",
+    "@revenuecat/purchases-capacitor": "^13.6.1",
     "@vercel/blob": "^2.8.0",
     "pg": "^8.16.0",
     "web-push": "^3.6.7"
