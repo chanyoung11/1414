@@ -91,6 +91,14 @@ const teamUserIds = async (teamId, { exceptRole, except } = {}) =>
   (await q('select user_id, role from members where team_id=$1 and active', [teamId]))
     .filter((m) => m.role !== exceptRole && m.user_id !== except).map((m) => m.user_id);
 const mdOf = (d) => { const m = String(d || '').match(/^\d{4}-(\d{2})-(\d{2})/); return m ? `${+m[1]}/${+m[2]}` : ''; };
+// 이름 앞에 그 날짜(10/4)를 붙인다 — 이름에 이미 그 날짜가 들어 있으면(이름 규칙 '{월}/{일} {이름}' · '10월 4일 …') 또 붙이지 않는다
+// ('10/4 10/4 주일 오전예배' — AND1-15 · F3). app/index.html 의 withDate 와 같다. 10/4 와 10/40 은 다르다
+const withMd = (d, name) => {
+  name = String(name || '').trim(); const m = String(d || '').match(/^\d{4}-(\d{2})-(\d{2})/); if (!m) return name;
+  const mo = +m[1], da = +m[2];
+  if (new RegExp(`(^|[^0-9])${mo}[./]${da}(?![0-9])|${mo}월\\s*${da}일`).test(name)) return name;
+  return name ? `${mo}/${da} ${name}` : `${mo}/${da}`;
+};
 // 조사 붙이기: 한글 받침, 숫자·로마자 읽는 소리를 보고 이/가, 을/를, 으로/로 를 고른다 (app/index.html 의 batOf 와 같다)
 // 받침 번호는 한글 종성 순서 — 0 없음 · 1 ㄱ · 4 ㄴ · 8 ㄹ · 16 ㅁ · 17 ㅂ · 21 ㅇ
 const DIGIT_BATCHIM = [21, 8, 0, 16, 0, 0, 1, 8, 8, 0]; // 영 일 이 삼 사 오 육 칠 팔 구
@@ -1532,7 +1540,7 @@ on('GET', '/words', async ({ uid, url }) => {
   const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
   const out = rows.map((r) => ({
     dateId: r.dateId, date: r.date, label: r.label, serviceId: r.serviceId,
-    name: (r.serviceId && (svcNames[r.serviceId] || drafts[r.serviceId])) || `${mdOf(r.date)} ${r.label}`,
+    name: (r.serviceId && (svcNames[r.serviceId] || drafts[r.serviceId])) || withMd(r.date, r.label),
     past: r.date < today,
     word: wordView(r.word, m),
   }));
@@ -1567,7 +1575,7 @@ on('POST', '/services/:id/word-link', async ({ uid, params, body }) => {
   await q('insert into word_links(token, team_id, service_id, created_by, expires_at) values($1,$2,$3,$4,$5)', [token, teamId, params.id, uid, expires]);
   const svc = await one('select name, date::text as date from services where team_id=$1 and id=$2', [teamId, params.id]);
   const d = await one('select date::text as date, label from service_dates where team_id=$1 and service_id=$2', [teamId, params.id]);
-  const name = (svc && svc.name) || (d ? `${mdOf(d.date)} ${d.label}` : '예배');
+  const name = (svc && svc.name) || (d ? withMd(d.date, d.label) : '예배');
   return { token, expiresAt: expires, teamName: m.name, leaderName: m.mname, serviceName: name };
 });
 
@@ -1582,7 +1590,7 @@ on('GET', '/word-link/:token', async ({ params }) => {
   const leader = await one(`select name from members where team_id=$1 and role='leader' order by created_at asc limit 1`, [l.team_id]);
   return {
     teamName: l.teamName, leaderName: leader ? leader.name : '',
-    serviceName: (svc && svc.name) || (d ? `${mdOf(d.date)} ${d.label}` : '예배'),
+    serviceName: (svc && svc.name) || (d ? withMd(d.date, d.label) : '예배'),
     date: (svc && svc.date) || (d && d.date) || null,
   };
 });
@@ -1695,7 +1703,7 @@ on('PUT', '/services/:id', async ({ uid, params, body }) => {
   // §1 알림: publish(팀 전원, 발행자 제외) · note.updated(인도자의 글이 이전 발행과 다를 때)
   try {
     const version = +doc.version || 0, md = mdOf(doc.date), name = str(doc.name, 60) || '예배';
-    const label = name.startsWith(md) ? name : `${md} ${name}`; // 이름 규칙에 이미 날짜가 들어 있으면 겹쳐 쓰지 않음
+    const label = withMd(doc.date, name); // 이름 규칙에 이미 날짜가 들어 있으면 겹쳐 쓰지 않음
     const titles = doc.items.map((it) => str(it && it.title, 40)).filter(Boolean);
     const songs = titles.length ? (titles.length > 1 ? `${titles[0]} ~ ${titles[titles.length - 1]}` : titles[0]) : '곡 없음';
     // 바뀐 것이 있으면 그것을 알려 준다. 팀원이 알림만 보고도 뭘 다시 봐야 하는지 안다
@@ -2565,6 +2573,18 @@ on('POST', '/blobs/:id/register', async ({ uid, params, body }) => {
   return { ok: true, url: h.url };
 });
 
+// 같은 녹음을 두 번 등록하지 않는다 (F4). 앱은 기기의 녹음 하나마다 표(clientId)를 만들어 보낸다 → 같은 사람·팀·표면
+// 늘 같은 파일 자리(blobId)를 주고, 그 자리의 녹음은 한 번만 등록한다. 느린 망에서 등록 응답만 못 받고 '다시 올리기'를
+// 누르면 전에는 새 자리로 또 올려 같은 녹음이 둘 생겼다('9/27 연습' 두 개). 표가 없으면(옛 앱) 예전처럼 새 자리
+const rehClientId = (v) => (/^[A-Za-z0-9_-]{8,64}$/.test(String(v || '')) ? String(v) : '');
+const rehBlobIdOf = (uid, teamId, cid) => 'r' + createHash('sha256').update(`rehearsal/${uid}/${teamId}/${cid}`).digest('hex').slice(0, 16);
+async function rehearsalByBlob(teamId, blobId) {
+  return one(`select r.id, r.date::text as date, r.label, r.blob_id as "blobId", r.mime, r.duration, r.size_bytes as "sizeBytes", r.keep,
+                     r.expires_at as "expiresAt", r.created_at as "createdAt", r.uploaded_by as "uploadedBy", m.name as "uploaderName"
+              from rehearsals r left join members m on m.team_id=r.team_id and m.user_id=r.uploaded_by
+              where r.team_id=$1 and r.blob_id=$2 order by r.created_at limit 1`, [teamId, blobId]);
+}
+
 // 브라우저가 Blob 으로 바로 올릴 서명 URL (서버리스 본문 한도 4.5MB 우회)
 on('POST', '/rehearsals/upload-url', async ({ uid, body }) => {
   if (!uid) throw noAuth();
@@ -2576,9 +2596,12 @@ on('POST', '/rehearsals/upload-url', async ({ uid, body }) => {
   if (size > REHEARSAL_MAX) throw new HttpError(413, 'too_large', '녹음은 150MB 이하만 올릴 수 있어요');
   if (!size) throw bad('파일 크기를 알 수 없어요');
   const mime = /^audio\//.test(str(body.mime, 60)) ? str(body.mime, 60) : 'audio/mp4';
-  const blobId = 'r' + randomToken(12).replace(/[^A-Za-z0-9]/g, '').slice(0, 16).toLowerCase();
+  const cid = rehClientId(body.clientId);
+  const blobId = cid ? rehBlobIdOf(uid, teamId, cid) : 'r' + randomToken(12).replace(/[^A-Za-z0-9]/g, '').slice(0, 16).toLowerCase();
   const ext = mime.includes('mp4') || mime.includes('m4a') ? '.m4a' : mime.includes('webm') ? '.webm' : mime.includes('mpeg') ? '.mp3' : '.audio';
   const pathname = `teams/${teamId}/rehearsals/${blobId}${ext}`;
+  // 앞선 올리기가 이미 등록됐으면(응답만 못 받았다) 다시 올리지 않고 그 녹음을 돌려준다
+  if (cid) { const done = await rehearsalByBlob(teamId, blobId); if (done) return { blobId, pathname, rehearsal: done, dup: true }; }
   await takeUploadUrl(uid);
   const p = await presignPut(pathname, mime, 10, size);
   return { blobId, pathname, uploadUrl: p.url, mime };
@@ -2597,6 +2620,9 @@ on('POST', '/rehearsals', async ({ uid, body }) => {
   // 남의 파일 id 로 등록·삭제되지 않게. 앞부분만 맞춰 보면 남의 녹음 id 의 앞 몇 글자로 그 파일을 가리키는
   // 별칭을 만들 수 있고, 별칭을 지우면(또는 만료되면) 보관 잠금한 원본까지 지워졌다 → 이름이 똑같아야 한다
   if (!isPathOf(pathname, `teams/${teamId}/rehearsals/${blobId}`, REH_EXT)) throw bad('경로가 id 와 맞지 않아요');
+  // 같은 파일 자리의 녹음이 이미 있으면 또 만들지 않고 그것을 돌려준다 — 등록 응답을 못 받고 다시 누른 것 (F4)
+  const dup0 = await rehearsalByBlob(teamId, blobId);
+  if (dup0) return { ok: true, dup: true, rehearsal: dup0 };
   const h = await headBlob(pathname);
   if (!h) throw bad('파일이 올라오지 않았어요. 다시 시도해 주세요');
   if (h.size > REHEARSAL_MAX) { await delBlobs([h.url]); throw new HttpError(413, 'too_large', '녹음은 150MB 이하만 올릴 수 있어요'); }
@@ -2605,9 +2631,13 @@ on('POST', '/rehearsals', async ({ uid, body }) => {
   const expires = new Date(Date.now() + REHEARSAL_KEEP_DAYS * 86400000);
   await q('insert into blobs(team_id, id, url, pathname, type, size) values($1,$2,$3,$4,$5,$6) on conflict (team_id, id) do nothing',
     [teamId, blobId, h.url, h.pathname, h.contentType || 'audio/mp4', h.size]);
+  // 같은 자리가 그사이 등록됐으면(두 요청이 겹쳤다) 넣지 않는다
   const r = await one(`insert into rehearsals(team_id, service_id, date, label, blob_id, mime, duration, size_bytes, uploaded_by, expires_at)
-                       values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning id, date::text as date, label, blob_id as "blobId", mime, duration, size_bytes as "sizeBytes", keep, expires_at as "expiresAt", created_at as "createdAt"`,
+                       select $1::uuid,$2::text,$3::date,$4::text,$5::text,$6::text,$7::int,$8::bigint,$9::uuid,$10::timestamptz
+                       where not exists (select 1 from rehearsals where team_id=$1::uuid and blob_id=$5::text)
+                       returning id, date::text as date, label, blob_id as "blobId", mime, duration, size_bytes as "sizeBytes", keep, expires_at as "expiresAt", created_at as "createdAt"`,
     [teamId, serviceId, date, label, blobId, h.contentType || 'audio/mp4', Math.max(0, Math.round(+body.duration || 0)), h.size, uid, expires]);
+  if (!r) { const dup1 = await rehearsalByBlob(teamId, blobId); if (dup1) return { ok: true, dup: true, rehearsal: dup1 }; throw new HttpError(409, 'conflict', '녹음을 등록하지 못했어요. 다시 시도해 주세요'); }
   // §1 rehearsal.uploaded: 편성된 사람, 없으면 전원
   try {
     const d = await one('select lineup from service_dates where team_id=$1 and service_id=$2', [teamId, serviceId]);
@@ -3443,7 +3473,7 @@ on('POST', '/teams/:id/dates', async ({ uid, params, body }) => {
   // §1 date.opened: 팀 전원(목회자 제외), 홈 카드. 그 날이 지나면 카드는 사라짐
   try {
     const to = await teamUserIds(params.id, { exceptRole: 'pastor', except: uid });
-    await notify(params.id, to, 'date.opened', row.id, { title: `${mdOf(row.date)} ${row.label} 일정이 열렸어요`, body: row.time ? `${row.time} · 참여 가능한지 알려주세요` : '참여 가능한지 알려주세요', link: '#/cal', actionable: true, expiresAt: new Date(row.date + 'T23:59:59+09:00') });
+    await notify(params.id, to, 'date.opened', row.id, { title: `${withMd(row.date, row.label)} 일정이 열렸어요`, body: row.time ? `${row.time} · 참여 가능한지 알려주세요` : '참여 가능한지 알려주세요', link: '#/cal', actionable: true, expiresAt: new Date(row.date + 'T23:59:59+09:00') });
   } catch (e) { console.error('notify date.opened', e); }
   return { ok: true, date: row };
 });
@@ -3459,12 +3489,12 @@ on('PATCH', '/teams/:id/dates/:did', async ({ uid, params, body }) => {
     await q('update service_dates set open=$2 where id=$1', [params.did, body.open]);
     if (body.open !== !!row.open) { // §1 date.opened / date.closed
       try {
-        const iso = String(row.dtext).slice(0, 10), md = mdOf(iso);
-        if (body.open) await notify(params.id, await teamUserIds(params.id, { exceptRole: 'pastor', except: uid }), 'date.opened', row.id, { title: `${md} ${row.label} 일정이 열렸어요`, body: row.time ? `${row.time} · 참여 가능한지 알려주세요` : '참여 가능한지 알려주세요', link: '#/cal', actionable: true, expiresAt: new Date(iso + 'T23:59:59+09:00') });
+        const iso = String(row.dtext).slice(0, 10);
+        if (body.open) await notify(params.id, await teamUserIds(params.id, { exceptRole: 'pastor', except: uid }), 'date.opened', row.id, { title: `${withMd(iso, row.label)} 일정이 열렸어요`, body: row.time ? `${row.time} · 참여 가능한지 알려주세요` : '참여 가능한지 알려주세요', link: '#/cal', actionable: true, expiresAt: new Date(iso + 'T23:59:59+09:00') });
         else {
           // 목회자도 알아야 하지만 목회자의 달력은 누를 수 있는 게 없다 (누르면 전부 403) → 목회자는 홈으로
           const all = await q('select user_id, role from members where team_id=$1 and active and user_id<>$2', [params.id, uid]);
-          const closed = { title: `${md} ${row.label}는 이번 주 쉽니다`, body: '' };
+          const closed = { title: `${withMd(iso, row.label)}는 이번 주 쉽니다`, body: '' };
           await notify(params.id, all.filter((x) => x.role !== 'pastor').map((x) => x.user_id), 'date.closed', row.id, { ...closed, link: '#/cal' });
           await notify(params.id, all.filter((x) => x.role === 'pastor').map((x) => x.user_id), 'date.closed', row.id, { ...closed, link: '#/home' });
         }
@@ -3637,7 +3667,7 @@ on('POST', '/teams/:id/dates/:did/notify', async ({ uid, params }) => {
   const row = await one('select id, date::text as date, label, time, lineup, notified, service_id as "serviceId" from service_dates where id=$1 and team_id=$2', [params.did, params.id]);
   if (!row) throw notFound('날짜가 없어요');
   const lineup = cleanLineup(row.lineup);
-  const md = mdOf(row.date), where = `${md} ${row.label}`;
+  const md = mdOf(row.date), where = withMd(row.date, row.label);
   // 발행 전이면(보통 1~3주 전에 통보한다) 그 달 편성 화면으로 — 거기에 '9/26 일렉으로 서요'가 보인다
   const link = await viewLinkOr(params.id, row.serviceId, '#/sched/' + row.date.slice(0, 7));
   const now = new Date().toISOString();
@@ -3684,7 +3714,7 @@ on('GET', '/teams/:id/dates/:did/text', async ({ uid, params }) => {
   const nameOf = (id) => (ms.find((x) => x.userId === id) || {}).name || '';
   const byS = {};
   for (const r of cleanLineup(row.lineup)) if (r.memberId) (byS[r.session] || (byS[r.session] = [])).push(nameOf(r.memberId));
-  const lines = [`[${mdOf(row.date)} ${row.label}${row.time ? ' ' + row.time : ''} 편성]`, ...Object.entries(byS).map(([s, n]) => `${s} ${n.join(', ')}`)];
+  const lines = [`[${withMd(row.date, row.label)}${row.time ? ' ' + row.time : ''} 편성]`, ...Object.entries(byS).map(([s, n]) => `${s} ${n.join(', ')}`)];
   return { text: lines.join('\n') };
 });
 
@@ -3804,7 +3834,7 @@ async function scheduleReminders(teamId, st) {
       const need = await q(`select sd.date::text as date, sd.label from service_dates sd
                             left join service_words w on w.team_id=sd.team_id and w.service_id=sd.service_id
                             where sd.team_id=$1 and sd.open and sd.date between current_date and $2 and (w.word is null or w.word->>'passage' is null or w.word->>'passage'='')`, [teamId, upto]);
-      if (need.length) await notify(teamId, pastors, 'word.request', upto, { title: '이번 주 말씀 알려주세요', body: need.map((r) => `${mdOf(r.date)} ${r.label}`).join(', '), link: '#/word', actionable: true, expiresAt: new Date(upto + 'T23:59:59+09:00') });
+      if (need.length) await notify(teamId, pastors, 'word.request', upto, { title: '이번 주 말씀 알려주세요', body: need.map((r) => withMd(r.date, r.label)).join(', '), link: '#/word', actionable: true, expiresAt: new Date(upto + 'T23:59:59+09:00') });
     }
   }
   return { asked, maybes };

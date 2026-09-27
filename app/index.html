@@ -1407,13 +1407,23 @@ const ANDROID=/android/i.test(navigator.userAgent||'')||(()=>{try{return window.
 // 못 들어오는 계정이 됐다 (AND1-18) → 안드로이드에서만 칸 오른쪽에 보기(눈) 단추를 둔다. autocomplete 등 칸 속성은 그대로
 function pwInput(attrs){const i=`<input class="field" type="password" ${attrs}>`;
  return ANDROID?`<span class="pwbox">${i.replace('<input ','<input autocapitalize="none" spellcheck="false" ')}<button type="button" class="pweye" tabindex="-1" aria-label="비밀번호 보기" aria-pressed="false">${ic('eye')}</button></span>`:i}
-// 눈 단추는 칸의 포커스(자판)를 빼앗지 않는다(mousedown 을 막는다) — 가림만 바꾸고 커서는 끝에
+// 눈 단추는 칸의 포커스(자판)를 빼앗지 않는다(mousedown 을 막는다) — 가림만 바꾸고 커서는 있던 자리에
+// type 을 바꾸면 안드로이드 웹뷰가 자판(IME)을 다시 붙이면서 커서를 맨 앞(0)으로 돌린다. 바로 setSelectionRange 를 해도
+// 그 뒤에 오는 자판 재시작이 덮어써서 이어 친 글자가 앞에 들어갔다('abc123' → '9abc123' · F1) → 바꾼 직후·다음 프레임·조금 뒤에
+// 다시 놓는다. 되돌리는 것은 커서가 맨 앞(0)에 접혀 있을 때뿐 — 사람이 고른 것(전체 선택 등)은 그대로 둔다.
+// 그사이 값이 바뀌었거나(이미 쳤다) 포커스가 떠났으면 건드리지 않는다
+function pwKeepCaret(i,s,e){const v=i.value;let n=0;if(!s&&!e)return;
+ const fix=()=>{if(document.activeElement!==i||i.value!==v)return;try{if(i.selectionStart===0&&i.selectionEnd===0)i.setSelectionRange(s,e)}catch(x){}};
+ fix();requestAnimationFrame(()=>{fix();requestAnimationFrame(fix)});[40,120,260,450].forEach(t=>setTimeout(fix,t));
+ // 자판 재시작이 늦게 와 커서를 옮기면 그때 바로 되돌린다 (0.6초 동안만)
+ const on=()=>{if(++n>20)return;fix()};document.addEventListener('selectionchange',on);setTimeout(()=>document.removeEventListener('selectionchange',on),600)}
 if(ANDROID){
  document.addEventListener('mousedown',e=>{if(e.target.closest&&e.target.closest('.pweye'))e.preventDefault()},true);
  document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('.pweye');if(!b)return;e.preventDefault();e.stopPropagation();
   const i=b.parentElement&&b.parentElement.querySelector('input');if(!i)return;const show=i.type==='password',f=document.activeElement===i;
+  let s=i.value.length,en=s;if(f)try{s=i.selectionStart;en=i.selectionEnd;if(s==null||en==null)s=en=i.value.length}catch(x){}
   i.type=show?'text':'password';b.setAttribute('aria-pressed',show?'true':'false');b.setAttribute('aria-label',show?'비밀번호 가리기':'비밀번호 보기');b.innerHTML=ic(show?'eyeoff':'eye');
-  if(f){const n=i.value.length;try{i.setSelectionRange(n,n)}catch(e2){}}},true)}
+  if(f){if(document.activeElement!==i)try{i.focus({preventScroll:true})}catch(x){}pwKeepCaret(i,s,en)}},true)}
 const fmtDate=d=>{if(!d)return {md:'—',w:''};const t=new Date(d+'T00:00:00');if(isNaN(t))return {md:d,w:''};return {md:(t.getMonth()+1)+'/'+t.getDate(),w:['일','월','화','수','목','금','토'][t.getDay()]}};
 // 이름 앞에 그 날짜(10/4)를 붙인다 — 이름에 이미 그 날짜가 들어 있으면(팀 이름 규칙 기본값 '{월}/{일} {이름}' · '10월 4일 …') 또 붙이지 않는다
 // ('10/4 10/4 주일 오전예배 콘티가 비어 있어요' — AND1-15). 10/4 와 10/40 은 다르다
@@ -2318,6 +2328,39 @@ function rehItemNotes(svc,itemId){const list=REH.bySvc[svc.id]||[];const out=[];
  list.forEach(r=>(r.notes||[]).forEach(n=>{if(n.itemId===itemId)out.push({r,n})}));
  if(!out.length)return '';
  return `<div class="reheard">${out.slice(0,3).map(({r,n})=>`<div class="tl" data-act="reh-play" data-id="${esc(r.id)}" data-t="${n.t}"><span class="t">${fmtDur(n.t)}</span><span>${esc(n.text)}</span></div>`).join('')}<span class="hint">지난 연습에서</span></div>`}
+// 한 녹음은 한 번만 올린다 (F4). 느린 망에서 첫 올리기가 아직 가는 중에 창을 닫았다 다시 열어('올리지 않은 녹음') 또 누르거나
+// 다시 연결된 뒤 다시 올리면 두 올리기가 따로 끝나 같은 녹음이 둘 생겼다('9/27 연습' 두 개, 같은 시각).
+// 파일 하나에 올리기 하나(REH.jobs): 가는 중이면 새로 시작하지 않고 그 진행을 보여 준다(다시 연 창에서도 — REH.busy).
+// 올리고 나면 올리지 않은 녹음(REH.draft)을 지우고 그 파일은 다시 올리지 않는다. 서버에는 녹음마다 만든 표(clientId)를
+// 보내 늘 같은 파일 자리를 받는다 — 등록 응답만 못 받고 다시 올려도 서버가 이미 있는 녹음을 돌려준다
+REH.jobs=new WeakMap();REH.busy={};
+const rehCid=()=>{try{if(crypto.randomUUID)return crypto.randomUUID().replace(/-/g,'')}catch(e){}return uid()+uid()+uid()};
+const rehWhy=err=>err.net?(err.offline?'인터넷 연결이 끊겨 올리지 못했어요':'서버에 닿지 않아 올리지 못했어요'):err.timeout?'서버 응답이 늦어 올리지 못했어요':(err.message||'올리지 못했어요');
+function rehUpload(svcId,file,meta){let j=REH.jobs.get(file);
+ if(!j){j={cid:rehCid(),file,p:null,msg:'',done:null,meta:null,subs:new Set()};REH.jobs.set(file,j)}
+ if(j.done||j.p)return j;
+ j.meta=meta;const tid=S.team.id;REH.busy[svcId]=j;
+ const tell=(k,v)=>[...j.subs].forEach(f=>{try{f(k,v)}catch(e){}});
+ const say=m=>{j.msg=m;tell('msg',m)};
+ j.p=(async()=>{say('올릴 자리 준비 중…');
+  const u=await api('/rehearsals/upload-url',{method:'POST',timeout:60000,body:{teamId:tid,size:file.size,mime:file.type||'audio/mp4',clientId:j.cid}});
+  if(u.rehearsal)return u.rehearsal;   // 앞선 올리기가 이미 등록됐다 (응답만 못 받았다)
+  say('올리는 중…');await putDirect(u.uploadUrl,file,p=>say(`올리는 중… ${p}%`),{stall:60000});
+  say('마무리 중…');
+  // 등록은 시간으로 끊지 않는다 — 늦을 뿐인 등록을 끊고 다시 올리면(표를 모르는 옛 서버에서는) 녹음이 둘 된다
+  const r=await api('/rehearsals',{method:'POST',body:{teamId:tid,serviceId:svcId,blobId:u.blobId,pathname:u.pathname,date:meta.date,label:meta.label,duration:Math.round(meta.dur||0),clientId:j.cid}});
+  return r.rehearsal})();
+ const fin=()=>{j.p=null;if(REH.busy[svcId]===j)delete REH.busy[svcId]};
+ const here=()=>route().name==='view'&&route().a===svcId&&!$('#modal').firstChild;
+ j.p.then(rh=>{fin();j.done=rh||true;
+  if(REH.draft&&REH.draft.file===file)REH.draft=null;
+  const L=REH.bySvc[svcId]=REH.bySvc[svcId]||[];if(rh&&rh.id&&!L.some(x=>x.id===rh.id))L.unshift(rh);
+  tell('done',rh);if(here())render();toast('녹음을 올렸어요');
+  pullRehearsals(svcId,true).then(ch=>{if(ch&&here())render()})},
+ err=>{fin();const seen=j.subs.size>0;tell('fail',err);
+  if(err.status===403){if(!seen)toast(err.message);pullTeam(true).then(()=>render()).catch(()=>{});return}   // 뒤 화면의 '녹음 올리기'도 치운다
+  if(!seen)toast(rehWhy(err)+(REH.draft&&REH.draft.file===file?' · "녹음 올리기"를 다시 열면 올릴 수 있어요':''),3500)});
+ return j}
 function rehAddModal(svc){
  modal(`<b style="font-size:17px">연습 녹음 올리기</b><div class="hint" style="margin-top:4px">3시간·150MB 이하 · 90일 뒤 자동 삭제(인도자가 잠그면 유지)</div>
   <div class="lbl">날짜</div><input class="field" id="rhDate" type="date" value="${esc(svc.date||today())}" style="width:auto">
@@ -2327,35 +2370,56 @@ function rehAddModal(svc){
    <button class="btn sm" id="rhRec">${ic('mic')}지금 녹음</button><span class="hint" id="rhPick">고른 파일 없음</span></div>
   <div class="hint" id="rhProg" style="margin-top:8px"></div>
   <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px"><button class="btn" data-close="1">닫기</button><button class="btn pri" id="rhOk" disabled>${ic('send')}올리기</button></div>`,{center:true});
- const root=$('#modal').firstChild;
- let file=null,dur=0,rec=null,chunks=[],stream=null,gone=false,noPerm=false;
- const setPick=(name,d)=>{const p=$('#rhPick'),ok=$('#rhOk');if(gone||!p)return;p.textContent=name+(d?` · ${fmtDur(d)}`:'');if(ok)ok.disabled=!file||noPerm};
+ const root=$('#modal').firstChild,in_=q=>root.querySelector(q);
+ let file=null,dur=0,rec=null,chunks=[],stream=null,gone=false,noPerm=false,job=null;
+ const recording=()=>!!(rec&&rec.state==='recording');
+ const setPick=(name,d)=>{const p=in_('#rhPick'),ok=in_('#rhOk');if(gone||!p)return;p.textContent=name+(d?` · ${fmtDur(d)}`:'');if(ok)ok.disabled=!file||noPerm||!!job||recording()};
+ // 올리는 동안에는 파일 고르기·녹음·올리기를 막는다 — 같은 창에서 두 번 올리지 않게 (F4)
+ const lock=on=>{const ok=in_('#rhOk'),rb=in_('#rhRec'),fi=in_('#rhFile'),lb=in_('label[for="rhFile"]');
+  if(ok)ok.disabled=on||!file||noPerm;if(rb)rb.disabled=on;if(fi)fi.disabled=on;if(lb){lb.style.pointerEvents=on?'none':'';lb.style.opacity=on?'.5':''}};
+ // 올리기(job)의 소식: 진행 글 · 끝나면 창을 닫고 · 못 올렸으면 까닭과 '다시 올리기'
+ const sub=(k,v)=>{if(gone)return;const prog=in_('#rhProg'),ok=in_('#rhOk');if(!prog)return;
+  if(k==='msg'){prog.textContent=v;return}
+  if(k==='done'){closeModal();return}
+  follow(null);const pk=in_('#rhPick');if(pk)pk.textContent=pk.textContent.replace('올리는 중인 녹음','올리지 않은 녹음');
+  if(v&&v.status===403){denied();return}
+  // 끊겨서 못 올렸으면 그렇다고 우리말로 한 번 (전에는 'Failed to fetch' 가 빨간 글과 토스트로 두 번 떴다). 다시 시도는 아래 단추 하나로 —
+  // 줄에 같은 id(rhOk)의 '다시 시도'를 또 두어 올리기 단추가 둘이었다 (AND2-13). 줄에는 '기기에 저장'만 둔다
+  prog.innerHTML=`<span style="color:var(--destructive)">${esc(rehWhy(v||{}))}</span> <button class="btn sm" id="rhSave">${ic('import')}기기에 저장</button>`;
+  if(ok)ok.innerHTML=`${ic('send')}다시 올리기`};
+ const follow=j=>{if(job&&job!==j)job.subs.delete(sub);job=j;
+  if(j){j.subs.add(sub);lock(true);const prog=in_('#rhProg');if(prog)prog.textContent=j.msg||'올리는 중…'}else lock(false)};
  // 올리지 못한 녹음은 창을 닫아도 남겨 둔다 — 다시 열면 그대로 올릴 수 있다 (새로고침하면 사라진다)
  const d0=REH.draft&&REH.draft.svcId===svc.id?REH.draft:null;
- if(d0){file=d0.file;dur=d0.dur;setPick('올리지 않은 녹음',dur)}
+ // 앞서 누른 올리기가 아직 가는 중이면(창을 닫았다 다시 열었다) 새로 올리지 않고 그 진행을 보여 준다
+ const b0=REH.busy[svc.id]&&REH.busy[svc.id].p?REH.busy[svc.id]:null;
+ const j0=b0||(d0&&REH.jobs.get(d0.file));
+ if(j0&&j0.meta){const dt=in_('#rhDate'),lb=in_('#rhLabel');if(dt&&j0.meta.date)dt.value=j0.meta.date;if(lb)lb.value=j0.meta.label||''}
+ if(b0){file=b0.file;dur=(b0.meta&&b0.meta.dur)||0;setPick(d0&&d0.file===file?'올리는 중인 녹음':(file.name||'녹음'),dur);follow(b0)}
+ else if(d0){file=d0.file;dur=d0.dur;setPick('올리지 않은 녹음',dur)}
  // 올릴 권한이 없어졌으면 녹음을 기기에 저장하게 한다 (다시 시도해도 계속 403 이다)
- const denied=()=>{noPerm=true;const p=$('#rhProg'),ok=$('#rhOk');if(gone||!p)return;if(ok)ok.disabled=true;
+ const denied=()=>{noPerm=true;const p=in_('#rhProg'),ok=in_('#rhOk');if(gone||!p)return;if(ok)ok.disabled=true;
   p.innerHTML=`<span style="color:var(--destructive)">녹음을 올릴 권한이 없어요 (인도자가 바꿨어요)</span>${file?` <button class="btn sm" id="rhSave">${ic('import')}기기에 저장</button>`:''}`};
  // 바깥 누르기·Esc·안드로이드 뒤로가기로 닫혀도 마이크를 끈다. 예전에는 [닫기] 단추만 녹음을 멈춰서
- // 창이 사라진 뒤에도 몰래 계속 녹음했다 (마이크 표시가 켜진 채 메모리에 쌓임)
- const mo=new MutationObserver(()=>{if(root&&root.parentNode===$('#modal'))return;mo.disconnect();gone=true;
-  if(rec&&rec.state==='recording'){rec.stop();toast('녹음을 멈췄어요 · "녹음 올리기"를 다시 열면 올릴 수 있어요')}
+ // 창이 사라진 뒤에도 몰래 계속 녹음했다 (마이크 표시가 켜진 채 메모리에 쌓임). 올리기는 창이 닫혀도 끝까지 간다
+ const mo=new MutationObserver(()=>{if(root&&root.parentNode===$('#modal'))return;mo.disconnect();gone=true;if(job)job.subs.delete(sub);
+  if(recording()){rec.stop();toast('녹음을 멈췄어요 · "녹음 올리기"를 다시 열면 올릴 수 있어요')}
   else if(stream)stream.getTracks().forEach(t=>t.stop())});
  mo.observe($('#modal'),{childList:true});
  // 올리기 권한은 부팅 때 받은 팀 설정으로 본다 → 그사이 인도자가 '인도자만'으로 바꿨을 수 있어 열 때 새로 받는다
  // (예전에는 몇 시간 녹음한 뒤 올리기를 눌러서야 403 이 났다)
  if(online()&&!isLeader())pullTeam(true).then(()=>{if(gone||canUploadReh())return;
-  if(!file&&!(rec&&rec.state==='recording')){closeModal();render();toast('녹음을 올릴 권한이 없어요 (인도자가 바꿨어요)');return}
-  denied()}).catch(()=>{});
+  if(!file&&!recording()){closeModal();render();toast('녹음을 올릴 권한이 없어요 (인도자가 바꿨어요)');return}
+  if(!job)denied()}).catch(()=>{});
  const measure=b=>new Promise(res=>{const a=new Audio(URL.createObjectURL(b));a.onloadedmetadata=()=>{res(isFinite(a.duration)?a.duration:0);URL.revokeObjectURL(a.src)};a.onerror=()=>res(0);setTimeout(()=>res(0),4000)});
- $('#modal').onchange=async e=>{if(e.target.id!=='rhFile')return;const f=e.target.files[0];if(!f)return;
+ $('#modal').onchange=async e=>{if(e.target.id!=='rhFile'||job)return;const f=e.target.files[0];if(!f)return;
   if(f.size>150*1024*1024){toast('150MB 이하만 올릴 수 있어요');return}
   file=f;dur=await measure(f);setPick(f.name,dur)};
  $('#modal').onclick=async e=>{
   if(e.target.closest('[data-close]')){closeModal();return}   // 녹음 중이면 위의 감시가 멈추고 남겨 둔다
   if(e.target.closest('#rhSave')){if(!file)return;const sb=e.target.closest('#rhSave');if(sb.disabled)return;
    const ext=/mp4|m4a|aac/.test(file.type)?'m4a':/webm/.test(file.type)?'webm':/ogg/.test(file.type)?'ogg':((file.name.match(/\.(\w+)$/)||[])[1]||'m4a');
-   const name=(($('#rhLabel').value.trim()||fmtDate($('#rhDate').value||today()).md+' 연습').replace(/[\\/:*?"<>|]/g,'_'))+'.'+ext;
+   const name=((in_('#rhLabel').value.trim()||fmtDate(in_('#rhDate').value||today()).md+' 연습').replace(/[\\/:*?"<>|]/g,'_'))+'.'+ext;
    // 앱(웹뷰)은 내려받기 링크가 안 먹는다 → iOS 는 웹 공유로 넘기고, 안드로이드는 저장 위치 고르기(다운로드 등)로 기기에 저장한다 —
    // 공유 시트에는 저장할 곳이 없고 올리기에 실패한 까닭(오프라인)에서는 드라이브·메일도 안 됐다 (AND2-06).
    // 끝까지 했을 때만 알린다 — 예전에는 안드로이드에서 아무 일도 없는데 '기기에 저장했어요'가 떠서 믿고 닫으면 녹음을 잃었다
@@ -2363,42 +2427,31 @@ function rehAddModal(svc){
    try{const r=await saveFile(name,file,file.type||'audio/mp4','device');if(r)toast(r==='saved'||!NATIVE?'기기에 저장했어요':'녹음 파일을 보냈어요')}
    catch(err){toast(err.message||'파일을 저장하지 못했어요')}
    sb.disabled=false;return}
-  if(e.target.closest('#rhRec')){const btn=$('#rhRec');
-   if(rec&&rec.state==='recording'){rec.stop();return}
+  if(e.target.closest('#rhRec')){const btn=in_('#rhRec');if(job)return;
+   if(recording()){rec.stop();return}
    try{stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:false,noiseSuppression:false}});
     if(gone){stream.getTracks().forEach(t=>t.stop());return}   // 마이크 허락을 묻는 사이에 창이 닫혔다
+    // 마이크를 받았으면 앞서 띄운 '마이크 권한이 꺼져 있어요 · 설정 열기' 안내를 걷는다 — 설정에서 켜고 돌아와 녹음해도 남아 있었다 (F2)
+    const mp=in_('#rhMicOff');if(mp)mp.remove();
     const mime=['audio/mp4','audio/webm;codecs=opus','audio/webm'].find(t=>window.MediaRecorder&&MediaRecorder.isTypeSupported(t))||'';
     const st=stream,r0=rec=new MediaRecorder(st,mime?{mimeType:mime,audioBitsPerSecond:64000}:{});chunks=[];const t0=Date.now();
     r0.ondataavailable=ev=>{if(ev.data&&ev.data.size)chunks.push(ev.data)};
     r0.onstop=()=>{st.getTracks().forEach(t=>t.stop());const b=new Blob(chunks,{type:r0.mimeType||'audio/webm'});
      file=new File([b],'연습녹음',{type:b.type});dur=Math.round((Date.now()-t0)/1000);REH.draft={svcId:svc.id,file,dur};
      if(gone)return;btn.textContent='다시 녹음';setPick('방금 녹음',dur);if(noPerm)denied()};
-    r0.start(1000);btn.innerHTML='■ 녹음 멈추기';$('#rhPick').textContent='녹음 중…'}
+    r0.start(1000);btn.innerHTML='■ 녹음 멈추기';in_('#rhPick').textContent='녹음 중…';const ok=in_('#rhOk');if(ok)ok.disabled=true}
    catch(err){
     // 안드로이드는 마이크를 두 번 거절하면 다시 묻지 않고 곧바로 거절한다 — 토스트만 떠서 켜는 길을 몰랐다 (AND2-10).
     // 창 안에 설정에서 켜는 길과 앱 정보(권한) 화면을 여는 단추를 둔다
-    const p=$('#rhProg');
+    const p=in_('#rhProg');
     if(err&&err.name==='NotAllowedError'&&NATIVE&&window.Capacitor.getPlatform&&window.Capacitor.getPlatform()==='android'&&p&&!gone){
-     p.innerHTML=`<span style="color:var(--destructive)">마이크 권한이 꺼져 있어요</span> · 휴대폰 <b>설정 › 앱 › 1414 › 권한 › 마이크</b>에서 허용해 주세요 <button class="btn sm" id="rhPerm">${ic('gear')}설정 열기</button>`;return}
+     p.innerHTML=`<span id="rhMicOff"><span style="color:var(--destructive)">마이크 권한이 꺼져 있어요</span> · 휴대폰 <b>설정 › 앱 › 1414 › 권한 › 마이크</b>에서 허용해 주세요 <button class="btn sm" id="rhPerm">${ic('gear')}설정 열기</button></span>`;return}
     toast('마이크를 쓸 수 없어요')}return}
   if(e.target.closest('#rhPerm')){const Pr=CapPlug().Printer;Promise.resolve().then(()=>Pr.openAppSettings()).catch(()=>toast('설정을 열지 못했어요 · 휴대폰 설정에서 1414 를 찾아 주세요'));return}
-  if(e.target.closest('#rhOk')){if(!file||noPerm)return;const btn=$('#rhOk');btn.disabled=true;const prog=$('#rhProg');
-   try{prog.textContent='올릴 자리 준비 중…';
-    const u=await api('/rehearsals/upload-url',{method:'POST',body:{teamId:S.team.id,size:file.size,mime:file.type||'audio/mp4'}});
-    await putDirect(u.uploadUrl,file,p=>{prog.textContent=`올리는 중… ${p}%`});
-    prog.textContent='마무리 중…';
-    const r=await api('/rehearsals',{method:'POST',body:{teamId:S.team.id,serviceId:svc.id,blobId:u.blobId,pathname:u.pathname,date:$('#rhDate').value,label:$('#rhLabel').value.trim(),duration:Math.round(dur)}});
-    if(REH.draft&&REH.draft.file===file)REH.draft=null;
-    (REH.bySvc[svc.id]=REH.bySvc[svc.id]||[]).unshift(r.rehearsal);await pullRehearsals(svc.id,true);
-    closeModal();render();toast('녹음을 올렸어요')}
-   catch(err){
-    if(err.status===403){toast(err.message);denied();pullTeam(true).then(()=>render()).catch(()=>{});return}   // 뒤 화면의 '녹음 올리기'도 치운다
-    // 끊겨서 못 올렸으면 그렇다고 우리말로 한 번 (전에는 'Failed to fetch' 가 빨간 글과 토스트로 두 번 떴다). 다시 시도는 아래 단추 하나로 —
-    // 줄에 같은 id(rhOk)의 '다시 시도'를 또 두어 올리기 단추가 둘이었다 (AND2-13). 줄에는 '기기에 저장'만 둔다
-    const why=err.net?(err.offline?'인터넷 연결이 끊겨 올리지 못했어요':'서버에 닿지 않아 올리지 못했어요'):err.timeout?'서버 응답이 늦어 올리지 못했어요':err.message;
-    if(gone||!prog.isConnected){toast(why+' · "녹음 올리기"를 다시 열면 올릴 수 있어요',3500);return}
-    prog.innerHTML=`<span style="color:var(--destructive)">${esc(why)}</span> <button class="btn sm" id="rhSave">${ic('import')}기기에 저장</button>`;
-    btn.disabled=false;btn.innerHTML=`${ic('send')}다시 올리기`}return}}}
+  if(e.target.closest('#rhOk')){if(!file||noPerm||job||recording())return;
+   const j=rehUpload(svc.id,file,{date:in_('#rhDate').value,label:in_('#rhLabel').value.trim(),dur});
+   if(j.done){closeModal();toast('이미 올린 녹음이에요');return}   // 다른 창에서 먼저 올렸다
+   follow(j);return}}}
 // 파일 하나 올리기. 서버리스 본문 한도(4.5MB)를 넘으면 Blob 스토어로 바로 올린 뒤 등록한다
 const DIRECT_OVER=3.5*1024*1024;
 // 같은 파일을 겹쳐 올리지 않는다. 초안·라이브러리·곡 자동 저장이 저마다 올리기를 시작해서
@@ -2425,11 +2478,19 @@ async function uploadBlobOnce(id,b,onProgress,force,tid){
  await api('/blobs/'+id+'/register',{method:'POST',body:{teamId:tid,pathname:u.pathname}});
  return true}
 // 진행률이 보이는 직접 업로드 (fetch 는 진행률이 없어 XHR 사용)
-function putDirect(url,file,onProgress){return new Promise((res,rej)=>{const x=new XMLHttpRequest();x.open('PUT',url);
+// o.stall: 보내는 동안 그만큼 한 바이트도 안 나가면 끊고 실패로 본다 — 망이 멈추면 '올리는 중… 40%'에서 몇 분씩 서 있어 다시 올릴 수도
+// 없었다. 다 넘긴 뒤(100%)는 휴대폰이 아직 보내는 중일 수 있어(커널 버퍼가 몇 MB) 넉넉히 기다린다 — 느린 망에서 멀쩡한 큰 녹음을 끊지 않게.
+// 끊어도 녹음이 둘 생기지 않는다(등록은 PUT 이 끝난 뒤에만 한다)
+function putDirect(url,file,onProgress,o){return new Promise((res,rej)=>{const x=new XMLHttpRequest();x.open('PUT',url);
  x.setRequestHeader('content-type',file.type||'application/octet-stream');
- x.upload.onprogress=ev=>{if(ev.lengthComputable&&onProgress)onProgress(Math.round(ev.loaded/ev.total*100))};
- x.onload=()=>x.status>=200&&x.status<300?res():rej(new Error('업로드 실패 ('+x.status+')'));
- x.onerror=()=>{const off=navigator.onLine===false,er=new Error(off?'인터넷 연결이 끊겨 올리지 못했어요':'네트워크 오류로 업로드하지 못했어요');er.net=true;er.offline=off;rej(er)};x.send(file)})}
+ const netFail=()=>{const off=navigator.onLine===false,er=new Error(off?'인터넷 연결이 끊겨 올리지 못했어요':'네트워크 오류로 업로드하지 못했어요');er.net=true;er.offline=off;return er};
+ let tm=0,sent=false;const lim=()=>sent?120000+Math.min(file.size||0,8*1048576)/4096*1000:o.stall;
+ const kick=()=>{if(!(o&&o.stall))return;clearTimeout(tm);tm=setTimeout(()=>{try{x.abort()}catch(e){}rej(netFail())},lim())};
+ x.upload.onprogress=ev=>{if(ev.lengthComputable&&ev.loaded>=ev.total)sent=true;kick();if(ev.lengthComputable&&onProgress)onProgress(Math.round(ev.loaded/ev.total*100))};
+ x.upload.onload=()=>{sent=true;kick()};
+ x.onreadystatechange=kick;
+ x.onload=()=>{clearTimeout(tm);x.status>=200&&x.status<300?res():rej(new Error('업로드 실패 ('+x.status+')'))};
+ x.onerror=()=>{clearTimeout(tm);rej(netFail())};kick();x.send(file)})}
 // 녹음 플레이어: 재생 · ±5초 · 진행바 · 여기에 메모 (연습 화면과 같은 조작)
 // at: {t:시작 초, play:바로 재생} — 메모를 적고 돌아오면 보던 자리에서 다시 연다 (예전에는 0:00 으로 돌아갔다)
 async function rehPlayer(svc,r,at){
@@ -2714,7 +2775,7 @@ function lineupHTML(dateId){const d=SCH.dates.find(x=>x.id===dateId);
   ||lineup.some(r=>r.memberId&&!r.notifiedAt);   // 사람은 그대로여도 세션을 옮기거나 늘리고 줄이면 그 사람 자리는 '통보 전'이 된다
  // 편성 표 위에 떠 있는 패널. 뒤에 표가 그대로 보여서 다른 날짜로 바로 옮겨 갈 수 있다
  return schedHTML()+`<div class="lnov" data-act="lclose"><aside class="lnpanel" data-stop="1">
-  <header class="lnhd"><div><b>${esc(fmtDate(d.date).md)} ${esc(d.label)}</b>
+  <header class="lnhd"><div><b>${esc(withDate(d.date,d.label))}</b>
     <div class="hint">${d.time?esc(d.time)+' · ':''}${notified?'통보함':'통보 전'}</div></div>
    <span class="grow"></span><button class="btn sm ghost" data-act="ldefault">기본 편성으로</button>
    <button class="icon ghost" data-act="lclose" title="닫기">${ic('x')}</button></header>
@@ -5394,7 +5455,7 @@ function addToServiceSheet(songIds,arrPick,into){
   <div id="atsSvc">
    <button class="q ${sel.svc==='new'?'on':''}" data-ats="new">${ic('plus')}새 예배 만들기</button>
    ${soon.map(sv=>{const has=ids.some(id=>(sv.items||[]).some(it=>it.songId===id));
-    return `<button class="q ${sel.svc===sv.id?'on':''}" data-ats="${esc(sv.id)}">${esc(sv.date?sv.date.slice(5).replace('-','/'):'')} ${esc(sv.name||'예배')} <span class="hint">${(sv.items||[]).length}곡${has?' · 이미 있음':''}</span></button>`}).join('')}
+    return `<button class="q ${sel.svc===sv.id?'on':''}" data-ats="${esc(sv.id)}">${esc(withDate(sv.date,svcName(sv)))} <span class="hint">${(sv.items||[]).length}곡${has?' · 이미 있음':''}</span></button>`}).join('')}
   </div>
   ${sel.svc==='new'?`<div class="row" style="gap:6px;margin-top:8px"><input class="field grow" id="atsName" placeholder="예배 이름"><input class="field" id="atsDate" type="date" value="${esc(nextSunday())}" style="width:auto"></div>`:''}
   <div class="lbl">편곡·키</div>
