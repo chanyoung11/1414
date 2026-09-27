@@ -26,6 +26,15 @@ def signup(pg, user):
     pg.check('#lgAgree')   # 약관·개인정보처리방침 동의 (필수)
     pg.fill('#lgName', user[2]); pg.fill('#lgUser', user[0]); pg.fill('#lgPass', user[1]); pg.click('[data-act="lg-submit"]')
 
+# 폰 세로 연습 화면(폭 640 이하): 미디어 칩은 아래 미디어 독을 펼쳐야 보이고, 메모 필터는 '보기 설정' 시트 안에 있다 (폰 리디자인 B·C)
+def open_dock(pg):
+    pg.wait_for_selector('.top [data-act="stage"]', timeout=15000)
+    if pg.locator('#ws .mdexp').is_visible(): pg.click('#ws .mdexp')
+def memo_filter(pg, k):
+    if pg.locator('[data-act="pf"][data-k="%s"]' % k).is_visible(): pg.click('[data-act="pf"][data-k="%s"]' % k); return
+    pg.click('.top [data-act="pview"]'); pg.wait_for_selector('#pvs [data-vf="%s"]' % k); pg.wait_for_timeout(300)
+    pg.click('#pvs [data-vf="%s"]' % k); pg.wait_for_timeout(200); pg.click('#pvs [data-close]')
+
 def join(ctx, user, link, session):
     pm = ctx.new_page(); pm.goto(link); pm.wait_for_selector('#lgUser', timeout=8000)
     pm.click('[data-act="lg-mode"][data-m="signup"]'); pm.wait_for_selector('#lgName')
@@ -103,12 +112,12 @@ def run():
         if pm.locator('#msgOk').count(): fail('읽었어요 뒤에도 자동으로 다시 뜸')
         drum_tags = [t for t in pm.locator('.card .tag').all_inner_texts() if t == '드럼']
         if len(drum_tags) != 1: fail('드럼 화면에 드럼 전용 미디어 태그가 없음')
-        pm.goto(URL + '#/play/' + svc_id + '/0'); pm.wait_for_selector('[data-act="msel"]', timeout=15000)
+        pm.goto(URL + '#/play/' + svc_id + '/0'); open_dock(pm); pm.wait_for_selector('[data-act="msel"]', timeout=15000)
         chips = pm.locator('[data-act="msel"]').all_inner_texts(); on = pm.locator('[data-act="msel"].on').inner_text()
         if len(chips) != 2 or '드럼' not in on: fail('드럼: 전용 미디어가 맨 앞·기본 선택이어야 함: %s / %s' % (chips, on))
         if ocr.get('available'):
             if pm.locator('#sheet .chd').count() < 5: fail('멤버 연습 화면에 빨간 코드 없음')
-            pm.click('[data-act="pf"][data-k="chords"]'); pm.wait_for_timeout(300)
+            memo_filter(pm, 'chords'); pm.wait_for_timeout(300)
             if pm.locator('#sheet .chd').count() != 0: fail('전조 코드 토글 꺼도 남음')
         print('drum member ok')
 
@@ -116,7 +125,7 @@ def run():
         c3 = b.new_context(viewport={'width': 430, 'height': 900}); pk = join(c3, KEYS, link, '건반'); pk.on('pageerror', lambda e: errs.append('K:' + str(e)))
         pk.wait_for_selector('.svcrow', timeout=15000); pk.goto(URL + '#/view/' + svc_id); pk.wait_for_selector('#msgOk', timeout=15000); pk.click('#msgOk')
         if [t for t in pk.locator('.card .tag').all_inner_texts() if t == '드럼']: fail('건반 화면에 드럼 전용 미디어가 보임')
-        pk.goto(URL + '#/play/' + svc_id + '/0'); pk.wait_for_selector('[data-act="msel"]', timeout=15000)
+        pk.goto(URL + '#/play/' + svc_id + '/0'); open_dock(pk); pk.wait_for_selector('[data-act="msel"]', timeout=15000)
         if pk.locator('[data-act="msel"]').count() != 1: fail('건반: 미디어는 전체용 1개만 보여야 함')
         print('keys member ok')
 

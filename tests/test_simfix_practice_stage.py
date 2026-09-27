@@ -1,7 +1,7 @@
 # 아이폰·아이패드 시뮬레이터 점검(2026-09-26) — 연습·무대 회귀 검사
 #   C3  연습에서 보기(세션)를 바꾸면 화면을 통째로 다시 그려 재생 중인 영상이 멈추고 시작 시각으로 돌아가며 폰 스크롤이 맨 위로 튀던 것
 #       → 제자리에서 고친다(playSession): 영상·스크롤 그대로 · 이미 고른 세션은 아무 일 없음 · 세션 메모 칩 이름 · 세션 전용 영상이 바뀔 때만 미디어 칩을
-#       다시 그리고 보던 영상이 새 세션에도 보이면 그대로, 안 보이면 첫 영상
+#       다시 그리고 보던 영상이 새 세션에도 보이면 그대로, 안 보이면 첫 영상 · 폰 세로(폰 리디자인)는 '보기 설정' 시트에서, 아이패드 세로는 예전 보기 칩에서
 #   C4  폰 연습 상단 바 — 긴 곡 제목이 곡 이동 칸을 못 줄여 메트로놈·무대 버튼이 화면 밖으로 밀리던 것 · 제목은 … 로 줄고 키 표시는 남는다
 #   C5  콘티 보기 곡 카드 메모 줄에 '이 곡에 항상'(편곡 고정 메모)이 빠지던 것 — 연습·무대·인쇄처럼 고정 + 이번 예배 메모
 #   C8  가로 폰 연습 — 미디어 칸이 128px 이라 영상이 반만 보이고 재생 단추가 칸 밖 → 영상·재생 단추·시간 줄이 함께 보인다 · 송폼 칸은 아래로 이어진다
@@ -87,52 +87,71 @@ def seed(br, errs):
     return sid, state
 
 def c3(br, sid, state, errs):
-    ctx, pg = new_page(br, {'width': 390, 'height': 844}, True, state)
+    # 폰 세로(390)는 새 연습 화면(폰 리디자인) — 보기(세션)는 '보기 설정' 시트, 스크롤은 악보 칸(#sheetwrap)만.
+    # 아이패드 세로(820)는 예전 칸 — 송폼 칸의 보기 칩, 화면 전체(#ws)가 스크롤. 둘 다 같은 것을 본다
+    for vp, mode in [({'width': 390, 'height': 844}, 'sheet'), ({'width': 820, 'height': 1180}, 'panel')]:
+        c3_one(br, sid, state, errs, vp, mode)
+
+def c3_one(br, sid, state, errs, vp, mode):
+    ctx, pg = new_page(br, vp, True, state)
     pg.on('pageerror', lambda e: errs.append(repr(e)[:300]))
     go_play(pg, sid); pg.wait_for_timeout(2500)   # 켤 때 동기화가 끝난 뒤에 (메모를 넣으면 받은 목록이 덮는다)
+    W = '%s %dpx' % (mode, vp['width'])
+    SC = 'sheetwrap' if mode == 'sheet' else 'ws'
     ses = pg.evaluate("CONTI.pl().session||CONTI.S.team.me&&CONTI.S.team.me.session||''")
     # 재생 중인 척 — 시각·재생 상태를 두고 iframe 에 표시를 단다 (새로 만들어지면 표시가 없다)
-    START = """()=>{const y=document.getElementById('yt');y.__keep=1;CONTI.P.t=7.7;CONTI.P.playing=true;
-      const ws=document.getElementById('ws');ws.scrollTop=400;return ws.scrollTop}"""
-    NOW = """()=>({keep:(document.getElementById('yt')||{}).__keep||0,src:(document.getElementById('yt')||{}).src||'',t:CONTI.P.t,playing:CONTI.P.playing,
-      st:document.getElementById('ws').scrollTop,sess:CONTI.pl().session||'',
-      on:[...document.querySelectorAll('[data-act="psess"].on')].map(b=>b.dataset.s),
-      chip:(document.querySelector('[data-act="pf"][data-k="session"]')||{}).textContent||null,
+    START = """(sc)=>{const y=document.getElementById('yt');y.__keep=1;CONTI.P.t=7.7;CONTI.P.playing=true;
+      const ws=document.getElementById(sc);ws.scrollTop=400;return ws.scrollTop}"""
+    NOW = """(sc)=>({keep:(document.getElementById('yt')||{}).__keep||0,src:(document.getElementById('yt')||{}).src||'',t:CONTI.P.t,playing:CONTI.P.playing,
+      st:document.getElementById(sc).scrollTop,sess:CONTI.pl().session||'',
+      on:[...document.querySelectorAll(sc==='ws'?'[data-act="psess"].on':'#pvs [data-vs].on')].map(b=>b.dataset.s||b.dataset.vs),
+      chip:((sc==='ws'?document.querySelector('[data-act="pf"][data-k="session"]'):document.querySelector('#pvs [data-vf="session"]'))||{}).textContent||null,
       media:[...document.querySelectorAll('[data-act="msel"]')].map(b=>(b.classList.contains('on')?'*':'')+b.textContent.trim())})"""
-    st0 = pg.evaluate(START)
-    if st0 < 200: fail('C3 준비: 폰 연습 화면을 내릴 수 없음 (%s)' % st0)
+    def now(): return pg.evaluate(NOW, SC)
+    def pick_sess(x):
+        if mode == 'panel': pg.click('[data-act="psess"][data-s="%s"]' % x); return
+        if not pg.locator('#pvs').count(): pg.click('.top [data-act="pview"]'); pg.wait_for_selector('#pvs [data-vs]'); pg.wait_for_timeout(300)
+        pg.click('#pvs [data-vs="%s"]' % x)
+    def close_sheet():
+        if mode == 'sheet' and pg.locator('#pvs').count(): pg.click('#pvs [data-close]'); pg.wait_for_timeout(500)
+    st0 = pg.evaluate(START, SC)
+    if st0 < 200: fail('C3 %s 준비: 연습 화면을 내릴 수 없음 (%s)' % (W, st0))
     pick = '베이스' if ses != '베이스' else '일렉'
-    pg.click('[data-act="psess"][data-s="%s"]' % pick); pg.wait_for_timeout(500)
-    n = pg.evaluate(NOW)
-    if not n['keep']: fail('C3 보기를 바꾸자 영상(iframe)이 새로 만들어짐 %s' % n)
-    if abs(n['t'] - 7.7) > 0.01 or not n['playing']: fail('C3 보기를 바꾸자 재생이 멈추거나 되감김 %s' % n)
-    if abs(n['st'] - st0) > 2: fail('C3 보기를 바꾸자 스크롤이 튐 %s → %s' % (st0, n['st']))
-    if n['sess'] != pick or n['on'] != [pick]: fail('C3 보기가 %s 로 안 바뀜 %s' % (pick, n))
-    if n['chip'] != pick: fail('C3 세션 메모 칩 이름이 %s 가 아님 %s' % (pick, n['chip']))
+    want_chip = pick if mode == 'panel' else pick + ' 메모'
+    pick_sess(pick); pg.wait_for_timeout(500)
+    n = now()
+    if not n['keep']: fail('C3 %s 보기를 바꾸자 영상(iframe)이 새로 만들어짐 %s' % (W, n))
+    if abs(n['t'] - 7.7) > 0.01 or not n['playing']: fail('C3 %s 보기를 바꾸자 재생이 멈추거나 되감김 %s' % (W, n))
+    if abs(n['st'] - st0) > 2: fail('C3 %s 보기를 바꾸자 스크롤이 튐 %s → %s' % (W, st0, n['st']))
+    if n['sess'] != pick or n['on'] != [pick]: fail('C3 %s 보기가 %s 로 안 바뀜 %s' % (W, pick, n))
+    if n['chip'] != want_chip: fail('C3 %s 세션 메모 칩 이름이 %s 가 아님 %s' % (W, want_chip, n['chip']))
     # 이미 고른 세션을 다시 눌러도 아무 일 없음
-    pg.click('[data-act="psess"][data-s="%s"]' % pick); pg.wait_for_timeout(400)
-    n2 = pg.evaluate(NOW)
-    if not n2['keep'] or abs(n2['st'] - st0) > 2 or not n2['playing']: fail('C3 같은 세션을 다시 누르자 다시 그려짐 %s' % n2)
+    pick_sess(pick); pg.wait_for_timeout(400)
+    n2 = now()
+    if not n2['keep'] or abs(n2['st'] - st0) > 2 or not n2['playing']: fail('C3 %s 같은 세션을 다시 누르자 다시 그려짐 %s' % (W, n2))
     # 메모는 새 세션대로 거른다 (세션 메모 · 예전처럼)
     pg.evaluate("""([sid,s])=>{const it=CONTI.S.services.find(x=>x.id===sid).items[0];
       it.notes=[{id:'c3s',marker:'mA0',layer:'session',session:s,text:'세션 메모 '+s,author:'하은'}]}""", [sid, pick])   # 저장(동기화)하지 않는다 — 서버에 없는 메모라 받은 목록이 지운다
-    pg.click('[data-act="psess"][data-s="드럼"]'); pg.wait_for_timeout(500)
-    if pg.locator('#sheet .m:has-text("세션 메모")').count(): fail('C3 드럼으로 바꿨는데 %s 세션 메모가 보임' % pick)
-    n3 = pg.evaluate(NOW)
+    pick_sess('드럼'); pg.wait_for_timeout(500)
+    if pg.locator('#sheet .m:has-text("세션 메모")').count(): fail('C3 %s 드럼으로 바꿨는데 %s 세션 메모가 보임' % (W, pick))
+    n3 = now()
     # 드럼: 드럼 전용 영상이 앞에 붙고, 보던 전체 영상은 그대로 (칩만 다시)
-    if not n3['keep'] or not n3['playing']: fail('C3 드럼 전용 영상이 생기자 보던 영상이 멈춤 %s' % n3)
-    if len(n3['media']) != 2 or not n3['media'][1].startswith('*'): fail('C3 드럼 미디어 칩이 틀림 (보던 전체 영상이 골라져 있어야) %s' % n3['media'])
-    pg.click('[data-act="psess"][data-s="%s"]' % pick); pg.wait_for_timeout(500)
-    if not pg.locator('#sheet .m:has-text("세션 메모")').count(): fail('C3 %s 로 돌아왔는데 세션 메모가 안 보임 %s' % (pick, pg.evaluate("(sid)=>JSON.stringify({n:CONTI.S.services.find(x=>x.id===sid).items[0].notes,m:[...document.querySelectorAll('#sheet .m')].map(e=>e.textContent),s:CONTI.pl().session,f:CONTI.pl().f})", sid)))
+    if not n3['keep'] or not n3['playing']: fail('C3 %s 드럼 전용 영상이 생기자 보던 영상이 멈춤 %s' % (W, n3))
+    if len(n3['media']) != 2 or not n3['media'][1].startswith('*'): fail('C3 %s 드럼 미디어 칩이 틀림 (보던 전체 영상이 골라져 있어야) %s' % (W, n3['media']))
+    pick_sess(pick); pg.wait_for_timeout(500)
+    if not pg.locator('#sheet .m:has-text("세션 메모")').count(): fail('C3 %s %s 로 돌아왔는데 세션 메모가 안 보임 %s' % (W, pick, pg.evaluate("(sid)=>JSON.stringify({n:CONTI.S.services.find(x=>x.id===sid).items[0].notes,m:[...document.querySelectorAll('#sheet .m')].map(e=>e.textContent),s:CONTI.pl().session,f:CONTI.pl().f})", sid)))
     # 드럼 전용 영상을 보다가 그 영상이 안 보이는 세션으로 → 첫 영상(전체)으로
-    pg.click('[data-act="psess"][data-s="드럼"]'); pg.wait_for_timeout(400)
+    pick_sess('드럼'); pg.wait_for_timeout(400)
+    close_sheet()
+    if mode == 'sheet': pg.click('#ws .mdexp'); pg.wait_for_selector('#ws .media.open [data-act="msel"]')   # 미디어 칩은 펼친 독에
     pg.click('[data-act="msel"][data-i="0"]'); pg.wait_for_timeout(400)
-    if YT_DRUM not in pg.evaluate(NOW)['src']: fail('C3 준비: 드럼 영상이 안 골라짐')
-    pg.click('[data-act="psess"][data-s="%s"]' % pick); pg.wait_for_timeout(500)
-    n4 = pg.evaluate(NOW)
-    if YT_ALL not in n4['src'] or len(n4['media']) != 1 or not n4['media'][0].startswith('*'): fail('C3 안 보이는 영상을 보던 중 세션을 바꾸면 첫 영상으로 가야 함 %s' % n4)
-    if pg.locator('#ctrls').is_hidden(): fail('C3 재생 단추 줄이 숨음')
-    print('C3 보기 바꾸기 — 영상·시각·스크롤 그대로 · 같은 세션 무시 · 메모·미디어 칩 새 세션대로 ok')
+    if YT_DRUM not in now()['src']: fail('C3 %s 준비: 드럼 영상이 안 골라짐' % W)
+    pick_sess(pick); pg.wait_for_timeout(500)
+    n4 = now()
+    if YT_ALL not in n4['src'] or len(n4['media']) != 1 or not n4['media'][0].startswith('*'): fail('C3 %s 안 보이는 영상을 보던 중 세션을 바꾸면 첫 영상으로 가야 함 %s' % (W, n4))
+    close_sheet()
+    if pg.locator('#ctrls').is_hidden(): fail('C3 %s 재생 단추 줄이 숨음' % W)
+    print('C3 %s 보기 바꾸기 — 영상·시각·스크롤 그대로 · 같은 세션 무시 · 메모·미디어 칩 새 세션대로 ok' % W)
     ctx.close()
 
 def c4(br, sid, state, errs):

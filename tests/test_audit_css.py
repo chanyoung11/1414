@@ -34,6 +34,12 @@ def setvars(pg, **kv):
 def clearvars(pg, *names):
   pg.evaluate("(ns)=>ns.forEach(n=>document.documentElement.style.removeProperty('--'+n))", list(names))
 
+# 연습 화면 도구(건반·메트로놈) 열기 — 폰 세로는 상단 단추가 '보기 설정' 시트 안에 있다 (폰 리디자인 C)
+def tool(pg, name):
+  if pg.locator('.top [data-act="%s"]' % name).is_visible(): pg.click('.top [data-act="%s"]' % name); return
+  pg.click('.top [data-act="pview"]'); pg.wait_for_selector('#pvs [data-vt="%s"]' % name); pg.wait_for_timeout(300)
+  pg.click('#pvs [data-vt="%s"]' % name)
+
 RECT = "(s)=>{const e=document.querySelector(s);if(!e)return null;const r=e.getBoundingClientRect();return {x:r.left,y:r.top,r:r.right,b:r.bottom,w:r.width,h:r.height}}"
 def rect(pg, sel): return pg.evaluate(RECT, sel)
 # 그 자리를 누르면 무엇이 눌리는지 (가운데 점)
@@ -134,10 +140,10 @@ def run():
 
     # ---- F12: 폰 연습 화면에 광고 배너가 뜬 채 메트로놈·건반을 열어도 배너가 패널을 안 가린다
     pg.set_viewport_size({'width': 390, 'height': 844})
-    pg.evaluate("(id)=>location.hash='#/play/'+id", sid); pg.wait_for_selector('[data-act="metro"]', timeout=10000); pg.wait_for_timeout(1200)
+    pg.evaluate("(id)=>location.hash='#/play/'+id", sid); pg.wait_for_selector('.top [data-act="stage"]', timeout=10000); pg.wait_for_timeout(1200)
     setvars(pg, sab='34px', adh='50px'); pg.evaluate("document.body.classList.add('hasad')")
     ad_top = 844 - 34 - 50
-    pg.click('[data-act="metro"]'); pg.wait_for_selector('#sidetool.on'); pg.wait_for_timeout(500)
+    tool(pg, 'metro'); pg.wait_for_selector('#sidetool.on'); pg.wait_for_timeout(500)
     st = rect(pg, '#sidetool')
     beats = pg.evaluate("[...document.querySelectorAll('#sidetool [data-act=\"met-beats\"]')].map(e=>e.getBoundingClientRect().bottom)")
     if not beats: fail('F12 박자 버튼이 없음')
@@ -146,20 +152,20 @@ def run():
     shot(pg, 'f12_metro_ad')
     if pg.evaluate('CONTI.MET.beats') != 3: fail('F12 박자 버튼이 안 눌림')
     pg.click('[data-act="sidetool-close"]'); pg.wait_for_timeout(500)
-    pg.click('[data-act="piano"]'); pg.wait_for_selector('#sidetool.on #pkeys'); pg.wait_for_timeout(500)
+    tool(pg, 'piano'); pg.wait_for_selector('#sidetool.on #pkeys'); pg.wait_for_timeout(500)
     kb = pg.evaluate("Math.max(...[...document.querySelectorAll('#pkeys .pk')].map(e=>e.getBoundingClientRect().bottom))")
     if kb > ad_top + 0.5: fail('F12 건반 아래(%s)가 배너(%s~)에 깔림' % (kb, ad_top))
     pg.click('[data-act="sidetool-close"]'); pg.wait_for_timeout(500)
     # 광고가 없으면 홈 인디케이터만 피한다
     pg.evaluate("document.body.classList.remove('hasad')")
-    pg.click('[data-act="metro"]'); pg.wait_for_selector('#sidetool.on'); pg.wait_for_timeout(500)
+    tool(pg, 'metro'); pg.wait_for_selector('#sidetool.on'); pg.wait_for_timeout(500)
     last = pg.evaluate("Math.max(...[...document.querySelectorAll('#sidetool button')].map(e=>e.getBoundingClientRect().bottom))")
     if last > 844 - 34 + 0.5: fail('F12/F123 광고 없을 때 패널 버튼(%s)이 홈 인디케이터에 깔림' % last)
     pg.click('[data-act="sidetool-close"]'); pg.wait_for_timeout(500)
     # 태블릿: 왼쪽 패널도 배너 위에서 끝난다 · 위는 상태바를 피한다 (F123)
     pg.set_viewport_size({'width': 1024, 'height': 768}); pg.wait_for_timeout(400)
     setvars(pg, sat='24px', sab='20px'); pg.evaluate("document.body.classList.add('hasad')")
-    pg.click('[data-act="metro"]'); pg.wait_for_selector('#sidetool.on'); pg.wait_for_timeout(500)
+    tool(pg, 'metro'); pg.wait_for_selector('#sidetool.on'); pg.wait_for_timeout(500)
     st = rect(pg, '#sidetool'); cl = rect(pg, '#sidetool [data-act="sidetool-close"]')
     if st['b'] > 768 - 20 - 50 + 0.5: fail('F12 태블릿 왼쪽 패널이 배너에 깔림: %s' % st)
     if cl['y'] < 24: fail('F123 패널 닫기 버튼이 상태바 밑에 있음: %s' % cl)
@@ -216,7 +222,7 @@ def run():
     pg.evaluate('CONTI.stageExit()'); pg.wait_for_timeout(400)
     print('F123 stage ok', pgr)
     # 가로 폰의 연습 화면 도구 패널(왼쪽)
-    pg.click('[data-act="metro"]'); pg.wait_for_selector('#sidetool.on'); pg.wait_for_timeout(500)
+    tool(pg, 'metro'); pg.wait_for_selector('#sidetool.on'); pg.wait_for_timeout(500)
     hd = rect(pg, '#sidetool .sthd b')
     if hd['x'] < 47: fail('F123 도구 패널 제목이 노치 밑: %s' % hd)
     pg.click('[data-act="sidetool-close"]'); pg.wait_for_timeout(500)

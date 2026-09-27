@@ -1305,6 +1305,84 @@ body.lnopen .main>main,body.lnopen .main>.hd{padding-right:min(476px,100%)}
  .titlein.big{font-size:16px}
  .shell{padding:10px 10px 10px}.main>main{padding-bottom:calc(var(--bnavh,100px) + 16px)}.hd{padding:0 14px}.metrics{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.metric{padding:10px 12px}.metric .v{font-size:19px}
 }
+/* ---------- 폰 세로 연습 화면 (폰 리디자인 A·B·C) ----------
+   예전: 미디어 → 송폼 → 보기·메모 필터를 쌓고 그 아래에 악보 — 악보가 화면 절반쯤에서 시작했고 화면 전체가 한 줄로 넘어갔다.
+   지금: 위에 송폼 한 줄(곡 메모), 가운데 악보(혼자 스크롤), 아래 미디어 독. 보기·메모 필터·크기·도구는 '보기 설정' 시트(pviewSheet)로.
+   폰을 눕히거나(가로) 넓은 화면은 예전 그대로다. 조건은 JS 의 pvOn() 과 같다 (PV_MQ) */
+.pform,.pnote{display:none}
+.ph-only{display:none!important}
+.slice.half{overflow:hidden}
+.stage .pform,.stage .pnote{display:none!important}
+.pvs .pvhd{margin-bottom:6px}.pvs .pvhd b{font-size:18px;letter-spacing:-.02em}
+.pvs .lbl{margin-top:16px}
+.pvgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.pvgrid .btn{height:44px;padding:0 6px;overflow:hidden;text-overflow:ellipsis}
+.pvgrid .btn.on{background:var(--primary);color:var(--primary-fg);border-color:transparent;font-weight:700}
+.pvgrid.two{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.pvopt{display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;padding:12px;border-radius:var(--r-xl);border:1px solid var(--border);background:var(--card);color:var(--fg);font-size:14px}
+.pvopt.on{border:2px solid var(--fg);padding:11px}
+.pvopt .hint{font-size:12px;line-height:1.4}
+.pvopt .bars{display:flex;flex-direction:column;gap:4px;width:100%}
+.pvopt .bars i{display:block;height:8px;border-radius:2px;background:var(--border-2)}
+.pvopt .bars.thin{gap:3px}.pvopt .bars.thin i{height:5px}
+.pvs .pvchips,.pvs .pvtools{flex-wrap:wrap;gap:6px}
+.pvs .pvchips .chip{height:34px;padding:0 12px;font-size:13px}
+.pvs .pvtools .btn{height:40px}
+.pvs .pvzoom{margin-top:16px;gap:8px;align-items:center}.pvs .pvzoom .lbl{margin:0}.pvs .pvzoom b{min-width:52px;text-align:center}
+.btn.dot{position:relative}.btn.dot::after{content:"";position:absolute;top:4px;right:4px;width:7px;height:7px;border-radius:50%;background:var(--destructive);border:2px solid var(--card)}
+@media (max-width:640px) and (orientation:portrait){
+ .ph-only{display:inline-flex!important}
+ .top .ph-hide{display:none!important}
+ .ws.pv{display:flex!important;flex-direction:column;padding:0;gap:0;overflow:hidden}
+ .ws.pv>.stack{display:contents}
+ .ws.pv .stack>.panel:not(.media),.ws.pv .gutter,.ws.pv .vgutter{display:none!important}
+ .ws.pv>.pform{order:1;display:block;background:var(--form-bg);color:var(--form-fg);font-family:"Geist Mono",ui-monospace,"SF Mono",Menlo,monospace;font-size:13px;font-weight:700;line-height:44px;height:44px;padding:0 12px;white-space:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+ .ws.pv>.pform::-webkit-scrollbar{display:none}
+ /* 곡 메모(인도자가 곡에 적은 한 줄) — 두 줄까지, 누르면 다 보인다 */
+ .ws.pv>.pnote{order:1;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;padding:6px 12px;font-size:12.5px;line-height:1.45;color:var(--muted-fg);background:var(--card);border-bottom:1px solid var(--border);cursor:pointer;word-break:keep-all;overflow-wrap:anywhere}
+ .ws.pv>.pnote.open{display:block}
+ /* 악보는 남는 자리를 다 쓰고 혼자 스크롤한다. 독을 펼쳐도 조금(작은 폰 96 ~ 140px)은 남긴다 */
+ .ws.pv #sheetpanel,.ws.pv #chartpanel{order:2;flex:1 1 0;min-height:clamp(96px,18vh,140px);border:0;border-radius:0;box-shadow:none;overflow:hidden}
+ /* 독을 펼친 동안에는 곡 메모 줄을 접는다 — 작은 폰(SE) + 배너에서도 영상·재생 단추·시간 줄이 함께 보이게 */
+ .ws.pv.dockopen>.pnote{display:none}
+ .ws.pv #sheetpanel>.ptab,.ws.pv #chartpanel>.ptab{display:none}
+ .ws.pv #chartpanel>.pbody{flex:1 1 auto;min-height:0;overflow:auto}
+ .ws.pv .sheetwrap{flex:1 1 auto;min-height:0;overflow:auto;padding:4px}
+ .ws.pv .sheet{padding:6px 6px 40px 30px;border-radius:8px;box-shadow:none}
+ .ws.pv .strip{margin-left:-28px}
+ .ws.pv .piece .phead{margin-left:-26px}
+ /* 미디어 독. 접힌 독: 시간 줄·여기에 메모 / 재생·±5 · 지금 미디어·다음 타임라인 메모 · 펼치기. 펼친 독: 예전 미디어 칸 그대로 */
+ .ws.pv .media{order:3;flex:0 1 auto;min-height:0;border:0;border-top:1px solid var(--border);border-radius:0;box-shadow:none;overflow:hidden}
+ .ws.pv.nomedia .media{display:none}
+ .ws.pv .media:not(.open)>.ptab,.ws.pv .media:not(.open) #tlist,.ws.pv .media:not(.open) .webad{display:none}
+ /* 접힌 독에서도 영상 틀(iframe)은 남겨 둔다 — 지우면 펼 때 처음부터 다시 불러온다. 대신 접으면 멈추고, 틀 때는 먼저 편다 (mdock·ytShow) */
+ .ws.pv .media:not(.open) #mediaBox{position:absolute;left:0;top:0;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none}
+ .ws.pv .media:not(.open)>.pbody{padding:6px 12px 8px!important;gap:0!important}
+ .ws.pv .media:not(.open) #ctrls{display:flex;flex-direction:column-reverse;gap:4px}
+ .ws.pv .media:not(.open) #ctrls>.row{margin-top:0!important;gap:8px}
+ .ws.pv .media:not(.open) .transport{justify-content:flex-start;gap:6px;margin:0}
+ .ws.pv .media:not(.open) .tbtn{width:40px;height:40px}
+ .ws.pv .media:not(.open) .tbtn.pri{width:44px;height:44px}
+ .ws.pv .mdmini{flex:1 1 auto;min-width:0;flex-direction:column;align-items:stretch;justify-content:center;gap:1px;padding:0 4px;text-align:left;line-height:1.3;background:transparent;border:0;color:var(--fg)}
+ .ws.pv .mdmini b,.ws.pv .mdmini span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ .ws.pv .mdmini b{font-size:13px;font-weight:600}
+ .ws.pv .mdmini span{font-size:12px;color:var(--muted-fg)}
+ .ws.pv .mdmini .t{font-style:normal;font-family:"Geist Mono",ui-monospace,Menlo,monospace;font-weight:600;color:var(--fg);margin-right:6px}
+ .ws.pv .mdexp{width:40px;height:40px;flex:0 0 auto}
+ .ws.pv .media.open{box-shadow:0 -8px 24px rgba(0,0,0,.12)}
+ .ws.pv .media.open>.pbody{flex:1 1 auto;min-height:0;overflow-y:auto;padding:10px 12px!important}
+ /* 펼친 독: 영상 바로 밑에 재생 단추·시간 줄을 둔다(.flow 처럼) — 작은 폰(SE)에서도 영상과 함께 보이고, 안내·유튜브에서 열기·타임라인은 그 아래로 넘긴다 */
+ .ws.pv .media.open #mediaBox{display:contents}
+ .ws.pv .media.open>.pbody>*,.ws.pv .media.open #mediaBox>*{flex-shrink:0}   /* 영상(16:9)이 눌려 납작해지지 않게 — 넘치면 독 안에서 넘긴다 */
+ .ws.pv .media.open #ctrls{order:1}
+ .ws.pv .media.open #mediaBox>.row{order:2;margin-top:0!important}
+ .ws.pv .media.open #tlist{order:3}
+ .ws.pv .media.open .mdmini{display:none!important}
+ .ws.pv .media.open .transport{position:relative;margin:0}
+ .ws.pv .media.open .mdexp{position:absolute;right:0}
+ .ws.pv .media.open .mdexp svg{transform:rotate(180deg)}
+ .ws.pv .media.open #tlist{max-height:min(28vh,150px)}
+}
 /* 보상형 광고 시트 (코드 인식 1곡 — 무료 한도를 다 썼을 때, 앱에서만) */
 .rwd{padding:4px 4px 8px}
 .rwd-t{font-size:19px;display:block}
@@ -1340,6 +1418,10 @@ const parseT=str=>{const m=String(str).trim().match(/^(\d+):(\d{1,2})$/);if(m)re
 // 오늘 날짜는 그 기기의 지역 시간 기준. toISOString 은 UTC 라 한국 0~9시에 하루 전으로 나온다
 const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
 const lsGet=k=>{try{return localStorage.getItem(k)}catch(e){return null}}; // 저장소가 막힌 환경(사파리 설정 등)에서도 앱이 죽지 않게
+const lsSet=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
+// 폰 세로 연습 화면(송폼 한 줄 · 악보 · 미디어 독 · 반 줄 나누기)을 쓰는 화면 — CSS 의 같은 @media 와 맞춘다
+const PV_MQ='(max-width:640px) and (orientation:portrait)';
+const pvOn=()=>{try{return matchMedia(PV_MQ).matches}catch(e){return false}};
 const THEME={get(){try{return localStorage.getItem('conti-theme')||'system'}catch(e){return 'system'}},set(v){try{localStorage.setItem('conti-theme',v)}catch(e){}THEME.apply()},
  apply(){const v=THEME.get();const dark=v==='dark'||(v==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',dark);const mt=document.querySelector('meta[name=theme-color]');if(mt)mt.content=dark?'#0A0A0A':'#FAFAFA'},
 };
@@ -1350,6 +1432,7 @@ const fmtToday=()=>{const d=new Date();return `${d.getMonth()+1}월 ${d.getDate(
 let toastT;function toast(msg,ms){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),ms||1800)}
 /* ---------- icons ---------- */
 const ICONS={
+ sliders:'<path d="M4 7h10M18 7h2M4 17h4M12 17h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="16" cy="7" r="2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="10" cy="17" r="2" fill="none" stroke="currentColor" stroke-width="1.8"/>',
  setlist:'<path d="M3 6h9M3 12h9M3 18h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M15.5 17V6.5l5-1.2V16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="17" r="2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="18.5" cy="16" r="2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
  cal2:'<rect x="3" y="5" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 10h18M8 3v4M16 3v4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="8" cy="15" r="1" fill="currentColor"/><circle cx="12" cy="15" r="1" fill="currentColor"/><circle cx="16" cy="15" r="1" fill="currentColor"/>',
  stage:'<path d="M3 19a9 9 0 0 1 18 0M3 19h18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="7.5" cy="13.5" r="1.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="10" r="1.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="16.5" cy="13.5" r="1.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
@@ -1713,18 +1796,19 @@ function viewerHTML(svc){
 // 연습 미디어 칩 — 보기(세션)를 바꿀 때 이것만 다시 그린다 (playSession)
 function pMediaChips(ml,on){return ml.length?ml.map((md,i)=>`<button class="chip t ${i===on?'on':''}" data-act="msel" data-i="${i}" title="${esc(mdTag(md))}"><span class="${md.type==='youtube'?'ytc':'micc'}" style="display:inline-flex">${ic(md.type==='youtube'?'yt':'mic')}</span>${mdSess(md).length?`<span class="tag" style="margin-right:2px">${esc(mdTag(md))}</span>`:''}${esc((md.name||md.url||'').replace(/^https?:\/\//,'').slice(0,20))}</button>`).join(''):'<span class="hint">미디어 없음</span>'}
 function playHTML(svc,idx){
- const pub=pubOrDraft(svc);const it=pub.items[idx]||pub.items[0];PL={...PL,svc,idx,mi:0};if(!it)return `<div class="top"><button class="icon ghost" title="뒤로" aria-label="뒤로" data-act="home">${ic('back')}</button><h1>곡이 없습니다</h1></div>`;
+ const pub=pubOrDraft(svc);const it=pub.items[idx]||pub.items[0];PL={...PL,svc,idx,mi:0,dock:!!(PL.dock&&PL.svc&&PL.svc.id===svc.id)};if(!it)return `<div class="top"><button class="icon ghost" title="뒤로" aria-label="뒤로" data-act="home">${ic('back')}</button><h1>곡이 없습니다</h1></div>`;
  const my=me();const sess=PL.session||my.session;const k=keyStr(it);const prev=pub.items[idx-1],next=pub.items[idx+1];PL.ml=visMedia(it,sess);
  return `<div class="top"><button class="icon ghost" title="뒤로" aria-label="뒤로" ${svc.practice?`data-act="lib-song" data-id="${esc(it.songId||'')}"`:`data-act="back-view" data-id="${svc.id}"`}>${ic('back')}</button>
   <div class="songnav grow"><span class="nb prev" ${prev?'data-act="pn" data-d="-1"':''}>${prev?esc(prev.title||'(제목 없음)'):''}</span>${prev?`<button class="icon sm" data-act="pn" data-d="-1" title="이전 곡">${ic('left')}</button>`:''}<span class="nb cur"><span class="num">${idx+1}</span><span class="tt">${esc(it.title||'(제목 없음)')}</span><span class="pill key">${esc(k||'-')}</span></span>${next?`<button class="icon sm" data-act="pn" data-d="1" title="다음 곡">${ic('right')}</button>`:''}<span class="nb next" ${next?'data-act="pn" data-d="1"':''}>${next?esc(next.title||'(제목 없음)'):''}</span></div>
-  ${hasNote(svc)?`<button class="icon ghost ${msgUnread(svc)?'dot':''}" data-act="msg" data-id="${svc.id}" title="예배 노트">${ic('note')}</button>`:''}${it.score&&it.score.measures&&it.score.measures.length?`<button class="icon ghost" data-act="score-go" data-id="${svc.id}" data-item="${it.id}" title="재구성한 악보">${ic('music')}</button>`:''}<button class="icon ghost" data-act="piano" title="건반">${ic('piano')}</button><button class="icon ghost" data-act="metro" title="메트로놈">${ic('metro')}</button><button class="btn sm" data-act="stage">${ic('moon')}무대 모드</button></div>
- <div class="ws split" id="ws">
+  ${hasNote(svc)?`<button class="icon ghost ph-hide ${msgUnread(svc)?'dot':''}" data-act="msg" data-id="${svc.id}" title="예배 노트">${ic('note')}</button>`:''}${it.score&&it.score.measures&&it.score.measures.length?`<button class="icon ghost ph-hide" data-act="score-go" data-id="${svc.id}" data-item="${it.id}" title="재구성한 악보">${ic('music')}</button>`:''}<button class="icon ghost ph-hide" data-act="piano" title="건반">${ic('piano')}</button><button class="icon ghost ph-hide" data-act="metro" title="메트로놈">${ic('metro')}</button><button class="icon ghost ph-only ${hasNote(svc)&&msgUnread(svc)?'dot':''}" data-act="pview" title="보기 설정" aria-label="보기 설정">${ic('sliders')}</button><button class="btn sm" data-act="stage">${ic('moon')}무대 모드</button></div>
+ <div class="ws split pv${PL.ml.length?'':' nomedia'}${PL.dock?' dockopen':''}" id="ws">
+  ${it.form?`<div class="pform" title="송폼">${esc(it.form)}</div>`:''}${it.songNote?`<div class="pnote" data-act="pnote" title="곡 메모">${esc(it.songNote)}</div>`:''}
   <div class="stack" id="stack">
-   <div class="panel media">${ptab('미디어','',pMediaChips(PL.ml,0))}
+   <div class="panel media${PL.dock?' open':''}">${ptab('미디어','',pMediaChips(PL.ml,0))}
     <div class="pbody" style="display:flex;flex-direction:column;gap:10px">
      <div id="mediaBox"></div>
      <div id="ctrls" style="${PL.ml.length?'':'display:none'}">
-      <div class="transport"><button class="tbtn" data-act="skip" data-d="-5">${ic('back5')}</button><button class="tbtn pri" id="playBtn" data-act="ptoggle">${ic('play')}</button><button class="tbtn" data-act="skip" data-d="5">${ic('fwd5')}</button></div>
+      <div class="transport"><button class="tbtn" data-act="skip" data-d="-5">${ic('back5')}</button><button class="tbtn pri" id="playBtn" data-act="ptoggle">${ic('play')}</button><button class="tbtn" data-act="skip" data-d="5">${ic('fwd5')}</button><button class="mdmini ph-only" id="mdmini" data-act="mdock" title="미디어 펼치기"></button><button class="icon sm ghost mdexp ph-only" data-act="mdock" aria-label="${PL.dock?'미디어 접기':'미디어 펼치기'}" title="${PL.dock?'미디어 접기':'미디어 펼치기'}" aria-expanded="${PL.dock?'true':'false'}">${ic('up')}</button></div>
       <div class="row" style="margin-top:6px"><span class="mono muted" id="tCur">0:00</span><div class="prog" id="prog"><div class="fill" id="fill" style="width:0"></div></div><span class="mono muted" id="tDur">0:00</span><button class="btn sm" data-act="tnote">${ic('note')}여기에 메모</button></div>
      </div>
      <div id="tlist" class="small"></div>
@@ -2021,7 +2105,7 @@ const noteRev=svc=>{const pub=svc.published;return pub?(pub.messageRev||0):0};
 const hasNote=svc=>{const pub=pubOrDraft(svc);return !!((pub&&pub.message)||hasWord(svc.word))};
 const msgUnread=svc=>{if(!svc.published||!hasNote(svc))return false;S.readRev=S.readRev||{};return (S.readRev[svc.id]||0)<noteRev(svc)};
 function messageSheet(svc,first){const pub=pubOrDraft(svc);if(!hasNote(svc))return;
- const done=()=>{S.readRev=S.readRev||{};S.readRev[svc.id]=noteRev(svc);save();$$('[data-act="msg"]').forEach(b=>b.classList.remove('dot'));
+ const done=()=>{S.readRev=S.readRev||{};S.readRev[svc.id]=noteRev(svc);save();$$('[data-act="msg"],[data-act="pview"]').forEach(b=>b.classList.remove('dot'));   // 폰 세로 연습은 노트 단추가 보기 설정(pview) 안에 있다
   if(online()&&svc.published)api('/services/'+svc.id+'/read',{method:'POST',body:{teamId:S.team.id,rev:noteRev(svc)}}).catch(()=>{})};
  const msg=pub.message||'';const long=msg.split('\n').length>5||msg.length>260;
  modal(`<div class="row" style="gap:10px"><span class="icon sm">${ic('note')}</span><div class="grow"><b style="font-size:17px;letter-spacing:-.03em">인도자의 글</b><div class="hint">${esc(pub.author||'인도자')} · ${esc(pub.name||'예배')} · v${esc(pub.version)}</div></div><button class="icon sm ghost" title="닫기" aria-label="닫기" data-close="1">${ic('x')}</button></div>
@@ -7171,6 +7255,70 @@ function noteWho(n){return n.layer==='leader'||n.layer==='all'?(n.session||'전�
 function noteChip(n){const all=n.layer==='leader'&&!n.session;const who=noteWho(n);
  return `<span class="m ${NOTE_LAYERS.includes(n.layer)?n.layer:'mine'}${all?' all':''}${n.fixed?' fixed':''}" data-note="${esc(n.id)}" title="${esc(n.text)}${n.fixed?' — 이 곡에 항상':''}"><span class="who">${esc(who)}</span>${esc(n.text)}</span>`}
 
+/* ---------- 폰 세로 연습: 반 줄씩 크게 (폰 리디자인 A) ----------
+   폰 폭(390px)에 악보 한 줄을 통째로 넣으면 오선이 7~10px 라 읽기 어렵다. 줄 사이 여백(p.gaps — 악보를 넣을 때 찾아 둔 것)으로
+   줄을 나누고, 줄마다 가운데 가까운 마디선에서 둘로 잘라 위아래로 놓는다 → 같은 폭에 두 배 가까운 크기.
+   마디선은 그 줄의 오선 위에서 아래까지 꽉 채운 세로줄로 찾는다(음표 기둥은 머리가 붙어 있어 거른다) · 오선 밖(코드·가사·도돌이 괄호)의
+   글자를 가르는 자리는 버린다. 여백 때문에 코드 줄·가사 줄이 제 띠로 떨어졌으면 가까운 오선 띠에 붙여 같이 나눈다 — 안 붙이면 오선만
+   두 배가 되고 코드·가사는 작은 채 따로 논다. 못 찾은 줄(제목·머리글·코드 차트)과 안 나눠도 오선이 충분히 큰 줄(HALF_BIG px —
+   태블릿·잘라 넣은 작은 조각)은 그대로 둔다. 픽셀(dark)은 최근 악보 몇 장(HALF_KEEP)만 들고 있고 찾은 결과(plans)와 줄마다 검은 점
+   수(rowDark)만 남긴다 — 악보마다 픽셀을 들고 있으면 곡 30개에 100MB 가까이 된다 */
+const HALF={img:new Map(),busy:new Set(),loud:new Set()},HALF_KEEP=6,HALF_BIG=20;
+// [a,b) 를 여백 가운데에서 이어진 띠로 나눈다. gap: 아래 띠와의 여백 높이 (악보 좌표)
+function halfBands(p,a,b){const ys=[a],gs=[];
+ (p.gaps||[]).map(g=>({y:Math.round((g.s+g.e)/2),h:g.e-g.s})).filter(g=>g.y>a+8&&g.y<b-8).sort((u,v)=>u.y-v.y)
+  .forEach(g=>{if(g.y-ys[ys.length-1]>4){ys.push(g.y);gs.push(g.h)}});
+ if(ys.length>1&&b-ys[ys.length-1]<=4){ys.pop();gs.pop()}
+ ys.push(b);const out=[];for(let i=0;i<ys.length-1;i++)out.push({y0:ys[i],y1:ys[i+1],gap:gs[i]||0});return out}
+// [a,b) 를 어떻게 놓을지: [{y0,y1,x,sh}] — x 에서 둘로(null 이면 그대로) · sh 오선 높이. 모두 악보 좌표.
+// undefined: 픽셀을 아직 못 읽음(읽고 나서 다시 그린다) · null: 이 악보는 못 읽음(나누지 않는다)
+function halfPlan(p,a,b){
+ const d=HALF.img.get(p.blob);if(d&&d.fail)return null;
+ const key=a+':'+b;if(d&&d.plans[key])return d.plans[key];
+ if(!d||!d.dark){halfPrep(p);return undefined}
+ HALF.img.delete(p.blob);HALF.img.set(p.blob,d);   // 최근에 쓴 악보 (HALF_KEEP)
+ const kx=d.W/p.w,ky=d.H/p.h,W=d.W,dk=d.dark,rd=d.rowDark;
+ const col=(x,y0,y1)=>{let n=0;for(let y=Math.max(0,y0);y<=y1&&y<d.H;y++)n+=dk[y*W+x];return n};
+ const bands=halfBands(p,a,b).map(t=>{const r0=Math.max(0,Math.floor(t.y0*ky)),r1=Math.min(d.H,Math.ceil(t.y1*ky));
+  // 오선: 폭의 40% 넘게 검은 가로줄 (두세 픽셀 굵기는 한 줄로 센다). 폭 900px 남짓한 작은 그림은 가는 줄 하나둘이 흐려 빠지므로 셋이면 된다
+  let n=0,top=-1,bot=-1,prev=-9;for(let y=r0;y<r1;y++)if(rd[y]>W*0.4){if(y>prev+1)n++;if(top<0)top=y;bot=y;prev=y}
+  return {...t,r0,r1,staff:n>=3&&bot-top>=8?{top,bot}:null}});
+ // 오선 없는 띠를 이웃 오선 띠에 붙인다 — 여백이 오선 높이의 0.9 보다 좁고 띠가 오선의 2.2 배보다 작을 때만, 더 가까운 쪽으로
+ const own=bands.map((t,i)=>t.staff?i:-1);
+ bands.forEach((t,i)=>{if(t.staff)return;let best=-1,bg=1e9;
+  [[i-1,i>0?bands[i-1].gap:0],[i+1,t.gap]].forEach(([j,g])=>{const s=bands[j]&&bands[j].staff;if(!s)return;const sh=(s.bot-s.top)/ky;
+   if(g<sh*0.9&&t.y1-t.y0<=sh*2.2&&g<bg){bg=g;best=j}});
+  own[i]=best});
+ const out=[];
+ bands.forEach((t,i)=>{
+  if(!t.staff){if(own[i]<0)out.push({y0:t.y0,y1:t.y1,x:null,sh:0});return}
+  let i0=i,i1=i;if(own[i-1]===i)i0=i-1;if(own[i+1]===i)i1=i+1;
+  const r0=bands[i0].r0,r1=bands[i1].r1,{top,bot}=t.staff,hgt=bot-top+1;
+  const cands=[];for(let x=Math.round(W*0.28);x<Math.round(W*0.72);x++){if(col(x,top,bot)<hgt*0.95)continue;
+   if(col(Math.max(0,x-3),top,bot)>hgt*0.3&&col(Math.min(W-1,x+3),top,bot)>hgt*0.3)continue;   // 옆 칸은 오선만 지나가야 한다 (머리 붙은 기둥 거르기)
+   cands.push(x)}
+  cands.sort((u,v)=>Math.abs(u-W/2)-Math.abs(v-W/2));
+  // 오선 밖(한 칸 떨어진 곳부터 띠 끝까지)의 검은 점이 글자 한 획(10px 남짓)보다 적어야 한다 — 가사 줄표·흐린 점은 괜찮다
+  const m=Math.max(3,Math.round(hgt/4)),room=Math.max(6,(r1-r0-hgt)*0.05);
+  let x=cands.find(c=>col(c,r0,top-m)+col(c,bot+m,r1-1)<=room);
+  if(x!=null){while(x+1<W&&col(x+1,top,bot)>=hgt*0.95)x++;x=Math.round((x+1)/kx)}   // 굵은 세로줄은 왼쪽 반에 남긴다
+  out.push({y0:bands[i0].y0,y1:bands[i1].y1,x:x==null?null:x,sh:hgt/ky})});
+ d.plans[key]=out;return out}
+// quiet: 미리 읽기(halfWarm) — 다 읽어도 지금 화면을 다시 그리지 않는다. 그리는 쪽이 기다리는 악보(loud)면 다시 그린다
+async function halfPrep(p,quiet){const k=p.blob,d0=HALF.img.get(k);if(!k||(d0&&(d0.dark||d0.fail)))return;if(!quiet)HALF.loud.add(k);if(HALF.busy.has(k))return;HALF.busy.add(k);
+ try{const src=url(k)||await blobURL(k);if(!src)throw new Error('no src');const im=await loadImg(src);
+  const sc=Math.min(1,1400/(im.naturalWidth||1)),cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(im.naturalWidth*sc));cv.height=Math.max(1,Math.round(im.naturalHeight*sc));
+  const g=cv.getContext('2d',{willReadFrequently:true});g.fillStyle='#fff';g.fillRect(0,0,cv.width,cv.height);g.drawImage(im,0,0,cv.width,cv.height);
+  const W=cv.width,H=cv.height,px=g.getImageData(0,0,W,H).data,dark=new Uint8Array(W*H),rowDark=new Uint16Array(H);
+  for(let y=0,j=0;y<H;y++){let n=0;for(let x=0;x<W;x++,j++){const i=j*4,v=(px[i]*0.3+px[i+1]*0.59+px[i+2]*0.11)<170?1:0;dark[j]=v;n+=v}rowDark[y]=n}
+  cv.width=cv.height=0;   // iOS 는 캔버스 메모리 한도가 따로 있다 — 다 읽었으면 바로 놓는다
+  HALF.img.delete(k);HALF.img.set(k,{W,H,dark,rowDark,plans:d0&&d0.W===W&&d0.H===H?d0.plans:{}});
+  let n=0;[...HALF.img.values()].reverse().forEach(v=>{if(v.dark&&++n>HALF_KEEP)v.dark=null})}   // 오래된 것부터 픽셀을 버린다
+ catch(e){HALF.img.set(k,{fail:true})}   // 못 읽으면 나누지 않는다
+ finally{HALF.busy.delete(k)}
+ if(HALF.loud.delete(k)&&route().name==='play')redrawPlay()}
+// 다음 곡 악보를 미리 읽어 둔다 — 넘기자마자 한 번 통째 줄로 그렸다가 반 줄로 바뀌며 튀지 않게
+function halfWarm(it){if(!it||!PL.half||!pvOn())return;(it.pieces||[]).forEach(p=>{if(p.blob&&url(p.blob)&&!(+p.span>1))halfPrep(p,true)})}
 /* ---------- sheet renderer ---------- */
 function sheetHTML(item,W,ctx){
  const mods=modsFor(item.form);let html='';
@@ -7221,31 +7369,39 @@ function sheetHTML(item,W,ctx){
    if(item.score&&pi===0)html+=`<div class="chordbar slim"><button class="btn sm" data-act="score-open" title="재구성한 악보 열기">${ic('music')}악보 ${item.score.measures.length}마디</button><button class="btn sm ghost" data-act="score-make" data-id="${p.id}">${ic('pen')}악보 다시 만들기</button></div>`;
    else if(NET.omr&&p.ocr!=='pending')html+=`<div class="chordbar slim"><button class="btn sm ghost" data-act="score-make" data-id="${p.id}" title="오선·음표·코드·가사를 새로 그린 악보로 만듭니다">${ic('pen')}악보 만들기</button></div>`;
   }
+  // 악보 한 칸: [a,b) 줄 범위를 배율 s 로 그린다. part 면 가로로 [xa,xb) 만 (반 줄 — 왼쪽 xa 를 칸의 0 으로)
+  const sliceHTML=(a,b,s,xa,xb,part)=>{const inX=(x,w)=>!part||(w?x+w>xa&&x<xb:x>=xa&&x<xb),ww=(xb-xa)*s;
+   let h=`<div class="slice ${ctx.tool?'tool':''}${part?' half':''}" data-piece="${p.id}" data-start="${a}" data-s="${s}" style="height:${(b-a)*s}px;${part?`width:${Math.round(ww)}px;`:''}background-image:url('${url(p.blob)}');background-size:${part?p.w*s:pw}px ${p.h*s}px;background-position:${-xa*s}px ${-a*s}px">`;
+   (p.hls||[]).forEach(hh=>{if(hh.y>=a&&hh.y<b&&inX(hh.x,hh.w||1))h+=`<div class="hl ${hh.kind==='mask'?'mask':''}" data-hl="${hh.id}" style="left:${(hh.x-xa)*s}px;top:${(hh.y-a)*s}px;width:${hh.w*s}px;height:${Math.min(hh.h,b-hh.y)*s}px"></div>`});
+   const chs=(p.chords||[]).slice().sort((u,v)=>(u.y-v.y)||(u.x-v.x));
+   chs.forEach((c,ci)=>{if(c.y<a||c.y>=b||!inX(c.x))return;const fs=Math.max(9,Math.min(24,c.h*s*0.92));
+    // 오른쪽에 붙일 자리가 다음 코드에 닿으면 코드 바로 위에 놓는다 — 라벨끼리 겹쳐 읽히지 않게
+    if(chordTool)h+=`<span class="chdbox" data-chord="${c.id}" style="left:${(c.x-xa)*s-2}px;top:${(c.y-a)*s-2}px;width:${c.w*s+4}px;height:${c.h*s+4}px"></span>`;
+    const offC=off+shiftAt(item,pi,c.y);if(!(offC!==0&&(ctx.f?ctx.f.chords!==false:true))&&!chordTool)return;
+    const txt=offC?transposeChord(c.text,offC,chordKeyAt(item,p,offC)):c.text;
+    const nx=chs[ci+1];const lw=txt.length*fs*0.62;
+    const sameLine=nx&&Math.abs(nx.y-c.y)<c.h;
+    const up=sameLine&&((c.x+c.w)*s+4+lw>nx.x*s-2);
+    if(showRed||chordTool||offC)h+=`<span class="chd ${chordTool?'edit':''} ${up?'up':''}" data-chord="${c.id}" style="left:${up?(c.x-xa)*s:(c.x+c.w-xa)*s+4}px;top:${up?(c.y-a)*s-fs-1:(c.y-a)*s}px;font-size:${fs}px;line-height:${up?fs:Math.max(c.h*s,fs)}px">${esc(txt)}</span>`});
+   (p.markers||[]).forEach(m=>{
+    const inStrip=stripMarkers.includes(m);
+    if(ctx.mode==='edit'&&m.cut!=null&&m.cut>a&&m.cut<b&&!inStrip)h+=`<div class="cutline" data-cut="${m.id}" style="top:${(m.cut-a)*s}px"><i></i><b>${esc(m.label)}</b></div>`;
+    if(inStrip)return;
+    // 반 줄에서는 마커 원(지름 26)이 칸 끝에서 잘리지 않게 안으로 들인다
+    if(m.y>=a&&m.y<b&&inX(m.x)){const cnt=notesBy[m.id].length,mx=(m.x-xa)*s;h+=`<span class="mkabs mk ${ctx.tool==='memo'?'now':''}" data-marker="${m.id}" style="left:${part?Math.max(13,Math.min(ww-13,mx)):mx}px;top:${(m.y-a)*s}px">${esc(m.label)}${cnt&&m.cut==null?`<span class="badge">${cnt}</span>`:''}${m.keyShift!=null&&ctx.mode==='edit'?`<span class="ksb">${m.keyShift>0?'+':''}${+m.keyShift}</span>`:''}</span>`}
+   });
+   return h+`</div>`};
   // 악보 파일이 이 기기에 없으면(초안은 발행 전까지 안 내려온다) 빈 흰 칸에 코드만 찍히지 않게 안내
   if(!url(p.blob))html+=`<div class="pmissing" style="height:${Math.min(Math.round(p.h*s)||240,320)}px;margin:8px"><div>악보 파일이 이 기기에 아직 없어요<br><small>인도자가 발행하면 내려와요</small></div></div>`;
   else for(let i=0;i<bounds.length-1;i++){
    const a=bounds[i],b=bounds[i+1];
    if(i>0){const m=stripMarkers[i-1];html+=stripHTML(m,notesBy[m.id],mods,ctx)}
    if(b-a<=0)continue;
-   html+=`<div class="slice ${ctx.tool?'tool':''}" data-piece="${p.id}" data-start="${a}" data-s="${s}" style="height:${(b-a)*s}px;background-image:url('${url(p.blob)}');background-size:${pw}px ${p.h*s}px;background-position:0 ${-a*s}px">`;
-   (p.hls||[]).forEach(h=>{if(h.y>=a&&h.y<b)html+=`<div class="hl ${h.kind==='mask'?'mask':''}" data-hl="${h.id}" style="left:${h.x*s}px;top:${(h.y-a)*s}px;width:${h.w*s}px;height:${Math.min(h.h,b-h.y)*s}px"></div>`});
-   const chs=(p.chords||[]).slice().sort((u,v)=>(u.y-v.y)||(u.x-v.x));
-   chs.forEach((c,ci)=>{if(c.y<a||c.y>=b)return;const fs=Math.max(9,Math.min(24,c.h*s*0.92));
-    // 오른쪽에 붙일 자리가 다음 코드에 닿으면 코드 바로 위에 놓는다 — 라벨끼리 겹쳐 읽히지 않게
-    if(chordTool)html+=`<span class="chdbox" data-chord="${c.id}" style="left:${c.x*s-2}px;top:${(c.y-a)*s-2}px;width:${c.w*s+4}px;height:${c.h*s+4}px"></span>`;
-    const offC=off+shiftAt(item,pi,c.y);if(!(offC!==0&&(ctx.f?ctx.f.chords!==false:true))&&!chordTool)return;
-    const txt=offC?transposeChord(c.text,offC,chordKeyAt(item,p,offC)):c.text;
-    const nx=chs[ci+1];const lw=txt.length*fs*0.62;
-    const sameLine=nx&&Math.abs(nx.y-c.y)<c.h;
-    const up=sameLine&&((c.x+c.w)*s+4+lw>nx.x*s-2);
-    if(showRed||chordTool||offC)html+=`<span class="chd ${chordTool?'edit':''} ${up?'up':''}" data-chord="${c.id}" style="left:${up?c.x*s:(c.x+c.w)*s+4}px;top:${up?(c.y-a)*s-fs-1:(c.y-a)*s}px;font-size:${fs}px;line-height:${up?fs:Math.max(c.h*s,fs)}px">${esc(txt)}</span>`});
-   (p.markers||[]).forEach(m=>{
-    const inStrip=stripMarkers.includes(m);
-    if(ctx.mode==='edit'&&m.cut!=null&&m.cut>a&&m.cut<b&&!inStrip)html+=`<div class="cutline" data-cut="${m.id}" style="top:${(m.cut-a)*s}px"><i></i><b>${esc(m.label)}</b></div>`;
-    if(inStrip)return;
-    if(m.y>=a&&m.y<b){const cnt=notesBy[m.id].length;html+=`<span class="mkabs mk ${ctx.tool==='memo'?'now':''}" data-marker="${m.id}" style="left:${m.x*s}px;top:${(m.y-a)*s}px">${esc(m.label)}${cnt&&m.cut==null?`<span class="badge">${cnt}</span>`:''}${m.keyShift!=null&&ctx.mode==='edit'?`<span class="ksb">${m.keyShift>0?'+':''}${+m.keyShift}</span>`:''}</span>`}
-   });
-   html+=`</div>`;
+   // 폰 세로 연습(ctx.half): 줄마다 마디선에서 반으로 나눠 크게 (halfPlan). 아직 못 읽었으면 이번엔 통째로 — 읽으면 다시 그린다
+   const plan=ctx.half&&span===1?halfPlan(p,a,b):null;
+   if(plan){plan.forEach(u=>{if(u.x==null||u.sh*s>=HALF_BIG){html+=sliceHTML(u.y0,u.y1,s,0,p.w,false);return}
+     const s2=pw/Math.max(u.x,p.w-u.x);html+=sliceHTML(u.y0,u.y1,s2,0,u.x,true)+sliceHTML(u.y0,u.y1,s2,u.x,p.w,true)});continue}
+   html+=sliceHTML(a,b,s,0,p.w,false);
   }
   html+=`</div>`;
   if(span===1&&pi<pieces.length-1)html+='<i class="pbreak"></i>';   // 다음 조각은 새 줄에서
@@ -7754,7 +7910,8 @@ window.addEventListener('message',e=>{if(!P.yt||e.source!==P.yt.contentWindow)re
  // 막힌 영상(101·150 임베드 금지, 153 등)도 onReady 는 먼저 온다 → 오류가 오면 준비 안 된 것으로 돌리고 유튜브 앱으로 넘긴다
  if(d.event==='onError'){P.ytReady=false;P.ytErr=true;const h=$('#ytHint');if(h)h.textContent=`이 영상은 여기서 바로 재생할 수 없어요(오류 ${d.info}). 메모를 탭하면 유튜브 앱이 그 시각에서 열리고, "여기에 메모"는 시각을 직접 적어요.`;return}
  if(d.event==='infoDelivery'&&d.info){if(d.info.currentTime!=null){P.t=d.info.currentTime}if(d.info.duration)P.dur=d.info.duration;if(d.info.playerState!=null)P.playing=d.info.playerState===1;updateTL()}});
-let PL={svc:null,idx:0,mi:0,stage:false,chart:!!lsGet('conti-chart'),zoom:+(lsGet('conti-zoom')||1)||1,f:{leader:true,session:true,mine:true,chords:true},session:null};
+// dock: 폰 세로 연습의 미디어 독을 펼쳤나 · half: 폰 세로에서 악보 줄을 반씩 크게 (보기 설정 · 이 기기에 기억)
+let PL={svc:null,idx:0,mi:0,stage:false,dock:false,half:lsGet('conti-half')!=='0',chart:!!lsGet('conti-chart'),zoom:+(lsGet('conti-zoom')||1)||1,f:{leader:true,session:true,mine:true,chords:true},session:null};
 // 인쇄: A4 세로, 곡마다 한 장 — 번호·제목·키·송폼 헤더 + 악보(메모 띠·전조 코드 포함)
 /* ---------- 인쇄·무대 공용 조판 엔진 (인쇄·내보내기 명세 §1·§4) ----------
    화면 DOM 을 그대로 인쇄하면 오선 중간에서 잘리고 빈 쪽이 생긴다.
@@ -8316,6 +8473,8 @@ const ADS={
 //  · render 첫머리의 setTimeout(webAdsRender,0) 이 연습 화면을 그리기(await 뒤) 전에 돌아, 새로고침·홈→연습에서는 요청을 안 한다
 //    → app.innerHTML=playHTML(...) 뒤에서 부른다
 //  · 같은 화면을 다시 그릴 때마다(동기화) <ins> 가 새로 생겨 사용자 조작 없이 광고를 다시 요청한다(정책 위반) → 채워진 자리를 재사용
+//  · 폰 세로 연습(.ws.pv)에서는 자리가 아래 미디어 독 안이라 접혀 있으면 안 보이고(폭 0 자리에 push → availableWidth=0),
+//    미디어 없는 곡은 독째 숨는다 → 독 밖 자리로 (재생 단추와는 떨어지게 — 광고 배치라 운영자가 정한다)
 // client·slot 이 비어 있어도 아무것도 하지 않는다
 const WEBADS={on:false,client:'ca-pub-5011605715320185',slot:'3461379578'};
 let WEBAD_LOADED=false;
@@ -10049,7 +10208,9 @@ document.addEventListener('touchstart',e=>{
  const t=e.touches[0];const base={x0:t.clientX,y0:t.clientY,px:t.clientX,pt:e.timeStamp,v:0,on:false,dead:false};
  if(t.clientX<=24){   // ① 가장자리 → 뒤로 (첫 화면 '예배'에서는 갈 데가 없다)
   if(route().name==='home'||!route().name)return;
-  if(e.target.closest&&e.target.closest('#sheetwrap,.schwrap,.cropwrap,.stgw,input,textarea'))return;
+  // 악보는 확대해 옆으로 넘길 때만 그쪽 몫 — 폰 세로 연습은 악보 칸이 화면 왼쪽 끝부터라 막으면 가장자리 뒤로가 안 됐다
+  const own=e.target.closest&&e.target.closest('#sheetwrap,.schwrap,.cropwrap,.stgw,input,textarea');
+  if(own&&!(own.id==='sheetwrap'&&own.scrollWidth<=own.clientWidth+1))return;
   SW={kind:'edge',...base};return}
  const tb=swTabs();if(tb)SW={kind:'tab',tb,target:e.target,...base}},{passive:true});
 document.addEventListener('touchmove',e=>{const s=SW;if(!s||s.dead)return;
@@ -10096,11 +10257,13 @@ function playSession(s){const cur=PL.session||me().session;if(!s||s===cur)return
   const md=old[PL.mi],k=md?ml.findIndex(m=>m.id===md.id):-1;PL.ml=ml;
   const tab=$('.panel.media .ptab');if(tab)tab.outerHTML=ptab('미디어','',pMediaChips(ml,Math.max(0,k)));
   const c=$('#ctrls');if(c)c.style.display=ml.length?'':'none';
+  const ws=$('#ws');if(ws)ws.classList.toggle('nomedia',!ml.length);   // 폰 세로: 미디어가 없으면 아래 독째 숨긴다
   if(k>=0)PL.mi=k;else selectMedia(0)}
  redrawPlay()}
-function redrawPlay(){const svc=PL.svc;if(!svc)return;const pub=pubOrDraft(svc);const it=pub.items[PL.idx];if(!it)return;const live=svc.items.find(x=>x.id===it.id)||it;const sh=$('#sheet');if(!sh)return;const sw0=$('#sheetwrap');const base=(sw0?sw0.clientWidth-28:sh.clientWidth)-56;const z=PL.zoom||1;const W=Math.round(base*z);sh.style.width=z>1?(W+56)+'px':'';$$('.zoomlbl').forEach(e=>e.textContent=Math.round(z*100)+'%');
+// 폰 세로(pvOn)는 악보 둘레 여백이 좁다(.ws.pv — 칸 4+4 · 종이 30+6+테두리 2) → 그만큼 악보를 넓게, 반 줄 나누기(half)도 여기서만
+function redrawPlay(){const svc=PL.svc;if(!svc)return;const pub=pubOrDraft(svc);const it=pub.items[PL.idx];if(!it)return;const live=svc.items.find(x=>x.id===it.id)||it;const sh=$('#sheet');if(!sh)return;const sw0=$('#sheetwrap');const pv=pvOn()&&!PL.stage;const base=pv?(sw0?sw0.clientWidth:sh.clientWidth)-46:(sw0?sw0.clientWidth-28:sh.clientWidth)-56;const z=PL.zoom||1;const W=Math.round(base*z);sh.style.width=z>1?(W+(pv?38:56))+'px':'';$$('.zoomlbl').forEach(e=>e.textContent=Math.round(z*100)+'%');
  // structure from published item, notes from live
- const merged={...it,notes:live.notes||[]};const sw=$('#sheetwrap');const st=sw?sw.scrollTop:0;sh.innerHTML=sheetHTML(merged,Math.max(200,W),playCtx());if(sw)sw.scrollTop=st;updateTL()}
+ const merged={...it,notes:live.notes||[]};const sw=$('#sheetwrap');const st=sw?sw.scrollTop:0;sh.innerHTML=sheetHTML(merged,Math.max(200,W),{...playCtx(),half:pv&&PL.half});if(sw)sw.scrollTop=st;updateTL()}
 // 연습 왼쪽 칸 맞추기 (E7·N7) — 낮은 화면에서 영상은 제 폭만큼(16:9) 높이를 다 차지해, 가로 아이패드 + 광고 배너면 재생·±5 단추가
 // 미디어 칸 끝에 반쯤 잘렸고(11인치: 칸 432px 에 내용 527px) 가로 폰 + 배너면 시간 줄·여기에 메모가 14px 만 보였다.
 //  · 나눈 칸: 미디어 칸이 넘치는 만큼 영상을 줄인다(16:9 그대로 가운데). 120px 아래로 줄어야 하면 왼쪽 칸을 한 줄로 흘린다(.flow)
@@ -10137,7 +10300,9 @@ function afterPlay(svc,idx){
   const more=e.target.closest('[data-act="more"]');if(more){more.closest('.strip').classList.add('open');return}
   const add=e.target.closest('[data-act="memo"]')||e.target.closest('[data-marker]');if(add){const mid=add.dataset.marker;if(!markerOf(live,mid)){toast('발행본에 없는 마커');return}P.pauseForComposer();const md=(PL.ml||[])[PL.mi];openComposer(svc,live,{marker:mid,leader:isLeader(),t:P.t,mediaId:md&&md.id});return}
  };
- window.onresize=()=>{if(route().name==='play')redrawPlay()};
+ // 폰을 세로로 돌렸는데 영상이 돌고 있으면 독을 편다 — 접힌 독에서는 영상이 안 보인다 (ytShow)
+ window.onresize=()=>{if(route().name!=='play')return;redrawPlay();if(P.playing)ytShow()};
+ setTimeout(()=>{if(route().name==='play'&&PL.svc===svc)halfWarm(pubOrDraft(svc).items[PL.idx+1])},1500);
 }
 function updateTL(){
  const svc=PL.svc;if(!svc||route().name!=='play')return;const it=pubOrDraft(svc).items[PL.idx];if(!it)return;const live=svc.items.find(x=>x.id===it.id)||it;const md=(PL.ml||[])[PL.mi];const pb=$('#playBtn');if(pb)pb.innerHTML=P.playing?ic('pause'):ic('play');
@@ -10145,8 +10310,46 @@ function updateTL(){
  const list=$('#tlist');if(!list||!md)return;const lmd=(live.media||[]).find(x=>x.id===md.id)||md;const notes=(lmd.notes||[]).filter(n=>noteVisible(n,playCtx())).sort((a,b)=>a.t-b.t);
  const prog=$('#prog');if(prog){$$('.tick',prog).forEach(t=>t.remove());if(P.end||P.dur)notes.forEach(n=>{if(n.t<s0||n.t>s1)return;const d=document.createElement('div');d.className='tick';d.style.left=(Math.max(0,Math.min(1,(n.t-s0)/(s1-s0)))*100)+'%';prog.appendChild(d)})}
  let cur=null;notes.forEach(n=>{if(n.t<=P.t+0.5)cur=n});
+ // 접힌 독(폰 세로)의 가운데 — 지금 미디어 이름과 다음 타임라인 메모(지나갔으면 마지막 메모). 바뀔 때만 다시 쓴다
+ const mm=$('#mdmini');if(mm){const nx=notes.find(n=>n.t>P.t+0.5)||cur,k=md.id+'|'+(nx?nx.id+nx.t+nx.text:'');
+  if(mm.dataset.k!==k){mm.dataset.k=k;mm.innerHTML=`<b>${mdSess(md).length?esc(mdTag(md))+' · ':''}${esc((md.name||md.url||'').replace(/^https?:\/\//,''))}</b>${nx?`<span><i class="t">${fmtT(nx.t)}</i>${esc(nx.text)}</span>`:''}`}}
  list.innerHTML=notes.map(n=>`<div class="tl ${n===cur?'now':''}" data-act="seek" data-t="${+n.t||0}"><span class="t">${fmtT(n.t)}</span>${n.session?`<span class="tag">${esc(n.session)}</span>`:n.layer==='leader'?`<span class="tag">${mdAllLabel(lmd)}</span>`:'<span class="tag me">나</span>'}<span>${esc(n.text)}${n.marker?` <span class="muted">· ${esc((markerOf(live,n.marker)||{}).label||'')}</span>`:''}</span></div>`).join('')||'<div class="hint" style="padding:4px 8px">타임라인 메모 없음 — 재생하며 "여기에 메모"</div>';
 }
+/* ---------- 폰 세로 연습: 미디어 독 · 보기 설정 시트 (폰 리디자인 B·C) ---------- */
+// 독을 펴고 접는다. 유튜브는 영상이 보여야 틀 수 있다(정책: 가리거나 200px 보다 작게 두면 안 된다) — 접을 때 돌고 있으면 멈춘다.
+// 녹음은 소리뿐이라 접어도 계속 돈다
+function mdock(open){PL.dock=!!open;const m=$('#ws .media');if(m)m.classList.toggle('open',PL.dock);const ws=$('#ws');if(ws)ws.classList.toggle('dockopen',PL.dock);
+ const l=PL.dock?'미디어 접기':'미디어 펼치기';$$('#ws .mdexp').forEach(b=>{b.setAttribute('aria-label',l);b.title=l;b.setAttribute('aria-expanded',PL.dock?'true':'false')});
+ const md=(PL.ml||[])[PL.mi];if(!PL.dock&&md&&md.type==='youtube'&&P.playing)P.pause()}
+// 유튜브를 틀기 전에 — 폰 세로에서 독이 접혀 있으면 먼저 편다 (재생 단추 · Space 페달 · 타임라인 메모 · 폰 돌리기)
+function ytShow(){const md=(PL.ml||[])[PL.mi];if(!PL.dock&&!PL.stage&&md&&md.type==='youtube'&&pvOn())mdock(true)}
+function pToggle(){if(!P.playing)ytShow();P.toggle()}
+function pviewHTML(){const svc=PL.svc;if(!svc)return '';const it=pubOrDraft(svc).items[PL.idx]||{};const sess=PL.session||me().session;
+ const chip=(k,label)=>`<button class="chip ${PL.f[k]?'on':''}" data-vf="${k}" aria-pressed="${PL.f[k]?'true':'false'}">${esc(label)}</button>`;
+ const tool=(a,icn,label,cls)=>`<button class="btn ${cls||''}" data-vt="${a}">${ic(icn)}${label}</button>`;
+ return `<div class="row sb pvhd"><b>보기 설정</b><button class="btn ghost" data-close="1">완료</button></div>
+  <div class="lbl">세션 <span class="hint">이 세션의 메모·영상으로 보여요</span></div>
+  <div class="pvgrid">${S.team.sessions.filter(x=>x!=='인도자').map(x=>`<button class="btn ${x===sess?'on':''}" data-vs="${esc(x)}" aria-pressed="${x===sess?'true':'false'}">${esc(x)}</button>`).join('')}</div>
+  <div class="lbl">악보 위에 보일 것</div>
+  <div class="row pvchips">${chip('leader','인도자 메모')}${sess!=='인도자'?chip('session',sess+' 메모'):''}${chip('mine','내 메모')}${chip('chords','전조 코드')}</div>
+  <div class="lbl">악보 배치</div>
+  <div class="pvgrid two"><button class="pvopt ${PL.half?'on':''}" data-vh="1" aria-pressed="${PL.half?'true':'false'}"><span class="bars"><i></i><i></i><i></i></span><b>반 줄씩 크게</b><span class="hint">한 줄을 마디선에서 반으로 나눠 두 배로</span></button><button class="pvopt ${PL.half?'':'on'}" data-vh="0" aria-pressed="${PL.half?'false':'true'}"><span class="bars thin"><i></i><i></i><i></i><i></i></span><b>원본 줄</b><span class="hint">악보 그대로 · 가로로 눕히면 늘 원본</span></button></div>
+  <div class="row pvzoom"><span class="lbl">크기</span><span class="grow"></span><button class="icon" data-vz="-1" aria-label="악보 작게">${ic('down')}</button><b class="mono">${Math.round((PL.zoom||1)*100)}%</b><button class="icon" data-vz="1" aria-label="악보 크게">${ic('up')}</button></div>
+  <div class="lbl">도구</div>
+  <div class="row pvtools">${tool('piano','piano','건반')}${tool('metro','metro','메트로놈')}${hasNote(svc)?tool('msg','note','예배 노트',msgUnread(svc)?'dot':''):''}${it.score&&it.score.measures&&it.score.measures.length?tool('score','music','재구성 악보'):''}${it.chart?tool('chart',PL.chart?'music':'list',PL.chart?'악보로 보기':'코드 차트로 보기'):''}</div>`}
+// 한 번 정하면 잘 안 바꾸는 것들. 세션은 제자리에서 바꾼다(playSession — 영상·재생·스크롤 그대로), 메모 필터는 옆 칸의 칩과 같이 바뀐다
+function pviewSheet(){if(!PL.svc)return;modal(`<div id="pvs" class="pvs">${pviewHTML()}</div>`,{sheet:true});
+ const again=()=>{const el=$('#pvs');if(el)el.innerHTML=pviewHTML()};
+ $('#modal').onclick=e=>{const t=e.target;
+  if(t.closest('[data-close]')){closeModal();return}
+  const vs=t.closest('[data-vs]');if(vs){playSession(vs.dataset.vs);again();return}
+  const vf=t.closest('[data-vf]');if(vf){const k=vf.dataset.vf;PL.f[k]=!PL.f[k];$$('[data-act="pf"]').forEach(b=>b.classList.toggle('on',!!PL.f[b.dataset.k]));redrawPlay();again();return}
+  const vh=t.closest('[data-vh]');if(vh){const on=vh.dataset.vh==='1';if(on!==PL.half){PL.half=on;lsSet('conti-half',on?'1':'0');redrawPlay()}again();return}
+  const vz=t.closest('[data-vz]');if(vz){setZoom((PL.zoom||1)+(+vz.dataset.vz)*0.1);again();return}
+  const vt=t.closest('[data-vt]');if(vt){const a=vt.dataset.vt,svc=PL.svc;closeModal();
+   if(a==='piano')pianoOpen();else if(a==='metro')metOpen();else if(a==='msg')messageSheet(svc,false);
+   else if(a==='score'){const it=pubOrDraft(svc).items[PL.idx];if(it)go(`score/${svc.id}/${it.id}`)}
+   else if(a==='chart'){PL.chart=!PL.chart;lsSet('conti-chart',PL.chart?'1':'');render()}}}}
 
 /* ---------- settings / library / export-import ---------- */
 async function exportJSON(onlySvcId){
@@ -10306,7 +10509,7 @@ document.addEventListener('keydown',e=>{
  // 무대 모드가 열려 있으면 그쪽(stageKey)이 화살표를 맡는다. 여기서 또 처리하면
  // 틀지도 않은 영상이 재생되거나 엉뚱한 데로 감긴다
  if($('#stageWrap'))return;
- if(e.key===' '){e.preventDefault();P.toggle()}else if(e.key==='ArrowLeft'){if(PL.stage){e.preventDefault();navSong(-1)}else P.seek(Math.max(0,P.t-5))}else if(e.key==='ArrowRight'){if(PL.stage){e.preventDefault();navSong(1)}else P.seek(P.t+5)}
+ if(e.key===' '){e.preventDefault();pToggle()}else if(e.key==='ArrowLeft'){if(PL.stage){e.preventDefault();navSong(-1)}else P.seek(Math.max(0,P.t-5))}else if(e.key==='ArrowRight'){if(PL.stage){e.preventDefault();navSong(1)}else P.seek(P.t+5)}
  else if(PL.stage&&(e.key==='PageDown'||e.key==='PageUp')){e.preventDefault();navSong(e.key==='PageDown'?1:-1)}
 });
 document.addEventListener('click',async e=>{
@@ -10651,9 +10854,12 @@ document.addEventListener('click',async e=>{
   case 'back-view':go('view/'+svc.id);break;
   case 'pn':{const i=PL.idx+ +el.dataset.d;go('play/'+r.a+'/'+i);break}
   case 'msel':selectMedia(+el.dataset.i);break;
-  case 'ptoggle':P.toggle();break;
+  case 'ptoggle':pToggle();break;
+  case 'mdock':mdock(!PL.dock);break;
+  case 'pview':pviewSheet();break;
+  case 'pnote':el.classList.toggle('open');break;
   case 'skip':P.seek(Math.max(0,P.t+ +el.dataset.d));break;
-  case 'seek':{const t=+el.dataset.t;const md=(PL.ml||[])[PL.mi];if(md&&md.type==='youtube'&&!P.ytReady){window.open(`https://youtu.be/${ytId(md.url)}?t=${Math.round(t)}`,'_blank','noopener');break}P.seek(t);if(!P.playing)P.play();break}
+  case 'seek':{const t=+el.dataset.t;const md=(PL.ml||[])[PL.mi];if(md&&md.type==='youtube'&&!P.ytReady){window.open(`https://youtu.be/${ytId(md.url)}?t=${Math.round(t)}`,'_blank','noopener');break}P.seek(t);if(!P.playing){ytShow();P.play()}break}
   case 'tnote':{const s=PL.svc;const pub=pubOrDraft(s);const it=pub.items[PL.idx];const live=s.items.find(x=>x.id===it.id)||it;const md=(PL.ml||[])[PL.mi];if(!md){toast('미디어가 없어요');break}const lmd=live.media.find(x=>x.id===md.id);if(!lmd){toast('발행본에 없는 미디어');break}P.pauseForComposer();openComposer(s,live,{leader:isLeader(),t:P.t,mediaId:lmd.id});break}
   case 'psess':playSession(el.dataset.s);break;
   case 'pf':PL.f[el.dataset.k]=!PL.f[el.dataset.k];$$('[data-act="pf"]').forEach(b=>b.classList.toggle('on',PL.f[b.dataset.k]));redrawPlay();break;
@@ -10722,7 +10928,7 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
  if(!online()){REPROBE.n=0;scheduleReprobe()}   // 켜는 동안 건너뛴 다시 묻기가 간격만 늘려 놨다 — 5초부터 다시
  setInterval(()=>{if(NET.server===null&&!document.hidden)recheckServer()},20000);
  probeOmr();startNotiPoll();nativeSetup();
- window.CONTI={REWARD,rewardAvailable,rewardSheet,pullUsage,ADSTATE,modal,closeModal,ADS,WEBADS,AD_HOSTS,setZoom,P,pl:()=>PL,STG,stageOpen,stageExit,adsAllowed,webAdsAllowed,MET,PIANO,metOpen,metStart,metStop,metSet,pianoOpen,HOME,PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go,PLANQ,planCls,trialLeft,IAP,iapOn,upgradeModal,payWho,isAdminUI,ADM,adminPull,ytOriginParam,ytEmbedSrc,YT,josa,josaRo,fitPlay,paintOvBar,doPrint,saveFile,appBack,rehAddModal};
+ window.CONTI={REWARD,rewardAvailable,rewardSheet,pullUsage,ADSTATE,modal,closeModal,ADS,WEBADS,AD_HOSTS,setZoom,P,pl:()=>PL,STG,stageOpen,stageExit,adsAllowed,webAdsAllowed,MET,PIANO,metOpen,metStart,metStop,metSet,pianoOpen,HOME,PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go,PLANQ,planCls,trialLeft,IAP,iapOn,upgradeModal,payWho,isAdminUI,ADM,adminPull,ytOriginParam,ytEmbedSrc,YT,josa,josaRo,fitPlay,paintOvBar,doPrint,saveFile,appBack,rehAddModal,HALF,mdock,pvOn};
 })();
 })();
 </script>

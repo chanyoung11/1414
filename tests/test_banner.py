@@ -168,7 +168,7 @@ def run():
 
     def play(pg):
       sid = pg.evaluate("CONTI.S.services[0].id")
-      pg.evaluate("(x)=>{location.hash=x}", '#/play/' + sid); pg.wait_for_selector('[data-act="metro"]', timeout=10000)
+      pg.evaluate("(x)=>{location.hash=x}", '#/play/' + sid); pg.wait_for_selector('.top [data-act="stage"]', timeout=10000)
     def home(pg):
       pg.evaluate("()=>{location.hash='#/home'}"); pg.wait_for_timeout(300)
 
@@ -187,7 +187,7 @@ def run():
       return s
     def fresh(pg, js=None):
       # 새로 연 앱: 연습 화면 주소 그대로 다시 불러 광고를 처음부터 받게 한다 (js: 광고가 들어오기 전에 가짜에 줄 설정)
-      pg.reload(); pg.wait_for_selector('[data-act="metro"]', timeout=15000)
+      pg.reload(); pg.wait_for_selector('.top [data-act="stage"]', timeout=15000)
       pg.wait_for_function("__ad.log.some(x=>x.startsWith('show:'))", timeout=10000)
       if js: pg.evaluate(js)
       s = st(pg)
@@ -199,9 +199,14 @@ def run():
     def stage_open(pg):
       pg.evaluate("CONTI.stageOpen(CONTI.S.services[0],0)"); pg.wait_for_selector('#stageWrap', timeout=10000)
     def stage_close(pg):
-      pg.evaluate("CONTI.stageExit()"); pg.wait_for_selector('[data-act="metro"]', timeout=10000)
+      pg.evaluate("CONTI.stageExit()"); pg.wait_for_selector('.top [data-act="stage"]', timeout=10000)
+    # 연습 화면 도구 — 폰 세로(폭 640 이하)는 상단 단추가 '보기 설정' 시트 안에 있다 (폰 리디자인 C)
+    def tool(pg, name):
+      if pg.locator('.top [data-act="%s"]' % name).is_visible(): pg.click('.top [data-act="%s"]' % name); return
+      pg.click('.top [data-act="pview"]'); pg.wait_for_selector('#pvs [data-vt="%s"]' % name); pg.wait_for_timeout(300)
+      pg.click('#pvs [data-vt="%s"]' % name)
     def piano_open(pg):
-      pg.click('[data-act="piano"]'); pg.wait_for_selector('#sidetool.on #pkeys')
+      tool(pg, 'piano'); pg.wait_for_selector('#sidetool.on #pkeys')
     def tool_close(pg):
       pg.click('[data-act="sidetool-close"]'); pg.wait_for_timeout(300)
     def gap(pg):
@@ -267,7 +272,7 @@ def run():
     print('2 아이폰: 광고가 오기 전에 연습 화면을 떠남 → 숨김 · 돌아오면 보임 ok')
     # 5 폰 건반: 떠 있는 배너를 내리고 · 메트로놈으로 바꾸면 다시 · 닫으면 그대로
     piano_open(pg); settled(pg, '5 아이폰 폰 건반 열기', False, 500)
-    pg.click('[data-act="metro"]'); pg.wait_for_selector('#sidetool.on #metBpm')
+    tool(pg, 'metro'); pg.wait_for_selector('#sidetool.on #metBpm')
     settled(pg, '5 건반 → 메트로놈', True, 600)
     tool_close(pg); settled(pg, '5 메트로놈 닫기', True, 400)
     piano_open(pg); settled(pg, '5 건반 다시', False, 500)
@@ -317,7 +322,7 @@ def run():
     # 웹뷰만 다시 불러옴(기기 데이터 지우기·계정 삭제의 reload): 앞 페이지의 네이티브 뷰가 남아도 줄이 막히지 않는다
     for pre in ('hidden', 'shown'):
       pg.evaluate("sessionStorage.setItem('__adPre', %r)" % pre)
-      pg.reload(); pg.wait_for_selector('[data-act="metro"]', timeout=15000)
+      pg.reload(); pg.wait_for_selector('.top [data-act="stage"]', timeout=15000)
       s = settled(pg, '3 안드로이드 다시 불러옴(%s) → 보임' % pre, True, pg.evaluate('__ad.delay') + 900)
       if 'reload' in s['log']: fail('3 다시 불러온 뒤 남은 뷰에 showBanner 를 불러 줄이 막힘: %s' % s)
       stage_open(pg); settled(pg, '3 다시 불러온 뒤 무대 → 안 보임', False, 500); stage_close(pg)
