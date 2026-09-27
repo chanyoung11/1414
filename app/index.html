@@ -8405,7 +8405,8 @@ async function nativeSetup(){
    if(STG.edit){if(STG.menu||STG.sel.length){STG.menu=null;STG.sel=[];stageRender()}else stgEditOff();return}
    stageExit();return}   // 무대에서 내보내는 중이면(STG.out) 미리보기부터 닫는다 (무대는 그 뒤 돌아온다)
   const pa=$('#printArea');if(pa){pa.remove();document.body.classList.remove('printing');return}
-  if($('#modal')&&$('#modal').firstChild){closeModal();return}
+  // 메모 창을 뒤로 키로 닫아도 X·Esc 처럼 멈췄던 재생을 다시 튼다 (전에는 멈춘 채 남고 pausedByComposer 가 남아 나중에 엉뚱하게 틀었다)
+  if($('#modal')&&$('#modal').firstChild){closeModal();pResume();return}   // 여기서 P 는 Capacitor 플러그인이라 재생기는 pResume 로
   if($('#sidetool.on')){sideToolClose();return}
   if(NOTI.open){NOTI.open=false;render();return}
   appBack(e&&e.canGoBack)})}catch(e){}
@@ -10332,8 +10333,12 @@ function ytShow(){if(ytHidden(true))mdock(true)}
 function ytHidden(any){const md=(PL.ml||[])[PL.mi];return !!(!PL.dock&&!PL.stage&&md&&md.type==='youtube'&&pvOn()&&(any||route().name==='play'))}
 // ±5 (단추·←→) — 안 도는 유튜브는 안 도는 채로. 끝난(ENDED) 영상에 seekTo 를 보내면 유튜브가 틀어 버려
 // 접힌 독에서 영상 없이 소리만 났다 → 뒤이어 멈춤을 보낸다 (그래도 돌기 시작하면 위 message 에서 멈춘다)
-function pSkip(d){const hold=!P.playing&&ytHidden();P.seek(Math.max(0,P.t+d));if(hold)ytCmd('pauseVideo')}
+// 멈춘 채 접힌 독에서는 끝(길이) 1초 앞까지만 간다 — 끝에 닿은 채 멈춤을 보내면 유튜브가 '끝남'과 멈춤이 겹쳐
+// 다음 재생 한 번이 0:00 에서 멈춘 채로 먹혀 두 번 눌러야 틀렸다 (아이폰·안드로이드 실제 유튜브에서 봄)
+function pSkip(d){const hold=!P.playing&&ytHidden();let t=Math.max(0,P.t+d);if(hold&&P.dur>1)t=Math.min(t,P.dur-1);P.seek(t);if(hold)ytCmd('pauseVideo')}
 function pToggle(){if(!P.playing)ytShow();P.toggle()}
+// 메모 창을 닫은 뒤 멈췄던 재생 다시 틀기 — 이름 P 가 가려지는 곳(안드로이드 뒤로 키 처리: P=Capacitor 플러그인)에서 부른다
+function pResume(){P.resumeIfPaused()}
 function pviewHTML(){const svc=PL.svc;if(!svc)return '';const it=pubOrDraft(svc).items[PL.idx]||{};const sess=PL.session||me().session;
  const chip=(k,label)=>`<button class="chip ${PL.f[k]?'on':''}" data-vf="${k}" aria-pressed="${PL.f[k]?'true':'false'}">${esc(label)}</button>`;
  const tool=(a,icn,label,cls)=>`<button class="btn ${cls||''}" data-vt="${a}">${ic(icn)}${label}</button>`;

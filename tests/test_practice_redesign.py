@@ -453,6 +453,10 @@ def part_y(br, sid, state, errs, B):
     # 멈춘 채 ±5 는 멈춘 채 · 접힌 채 재생은 펼치고 튼다 · 펼친 채 돌 때 ±5 는 계속 돈다
     pg.click('[data-act=skip][data-d="5"]'); pg.wait_for_timeout(400)
     if st()['playing'] or st()['dock']: fail('%s: 멈춘 채 +5 가 틀거나 폄 %s' % (label, st()))
+    # 접힌 채 멈춰 있으면 끝 1초 앞까지만 간다 — 끝에 닿은 채 멈춤을 보내면 다음 재생 한 번이 0:00 에서 먹혔다 (실제 유튜브)
+    dur = pg.evaluate('CONTI.P.dur')
+    for _ in range(3): pg.click('[data-act=skip][data-d="5"]'); pg.wait_for_timeout(250)
+    if dur and dur > 1 and st()['t'] > dur - 0.9: fail('%s: 접힌 채 +5 가 끝(%.1f)까지 감 %s' % (label, dur, st()))
     pg.click('#playBtn'); pg.wait_for_timeout(400)
     s2 = st()
     if not s2['dock'] or not s2['playing']: fail('%s: 접힌 채 재생 → 펴고 틀어야 함 %s' % (label, s2))

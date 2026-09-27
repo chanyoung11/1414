@@ -220,6 +220,13 @@ def run():
     tab = pg.evaluate("(document.querySelector('[data-act=\"set-tab\"].on')||{dataset:{}}).dataset.t")
     if hash(pg) != '#settings' or tab != 'app': fail('AND1-01 설정에서 연 약관 뒤로가 설정 > 앱이 아님: %s %s' % (hash(pg), tab))
     print('AND1-01 곡 상세 → 라이브러리 → 홈 · 편성 패널 → 편성 탭 · 약관 → 설정(앱) ok')
+    # ---- 메모 창을 뒤로 키로 닫으면 X·Esc 처럼 멈췄던 재생을 다시 튼다 (전에는 멈춘 채·pausedByComposer 가 남음) ----
+    pg.evaluate("()=>{window.__rs=0;const P=CONTI.P;P.__orig=P.resumeIfPaused;P.resumeIfPaused=function(){window.__rs++;P.pausedByComposer=false};P.pausedByComposer=true;CONTI.modal('<div class=\"card\">메모</div>')}")
+    pg.wait_for_selector('#modal .card', timeout=5000)
+    back(pg)
+    rs = pg.evaluate("()=>{const P=CONTI.P;const n=window.__rs;P.resumeIfPaused=P.__orig;return {n,open:!!(document.querySelector('#modal')&&document.querySelector('#modal').firstChild),flag:P.pausedByComposer}}")
+    if rs['open'] or rs['n'] != 1 or rs['flag']: fail('뒤로 키로 메모 창을 닫을 때 다시 틀기(resumeIfPaused)를 안 부름: %s' % rs)
+    print('뒤로 키로 창 닫기 → 멈췄던 재생 다시 틀기 ok')
 
     # ---- AND2-01 · AND2-02 인쇄: 용지·방향을 넘기고, 창이 닫힐 때까지 조판을 남긴다 ----
     pg.evaluate("()=>{window.__pr=CONTI.doPrint('시험',{orient:'landscape',paper:'A4',pageW:1123,pageH:794})}")
