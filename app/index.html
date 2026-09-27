@@ -4818,7 +4818,8 @@ function loginHTML(){const m=GATE.mode;if(m==='recover')return recoverHTML();ret
  ${route().name==='join'?`<p class="fine">초대 링크로 오셨네요. 로그인하면 팀 가입으로 이어집니다.</p>`:''}${m==='login'?`<p class="fine"><a href="#" data-act="lg-mode" data-m="recover">비밀번호를 잊었어요</a></p>`:''}
  <div class="legalfoot"><button data-act="legal" data-k="terms">이용약관</button><button data-act="legal" data-k="privacy">개인정보처리방침</button></div></div>`)}
 function gateHTML(){const u=NET.user||{};return authShell(`<div class="auth-card"><div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div><h1>${esc(u.name||u.username)}님, 반가워요</h1><p class="sub">아직 팀이 없어요. 초대 링크로 들어가거나 새 팀을 만드세요.</p>
- <div class="lbl">초대 링크로 가입</div><div class="row"><input class="field" id="gtLink" placeholder="인도자가 보낸 링크 또는 코드"><button class="btn" data-act="join-go">열기</button></div><div class="err" id="gtErr"></div></div>
+ <div class="lbl">초대 링크로 가입</div><div class="row"><input class="field" id="gtLink" placeholder="인도자가 보낸 링크 또는 코드"><button class="btn" data-act="join-go">열기</button></div><div class="err" id="gtErr"></div>
+ ${isAdminUI()?`<button class="btn wide" data-act="admin" style="margin-top:14px">운영자 화면 (무료 코드 · 팀 플랜)</button>`:''}</div>
  ${teamCreateCard(u)}`)}
 // 팀 만들기 칸. 팀이 없는 사람과 비활성으로 막힌 사람 둘 다 쓴다 — 한 팀에서 빠졌다고 내 팀을 못 만들 까닭은 없다
 const teamCreateCard=u=>`<div class="auth-card"><h2>팀 만들기</h2><p class="sub">인도자가 팀을 만들고 초대 링크를 카톡에 붙여요.</p>
@@ -7463,7 +7464,8 @@ async function render(){
  if(online()){
   if(!NET.user){app.innerHTML=loginHTML();afterGate();return}
   if(r.name==='join'){app.innerHTML=joinHTML(r.a);afterGate();return}
-  if(!S.team.id){app.innerHTML=NET.blocked?blockedHTML():gateHTML();afterGate();return}
+  // 운영자는 팀이 없어도 운영자 화면에 들어간다 (운영용 계정은 팀을 만들지 않는다)
+  if(!S.team.id&&!(r.name==='admin'&&isAdminUI())){app.innerHTML=NET.blocked?blockedHTML():gateHTML();afterGate();return}
   if(r.name==='edit'&&!isLeader())return go('view/'+r.a);
  }
  else if(offGate()){app.innerHTML=loginHTML();afterGate();return}   // 다시 붙으면 recheckServer 가 다시 그린다 (친 값은 GATE 에 남는다)
