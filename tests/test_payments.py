@@ -226,6 +226,8 @@ def run():
     st, j = M.req('POST', '/invite/%s/join' % T['invite'], {'name': '멤버', 'session': '건반'})
     if st != 200: fail('멤버가 못 들어옴: %s %s' % (st, j))
 
+    # 설정 → 플랜 카드: 구분선(.hr)이 맨 아래에 남거나 두 줄 겹치면 그 자리들 (앱은 코드 칸이 없다)
+    HR_BAD = "()=>{const c=document.getElementById('sPlanPill').closest('.card'),k=[...c.children],h=e=>!!e&&e.classList.contains('hr');return k.map((e,i)=>h(e)&&(i===k.length-1||h(k[i+1]))?i:-1).filter(i=>i>=0)}"
     # ================= 1 키가 없으면 · 플러그인이 없는 예전 앱 =================
     for label, kw in [('키 없음', {'keys': False}), ('예전 앱(플러그인 없음)', {'plug': False})]:
       c, pg = native('ios', **kw)
@@ -236,6 +238,7 @@ def run():
       plan_tab(pg)
       # 한도 검사가 켜져 있으면 예전처럼 체험 팀에 '플랜 올리기'가 있다 (눌러도 '결제 준비 중') · 꺼져 있으면 없다
       if pg.locator('#sIap').count() or bool(pg.locator('[data-act="upgrade"]').count()) != ENF: fail('%s: 설정 → 플랜 단추가 예전과 다름 (한도 검사 %s)' % (label, ENF))
+      if pg.evaluate(HR_BAD): fail('%s: 플랜 카드 구분선이 맨 아래에 남거나 두 줄 %s' % (label, pg.evaluate(HR_BAD)))
       pg.evaluate("CONTI.upgradeModal()"); pg.wait_for_selector('#modal [data-act="buy"]', timeout=5000)
       if pg.locator('#pay').count(): fail('%s: 새 결제 화면이 열림' % label)
       pg.click('#modal [data-act="buy"][data-p="pro"]'); pg.wait_for_timeout(300)
@@ -270,6 +273,7 @@ def run():
     plan_tab(pg)
     pc = pg.evaluate("({up:!!document.querySelector('[data-act=\"upgrade\"]'),iap:!!document.getElementById('sIap'),promo:!!document.getElementById('sPromo')})")
     if not pc['up'] or not pc['iap'] or pc['promo']: fail('3 체험 팀 설정 → 플랜에 플랜 올리기·구매 복원·구독 관리가 없거나 코드 칸이 있음: %s' % pc)
+    if pg.evaluate(HR_BAD): fail('3 플랜 카드 구분선이 맨 아래에 남거나 두 줄 %s' % pg.evaluate(HR_BAD))
     pg.click('[data-act="upgrade"]'); pg.wait_for_selector('#pay', timeout=5000)
     pg.wait_for_function("()=>!CONTI.IAP.loading", timeout=10000); pg.wait_for_timeout(150)
     s = pay_state(pg)

@@ -3637,6 +3637,11 @@ function planCardHTML(){
  const line=(name,x)=>x.cap==null?`<div class="row"><span class="hint grow">${name}</span><b>넉넉함</b></div>`
   :`<div class="row"><span class="hint grow">${name}</span><b>${x.used}/${x.cap}곡</b></div>`;
  const until=S.team.planUntil?new Date(S.team.planUntil):null;
+ // 사용량 아래 줄(올리기·구매 복원·크레딧)은 있을 때만 구분선 하나와 같이 — 앱에서 코드 칸이 빠지면 카드 맨 아래에 선만 남았다
+ const tail=[(((pl==='free'||trial)&&(NET.enforcePlan||iap))||upPlus)?`<div class="row"><span class="hint grow">${trial?'체험이 끝난 뒤에도 Pro 를 쓰려면':'더 많은 멤버 · 더 많은 인식이 필요하면'}</span>
+    <button class="btn pri" data-act="upgrade">${ic('check')}${upPlus?'Pro Plus로 올리기':'플랜 올리기'}</button></div>`:'',
+  iap?`<div class="row" id="sIap" style="gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn sm" data-act="iap-restore">구매 복원</button><button class="btn sm" data-act="iap-manage">구독 관리</button></div>`:'',
+  q.creditOmr?`<div class="row" style="margin-top:8px"><span class="hint grow">크레딧(채보)</span><b>${q.creditOmr}곡</b></div>`:''].join('');
  return `<div class="card"><b>플랜</b>
   <div class="row" style="margin-top:8px"><span class="pill ${planCls(q.ocr.cap==null&&q.omr.cap==null)}" id="sPlanPill">${trial?'Pro 체험 중':(PLAN_LABEL[pl]||pl)}</span>
    ${trial?`<span class="hint">${trial}일 남음</span>`:until?`<span class="hint">${until.getFullYear()}.${until.getMonth()+1}.${until.getDate()}까지</span>`:''}<span class="grow"></span></div>
@@ -3645,12 +3650,7 @@ function planCardHTML(){
   <div class="hr"></div>
   <div class="hint" style="margin-bottom:6px">이번 달 사용량${q.resetAt?` · ${esc(q.resetAt)}에 다시 채워져요`:''}</div>
   ${line('코드 인식',q.ocr)}${line('채보',q.omr)}
-  <div class="hr"></div>
-  ${(((pl==='free'||trial)&&(NET.enforcePlan||iap))||upPlus)?`<div class="hr"></div>
-   <div class="row"><span class="hint grow">${trial?'체험이 끝난 뒤에도 Pro 를 쓰려면':'더 많은 멤버 · 더 많은 인식이 필요하면'}</span>
-    <button class="btn pri" data-act="upgrade">${ic('check')}${upPlus?'Pro Plus로 올리기':'플랜 올리기'}</button></div>`:''}
-  ${iap?`<div class="row" id="sIap" style="gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn sm" data-act="iap-restore">구매 복원</button><button class="btn sm" data-act="iap-manage">구독 관리</button></div>`:''}
-  ${q.creditOmr?`<div class="row" style="margin-top:8px"><span class="hint grow">크레딧(채보)</span><b>${q.creditOmr}곡</b></div>`:''}
+  ${tail?`<div class="hr"></div>${tail}`:''}
   ${NATIVE||!isLeader()?'':`<div class="hr"></div>
   <div class="lbl">프로모션 코드</div>
   <div class="row" style="gap:6px"><input class="field grow" id="sPromo" placeholder="받으신 코드" maxlength="40" autocapitalize="characters">
@@ -7881,7 +7881,7 @@ function audioFocus(on){if(!NATIVE)return;try{const Pr=CapPlug().Printer;if(Pr&&
 const P={audio:null,yt:null,ytReady:false,ytErr:false,t:0,dur:0,start:0,end:0,playing:false,started:false,pausedByComposer:false,timer:null,
  stop(){audioFocus(false);if(P.audio){P.audio.pause();P.audio=null}P.yt=null;P.ytReady=false;P.ytErr=false;P.playing=false;P.started=false;P.t=0;P.dur=0;P.start=0;P.end=0;clearInterval(P.timer);P.timer=null},
  range(){const s0=P.start||0;const s1=P.end||P.dur||0;return [s0,Math.max(s1,s0+1)]},
- resumeIfPaused(){if(P.pausedByComposer){P.pausedByComposer=false;P.play()}},
+ resumeIfPaused(){if(P.pausedByComposer){P.pausedByComposer=false;if(ytHidden())mdock(true);P.play()}},   // 메모 창을 닫고 다시 틀 때도 유튜브는 보이게 (창이 떠 있는 동안 폰을 세로로 돌렸으면 독이 접혀 있다)
  pauseForComposer(){if(P.playing){P.pause();P.pausedByComposer=true}},
  play(){P.started=true;audioFocus(true);if(P.audio)P.audio.play();else{if(!P.ytReady){toast(P.ytErr?'이 영상은 여기서 재생할 수 없어요 · "유튜브에서 열기"로 보세요':'영상을 아직 불러오는 중이에요 · 잠시 뒤 다시 눌러 주세요');return}ytCmd('playVideo')}},
  pause(){audioFocus(false);if(P.audio)P.audio.pause();else ytCmd('pauseVideo');},
@@ -7909,7 +7909,10 @@ window.addEventListener('message',e=>{if(!P.yt||e.source!==P.yt.contentWindow)re
  if(d.event==='onReady'||d.event==='initialDelivery'){if(!P.ytReady){const h=$('#ytHint');if(h&&!P.ytErr)h.textContent=YT_HINT}P.ytReady=true}
  // 막힌 영상(101·150 임베드 금지, 153 등)도 onReady 는 먼저 온다 → 오류가 오면 준비 안 된 것으로 돌리고 유튜브 앱으로 넘긴다
  if(d.event==='onError'){P.ytReady=false;P.ytErr=true;const h=$('#ytHint');if(h)h.textContent=`이 영상은 여기서 바로 재생할 수 없어요(오류 ${d.info}). 메모를 탭하면 유튜브 앱이 그 시각에서 열리고, "여기에 메모"는 시각을 직접 적어요.`;return}
- if(d.event==='infoDelivery'&&d.info){if(d.info.currentTime!=null){P.t=d.info.currentTime}if(d.info.duration)P.dur=d.info.duration;if(d.info.playerState!=null)P.playing=d.info.playerState===1;updateTL()}});
+ if(d.event==='infoDelivery'&&d.info){if(d.info.currentTime!=null){P.t=d.info.currentTime}if(d.info.duration)P.dur=d.info.duration;if(d.info.playerState!=null){const was=P.playing;P.playing=d.info.playerState===1;
+  // 접힌 독(폰 세로)에서 유튜브가 저절로 돌기 시작하면 멈춘다 — 끝난 영상에 seekTo 를 보내면 유튜브가 바로 튼다(±5·←→).
+  // 틀려고 누른 길(재생·Space·타임라인 메모·폰 돌리기)은 모두 먼저 독을 펴니 여기 걸리지 않는다
+  if(P.playing&&!was&&ytHidden())P.pause()}updateTL()}});
 // dock: 폰 세로 연습의 미디어 독을 펼쳤나 · half: 폰 세로에서 악보 줄을 반씩 크게 (보기 설정 · 이 기기에 기억)
 let PL={svc:null,idx:0,mi:0,stage:false,dock:false,half:lsGet('conti-half')!=='0',chart:!!lsGet('conti-chart'),zoom:+(lsGet('conti-zoom')||1)||1,f:{leader:true,session:true,mine:true,chords:true},session:null};
 // 인쇄: A4 세로, 곡마다 한 장 — 번호·제목·키·송폼 헤더 + 악보(메모 띠·전조 코드 포함)
@@ -10322,7 +10325,12 @@ function mdock(open){PL.dock=!!open;const m=$('#ws .media');if(m)m.classList.tog
  const l=PL.dock?'미디어 접기':'미디어 펼치기';$$('#ws .mdexp').forEach(b=>{b.setAttribute('aria-label',l);b.title=l;b.setAttribute('aria-expanded',PL.dock?'true':'false')});
  const md=(PL.ml||[])[PL.mi];if(!PL.dock&&md&&md.type==='youtube'&&P.playing)P.pause()}
 // 유튜브를 틀기 전에 — 폰 세로에서 독이 접혀 있으면 먼저 편다 (재생 단추 · Space 페달 · 타임라인 메모 · 폰 돌리기)
-function ytShow(){const md=(PL.ml||[])[PL.mi];if(!PL.dock&&!PL.stage&&md&&md.type==='youtube'&&pvOn())mdock(true)}
+function ytShow(){if(ytHidden(true))mdock(true)}
+// 폰 세로 연습에서 유튜브가 접힌 독 안에 있어 안 보이나 (any: 화면을 따지지 않고 — ytShow 는 돌리는 중에도 부른다)
+function ytHidden(any){const md=(PL.ml||[])[PL.mi];return !!(!PL.dock&&!PL.stage&&md&&md.type==='youtube'&&pvOn()&&(any||route().name==='play'))}
+// ±5 (단추·←→) — 안 도는 유튜브는 안 도는 채로. 끝난(ENDED) 영상에 seekTo 를 보내면 유튜브가 틀어 버려
+// 접힌 독에서 영상 없이 소리만 났다 → 뒤이어 멈춤을 보낸다 (그래도 돌기 시작하면 위 message 에서 멈춘다)
+function pSkip(d){const hold=!P.playing&&ytHidden();P.seek(Math.max(0,P.t+d));if(hold)ytCmd('pauseVideo')}
 function pToggle(){if(!P.playing)ytShow();P.toggle()}
 function pviewHTML(){const svc=PL.svc;if(!svc)return '';const it=pubOrDraft(svc).items[PL.idx]||{};const sess=PL.session||me().session;
  const chip=(k,label)=>`<button class="chip ${PL.f[k]?'on':''}" data-vf="${k}" aria-pressed="${PL.f[k]?'true':'false'}">${esc(label)}</button>`;
@@ -10509,7 +10517,7 @@ document.addEventListener('keydown',e=>{
  // 무대 모드가 열려 있으면 그쪽(stageKey)이 화살표를 맡는다. 여기서 또 처리하면
  // 틀지도 않은 영상이 재생되거나 엉뚱한 데로 감긴다
  if($('#stageWrap'))return;
- if(e.key===' '){e.preventDefault();pToggle()}else if(e.key==='ArrowLeft'){if(PL.stage){e.preventDefault();navSong(-1)}else P.seek(Math.max(0,P.t-5))}else if(e.key==='ArrowRight'){if(PL.stage){e.preventDefault();navSong(1)}else P.seek(P.t+5)}
+ if(e.key===' '){e.preventDefault();pToggle()}else if(e.key==='ArrowLeft'){if(PL.stage){e.preventDefault();navSong(-1)}else pSkip(-5)}else if(e.key==='ArrowRight'){if(PL.stage){e.preventDefault();navSong(1)}else pSkip(5)}
  else if(PL.stage&&(e.key==='PageDown'||e.key==='PageUp')){e.preventDefault();navSong(e.key==='PageDown'?1:-1)}
 });
 document.addEventListener('click',async e=>{
@@ -10858,7 +10866,7 @@ document.addEventListener('click',async e=>{
   case 'mdock':mdock(!PL.dock);break;
   case 'pview':pviewSheet();break;
   case 'pnote':el.classList.toggle('open');break;
-  case 'skip':P.seek(Math.max(0,P.t+ +el.dataset.d));break;
+  case 'skip':pSkip(+el.dataset.d);break;
   case 'seek':{const t=+el.dataset.t;const md=(PL.ml||[])[PL.mi];if(md&&md.type==='youtube'&&!P.ytReady){window.open(`https://youtu.be/${ytId(md.url)}?t=${Math.round(t)}`,'_blank','noopener');break}P.seek(t);if(!P.playing){ytShow();P.play()}break}
   case 'tnote':{const s=PL.svc;const pub=pubOrDraft(s);const it=pub.items[PL.idx];const live=s.items.find(x=>x.id===it.id)||it;const md=(PL.ml||[])[PL.mi];if(!md){toast('미디어가 없어요');break}const lmd=live.media.find(x=>x.id===md.id);if(!lmd){toast('발행본에 없는 미디어');break}P.pauseForComposer();openComposer(s,live,{leader:isLeader(),t:P.t,mediaId:lmd.id});break}
   case 'psess':playSession(el.dataset.s);break;

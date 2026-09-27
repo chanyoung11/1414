@@ -10,10 +10,11 @@
 #   C  보기 설정 시트: 세션(제자리 — 영상·재생 시각·악보 스크롤 그대로) · 메모 필터(옆 칸 칩과 같이) · 반 줄/원본 줄(이 기기에 기억 —
 #      앱을 다시 켜도) · 크기 · 도구(건반·메트로놈·예배 노트) · 노트를 읽으면 점이 사라진다 · 시트 단추가 화면 안
 #   H  반 줄 픽셀은 최근 악보 HALF_KEEP 장만 들고 있다 · 못 읽은 악보는 나누지 않는다
+#   Y  끝난 유튜브에 접힌 채 ±5(단추·←)를 눌러도 안 보이는 채 틀지 않는다 · 메모 창 뒤 다시 틀면 독을 편다 (유튜브 흉내 플레이어)
 #   E  악보 칸이 화면 왼쪽 끝부터라도 가장자리에서 쓸면 뒤로 (확대해 옆으로 넘길 악보면 넘김) — 크로미움 터치 흉내
 #   W  가로 폰(844x390)·아이패드(820x1180 · 1180x820 · 1024x1366): 예전 배치 그대로 — 송폼 줄·독·반 줄 없음, 상단 도구, 재생·±5·여기에 메모 보임
 # 사용: CONTI_URL=http://localhost:8766/ .venv/bin/python tests/test_practice_redesign.py
-#      BROWSERS=webkit,chromium(기본 둘 다) · SOFT=1 이면 실패해도 끝까지 · PART=a,b,c,h,w,e · SHOTS=폴더 (화면을 남긴다)
+#      BROWSERS=webkit,chromium(기본 둘 다) · SOFT=1 이면 실패해도 끝까지 · PART=a,b,c,h,w,y,e · SHOTS=폴더 (화면을 남긴다)
 import os, sys, time
 from playwright.sync_api import sync_playwright
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -413,6 +414,58 @@ def part_w(br, sid, state, errs, B):
     print('%s W 돌리기: 세로 ↔ 가로 배치가 따라감 · 틀어 둔 채 세로면 독이 펼쳐짐 ok' % B)
     ctx.close()
 
+# 유튜브 흉내 — 명령(postMessage)을 받아 상태를 알린다. 진짜 유튜브처럼 끝난(ENDED=0) 영상에 seekTo 를 보내면 잠깐 뒤(80ms) 튼다.
+# _end: 끝난 상태로 · _ign: seekTo 뒤 그 ms 동안 멈춤 명령을 못 받은 척(유튜브가 버퍼링 중 멈춤을 놓치는 경우)
+YT_FAKE = """<html><body style="background:#222"><script>
+let st=5,t=0,tm=null,seekAt=0,ign=0;const dur=19;
+const send=o=>parent.postMessage(JSON.stringify({event:'infoDelivery',info:o}),'*');
+addEventListener('message',e=>{let d;try{d=JSON.parse(e.data)}catch(x){return}
+ if(d.event==='listening'){parent.postMessage(JSON.stringify({event:'onReady',info:{}}),'*');send({playerState:st,currentTime:t,duration:dur});return}
+ if(d.event!=='command')return;const f=d.func,a=d.args||[];
+ if(f==='_end'){clearTimeout(tm);st=0;t=dur;send({playerState:0,currentTime:t})}
+ else if(f==='_ign'){ign=a[0]}
+ else if(f==='playVideo'){if(st===0)t=0;st=1;send({playerState:1,currentTime:t})}
+ else if(f==='pauseVideo'){if(Date.now()-seekAt<ign)return;clearTimeout(tm);if(st===1||st===3){st=2;send({playerState:2})}}
+ else if(f==='seekTo'){t=a[0];send({currentTime:t});if(st===0){seekAt=Date.now();st=3;send({playerState:3});tm=setTimeout(()=>{st=1;send({playerState:1})},80)}}
+});</script></body></html>"""
+
+def part_y(br, sid, state, errs, B):
+    # 접힌 독(폰 세로)에서 끝난 영상에 ±5 (단추 · ←) → 영상이 안 보이는 채 재생되면 안 된다 (안드로이드 점검: 0:14 부터 소리만)
+    ctx, pg = new_page(br, {'width': 390, 'height': 844}, state, errs)
+    pg.unroute('**/*youtube*/**')
+    pg.route('**/*youtube*/**', lambda r: r.fulfill(status=200, body=YT_FAKE, content_type='text/html'))
+    go_play(pg, sid)
+    label = '%s Y 390' % B
+    pg.wait_for_function("CONTI.P.ytReady", timeout=10000)
+    cmd = lambda f, a=None: pg.evaluate("([f,a])=>CONTI.P.yt.contentWindow.postMessage(JSON.stringify({event:'command',func:f,args:a||[],id:1,channel:'widget'}),'*')", [f, a])
+    st = lambda: pg.evaluate("({dock:CONTI.pl().dock,playing:CONTI.P.playing,t:CONTI.P.t,open:!!document.querySelector('#ws .media.open')})")
+    for ign, how in [(0, 'skip'), (50, 'skip'), (0, 'key')]:
+        cmd('_ign', [ign]); cmd('_end'); pg.wait_for_timeout(300)
+        s0 = st()
+        if s0['playing'] or s0['dock'] or s0['t'] < 18: fail('%s 준비: 끝난 상태가 아님 %s' % (label, s0))
+        if how == 'skip': pg.click('[data-act=skip][data-d="-5"]')
+        else: pg.mouse.click(5, 300); pg.keyboard.press('ArrowLeft')
+        pg.wait_for_timeout(700)
+        s1 = st()
+        if s1['playing'] or s1['dock'] or s1['open']: fail('%s: 끝난 영상에 접힌 채 -5(%s, 멈춤 놓침 %dms) → 안 보이는 채 재생 %s' % (label, how, ign, s1))
+        if abs(s1['t'] - 14) > 0.6: fail('%s: -5 뒤 시각이 14초가 아님 %s' % (label, s1))
+    cmd('_ign', [0])
+    # 멈춘 채 ±5 는 멈춘 채 · 접힌 채 재생은 펼치고 튼다 · 펼친 채 돌 때 ±5 는 계속 돈다
+    pg.click('[data-act=skip][data-d="5"]'); pg.wait_for_timeout(400)
+    if st()['playing'] or st()['dock']: fail('%s: 멈춘 채 +5 가 틀거나 폄 %s' % (label, st()))
+    pg.click('#playBtn'); pg.wait_for_timeout(400)
+    s2 = st()
+    if not s2['dock'] or not s2['playing']: fail('%s: 접힌 채 재생 → 펴고 틀어야 함 %s' % (label, s2))
+    pg.click('[data-act=skip][data-d="-5"]'); pg.wait_for_timeout(400)
+    if not st()['playing']: fail('%s: 펼친 채 도는 중 -5 가 멈춤' % label)
+    # 메모 창을 닫고 다시 틀 때 독이 접혀 있으면 먼저 편다 (창이 떠 있는 동안 세로로 돌린 경우)
+    pg.evaluate("()=>{CONTI.P.pause();CONTI.mdock(false)}"); pg.wait_for_timeout(300)
+    pg.evaluate("()=>{CONTI.P.pausedByComposer=true;CONTI.P.resumeIfPaused()}"); pg.wait_for_timeout(400)
+    s3 = st()
+    if not s3['dock'] or not s3['playing']: fail('%s: 메모 창 뒤 다시 틀기가 접힌 독에서 안 보이는 채 %s' % (label, s3))
+    print('%s: 끝난 영상 접힌 채 ±5(단추·←·멈춤을 놓친 유튜브)도 안 틈 · 멈춘 채 ±5 그대로 · 접힌 채 재생은 펴고 · 메모 뒤 다시 틀면 폄 ok' % label)
+    ctx.close()
+
 def part_e(br, sid, state, errs, B):
     # 폰 세로는 악보 칸이 화면 왼쪽 끝부터 시작한다 — 가장자리에서 오른쪽으로 쓸면 뒤로 (확대해서 옆으로 넘길 악보면 그쪽 몫)
     if B != 'chromium': return   # 터치 흉내(CDP)는 크로미움만
@@ -445,7 +498,7 @@ def run():
         for B in [x for x in os.environ.get('BROWSERS', 'webkit,chromium').split(',') if x]:
             try: br = getattr(p, B).launch()
             except Exception as e: fail('%s 를 못 띄움: %s' % (B, str(e).splitlines()[0][:120])); continue
-            for f in (part_a, part_b, part_c, part_h, part_w, part_e):
+            for f in (part_a, part_b, part_c, part_h, part_w, part_y, part_e):
                 if not only or f.__name__[5:] in only: f(br, sid, state, errs, B)
             br.close()
         bad = [e for e in errs if 'ResizeObserver' not in e]
