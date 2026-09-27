@@ -3651,7 +3651,9 @@ function newItem(){return {id:uid(),title:'',key:'',mod:'',form:'',songNote:'',p
 const keyStr=it=>it.mod?`${it.key||'?'} – ${it.mod}`:(it.key||'');
 // 예배 이름 규칙 (§2.4·§9): 이름이 비면 팀 규칙으로 만든 기본 이름을 쓴다. {월} {일} {요일} {이름}
 const WDK=['일','월','화','수','목','금','토'];
-function fmtNameC(rule,d,label){const t=new Date((d||today())+'T00:00:00');if(isNaN(t))return label||'';return String(rule||'{월}/{일} {이름}').replace(/\{월\}/g,t.getMonth()+1).replace(/\{일\}/g,t.getDate()).replace(/\{요일\}/g,WDK[t.getDay()]).replace(/\{이름\}/g,label||'').replace(/\s+/g,' ').trim()}
+// 날짜 이름에 이미 그 날짜가 있으면('10/7 특별예배') 규칙의 {월}/{일} 과 겹치지 않게 이름에서 뺀다 (서버 dropMd 와 같다)
+function dropMdC(name,m,d){return String(name||'').replace(new RegExp(`(^|[^0-9])${m}[./]${d}(?![0-9])|${m}월\\s*${d}일`,'g'),'$1').replace(/\(\s*\)|\[\s*\]/g,'').replace(/\s+/g,' ').trim()}
+function fmtNameC(rule,d,label){const t=new Date((d||today())+'T00:00:00');if(isNaN(t))return label||'';const r=String(rule||'{월}/{일} {이름}');if(/\{월\}|\{일\}/.test(r))label=dropMdC(label,t.getMonth()+1,t.getDate());return r.replace(/\{월\}/g,t.getMonth()+1).replace(/\{일\}/g,t.getDate()).replace(/\{요일\}/g,WDK[t.getDay()]).replace(/\{이름\}/g,label||'').replace(/\s+/g,' ').trim()}
 const svcName=s=>(s.name||'').trim()||fmtNameC(S.team.settings&&S.team.settings.nameRule,s.date,s.label||'')||'예배';
 // 같은 예배 합치기 (§9): src 의 곡 중 dst 에 없는 것만 뒤에 붙인다
 function mergeInto(dst,src){(src.items||[]).forEach(it=>{if(!dst.items.some(t=>t.title===it.title&&t.key===it.key))dst.items.push(it)});if(!dst.notice&&src.notice)dst.notice=src.notice;if(!dst.message&&src.message)dst.message=src.message;touch(dst)}

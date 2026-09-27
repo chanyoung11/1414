@@ -3233,9 +3233,16 @@ async function fillDefaultLineup(teamId, dateId, date, st) {
   await q('update service_dates set lineup=$2 where id=$1', [dateId, JSON.stringify(out)]);
   return out.length;
 }
+// 날짜 이름에 이미 그 날짜가 있으면('10/7 특별예배') 규칙의 {월}/{일} 과 겹치지 않게 이름에서 뺀다 — 전에는 '10/7 10/7 특별예배'
+// (withMd 와 같은 날짜 모양: 10/7 · 10.7 · 10월 7일, 10/7 과 10/70 은 다르다). app/index.html 의 dropMdC 와 같다
+const dropMd = (name, mo, da) => String(name || '')
+  .replace(new RegExp(`(^|[^0-9])${mo}[./]${da}(?![0-9])|${mo}월\\s*${da}일`, 'g'), '$1')
+  .replace(/\(\s*\)|\[\s*\]/g, '').replace(/\s+/g, ' ').trim();
 function fmtName(rule, d, label) {
   const dt = new Date(d + 'T00:00:00');
-  return String(rule || DEF_SETTINGS.nameRule)
+  const r = String(rule || DEF_SETTINGS.nameRule);
+  if (/\{월\}|\{일\}/.test(r)) label = dropMd(label, dt.getMonth() + 1, dt.getDate());
+  return r
     .replace(/\{월\}/g, dt.getMonth() + 1).replace(/\{일\}/g, dt.getDate())
     .replace(/\{요일\}/g, WD[dt.getDay()]).replace(/\{이름\}/g, label || '')
     .replace(/\s+/g, ' ').trim();
