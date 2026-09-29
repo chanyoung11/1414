@@ -280,7 +280,7 @@ def run():
     if not s['trial'].startswith('체험 중 ·') or '일 남음' not in s['trial']: fail('3 체험 중 표시가 없음: %s' % s)
     if s['prices'] != ['pro:₩5,500 / 1개월', 'plus:₩14,000 / 1개월']: fail('3 스토어 가격·기간(월간)이 아님: %s' % s['prices'])
     if [x['prod'] for x in s['btns'] if not x['dis']] != ['pro_monthly', 'plus_monthly']: fail('3 체험 중인데 살 수 없음: %s' % s['btns'])
-    for must in ['자동으로 갱신', '24시간 전까지 해지하지 않으면', 'Apple ID', 'App Store 계정 설정', '해지해도 이미 결제한 기간']:
+    for must in ['자동으로 갱신', '24시간 전까지 해지하지 않으면', 'Apple 계정으로', '설정 › Apple 계정 › 구독', '해지해도 이미 결제한 기간']:
       if must not in s['legal']: fail('3 자동 갱신 안내에 "%s" 없음: %s' % (must, s['legal']))
     if sorted(s['lg']) != ['privacy', 'terms'] or not s['restore'] or not s['manage']: fail('3 약관·방침 링크·구매 복원·구독 관리가 없음: %s' % s)
     if '4,900' in json.dumps(s['prices']): fail('3 박아 둔 가격이 보임: %s' % s['prices'])

@@ -3533,7 +3533,7 @@ function payHTML(){
   :w.promo?`코드로 받은 ${PLAN_LABEL[w.pl]}가 ${admDate(S.team.planUntil)}까지 있어요 · 지금 구독하면 그 기간 대신 구독 기간이 적용돼요`
   :w.mine?`내 스토어 구독으로 ${PLAN_LABEL[w.pl]}를 쓰고 있어요${cur&&IAP_PRODUCTS[cur].per==='y'?' (연간)':cur?' (월간)':''} · 기간 바꾸기·해지는 [구독 관리]에서`
   :w.unl?`기한 없는 ${PLAN_LABEL[w.pl]}를 쓰고 있어요`:'';
- const store=ios?'Apple ID':'Google Play 계정',where=ios?'App Store 계정 설정 › 구독':'Google Play › 결제 및 정기 결제 › 정기 결제';
+ const store=ios?'Apple 계정':'Google Play 계정',where=ios?'설정 › Apple 계정 › 구독':'Google Play › 결제 및 정기 결제 › 정기 결제';
  return `<div class="row" style="gap:8px;flex-wrap:wrap;align-items:center"><b style="font-size:17px">플랜 올리기</b>${w.trial?`<span class="pill p-pro" id="payTrial">체험 중 · ${w.trial}일 남음</span>`:''}</div>
   <div class="hint" style="margin:6px 0 10px">${esc(S.team.name||'')} 팀 · 팀 전체가 같은 플랜을 써요</div>
   ${now?`<div class="hint" id="payNow" style="margin-bottom:10px">${esc(now)}</div>`:''}
