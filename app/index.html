@@ -2687,6 +2687,15 @@ const abbr=s=>String(s||'').slice(0,1);
 // ('주일 오전예배' → '주일오전'. 전에는 '주일 오' — AND1-14). 폭이 넉넉한 폰 편성 카드는 이름 그대로 쓴다
 const shortLabel=s=>{const t=String(s||'').replace(/예배|집회/g,'').replace(/\s+/g,' ').trim();if(!t)return String(s||'').slice(0,3);
  if(t.length<=4)return t;const n=t.replace(/ /g,'');return n.slice(0,4)};
+// 편성 표 머리글의 짧은 이름. 같은 날 예배가 여럿인데 짧은 이름이 같아지면('26 하반기 LIKE MT 개회예배'·'… 저녁집회' → 둘 다 '26하반')
+// 앞의 같은 낱말을 빼고 줄인다 → '개회'·'저녁'. 이름은 서버가 준 그 날짜 콘티의 지금 이름이다
+function dayShortLabels(ds){const out={},by={};ds.forEach(d=>(by[d.date]=by[d.date]||[]).push(d));
+ Object.values(by).forEach(g=>{const s=g.map(d=>shortLabel(d.label));
+  if(g.length>1&&new Set(s).size<g.length){const ws=g.map(d=>String(d.label||'').trim().split(/\s+/));let k=0;
+   while(ws.every(w=>w.length>k+1&&w[k]===ws[0][k]))k++;
+   g.forEach((d,i)=>out[d.id]=shortLabel(ws[i].slice(k).join(' ')))}
+  else g.forEach((d,i)=>out[d.id]=s[i])});
+ return out}
 async function pullSchedule(month,force){const k=month||SCH.month||monthKey();
  if(!online()||!S.team.id)return false;
  if(!force&&SCH.month===k&&Date.now()-SCH.at<15000)return false;
@@ -2759,6 +2768,7 @@ function avMemoSheet(date,state){const me0=me();
 function schedHTML(){const k=SCH.month||monthKey();
  const from=monthRange(k)[0],to=monthRange(monthAdd(k,2))[1];
  const ds=SCH.dates.filter(d=>d.open&&d.date>=from&&d.date<=to);
+ const short=dayShortLabels(ds);
  const ms=SCH.members.filter(m=>m.role!=='pastor');
  const bySess={};S.team.sessions.forEach(s=>{bySess[s]=ms.filter(m=>(m.msessions&&m.msessions.length?m.msessions:[m.session]).includes(s))});
  const maybeSoon=ds.filter(d=>{const dd=new Date(d.date+'T00:00:00')-new Date();return dd>0&&dd<14*86400e3}).flatMap(d=>SCH.availability.filter(a=>a.date===d.date&&a.state==='maybe')).length;
@@ -2778,7 +2788,7 @@ function schedHTML(){const k=SCH.month||monthKey();
  const body=`${lead&&maybeSoon?`<div class="todo-card" style="margin-bottom:12px"><span class="icon sm">${ic('marker')}</span><div class="grow"><b>가까운 날짜에 보류 ${maybeSoon}명 — 확인해 보세요</b></div></div>`:''}
    ${!lead&&ds.length?`<div class="todo-card" style="margin-bottom:12px"><span class="icon sm">${ic('stage')}</span><div class="grow"><b>${mine.length?mine.map(esc).join(' · ')+'으로 서요':'아직 편성된 날이 없어요'}</b><div class="hint">편성은 인도자가 정해요</div></div></div>`:''}
    <div class="cal-leg">${Object.entries(AVN).map(([k2,v])=>`<span class="${v.cls}"><i>${v.sym}</i>${v.label}</span>`).join('')}<span class="hint">${lead?'날짜를 누르면 그날 편성이 열려요 · ':'다른 사람의 가능 여부는 인도자만 봐요 · '}칸 테두리는 편성됨(점선은 통보 전)</span></div>
-   ${ds.length?`<div class="schwrap"><table class="schtab"><thead><tr><th class="corner"></th>${ds.map(d=>`<th class="dcol ${route().name==='lineup'&&route().a===d.id?'on':''}" ${lead?`data-act="lineup" data-id="${esc(d.id)}" title="${esc(d.label)} — 눌러서 이 날 편성"`:''}><span>${esc(fmtDate(d.date).md)}<small>${esc(fmtDate(d.date).w)} · ${esc(shortLabel(d.label))}</small></span></th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>
+   ${ds.length?`<div class="schwrap"><table class="schtab"><thead><tr><th class="corner"></th>${ds.map(d=>`<th class="dcol ${route().name==='lineup'&&route().a===d.id?'on':''}" ${lead?`data-act="lineup" data-id="${esc(d.id)}" title="${esc(d.label)} — 눌러서 이 날 편성"`:''}><span>${esc(fmtDate(d.date).md)}<small>${esc(fmtDate(d.date).w)} · ${esc(short[d.id])}</small></span></th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>
    ${schListHTML(ds,ms)}`
    :`<div class="empty"><span class="icon">${ic('users')}</span><b>열린 사역 날짜가 없어요</b>팀 설정에서 정기 예배를 등록하거나 날짜를 열어 주세요<div><button class="btn" data-act="team">팀 설정으로</button></div></div>`}`;
  return shellHTML('sched',{title:'편성',sub:`${fmtDate(from).md} ~ ${fmtDate(to).md} · 석 달`,body:monthNavHTML(k)+body,wide:true})}

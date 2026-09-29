@@ -3301,6 +3301,26 @@ const LINK_LIVE = `select s.date::date as date, coalesce(nullif(left(regexp_repl
     select date, name, updated_at from services where team_id=$1 and id=$2 and date is not null
     union all select doc->>'date', doc->>'name', updated_at from drafts where team_id=$1 and id=$2 and doc->>'date' <> ''
     order by updated_at desc limit 1) s where s.date ~ '^\\d{4}-\\d{2}-\\d{2}$'`;
+// 날짜 줄(별칭 sd)에 이어진 콘티의 지금 이름 — 발행본·초안 중 나중에 저장된 쪽 (LINK_LIVE 와 같은 기준)
+const SD_SVC_NAME = `(select x.name from (
+    select s.name, s.updated_at from services s where s.team_id=sd.team_id and s.id=sd.service_id
+    union all select d.doc->>'name', d.updated_at from drafts d where d.team_id=sd.team_id and d.id=sd.service_id) x
+  order by x.updated_at desc limit 1)`;
+const SD_NAME_COLS = `${SD_SVC_NAME} as "svcName", (select tm.settings->>'nameRule' from teams tm where tm.id=sd.team_id) as "nameRule"`;
+// 편성·달력·편성 알림에 쓰는 그 날짜의 예배 이름: 콘티가 이어져 있으면 그 콘티의 지금 이름(이름 앞의 그 날짜는 뺀다 —
+// 화면이 날짜를 따로 보인다), 없으면 날짜 줄의 이름. 줄 이름은 만들 때 한 번 정해지고 콘티를 바꾸거나 지워도 그대로라,
+// 콘티를 지우고 같은 날 새 콘티를 만들면 새 콘티가 옛 줄을 잡아(linkDate) 편성에 지운 콘티 이름이 뜨고
+// 지금 콘티 이름은 어디에도 안 보였다. 콘티 이름을 바꿔도 편성은 옛 이름이었다 (운영 2026-09-30).
+// 자동 초안처럼 이름 규칙으로 줄 이름에서 만든 이름 그대로면('10/4 주일 2부') 줄 이름('주일 2부')을 그대로 쓴다 — 규칙에 {요일} 등이 있어도 전과 같다
+function sdName(r) {
+  const nm = String((r && r.svcName) || '').trim();
+  if (!r || !r.serviceId || !nm) return r ? r.label : '';
+  if (nm === fmtName(r.nameRule, r.date, r.label)) return r.label;
+  const m = String(r.date || '').match(/^\d{4}-(\d{2})-(\d{2})/);
+  return (m ? dropMd(nm, +m[1], +m[2]) : nm) || r.label;
+}
+// 받은 날짜 줄들의 label 을 보이는 이름으로 바꾼다 (줄 이름은 dateLabel 로 남긴다)
+const withSdNames = (rows) => rows.map(({ svcName, nameRule, ...r }) => ({ ...r, label: sdName({ ...r, svcName, nameRule }), dateLabel: r.label }));
 const lineupHas = (c) => `(case when jsonb_typeof(${c})='array' then jsonb_array_length(${c}) else 0 end > 0)`;
 // 날짜가 바뀌었으니 전에 한 통보는 옛 날짜 이야기다 → 통보 기록을 비워 새 날짜로 다시 알리게 한다
 const lineupFresh = (c) => `coalesce((select jsonb_agg(case when jsonb_typeof(e.x)='object' then e.x || '{"notifiedAt":null,"acknowledgedAt":null}'::jsonb else e.x end order by e.n)
@@ -3327,9 +3347,16 @@ async function linkDate(teamId, serviceId) {
       update service_dates sd set date=t.date, label=t.label, lineup=${lineupFresh('sd.lineup')}, notified='[]' from t, mv
        where sd.id=mv.id and not ${onT} and not exists (select 1 from service_dates o where o.team_id=$1 and o.date=t.date and o.label=t.label)`, P],
     // 그래도 없으면 만든다. source='service' 는 이 콘티 때문에 생긴 날짜라는 뜻이다. 인도자가 직접 연 날짜('manual')와
-    // 구분해야, 콘티를 지웠을 때 남길지 같이 지울지 정할 수 있다
-    [`${w} insert into service_dates(team_id, date, label, source, open, service_id)
-      select $1::uuid, t.date, t.label, 'service', true, $2::text from t where not ${onT}
+    // 구분해야, 콘티를 지웠을 때 남길지 같이 지울지 정할 수 있다.
+    // 같은 날 같은 이름의 줄이 이미 다른 콘티 몫이면('저녁집회'를 '개회예배'로 바꾼 뒤 '저녁집회'를 또 만들면 옛 줄 이름이 남아 있다 ·
+    // 이름 없는 콘티 둘) 이름 뒤에 (2)·(3)을 붙여 따로 만든다. 전에는 (팀·날짜·이름)이 겹쳐 새 콘티가 줄을 못 얻고 편성 어디에도
+    // 안 보였다. 편성에 보이는 이름은 줄 이름이 아니라 콘티 이름이다 (sdName)
+    [`${w}, n as (select z.c from t, lateral (select t.label as c, 1 as k union all
+                    select t.label || ' (' || g || ')', g from generate_series(2, 99) g) z
+                  where not exists (select 1 from service_dates o where o.team_id=$1 and o.date=t.date and o.label=z.c and o.service_id is not null)
+                  order by z.k limit 1)
+      insert into service_dates(team_id, date, label, source, open, service_id)
+      select $1::uuid, t.date, n.c, 'service', true, $2::text from t, n where not ${onT}
       on conflict (team_id, date, label) do update set service_id=coalesce(service_dates.service_id, excluded.service_id)`, P],
     // 옛 날짜 줄에 짠 편성은 새 날짜 줄이 비어 있으면 그리로 옮긴다
     [`${w}, c as (select sd.lineup from service_dates sd, t where sd.team_id=$1 and sd.service_id=$2 and sd.date <> t.date and sd.source='service'
@@ -3345,10 +3372,27 @@ async function linkDate(teamId, serviceId) {
        where sd.team_id=$1 and sd.service_id=$2 and sd.date <> t.date and sd.source='service' and ${onT}`, P],
   ]);
 }
+// 9/17 전 코드(linkDate)는 콘티 때문에 생긴 날짜도 'manual'(인도자가 연 날짜)로 적었다. 그래서 그 콘티를 지우거나 날짜를
+// 옮기면 날짜가 콘티 없이 남아 편성에 지운 예배가 보였고('11/25 예배'), 자동 생성 기간에 들어오면 빈 초안으로 되살아났으며,
+// 같은 날 새 콘티가 그 줄을 잡았다. 인도자가 정말로 연 날짜는 팀원에게 date.opened 알림이 간다 → 그때 받을 사람(여는 사람 말고
+// 한 명 이상)이 있었는데 알림이 없으면 콘티 몫으로 바로잡는다. 알림은 90일 뒤 지우므로 줄이 생긴 지 85일 안에만 이 근거를 쓴다
+// (그 뒤로는 아무것도 바꾸지 않는다). 콘티 몫인데 콘티가 없는 줄은 지운다 — 지금 코드는 이런 줄을 남기지 않는다 (콘티를 지우면 같이 지운다)
+const LEGACY_DATE_SOURCE_BEFORE = '2026-09-18T00:00:00Z';
+async function tidyDates(teamId) {
+  await q(`update service_dates sd set source='service' where sd.team_id=$1 and sd.source='manual'
+             and sd.created_at < $2::timestamptz and sd.created_at > now() - interval '85 days'
+             and (select count(*) from members m where m.team_id=sd.team_id and m.role<>'pastor' and m.created_at < sd.created_at
+                    and (m.active or m.deactivated_at > sd.created_at)) >= 2
+             and not exists (select 1 from notifications n where n.team_id=sd.team_id and n.type='date.opened' and n.target_id=sd.id::text)`,
+    [teamId, LEGACY_DATE_SOURCE_BEFORE]);
+  await q(`delete from service_dates where team_id=$1 and source='service' and service_id is null`, [teamId]);
+}
 // 한국 날짜의 오늘. DB 의 current_date 는 세션 시간대(운영 UTC)라 한국 00~09시에는 어제다
 const KST_TODAY_SQL = "(now() at time zone 'Asia/Seoul')::date";
 // D-N주 안의 열린 날짜에 콘티가 없으면 초안을 자동 생성한다 (§2.2). 이름 = 팀 이름 규칙
 async function autoCreateServices(teamId) {
+  // 콘티가 떠난 옛 줄에 빈 초안을 되살리지 않게 먼저 정리한다
+  try { await tidyDates(teamId); } catch (e) { console.error('tidyDates', e.message); }
   const t = await one('select settings from teams where id=$1', [teamId]);
   const st = { ...DEF_SETTINGS, ...(t && t.settings || {}) };
   const rows = await q(`select id, date::text as date, label from service_dates where team_id=$1 and open and service_id is null
@@ -3565,8 +3609,11 @@ on('GET', '/teams/:id/usage', async ({ uid, params }) => {
 on('GET', '/teams/:id/dates', async ({ uid, url, params }) => {
   if (!uid) throw noAuth();
   await requireMember(uid, params.id);
-  const rows = await q(`select id, date::text as date, label, time, source, recurring_id as "recurringId", open, service_id as "serviceId"
-                        from service_dates where team_id=$1 and date >= (current_date - interval '1 day') order by date asc`, [params.id]);
+  // 팀 설정의 날짜 목록도 편성과 같게 맞춘 뒤 같은 이름으로 (콘티가 이어진 날짜는 그 콘티의 지금 이름)
+  try { await reconcileDates(params.id); } catch (e) { console.error('reconcile', e.message); }
+  const rows = withSdNames(await q(`select sd.id, sd.date::text as date, sd.label, sd.time, sd.source, sd.recurring_id as "recurringId", sd.open,
+                          sd.service_id as "serviceId", ${SD_NAME_COLS}
+                        from service_dates sd where sd.team_id=$1 and sd.date >= (current_date - interval '1 day') order by sd.date asc, sd.created_at asc`, [params.id]));
   const rec = await q('select id, weekday, label, time, active from recurring where team_id=$1 order by weekday', [params.id]);
   return { dates: rows, recurring: rec };
 });
@@ -3706,6 +3753,7 @@ const lineupKey = (l) => (l || []).map((r) => r.session + ':' + r.memberId).sort
 // 편성 표는 service_dates 를 본다. 콘티를 지웠는데 날짜가 남거나, 콘티는 있는데 날짜가 없으면
 // 표가 실제와 어긋난다 → 읽을 때마다 맞춘다 (지운 콘티가 보이고 있는 콘티가 안 보이던 것)
 async function reconcileDates(teamId) {
+  await tidyDates(teamId);   // 옛 코드가 'manual'로 적은 콘티 몫 날짜·콘티가 떠난 줄
   // 콘티의 날짜: 발행본과 초안 중 나중에 저장된 쪽이 인도자가 지금 정해 둔 날짜다
   const live = await q(`select distinct on (id) id, name, date from (
                           select id, name, date::text as date, updated_at from services where team_id=$1 and date is not null
@@ -3738,8 +3786,10 @@ on('GET', '/teams/:id/schedule', async ({ uid, url, params }) => {
   const to = /^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get('to') || '') ? url.searchParams.get('to') : null;
   const range = from && to ? 'and date between $2 and $3' : "and date >= current_date - interval '1 month'";
   const args = from && to ? [params.id, from, to] : [params.id];
-  const dates = await q(`select id, date::text as date, label, time, source, open, service_id as "serviceId", lineup, notified, slots
-                         from service_dates where team_id=$1 ${range} order by date asc`, args);
+  // 이름은 이어진 콘티의 지금 이름 (sdName). 같은 날 여럿이면 만든 순서대로 — 전에는 순서가 그때그때 달라 표 머리글이 뒤바뀌었다
+  const dates = withSdNames(await q(`select sd.id, sd.date::text as date, sd.label, sd.time, sd.source, sd.open, sd.service_id as "serviceId",
+                           sd.lineup, sd.notified, sd.slots, ${SD_NAME_COLS}
+                         from service_dates sd where sd.team_id=$1 ${range} order by sd.date asc, sd.created_at asc`, args));
   const av = m.role === 'leader'
     ? await q(`select user_id as "userId", date::text as date, state, memo from availability where team_id=$1 ${range}`, args)
     : await q(`select user_id as "userId", date::text as date, state, memo from availability where team_id=$1 and user_id=$${args.length + 1} ${range}`, [...args, uid]);
@@ -3768,13 +3818,14 @@ on('PUT', '/teams/:id/availability', async ({ uid, params, body }) => {
   // (첫 예배만 보던 때는 2부에만 선 사람이 빠져도 인도자가 몰랐다)
   if (state === 'no') {
     try {
-      const ds = await q('select id, date::text as date, label, lineup from service_dates where team_id=$1 and date=$2 and open order by created_at asc', [params.id, date]);
+      const ds = withSdNames(await q(`select sd.id, sd.date::text as date, sd.label, sd.lineup, sd.service_id as "serviceId", ${SD_NAME_COLS}
+                                      from service_dates sd where sd.team_id=$1 and sd.date=$2 and sd.open order by sd.created_at asc`, [params.id, date]));
       let leaders = null;
       for (const d of ds) {
         const mine = cleanLineup(d.lineup).filter((r) => r.memberId === uid);
         if (!mine.length) continue;
         leaders = leaders || (await q(`select user_id from members where team_id=$1 and role='leader'`, [params.id])).map((r) => r.user_id);
-        const where = ds.length > 1 ? `${d.label} ` : '';
+        const where = ds.length > 1 ? `${d.label} ` : '';   // 그 예배의 지금 이름
         await notify(params.id, leaders, 'avail.conflict', d.id + ':' + uid, {
           title: `${josa(m.mname, '이', '가')} ${josa(mdOf(date), '을', '를')} 불가능으로 바꿨어요`, body: [memo ? `"${memo}"` : '', `${where}${josaRo(mine.map((r) => r.session).join('·'))} 편성돼 있음`].filter(Boolean).join(' · '),
           link: '#/lineup/' + d.id, actionable: true, expiresAt: new Date(date + 'T23:59:59+09:00'),
@@ -3822,8 +3873,10 @@ on('PUT', '/teams/:id/dates/:did/lineup', async ({ uid, params, body }) => {
 on('POST', '/teams/:id/dates/:did/notify', async ({ uid, params }) => {
   if (!uid) throw noAuth();
   await requireMember(uid, params.id, 'leader');
-  const row = await one('select id, date::text as date, label, time, lineup, notified, service_id as "serviceId" from service_dates where id=$1 and team_id=$2', [params.did, params.id]);
+  const row = await one(`select sd.id, sd.date::text as date, sd.label, sd.time, sd.lineup, sd.notified, sd.service_id as "serviceId", ${SD_NAME_COLS}
+                         from service_dates sd where sd.id=$1 and sd.team_id=$2`, [params.did, params.id]);
   if (!row) throw notFound('날짜가 없어요');
+  row.label = sdName(row);   // 그 예배의 지금 이름 — 줄 이름은 지운 콘티의 옛 이름일 수 있다
   const lineup = cleanLineup(row.lineup);
   const md = mdOf(row.date), where = withMd(row.date, row.label);
   // 발행 전이면(보통 1~3주 전에 통보한다) 그 달 편성 화면으로 — 거기에 '9/26 일렉으로 서요'가 보인다
@@ -3866,8 +3919,10 @@ on('POST', '/teams/:id/dates/:did/notify', async ({ uid, params }) => {
 on('GET', '/teams/:id/dates/:did/text', async ({ uid, params }) => {
   if (!uid) throw noAuth();
   await requireMember(uid, params.id, 'leader');
-  const row = await one('select date::text as date, label, time, lineup from service_dates where id=$1 and team_id=$2', [params.did, params.id]);
+  const row = await one(`select sd.date::text as date, sd.label, sd.time, sd.lineup, sd.service_id as "serviceId", ${SD_NAME_COLS}
+                         from service_dates sd where sd.id=$1 and sd.team_id=$2`, [params.did, params.id]);
   if (!row) throw notFound('날짜가 없어요');
+  row.label = sdName(row);
   const ms = await teamMembers(params.id);
   const nameOf = (id) => (ms.find((x) => x.userId === id) || {}).name || '';
   const byS = {};
@@ -3978,10 +4033,10 @@ async function scheduleReminders(teamId, st) {
   }
   // 보류(maybe)인 날짜가 2주 앞으로 다가오면 그 사람에게만
   const d14 = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 14)).toISOString().slice(0, 10);
-  for (const r of await q(`select a.user_id, a.date::text as date, sd.label from availability a
+  for (const r of await q(`select a.user_id, a.date::text as date, sd.label, sd.service_id as "serviceId", ${SD_NAME_COLS} from availability a
                            join service_dates sd on sd.team_id=a.team_id and sd.date=a.date and sd.open
                            where a.team_id=$1 and a.state='maybe' and a.date=$2`, [teamId, d14])) {
-    await notify(teamId, [r.user_id], 'avail.maybe', r.date, { title: `${mdOf(r.date)} 아직 보류예요. 정해졌나요?`, body: `${r.label} · D-14`, link: '#/cal/' + r.date.slice(0, 7), actionable: true, expiresAt: new Date(r.date + 'T23:59:59+09:00') });
+    await notify(teamId, [r.user_id], 'avail.maybe', r.date, { title: `${mdOf(r.date)} 아직 보류예요. 정해졌나요?`, body: `${sdName(r)} · D-14`, link: '#/cal/' + r.date.slice(0, 7), actionable: true, expiresAt: new Date(r.date + 'T23:59:59+09:00') });
     maybes++;
   }
   // 그 주 예배 중 말씀 미입력이 있으면 목회자에게
@@ -3989,10 +4044,10 @@ async function scheduleReminders(teamId, st) {
     const pastors = (await q(`select user_id from members where team_id=$1 and role='pastor' and active`, [teamId])).map((r) => r.user_id);
     if (pastors.length) {
       const upto = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 7)).toISOString().slice(0, 10);
-      const need = await q(`select sd.date::text as date, sd.label from service_dates sd
+      const need = await q(`select sd.date::text as date, sd.label, sd.service_id as "serviceId", ${SD_NAME_COLS} from service_dates sd
                             left join service_words w on w.team_id=sd.team_id and w.service_id=sd.service_id
                             where sd.team_id=$1 and sd.open and sd.date between current_date and $2 and (w.word is null or w.word->>'passage' is null or w.word->>'passage'='')`, [teamId, upto]);
-      if (need.length) await notify(teamId, pastors, 'word.request', upto, { title: '이번 주 말씀 알려주세요', body: need.map((r) => withMd(r.date, r.label)).join(', '), link: '#/word', actionable: true, expiresAt: new Date(upto + 'T23:59:59+09:00') });
+      if (need.length) await notify(teamId, pastors, 'word.request', upto, { title: '이번 주 말씀 알려주세요', body: need.map((r) => withMd(r.date, sdName(r))).join(', '), link: '#/word', actionable: true, expiresAt: new Date(upto + 'T23:59:59+09:00') });
     }
   }
   return { asked, maybes };
