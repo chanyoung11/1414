@@ -2884,7 +2884,7 @@ function lineupHTML(dateId){const d=SCH.dates.find(x=>x.id===dateId);
   <div class="lnbody">${rows}</div>
   <footer class="lnft"><span class="hint">${total}자리 중 ${filled}명 배정${notified&&changed?' · 통보 후 변경 있음':''}</span>
    <span class="grow"></span>
-   <button class="btn sm" data-act="lkakao">${ic('export')}카톡용 복사</button>
+   <button class="btn sm" data-act="lkakao">${ic('export')}카톡으로 보내기</button>
    <button class="btn pri" data-act="lnotify" ${notified&&!changed?'disabled':''}>${ic('send')}${notified?'변경 통보':'통보하기'}</button></footer>
  </aside></div>`}
 // 지금 화면의 고르는 칸들로 편성을 만든다 (바꾼 그때 읽는다)
@@ -10824,7 +10824,11 @@ document.addEventListener('click',async e=>{
    const def=(S.team.settings&&S.team.settings.defaultLineup)||{};const out=[];
    S.team.sessions.forEach(s=>{(def[s]||[]).forEach(mid=>{out.push({session:s,memberId:myAv(mid,d.date)==='no'?'':mid})})});
    const p=LQ[d.id]&&LQ[d.id].run;const p2=queueLineup(d,out);render();if(p!==p2)lineupSaved(p2);if(await p2)toast('기본 편성으로 되돌렸어요');break}
-  case 'lkakao':{const d=SCH.dates.find(x=>x.id===route().a);if(!d)break;try{const r2=await api(`/teams/${S.team.id}/dates/${d.id}/text`);await copyText(r2.text);toast('카톡용 문구를 복사했어요')}catch(e){toast(e.message)}break}
+  case 'lkakao':{const d=SCH.dates.find(x=>x.id===route().a);if(!d)break;let txt='';try{txt=(await api(`/teams/${S.team.id}/dates/${d.id}/text`)).text}catch(e){toast(e.message);break}
+   // 서버를 다녀온 뒤라 iOS 앱은 클립보드 쓰기가 막힌다(영어 오류 토스트) — 앱·휴대폰은 공유 시트(카톡 바로), 막히면 복사, 그래도 안 되면 문구를 창에 보여 준다
+   try{if(canShareSheet()){await shareSheet(txt);break}}catch(e){}
+   try{await copyText(txt);toast('카톡용 문구를 복사했어요')}catch(e){modal(`<b>카톡용 문구</b><div class="hint" style="margin:4px 0 8px">길게 눌러 복사해 주세요</div><textarea class="field" rows="8" readonly style="width:100%">${esc(txt)}</textarea><div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn" data-close="1">닫기</button></div>`)}
+   break}
   case 'lnotify':{const d=SCH.dates.find(x=>x.id===route().a);if(!d)break;
    // 누르는 인도자 자신은 빼고 묻는다 — 서버도 자신에게는 안 보낸다. '에게'는 이름에 붙인다(띄우면 iOS 창이 조사만 다음 줄로 넘겼다) (D8)
    // 편성에서 빠진 사람(전에 통보받은 사람)도 '빠졌어요' 알림을 받으니 함께 적는다
