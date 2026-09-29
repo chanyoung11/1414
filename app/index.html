@@ -6776,15 +6776,71 @@ function omrModal(svc,it,songs,r,tok){
 /* ---------- 악보 재구성: 사진 → 오선 한 줄씩 채보 → 새로 그린 디지털 악보 ---------- */
 // 한 장을 통째로 읽히면 뒤로 갈수록 마디가 흐트러진다(마디 오류 39%). 오선 한 줄씩 나눠 읽으면 4%까지 내려간다.
 let SCORE_BUSY=false;
+// 첫 줄은 위쪽 머리말(제목·박자·빠르기)까지 담는다 — 제목으로 옆 쪽이 다른 곡인지 알아보고, 곡 제목도 읽는다.
+// 첫 오선이 한참 아래(쪽의 30% 밑)에 있으면 전처럼 조금만 담는다 (여백만 잔뜩 보내지 않게)
+// 두 줄 사이는 한가운데가 아니라 가장 넓은 빈 띠에서 자른다. 가사가 3~4절이면 가사 덩어리가 한가운데를 넘어가
+// 마지막 절이 다음 줄 띠 맨 위에 붙어 갔다 (AI 가 그것을 그 줄의 가사로 읽었다). 비슷하게 넓으면 아래쪽 것 —
+// 위 줄의 가사와 아래 줄의 코드 사이가 대개 그 자리다
 function scoreBands(cv,sys){const H=cv.height,W=cv.width;
+ let ink=null,k=1;
+ try{const G=grayOf(cv,Math.min(800,W));k=H/G.H;const hist=new Uint32Array(256);for(let i=0;i<G.g.length;i++)hist[G.g[i]]++;
+  let bg=255,mx=0;for(let v=120;v<256;v++)if(hist[v]>mx){mx=hist[v];bg=v}const thr=bg-Math.max(40,bg*0.25);
+  ink=new Float32Array(G.H);for(let y=0;y<G.H;y++){let n=0;for(let x=0;x<G.W;x++)if(G.g[y*G.W+x]<thr)n++;ink[y]=n/G.W}}catch(e){ink=null}
+ const cut=(a,b)=>{const mid=Math.round((a+b)/2);if(!ink)return mid;
+  const ya=Math.ceil(a/k)+1,yb=Math.min(ink.length-1,Math.floor(b/k)-1);if(yb-ya<3)return mid;
+  let lo=1;for(let y=ya;y<=yb;y++)lo=Math.min(lo,ink[y]);const white=Math.max(0.002,lo*1.5+0.001);
+  const runs=[];let y=ya;while(y<=yb){if(ink[y]<=white){const s0=y;while(y<=yb&&ink[y]<=white)y++;runs.push({s:s0,e:y,len:y-s0})}else y++}
+  if(!runs.length)return mid;const big=Math.max(...runs.map(r=>r.len));const r=runs.filter(r=>r.len>=big*0.8).pop();
+  return Math.round((r.s+r.e)/2*k)};
  return sys.map((s,i)=>{
   const above=sys.filter((o,j)=>j<i&&o.x1>s.x0&&o.x0<s.x1);
   const below=sys.filter((o,j)=>j>i&&o.x1>s.x0&&o.x0<s.x1);
   const pb=above.length?Math.max(...above.map(o=>o.bottom)):0;
   const nt=below.length?Math.min(...below.map(o=>o.top)):H;
-  const top=above.length?Math.round((pb+s.top)/2):Math.max(0,s.top-Math.round(H*0.07));
-  const bot=below.length?Math.round((s.bottom+nt)/2):Math.min(H,s.bottom+Math.round(H*0.07));
+  const top=above.length?cut(pb,s.top):(s.top<H*0.3?0:Math.max(0,s.top-Math.round(H*0.07)));
+  // 마지막 줄은 가사가 여러 절이어도 다 담기게 오선 높이의 3배까지
+  const bot=below.length?cut(s.bottom,nt):Math.min(H,s.bottom+Math.max(Math.round(H*0.07),3*(s.bottom-s.top)));
   return {top,bot,x0:Math.max(0,s.x0-6),x1:Math.min(W,s.x1+6)}})}
+/* 악보 만들기용 줄 나누기 (실사용 제보 2026-09-30 "아예 말 안 되게 엉터리로 그려 준다")
+   폰으로 찍은 악보는 1~3° 기울기 일쑤다. 1° 만 기울어도 오선 찾기가 한 줄을 왼쪽·오른쪽 반 토막 두 줄로 잘랐고
+   (오른쪽 반이 먼저, 띠는 오선 한가운데를 가로질러 잘림) 2° 부터는 오선을 못 찾아 한 장을 통째로 보냈다.
+   두 쪽을 나란히 찍은 사진은 두 곡의 줄이 번갈아 섞이고 옆 쪽 오선이 띠에 반쯤 걸렸다. AI 는 이런 반 토막에서도
+   확신 90% 로 없는 음표를 지어낸다. 그래서 기울기를 먼저 바로 세우고, 좌·우 쪽과 위아래로 붙은 곡을 나눈 뒤 쪽마다 줄을 찾는다 */
+// 기울기(도, 반시계가 +). 오선은 긴 가로줄이라 바로 세우면 어두운 점이 몇몇 가로줄에 몰린다 —
+// 각도를 바꿔 가며 가로 투영이 가장 뾰족한(제곱합이 큰) 각도를 고른다 (±6°, 0.02° 까지 좁힌다)
+function skewAngle(cv){const {g,W,H}=grayOf(cv,Math.min(1000,cv.width));
+ const hist=new Uint32Array(256);for(let i=0;i<g.length;i++)hist[g[i]]++;let bg=255,mx=0;for(let v=120;v<256;v++)if(hist[v]>mx){mx=hist[v];bg=v}const thr=bg-Math.max(40,bg*0.25);
+ // 선 두께만큼 얇은 세로 토막만 센다 (오선·가사 밑줄 같은 가로줄). 사진 가장자리의 책상·그림자 같은 큰 어두운 덩어리는 빼야
+ // 종이가 아니라 사진 틀에 맞춰 각도를 고르지 않는다
+ const maxT=Math.max(2,Math.round(H/400));const thin=new Uint8Array(W*H);let n=0;
+ for(let x=0;x<W;x++){let y=0;while(y<H){if(g[y*W+x]<thr){const s0=y;while(y<H&&g[y*W+x]<thr)y++;if(y-s0<=maxT)for(let k=s0;k<y;k++){thin[k*W+x]=1;n++}}else y++}}
+ if(n<500)return 0;
+ const xs=new Int32Array(n),ys=new Int32Array(n);n=0;for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(thin[y*W+x]){xs[n]=x;ys[n]=y;n++}
+ const off=Math.ceil(W*Math.tan(7*Math.PI/180))+2,bins=new Float64Array(H+2*off);
+ const score=a=>{const t=Math.tan(a*Math.PI/180);bins.fill(0);for(let i=0;i<n;i++)bins[Math.round(ys[i]+xs[i]*t)+off]++;let s=0;for(let i=0;i<bins.length;i++)s+=bins[i]*bins[i];return s};
+ let best=0,bs=score(0);const scan=(a0,a1,st)=>{for(let a=a0;a<=a1+1e-9;a+=st){const s=score(a);if(s>bs){bs=s;best=a}}};
+ scan(-6,6,0.5);const c1=best;scan(c1-0.5,c1+0.5,0.1);const c2=best;scan(c2-0.1,c2+0.1,0.02);
+ return Math.round(best*100)/100}
+function deskew(cv,deg){if(!deg||Math.abs(deg)<0.15)return cv;const r=deg*Math.PI/180,c=Math.abs(Math.cos(r)),s=Math.abs(Math.sin(r));
+ const W=Math.round(cv.width*c+cv.height*s),H=Math.round(cv.height*c+cv.width*s);
+ const o=document.createElement('canvas');o.width=W;o.height=H;const x=o.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,W,H);
+ x.translate(W/2,H/2);x.rotate(r);x.drawImage(cv,-cv.width/2,-cv.height/2);return o}
+const cropCv=(src,a,b,y0,y1)=>{const c=document.createElement('canvas');c.width=b-a;c.height=y1-y0;c.getContext('2d').drawImage(src,a,y0,b-a,y1-y0,0,0,b-a,y1-y0);return c};
+// 한 오선이 조각 여럿으로 잡힌 것(휘어진 종이·남은 기울기)을 하나로: 세로로 절반 넘게 겹치면 같은 줄
+function joinFragments(sys){const out=[];sys.slice().sort((a,b)=>a.top-b.top).forEach(s=>{
+ const o=out.find(o=>Math.min(o.bottom,s.bottom)-Math.max(o.top,s.top)>=0.5*Math.min(o.bottom-o.top,s.bottom-s.top));
+ if(o){o.top=Math.min(o.top,s.top);o.bottom=Math.max(o.bottom,s.bottom);o.x0=Math.min(o.x0,s.x0);o.x1=Math.max(o.x1,s.x1)}else out.push({...s})});
+ return out}
+// 사진 → {cv(바로 세운 것), deg, segs:[{col, song(위에 다른 곡이 있다), bands:[{top,bot,x0,x1}]}]} — 쪽 순서(왼쪽 위부터)
+function scoreLayout(cv0){let deg=0;try{deg=skewAngle(cv0)}catch(e){console.warn('skewAngle',e)}
+ const cv=deskew(cv0,deg);let rects=[];try{rects=pageRects(cv)}catch(e){console.warn('pageRects',e)}
+ if(!rects.length)rects=[{x0:0,x1:cv.width,y0:0,y1:cv.height,col:0}];
+ const segs=rects.map((r,k)=>{const whole=!r.x0&&!r.y0&&r.x1===cv.width&&r.y1===cv.height;const c=whole?cv:cropCv(cv,r.x0,r.x1,r.y0,r.y1);let sys=[];try{sys=joinFragments(detectSystems(c))}catch(e){console.warn('detectSystems',e)}
+  const bands=sys.length>=2?scoreBands(c,sys):[{top:0,bot:c.height,x0:0,x1:c.width}];
+  return {col:r.col,song:k>0&&rects[k-1].col===r.col,bands:bands.map(b=>({top:b.top+r.y0,bot:b.bot+r.y0,x0:b.x0+r.x0,x1:b.x1+r.x0}))}});
+ return {cv,deg,segs}}
+// 곡 제목이 같은지 (띄어쓰기·기호·숫자 무시, 한쪽이 다른 쪽을 품어도 같다)
+const sameTitle=(a,b)=>{const n=s=>String(s||'').toLowerCase().replace(/[\s\d()[\]{}.,·:;'"!?~\-–—_/]/g,'');const x=n(a),y=n(b);return !!x&&!!y&&(x===y||x.includes(y)||y.includes(x))};
 function bandJPEG(cv,b){const bw=b.x1-b.x0,bh=b.bot-b.top;const sc=bw<1400?2:1;
  const c=document.createElement('canvas');c.width=Math.round(bw*sc);c.height=Math.round(bh*sc);
  const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);
@@ -6816,8 +6872,10 @@ function fixOctaves(parts){
 function mergeScoreParts(parts0){const parts=fixOctaves(parts0);
  const ok=parts.filter(p=>p&&p.measures&&p.measures.length);if(!ok.length)return null;
  const pick=(f)=>{const c={};ok.forEach(p=>{const v=p[f];if(v)c[v]=(c[v]||0)+1});const e=Object.entries(c).sort((a,b)=>b[1]-a[1])[0];return e?e[0]:null};
+ // 박자는 첫 줄 것(박자표가 인쇄된 줄)을 따른다. 예전에는 줄마다 낸 것의 다수결이라, 박자표가 안 보이는 둘째 줄부터
+ // AI 가 4/4 로 짐작하면 첫 줄이 12/8 이어도 4/4 가 이겼다
  const out={title:ok.find(p=>p.title)?.title||'',composer:ok.find(p=>p.composer)?.composer||'',
-  key:ok[0].key||pick('key')||'C',time:pick('time')||'4/4',
+  key:ok[0].key||pick('key')||'C',time:(/^\d+\/\d+$/.test(ok[0].time||'')?ok[0].time:'')||pick('time')||'4/4',
   tempo:(()=>{const t=+(ok.find(p=>p.tempo>=20&&p.tempo<=400)?.tempo||0);return t>=20&&t<=400?Math.round(t):null})(),
   verses:Math.min(6,Math.max(1,...ok.map(p=>+p.verses||1))),
   pickup:!!ok[0].pickup,measures:[]};
@@ -6847,26 +6905,47 @@ async function rebuildScore(svc,it,piece){
 async function rebuildRun(svc,it,piece,blob,append){const tok=aiTok();
  const from=location.hash.replace(/^#\/?/,'');
  const img=await loadImg(URL.createObjectURL(blob));
- const cv=document.createElement('canvas');cv.width=img.naturalWidth;cv.height=img.naturalHeight;cv.getContext('2d').drawImage(img,0,0);
- let sys=[];try{sys=detectSystems(cv)}catch(e){console.warn('detectSystems',e)}
- const bands=sys.length>=2?scoreBands(cv,sys):[{top:0,bot:cv.height,x0:0,x1:cv.width}];
- if(bands.length>24){toast('오선이 너무 많아요. 악보를 나눠서 올려 주세요');return}
- toast(`악보 만드는 중… 오선 ${bands.length}줄`);
- const imgs=bands.map(b=>bandJPEG(cv,b));
- const parts=new Array(imgs.length).fill(null);let done=0,fail=0,usage={input:0,output:0,thinking:0},cost=0,model='';
+ const cv0=document.createElement('canvas');cv0.width=img.naturalWidth;cv0.height=img.naturalHeight;cv0.getContext('2d').drawImage(img,0,0);
+ let lay;try{lay=scoreLayout(cv0)}catch(e){console.warn('scoreLayout',e);lay={cv:cv0,deg:0,segs:[{col:0,song:false,bands:[{top:0,bot:cv0.height,x0:0,x1:cv0.width}]}]}}
+ const cv=lay.cv;
+ // 위아래로 붙은 다음 곡(사이에 제목 덩어리)부터는 처음부터 뺀다. 옆 쪽은 첫 줄을 읽어 제목이 다르면 그때 뺀다
+ let segs=lay.segs;const cutAt=segs.findIndex(s=>s.song);let other=cutAt>0;if(cutAt>0)segs=segs.slice(0,cutAt);
+ const nb=segs.reduce((n,s)=>n+s.bands.length,0);
+ if(nb>24){toast('오선이 너무 많아요. 악보를 나눠서 올려 주세요');return}
+ toast(`악보 만드는 중… 오선 ${nb}줄`);
+ const parts=[],failedAt=[],why=[];let done=0,usage={input:0,output:0,thinking:0},cost=0,model='',total=nb;
+ const one=async(b,hint,no)=>{const im=bandJPEG(cv,b);
+  try{const r=await api('/score',{method:'POST',body:{teamId:tok.team,b64:im.b64,mime:im.mime,...(hint?{hint}:{})}});
+   model=r.model||model;cost+=+r.costKRW||0;
+   if(r.usage){usage.input+=r.usage.input||0;usage.output+=r.usage.output||0;usage.thinking+=r.usage.thinking||0}
+   const p=(r.songs||[])[0]||null;if(!p)failedAt.push(no);else if(r.time&&r.time.from)p.timeFrom=r.time.from;return p}
+  catch(e){failedAt.push(no);if(e.message)why.push(e.message);console.warn('score line',no,e.message);return null}
+  finally{done++;toast(`악보 만드는 중… ${done}/${total}줄`)}};
+ // 그 줄 끝에서의 조 (중간에 조가 바뀌면 다음 줄은 바뀐 조로)
+ const keyAfter=p=>{let k=p&&p.key;((p&&p.measures)||[]).forEach(m=>{if(m.key)k=m.key});return k||''};
  const LANE=3;   // 한꺼번에 다 보내면 서버 쪽에서 막히니 3줄씩
- let next=0;
- const worker=async()=>{while(next<imgs.length){const i=next++;
-  try{const r=await api('/score',{method:'POST',body:{teamId:tok.team,b64:imgs[i].b64,mime:imgs[i].mime}});
-   parts[i]=(r.songs||[])[0]||null;model=r.model||model;cost+=+r.costKRW||0;
-   if(r.usage){usage.input+=r.usage.input||0;usage.output+=r.usage.output||0;usage.thinking+=r.usage.thinking||0}}
-  catch(e){fail++;console.warn('score line',i,e.message)}
-  done++;toast(`악보 만드는 중… ${done}/${imgs.length}줄`)}};
- await Promise.all(Array.from({length:Math.min(LANE,imgs.length)},worker));
+ let head=null,no=0;   // head: 곡 첫 줄에서 읽은 박자·조·제목
+ for(const [si,sg] of segs.entries()){const lines=sg.bands.length,res=new Array(lines).fill(null),base=no;no+=lines;
+  // 쪽마다 첫 줄을 먼저 읽는다. 박자표는 첫 줄에만 인쇄돼서, 나머지 줄에 박자를 알려 줘야 AI 가 4/4 로 짐작해
+  // 음표를 지어내지 않는다 (12/8 곡의 둘째 줄이 4/4 로 '맞춰진' 엉터리 음표로 왔다)
+  res[0]=await one(sg.bands[0],head?{time:head.time,key:head.key,line:1,lines}:(lines>1?{line:1,lines}:null),base+1);
+  // 옆 쪽 첫 줄에 다른 제목이 인쇄돼 있으면 다른 곡이다 — 두 곡을 한 악보로 섞지 않는다
+  if(si>0&&res[0]&&res[0].title&&!sameTitle(res[0].title,head&&head.title)){other=true;total=done;break}
+  const f=res[0];
+  // 박자를 몰라 4/4 로 둔 것(default)은 알려 주지 않는다 — 모르는 것을 아는 것처럼 넘기면 다음 줄이 또 4/4 에 맞춰진다
+  if(!head&&f)head={time:f.timeFrom==='default'?'':(f.time||''),key:keyAfter(f),title:f.title||''};
+  const h={time:(head&&head.time)||'',key:keyAfter(f)||(head&&head.key)||''};
+  let next=1;const worker=async()=>{while(next<lines){const i=next++;res[i]=await one(sg.bands[i],{...h,line:i+1,lines},base+i+1)}};
+  await Promise.all(Array.from({length:Math.min(LANE,Math.max(0,lines-1))},worker));
+  parts.push(...res)}
+ const got=parts.filter(p=>p&&p.measures&&p.measures.length).length;
  let sc=mergeScoreParts(parts);
- if(!sc){toast('악보를 읽지 못했어요. 더 선명한 사진으로 다시 해 보세요');return}
+ // 절반 넘는 줄을 못 읽었으면 그리지 않는다 — 군데군데 빈 엉터리 악보보다 다시 찍는 편이 낫다
+ if(!sc||got*2<parts.length){
+  toast(`사진에서 악보를 제대로 읽지 못했어요${parts.length>1?` (${parts.length}줄 중 ${parts.length-got}줄)`:''}. 악보가 반듯하고 밝게, 잘리지 않게 나오도록 다시 찍어 주세요${why[0]?` — ${why[0].replace(/^악보를 제대로 읽지 못했어요\s*—\s*/,'')}`:''}`,7000);return}
+ const fail=failedAt.length;
  const L=await aiLand(tok,svc,it,null);if(!L){toast('악보를 넣을 곡이 없어졌어요');return}({svc,it}=L);
- sc.at=Date.now();sc.model=model;sc.cost=Math.round(cost);sc.lines=imgs.length;sc.failed=fail;
+ sc.at=Date.now();sc.model=model;sc.cost=Math.round(cost);sc.lines=parts.length;sc.failed=fail;
  if(!sc.title&&it.title)sc.title=it.title;
  // 이미 악보가 있으면 (조각이 여러 장인 곡) 뒤에 이어 붙일지 묻는다
  if(append&&it.score&&it.score.measures&&it.score.measures.length){
@@ -6881,7 +6960,10 @@ async function rebuildRun(svc,it,piece,blob,append){const tok=aiTok();
  await L.done();
  if(!L.here){toast(AI_ELSEWHERE);return}
  const bad=badMeasuresOf(sc);
- toast(`악보 ${sc.measures.length}마디 완성${bad.length?` · 박자 확인 필요 ${bad.length}마디`:''}${fail?` · ${fail}줄 실패`:''}`);
+ // 못 읽은 줄은 그 자리가 비니 어느 줄인지 알린다. 곡이 둘 이상인 사진은 첫 곡만 만든다
+ const tail=[fail?`${failedAt.sort((a,b)=>a-b).join('·')}번째 줄은 읽지 못해 빠졌어요`:'',
+  other?'사진에 곡이 둘 이상 보여 첫 곡만 만들었어요 — 조각의 가위(나누기)로 나눈 뒤 곡마다 만들어 주세요':''].filter(Boolean);
+ toast(`악보 ${sc.measures.length}마디 완성${bad.length?` · 박자 확인 필요 ${bad.length}마디`:''}${tail.length?' · '+tail.join(' · '):''}`,tail.length?6000:0);
  // 기다리는 사이 그 악보 화면을 열어 뒀으면 같은 주소라 hashchange 가 안 나 옛 그림이 남는다 → 직접 다시 그린다.
  // 다른 화면으로 옮겨 갔으면 끌고 가지 않는다 (알림으로 충분). 시작한 화면에 그대로 있을 때만 악보로 간다 (F135)
  const to=`score/${svc.id}/${it.id}`,now=location.hash.replace(/^#\/?/,'');
@@ -7658,14 +7740,16 @@ function splitPointsV(cv){const sys=detectSystems(cv);if(sys.length<4)return [];
  for(let i=0;i<rows.length-1;i++){const a=Math.round(rows[i].bottom)+1,b=Math.round(rows[i+1].top)-1;if(b-a<H*0.06)continue;const bl=blocks(a,b);if(!bl.length)continue;const big=bl.reduce((m,x)=>x.h>m.h?x:m);
   const farBelow=big.s-a>H*0.035;const tall=big.h>=Math.max(medH*1.6,H*0.018);if(farBelow&&tall)cuts.push(Math.round((big.s-Math.round(H*0.008))*k))}
  return cuts}
-// 한 이미지에 여러 곡: 좌·우(가운데 세로 흰 골) → 각 열을 위·아래(제목 덩어리)로 나눠 조각 목록으로
-async function splitPages(blob){try{const img=await loadImg(URL.createObjectURL(blob));const cv=document.createElement('canvas');cv.width=img.naturalWidth;cv.height=img.naturalHeight;cv.getContext('2d').drawImage(img,0,0);
- const {g,W,H}=grayOf(cv,600);const hist=new Uint32Array(256);for(let i=0;i<g.length;i++)hist[g[i]]++;let bg=255,mx=0;for(let v=120;v<256;v++)if(hist[v]>mx){mx=hist[v];bg=v}const thr=bg-Math.max(40,bg*0.25);
+// 한 이미지에 여러 곡: 좌·우(가운데 세로 흰 골) → 각 열을 위·아래(제목 덩어리)로 나눈 사각형 [{x0,x1,y0,y1,col}] (왼쪽 위부터)
+// 조각 나누기와 악보 만들기가 같이 쓴다
+function pageRects(cv){const {g,W,H}=grayOf(cv,600);const hist=new Uint32Array(256);for(let i=0;i<g.length;i++)hist[g[i]]++;let bg=255,mx=0;for(let v=120;v<256;v++)if(hist[v]>mx){mx=hist[v];bg=v}const thr=bg-Math.max(40,bg*0.25);
  const col=new Float32Array(W);for(let x=0;x<W;x++){let n=0;for(let y=0;y<H;y++)if(g[y*W+x]<thr)n++;col[x]=n/H}
  let best=null,x=Math.floor(W*0.3);const xe=Math.floor(W*0.7);while(x<xe){if(col[x]<0.003){const s0=x;while(x<xe&&col[x]<0.003)x++;if(!best||x-s0>best.len)best={s:s0,e:x,len:x-s0}}else x++}
- const crop=(src,a,b,y0,y1)=>{const c=document.createElement('canvas');c.width=b-a;c.height=y1-y0;c.getContext('2d').drawImage(src,a,y0,b-a,y1-y0,0,0,b-a,y1-y0);return c};
- let cols=[cv];if(best&&best.len>=W*0.02){const cut=Math.round((best.s+best.e)/2*cv.width/W);const L=crop(cv,0,cut,0,cv.height),R=crop(cv,cut,cv.width,0,cv.height);if(detectSystems(L).length>=2&&detectSystems(R).length>=2)cols=[L,R]}
- const parts=[];cols.forEach(c=>{const cuts=splitPointsV(c);let y0=0;[...cuts,c.height].forEach(y1=>{if(y1-y0>c.height*0.12)parts.push(crop(c,0,c.width,y0,y1));y0=y1})});
+ let cols=[{x0:0,x1:cv.width,c:cv}];if(best&&best.len>=W*0.02){const cut=Math.round((best.s+best.e)/2*cv.width/W);const L=cropCv(cv,0,cut,0,cv.height),R=cropCv(cv,cut,cv.width,0,cv.height);if(detectSystems(L).length>=2&&detectSystems(R).length>=2)cols=[{x0:0,x1:cut,c:L},{x0:cut,x1:cv.width,c:R}]}
+ const out=[];cols.forEach((co,ci)=>{const cuts=splitPointsV(co.c);let y0=0;[...cuts,co.c.height].forEach(y1=>{if(y1-y0>co.c.height*0.12)out.push({x0:co.x0,x1:co.x1,y0,y1,col:ci});y0=y1})});
+ return out}
+async function splitPages(blob){try{const img=await loadImg(URL.createObjectURL(blob));const cv=document.createElement('canvas');cv.width=img.naturalWidth;cv.height=img.naturalHeight;cv.getContext('2d').drawImage(img,0,0);
+ const parts=pageRects(cv).map(r=>cropCv(cv,r.x0,r.x1,r.y0,r.y1));
  if(parts.length<2)return null;const toBlob=c=>new Promise(res=>c.toBlob(res,'image/jpeg',0.92));const out=[];for(const c of parts)out.push(await toBlob(c));return out}catch(e){console.warn('splitPages',e);return null}}
 // 올린 악보 사진 자르기 (실사용 제보: 위아래 여백·옆 페이지가 같이 찍힌 경우)
 async function cropPieceModal(svc,it,p){
@@ -10953,7 +11037,7 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
  if(!online()){REPROBE.n=0;scheduleReprobe()}   // 켜는 동안 건너뛴 다시 묻기가 간격만 늘려 놨다 — 5초부터 다시
  setInterval(()=>{if(NET.server===null&&!document.hidden)recheckServer()},20000);
  probeOmr();startNotiPoll();nativeSetup();
- window.CONTI={REWARD,rewardAvailable,rewardSheet,pullUsage,ADSTATE,modal,closeModal,ADS,WEBADS,AD_HOSTS,setZoom,P,pl:()=>PL,STG,stageOpen,stageExit,adsAllowed,webAdsAllowed,MET,PIANO,metOpen,metStart,metStop,metSet,pianoOpen,HOME,PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go,PLANQ,planCls,trialLeft,IAP,iapOn,upgradeModal,payWho,isAdminUI,ADM,adminPull,ytOriginParam,ytEmbedSrc,YT,josa,josaRo,fitPlay,paintOvBar,doPrint,saveFile,appBack,rehAddModal,HALF,mdock,pvOn};
+ window.CONTI={REWARD,rewardAvailable,rewardSheet,pullUsage,ADSTATE,modal,closeModal,ADS,WEBADS,AD_HOSTS,setZoom,P,pl:()=>PL,STG,stageOpen,stageExit,adsAllowed,webAdsAllowed,MET,PIANO,metOpen,metStart,metStop,metSet,pianoOpen,HOME,PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,scoreLayout,skewAngle,deskew,pageRects,joinFragments,sameTitle,rebuildScore,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go,PLANQ,planCls,trialLeft,IAP,iapOn,upgradeModal,payWho,isAdminUI,ADM,adminPull,ytOriginParam,ytEmbedSrc,YT,josa,josaRo,fitPlay,paintOvBar,doPrint,saveFile,appBack,rehAddModal,HALF,mdock,pvOn};
 })();
 })();
 </script>

@@ -2875,8 +2875,18 @@ on('POST', '/omr', async ({ uid, body }) => {
   let quota;
   try { quota = await aiSongGuard(teamId, 'omr', body.songKey); } catch (e) { await aiRelease(teamId, 'omr', uid); throw e; }
   let r;
-  try { r = await transcribeSheet({ b64, mime }); }
+  // 말이 안 되는 결과면 한 번 더 묻는다 — 그것도 하루 한도에서 부르기 전에 자리를 잡는다
+  const reserve = () => aiGuard(teamId, 'omr', uid).then(() => true, () => false);
+  const release = () => aiRelease(teamId, 'omr', uid);
+  try { r = await transcribeSheet({ b64, mime }, { reserve, release }); }
   catch (e) {
+    // 말이 안 되는 결과라 버렸다: 받은 것이 없으니 이번 달 채보 횟수(크레딧·광고 보상 포함)를 그대로 돌려준다.
+    // 사용자가 고를 수 있는 환불(aiRefund, 달마다 3번)이 아니다. Gemini 는 과금했으니 하루 한도·토큰은 센다
+    if (e.code === 'nonsense') {
+      await aiUndo(teamId, 'omr', quota);
+      await aiCount(teamId, 'omr', e.usage && e.usage.total, uid);
+      throw new HttpError(422, 'omr_unreadable', e.message + '. 더 밝고 반듯하게 찍은 사진으로 다시 해 보세요 (이번 채보는 횟수에서 빼지 않았어요)');
+    }
     await aiRefund(teamId, 'omr', quota);   // 실패했으니 돌려준다
     // Gemini 가 오류로 답한 것(e.status)은 과금되지 않으니 하루 한도도 돌려준다. 응답이 깨진 것은 과금돼서 그대로 센다
     if (e.status) await aiRelease(teamId, 'omr', uid);
@@ -2905,8 +2915,17 @@ on('POST', '/score', async ({ uid, body }) => {
   // 다 부른 뒤에 세면 동시에 보낸 요청이 한도의 13배까지 불렀다. 자리가 없으면 더 묻지 않는다
   const reserve = () => aiGuard(teamId, 'score', uid).then(() => true, () => false);
   const release = () => aiRelease(teamId, 'score', uid);
-  try { r = await transcribeScore({ b64, mime }, { thinking: 'LOW', repair: body.repair !== false, reserve, release }); }
+  // 줄 단위로 읽을 때 앞 줄에서 읽은 박자·조와 몇 번째 줄인지 (박자표는 첫 줄에만 인쇄된다). 값은 lib 에서 다시 거른다
+  const hint = body.hint && typeof body.hint === 'object'
+    ? { time: str(body.hint.time, 8), key: str(body.hint.key, 6), line: +body.hint.line || 0, lines: +body.hint.lines || 0 } : null;
+  try { r = await transcribeScore({ b64, mime }, { thinking: 'LOW', repair: body.repair !== false, reserve, release, hint }); }
   catch (e) {
+    // 말이 안 되는 결과라 버렸다 (다시 물어도 안 됨). 틀린 악보를 그리느니 까닭을 알린다. 악보 만들기는 월 곡 수를 세지 않고,
+    // 부른 것은 과금됐으니 하루 한도·토큰은 그대로 센다
+    if (e.code === 'nonsense') {
+      await aiCount(teamId, 'score', e.usage && e.usage.total, uid);
+      throw new HttpError(422, 'score_unreadable', e.message);
+    }
     if (e.status) await aiRelease(teamId, 'score', uid);   // Gemini 오류 응답은 과금되지 않는다
     if (e.status === 429) throw new HttpError(429, 'omr_quota', '채보 한도에 걸렸어요. 잠시 뒤 다시 해 주세요');
     throw new HttpError(502, 'omr_failed', '채보 실패: ' + (e.message || ''));
@@ -2914,7 +2933,7 @@ on('POST', '/score', async ({ uid, body }) => {
   await aiCount(teamId, 'score', r.usage && r.usage.total, uid);   // 다시 묻기는 부르기 전에 이미 셌다
   const usd = estimateUSD(r.model, r.usage);
   // 원화는 대략만 보여 준다 (환율은 USD_KRW 로 바꿀 수 있음)
-  return { songs: r.songs, model: r.model, usage: r.usage, badMeasures: r.badMeasures, cost: usd, costKRW: Math.round(usd * (+process.env.USD_KRW || 1450) * 10) / 10 };
+  return { songs: r.songs, model: r.model, usage: r.usage, badMeasures: r.badMeasures, time: r.time || null, cost: usd, costKRW: Math.round(usd * (+process.env.USD_KRW || 1450) * 10) / 10 };
 });
 
 // 악보 데이터 → MusicXML (내려받기·다른 프로그램에서 열기)
