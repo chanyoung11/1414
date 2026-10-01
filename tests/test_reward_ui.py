@@ -181,6 +181,7 @@ def run():
       pg.wait_for_selector('#gtTeam', timeout=15000); pg.fill('#gtTeam', '광고보상팀' + tag); pg.click('[data-act="team-create"]')
       pg.wait_for_selector('.shell[data-page]', timeout=15000)
       team = pg.evaluate('CONTI.S.team.id'); made['team'] = team; made['user'] = pg.evaluate('CONTI.NET.user.id')
+      pg.evaluate("CONTI.savePrefs({aiOk:new Date().toISOString()})")   # AI 악보 인식 동의 (처음 한 번 — 이 테스트는 광고 시트를 본다)
       month = time.strftime('%Y-%m', time.gmtime(time.time() + 9 * 3600))
       sql("insert into ai_songs(team_id, month, kind, song_key) select $1, $2, 'ocr', 'used'||g from generate_series(1,10) g on conflict do nothing", team, month)
 

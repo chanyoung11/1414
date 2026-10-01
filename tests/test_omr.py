@@ -32,6 +32,7 @@ def run():
         pg.wait_for_selector('[data-act="ocr"]', timeout=20000)
         pg.click('[data-act="ocr"]')
         pg.wait_for_timeout(500)
+        if pg.locator('#aiConsOk').count(): pg.click('#aiConsOk'); pg.wait_for_timeout(500)   # AI 악보 인식 동의 (처음 한 번)
         if pg.locator('#ocrGo').count(): pg.click('#ocrGo')
         pg.wait_for_function("(()=>{const p=CONTI.S.services[0].items[0].pieces[0];return p&&p.ocr&&p.ocr!=='pending'})()", timeout=90000)
         pg.wait_for_selector('[data-act="omr"]', timeout=10000)

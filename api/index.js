@@ -77,6 +77,8 @@ const nowSec = () => Math.floor(Date.now() / 1000);
 const strList = (v) => Array.isArray(v) ? v.map((s) => str(s, 40)).filter(Boolean).slice(0, 30) : null;
 
 /* ---------- 도메인 ---------- */
+// 계정을 지운 사람이 팀에 남긴 것(고정 메모·녹음 메모·녹음)에 이름 대신 보이는 말. SQL 에 그대로 넣으니 따옴표를 쓰지 않는다
+const DELETED_NAME = '지워진 사용자';
 const mySessions = (m) => (Array.isArray(m.msessions) && m.msessions.length ? m.msessions : (m.session ? [m.session] : []));
 const memberView = (t, m) => ({
   teamId: t.id, teamName: t.name, sessions: t.sessions, phrases: t.phrases,
@@ -541,6 +543,7 @@ on('POST', '/auth/delete', async ({ req, uid, body }) => {
   // 나만 있는 팀 (내가 만들었는데 아무도 없는 팀 포함) → 팀째로 지운다
   const solo = `select t.id from teams t where (t.created_by=$1 or exists (select 1 from members m where m.team_id=t.id and m.user_id=$1))
                   and not exists (select 1 from members m where m.team_id=t.id and m.user_id<>$1)`;
+  const blobSel = [`delete from blobs where team_id in (${solo}) returning url`, P];
   const steps = [
     // 위 검사와 이 트랜잭션 사이에 누가 나에게 인도자를 넘기면, 계정과 함께 멤버 줄이 지워져 팀에 인도자가 없어졌다 (F113).
     // 맨 앞에서 내 멤버 줄을 잠근다 — 넘기기의 '세우기'는 이 줄을 고쳐야 하니 이 삭제가 끝날 때까지 기다리고(그 넘기기는 실패),
@@ -566,7 +569,23 @@ on('POST', '/auth/delete', async ({ req, uid, body }) => {
         and not exists (select 1 from members m where m.team_id=t.id and m.user_id<>$1 and m.active)`, P],
     appleSel,
     [`delete from notes where author_id=$1`, P],
-    [`delete from blobs where team_id in (${solo}) returning url`, P],
+    // 곡 고정 메모·녹음 메모 (개인정보처리방침 4항 · 법률 점검 5번): 전에는 예배 메모만 지우고 이 둘은 '나만 보기'까지
+    // 이름과 함께 남았다. '나만 보기'는 아무도 못 보니 지운다. 팀에 보이게 쓴 것은 팀 자료라 남기되 쓴 사람을 지운다('지워진 사용자').
+    // 곡 코드로 받아 온 메모는 받은 사람 id 로 들어가지만 그 사람이 쓴 것이 아니다 — 지우면 팀이 받은 메모가 사라지고,
+    // 이름 칸('○○팀 (받음)' · 비어 있음)도 그 사람 이름이 아니니 그대로 둔다
+    [`delete from arrangement_notes where author_id=$1 and layer='mine'`, P],
+    [`update arrangement_notes set author_id=null,
+        author_name = case when author_name = '' or author_name like '% (받음)' then author_name else '${DELETED_NAME}' end
+      where author_id=$1`, P],
+    // 녹음 메모는 녹음 줄의 jsonb 배열이다. 내 '나만' 메모는 빼고, 나머지 내 메모는 쓴 사람 칸을 지운다.
+    // 멤버 줄로 거르지 않는다 — 팀에서 내보내진 사람은 멤버 줄이 이미 없다 (메모 내용의 authorId 로 찾는다)
+    [`update rehearsals set notes = coalesce((
+        select jsonb_agg(case when jsonb_typeof(x)='object' and x->>'authorId' = $1::text
+                              then (x - 'authorId') || jsonb_build_object('author', '${DELETED_NAME}') else x end order by k)
+          from jsonb_array_elements(notes) with ordinality o(x, k)
+         where not coalesce(x->>'authorId' = $1::text and x->>'layer' = 'mine', false)), '[]'::jsonb)
+      where jsonb_typeof(notes)='array' and notes @> jsonb_build_array(jsonb_build_object('authorId', $1::text))`, P],
+    blobSel,
     [`delete from teams where id in (${solo})`, P],
     [`delete from users where id=$1`, P],
   ];
@@ -581,7 +600,11 @@ on('POST', '/auth/delete', async ({ req, uid, body }) => {
   // 애플 토큰도 계정이 실제로 지워진 뒤에 (막힌 삭제는 계정이 남아 애플 로그인을 계속 쓴다). 애플이 늦거나 죽어도 삭제는 이미 끝났다
   await revokeApple(out[steps.indexOf(appleSel)], 'delete');
   // 파일은 계정이 실제로 지워진 뒤에 (되돌려진 삭제가 파일만 지우지 않게)
-  await delBlobs(out[steps.length - 3].map((r) => r.url));
+  await delBlobs(out[steps.indexOf(blobSel)].map((r) => r.url));
+  // 이 사람의 시도 기록(로그인·복구는 '아이디|주소', 나머지는 사람 id)도 지운다. 남은 것은 크론이 30일 뒤 지운다
+  await q(`delete from login_attempts where username = any(array['reauth:' || $1, 'promo:' || $1, 'share|' || $1, 'upload|' || $1, 'adminw:' || $1, 'adminr:' || $1])
+             or left(username, length($2) + 1) = $2 || '|' or left(username, length($2) + 9) = 'recover:' || $2 || '|'`, [uid, u.username])
+    .catch((e) => console.error('attempts on delete', e.message));
   return { data: { ok: true }, headers: { 'Set-Cookie': clearSessionCookie(req) } };
 });
 
@@ -2612,10 +2635,12 @@ on('POST', '/blobs/:id/register', async ({ uid, params, body }) => {
 // 늘 같은 파일 자리(blobId)를 주고, 그 자리의 녹음은 한 번만 등록한다. 느린 망에서 등록 응답만 못 받고 '다시 올리기'를
 // 누르면 전에는 새 자리로 또 올려 같은 녹음이 둘 생겼다('9/27 연습' 두 개). 표가 없으면(옛 앱) 예전처럼 새 자리
 const rehClientId = (v) => (/^[A-Za-z0-9_-]{8,64}$/.test(String(v || '')) ? String(v) : '');
+// 올린 사람 이름. 계정을 지운 사람이 올린 녹음은 uploaded_by 가 비어 '지워진 사용자'로 (전에는 빈칸이었다 — 깔린 옛 앱도 이 값을 그대로 쓴다)
+const UPLOADER_NAME = `coalesce(m.name, case when r.uploaded_by is null then '${DELETED_NAME}' end) as "uploaderName"`;
 const rehBlobIdOf = (uid, teamId, cid) => 'r' + createHash('sha256').update(`rehearsal/${uid}/${teamId}/${cid}`).digest('hex').slice(0, 16);
 async function rehearsalByBlob(teamId, blobId) {
   return one(`select r.id, r.date::text as date, r.label, r.blob_id as "blobId", r.mime, r.duration, r.size_bytes as "sizeBytes", r.keep,
-                     r.expires_at as "expiresAt", r.created_at as "createdAt", r.uploaded_by as "uploadedBy", m.name as "uploaderName"
+                     r.expires_at as "expiresAt", r.created_at as "createdAt", r.uploaded_by as "uploadedBy", ${UPLOADER_NAME}
               from rehearsals r left join members m on m.team_id=r.team_id and m.user_id=r.uploaded_by
               where r.team_id=$1 and r.blob_id=$2 order by r.created_at limit 1`, [teamId, blobId]);
 }
@@ -2692,7 +2717,7 @@ on('GET', '/rehearsals', async ({ uid, url }) => {
   await requireMember(uid, teamId);
   const me0 = await membership(uid, teamId);
   const rows = (await q(`select r.id, r.date::text as date, r.label, r.blob_id as "blobId", r.mime, r.duration, r.size_bytes as "sizeBytes",
-                               r.keep, r.expires_at as "expiresAt", r.created_at as "createdAt", r.uploaded_by as "uploadedBy", r.notes, m.name as "uploaderName"
+                               r.keep, r.expires_at as "expiresAt", r.created_at as "createdAt", r.uploaded_by as "uploadedBy", r.notes, ${UPLOADER_NAME}
                         from rehearsals r left join members m on m.team_id=r.team_id and m.user_id=r.uploaded_by
                         where r.team_id=$1 ${serviceId ? 'and r.service_id=$2' : ''} order by r.created_at desc`, serviceId ? [teamId, serviceId] : [teamId]))
     .map((r) => ({ ...r, notes: (Array.isArray(r.notes) ? r.notes : []).filter((n) => rehNoteVisible(n, me0)) }));
@@ -4116,6 +4141,11 @@ on('GET', '/cron/dates', async ({ req }) => {
   await q(`delete from cron_marks where day < current_date - 7`).catch((e) => console.error('cron marks purge', e.message));
   // 서명 맞은 SSV 콜백 기록. 시각 확인이 1시간이라 60일이면 넉넉하다 (지워도 다시 쓸 수 없다)
   await q(`delete from ad_ssv_seen where created_at < now() - interval '60 days'`).catch((e) => console.error('ssv seen purge', e.message));
+  // 로그인·가입·복구·코드 입력 시도 기록 (아이디·IP 가 든 키). 전에는 로그인에 성공해야만 지워져서 틀린 시도·가입 기록은
+  // 끝없이 남았다 (개인정보처리방침 4항 · 법률 점검 11번). 창이 가장 긴 것이 1시간(코드 공유)이라 30일이면 막기에는 아무 영향이 없다
+  let attemptsPurged = null;
+  try { attemptsPurged = (await one(`with d as (delete from login_attempts where last < now() - interval '30 days' returning 1) select count(*)::int as n from d`)).n; }
+  catch (e) { console.error('attempts purge', e.message); }
   // §5.4 녹음 보관: 만료 7일 전 인도자에게 알림함 항목, 지난 것은 파일까지 삭제
   let warned = 0, dropped = 0, failed = 0;
   failed += await eachLimit(await q(`select id, team_id, service_id, label, date::text as date, expires_at from rehearsals
@@ -4160,7 +4190,7 @@ on('GET', '/cron/dates', async ({ req }) => {
     // (`orphans += await …` 는 기다리기 전의 값에 더해 동시에 도는 팀끼리 덮어쓴다 — 받은 뒤에 더한다)
     if (Date.now() - t1 < 60000) { const n = await sweepOrphans(t.id); orphans += n; }
   }, 4);
-  return cronDone(failed, { ok: true, recurring: n, created, purged, warned, dropped, teamsDropped, blobsSwept, orphans });
+  return cronDone(failed, { ok: true, recurring: n, created, purged, attemptsPurged, warned, dropped, teamsDropped, blobsSwept, orphans });
 });
 
 // 알림 배치 (KST 10:00): 월간 스케줄 요청 · 보류 D-14 · 주간 말씀 요청 (§1.2 시각)

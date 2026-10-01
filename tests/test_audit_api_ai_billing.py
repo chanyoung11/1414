@@ -547,6 +547,7 @@ def ui():
     # F106: 코드를 한 번 인식해 두고, 엔진이 이 장을 못 읽었다(err)고 오면 있던 코드를 지킨다
     def run_ocr():
       pg.locator('.chordbar [data-act="ocr"]').first.click(); pg.wait_for_timeout(700)
+      if pg.locator('#aiConsOk').count(): pg.click('#aiConsOk'); pg.wait_for_timeout(500)   # AI 악보 인식 동의 (처음 한 번)
       if pg.locator('#ocrGo').count(): pg.click('#ocrGo'); pg.wait_for_timeout(300)
       pg.wait_for_function("(()=>{const p=(CONTI.S.services[0].items[0].pieces||[])[0];return p&&p.ocr&&p.ocr!=='pending'})()", timeout=60000)
     ocr = c1.request.get(URL + 'api/ocr').json()

@@ -12,12 +12,15 @@
 #    팀 보기의 payerId (스토어 구독을 산 사람)
 #  1 키가 없으면(서버가 iap 를 안 줌) 결제 플러그인을 한 번도 안 부르고 예전 그대로 '결제 준비 중이에요' · 플러그인이 없는 예전 앱도 같다
 #  2 웹: 사는 단추 없음 · '결제는 앱에서만' · 결제 쪽 기능 꺼짐
-#  3 아이폰: 로그인하면 우리 사용자 id 로 설정(configure · 기기 식별 수집 끔) · 결제 화면에 스토어 가격·기간(월간·연간) ·
-#    체험 중이면 '체험 중 · N일 남음' · 자동 갱신 안내 · 이용약관(EULA)·개인정보처리방침 · 구매 복원 · 구독 관리
+#  3 아이폰: 사지 않은 사람은 로그인해도 결제 쪽(RevenueCat)에 붙지 않는다(설정 → 플랜을 봐도) · 결제 화면을 열 때 우리 사용자 id 로
+#    설정(configure · 기기 식별 수집 끔) · 결제 화면에 스토어 가격·기간(월간·연간) · 실제로 지키는 혜택만(저장 용량·크레딧 팩·읽기 전용 뷰 없음) ·
+#    체험 중이면 '체험 중 · N일 남음' · 자동 갱신 안내(애플 24시간) · 청약철회 7일 · 기간 중 해지 · 이용약관(EULA)·개인정보처리방침 · 구매 복원 · 구독 관리
 #  4 취소는 조용히 · 스토어 오류는 한국어 · 사기 직전에 setAttributes({teamId})
 #  5 결제 → '결제 확인 중…' → 웹훅이 팀을 올리면 '구독이 시작됐어요' · 설정 → 플랜에 '내 스토어 구독' · 구매 복원 · 구독 관리(App Store)
 #  6 늦은 웹훅: 창에서 기다리는 시간을 넘으면 안내하고 뒤에서 계속 기다리다 반영되면 알린다
-#  7 안드로이드: Pro → Plus 는 옛 구독을 넘겨(storeProductChangeInfo) 두 개가 되지 않게 · 구독 관리(Play 스토어 · sku) · 로그아웃하면 logOut
+#  7 안드로이드: 갱신 안내는 '다음 결제일 전에 해지' (애플의 24시간이 아니다) · Pro → Plus 는 옛 구독을 넘겨(storeProductChangeInfo) 두 개가
+#    되지 않게 · 구독 관리(Play 스토어 · sku) · 로그아웃하면 logOut · 다음 사람은 결제 화면을 열 때 logIn
+#  9 스토어 구독을 산 사람(서버의 payerId)은 앱을 켤 때부터 결제 쪽에 붙는다
 #  8 인도자가 아니면 못 산다 (설정 → 플랜도 안 보임) · 다른 팀원의 스토어 구독으로 쓰는 팀은 그 사람만 바꿀 수 있다
 import os, sys, time, json, subprocess, urllib.request, urllib.error
 from urllib.parse import urlparse
@@ -265,23 +268,36 @@ def run():
     # ================= 3~6 아이폰 =================
     c, pg = native('ios')
     login(pg, 'pyl' + tag)
-    pg.wait_for_function("__rc.calls.some(x=>x.n==='configure')", timeout=8000)
-    cf = calls(pg, 'configure')
-    if len(cf) != 1 or cf[0]['a'].get('appUserID') != L.uid or cf[0]['a'].get('apiKey') != KEYS['ios']: fail('3 우리 사용자 id·아이폰 키로 설정하지 않음: %s' % cf)
-    if cf[0]['a'].get('automaticDeviceIdentifierCollectionEnabled') is not False: fail('3 기기 식별 정보 수집을 끄지 않음: %s' % cf)
-    if calls(pg, 'logIn') or calls(pg, 'purchasePackage'): fail('3 로그인만 했는데 다른 것을 부름: %s' % calls(pg))
+    pg.wait_for_timeout(1500)
+    # 사지 않은 사람(체험 팀 인도자)은 앱을 켜도 결제 쪽에 붙지 않는다 — 사용자 id 를 RevenueCat 에 보내지 않는다 (법률 점검 1번)
+    if calls(pg): fail('3 사지 않은 사람인데 로그인하자마자 결제 쪽(RevenueCat)을 부름: %s' % [x['n'] for x in calls(pg)])
+    if pg.evaluate('CONTI.iapStake()'): fail('3 사지 않은 사람이 iapStake')
     plan_tab(pg)
     pc = pg.evaluate("({up:!!document.querySelector('[data-act=\"upgrade\"]'),iap:!!document.getElementById('sIap'),promo:!!document.getElementById('sPromo')})")
     if not pc['up'] or not pc['iap'] or pc['promo']: fail('3 체험 팀 설정 → 플랜에 플랜 올리기·구매 복원·구독 관리가 없거나 코드 칸이 있음: %s' % pc)
     if pg.evaluate(HR_BAD): fail('3 플랜 카드 구분선이 맨 아래에 남거나 두 줄 %s' % pg.evaluate(HR_BAD))
+    pg.wait_for_timeout(300)
+    if calls(pg): fail('3 설정 → 플랜만 봤는데 결제 쪽을 부름: %s' % [x['n'] for x in calls(pg)])
     pg.click('[data-act="upgrade"]'); pg.wait_for_selector('#pay', timeout=5000)
     pg.wait_for_function("()=>!CONTI.IAP.loading", timeout=10000); pg.wait_for_timeout(150)
+    # 결제 화면을 열 때 비로소 우리 사용자 id 로 설정한다
+    cf = calls(pg, 'configure')
+    if len(cf) != 1 or cf[0]['a'].get('appUserID') != L.uid or cf[0]['a'].get('apiKey') != KEYS['ios']: fail('3 결제 화면을 열 때 우리 사용자 id·아이폰 키로 설정하지 않음: %s' % cf)
+    if cf[0]['a'].get('automaticDeviceIdentifierCollectionEnabled') is not False: fail('3 기기 식별 정보 수집을 끄지 않음: %s' % cf)
+    if calls(pg, 'logIn') or calls(pg, 'purchasePackage'): fail('3 결제 화면만 열었는데 다른 것을 부름: %s' % calls(pg))
     s = pay_state(pg)
     if not s['trial'].startswith('체험 중 ·') or '일 남음' not in s['trial']: fail('3 체험 중 표시가 없음: %s' % s)
     if s['prices'] != ['pro:₩5,500 / 1개월', 'plus:₩14,000 / 1개월']: fail('3 스토어 가격·기간(월간)이 아님: %s' % s['prices'])
     if [x['prod'] for x in s['btns'] if not x['dis']] != ['pro_monthly', 'plus_monthly']: fail('3 체험 중인데 살 수 없음: %s' % s['btns'])
-    for must in ['자동으로 갱신', '24시간 전까지 해지하지 않으면', 'Apple 계정으로', '설정 › Apple 계정 › 구독', '해지해도 이미 결제한 기간']:
-      if must not in s['legal']: fail('3 자동 갱신 안내에 "%s" 없음: %s' % (must, s['legal']))
+    for must in ['자동으로 갱신', '24시간 전까지 해지하지 않으면', 'Apple 계정으로', '설정 › Apple 계정 › 구독', '해지해도 이미 결제한 기간',
+                 '결제 후 7일 이내에는 청약을 철회할 수 있어요', '유료 기능을 쓰기 시작했다면 철회가 제한될 수 있어요', '이용약관 제5조의2',
+                 '기간 중에 해지하면 다음 갱신만 멈추고', '자동으로 돌아가지 않아요']:
+      if must not in s['legal']: fail('3 결제 안내에 "%s" 없음: %s' % (must, s['legal']))
+    if '다음 결제일' in s['legal']: fail('3 아이폰에 안드로이드 갱신 안내가 나옴: %s' % s['legal'])
+    # 혜택은 서버가 실제로 지키는 것만 (저장 용량·크레딧 팩·읽기 전용 뷰는 기능이 없다 — 법률 점검 8번)
+    cards = pg.evaluate("[...document.querySelectorAll('#pay .paycard')].map(c=>c.dataset.plan+':'+[...c.querySelectorAll('li')].map(l=>l.textContent).join('|'))")
+    if cards != ['pro:광고 없음|멤버 25명|라이브러리 무제한|코드 인식 월 100곡|채보 월 15곡', 'plus:광고 없음|멤버 50명|라이브러리 무제한|코드 인식 월 300곡|채보 월 50곡']:
+      fail('3 결제 화면 혜택 줄이 실제와 다름: %s' % cards)
     if sorted(s['lg']) != ['privacy', 'terms'] or not s['restore'] or not s['manage']: fail('3 약관·방침 링크·구매 복원·구독 관리가 없음: %s' % s)
     if '4,900' in json.dumps(s['prices']): fail('3 박아 둔 가격이 보임: %s' % s['prices'])
     pg.click('#pay [data-pay="per"][data-v="y"]'); pg.wait_for_timeout(150)
@@ -293,7 +309,7 @@ def run():
     pg.click('#pay [data-lg="terms"]'); pg.wait_for_selector('.legal', timeout=8000)
     lg = pg.inner_text('.legal')
     if '자동 갱신되는 구독' not in lg or '24시간 전까지 해지하지 않으면' not in lg: fail('3 이용약관에 자동 갱신 구독 안내가 없음')
-    print('3 ok — 우리 id 로 설정 · 체험 중 표시 · 스토어 가격(월간·연간) · 자동 갱신 안내 · 약관·방침 · 구매 복원·구독 관리')
+    print('3 ok — 사지 않은 사람은 켤 때 안 붙음 · 결제 화면에서 우리 id 로 설정 · 체험 중 표시 · 스토어 가격(월간·연간) · 실제 혜택만 · 자동 갱신·청약철회·해지 안내 · 약관·방침 · 구매 복원·구독 관리')
 
     # ---- 4 스토어에 없는 상품은 '준비 중' · 상품을 못 받으면 알리고 다시 불러오기
     pg.evaluate("()=>{__rc.missing=['plus_monthly'];CONTI.IAP.pk=null}")
@@ -379,12 +395,16 @@ def run():
     st, T2 = A2.req('POST', '/teams', {'name': '안드팀' + tag, 'myName': '안드'})
     c, pg = native('android')
     login(pg, 'pya' + tag)
-    pg.wait_for_function("__rc.calls.some(x=>x.n==='configure')", timeout=8000)
-    if calls(pg, 'configure')[0]['a'].get('apiKey') != KEYS['android']: fail('7 안드로이드 키로 설정하지 않음: %s' % calls(pg, 'configure'))
+    pg.wait_for_timeout(1200)
+    if calls(pg): fail('7 사지 않은 사람인데 로그인하자마자 결제 쪽을 부름: %s' % [x['n'] for x in calls(pg)])
     open_pay(pg)
+    if calls(pg, 'configure')[0]['a'].get('apiKey') != KEYS['android']: fail('7 안드로이드 키로 설정하지 않음: %s' % calls(pg, 'configure'))
     s = pay_state(pg)
-    for must in ['Google Play 계정', 'Google Play › 결제 및 정기 결제']:
-      if must not in s['legal']: fail('7 안드로이드 안내에 "%s" 없음' % must)
+    for must in ['Google Play 계정', 'Google Play › 결제 및 정기 결제', '고른 기간(1개월 · 1년)마다 자동으로 갱신돼요',
+                 '다음 결제일 전에 해지하지 않으면 결제일에 같은 요금으로 다음 기간 요금이 청구돼요', '결제 후 7일 이내에는 청약을 철회할 수 있어요',
+                 '기간 중에 해지하면 다음 갱신만 멈추고']:
+      if must not in s['legal']: fail('7 안드로이드 안내에 "%s" 없음: %s' % (must, s['legal']))
+    if '24시간' in s['legal']: fail('7 안드로이드 결제 화면에 애플의 24시간 갱신 안내가 나옴: %s' % s['legal'])
     if pay_state(pg)['msg']: fail('7 새 결제 화면에 옛 안내가 남음: %s' % s['msg'])
     buy_btn(pg, 'pro_monthly').click()
     pg.wait_for_function("(document.getElementById('payMsg')||{}).textContent==='결제 확인 중…'", timeout=5000)
@@ -406,20 +426,23 @@ def run():
     pg.click('[data-act="set-tab"][data-t="app"]'); pg.wait_for_timeout(300)
     pg.click('#sLogout'); pg.wait_for_selector('#lgUser', timeout=10000); pg.wait_for_timeout(500)
     if not calls(pg, 'logOut'): fail('7 로그아웃했는데 결제 쪽은 그대로: %s' % [x['n'] for x in calls(pg)])
-    # 같은 기기에서 다른 사람(멤버)이 들어오면 그 사람으로 (logIn) — 8 인도자가 아니면 못 산다
+    # 같은 기기에서 다른 사람(멤버)이 들어오면 — 사지 않은 사람이라 들어올 때는 결제 쪽에 그 사람 id 를 보내지 않고,
+    # 결제 화면을 열 때 그 사람으로 (logIn) — 8 인도자가 아니면 못 산다
     login(pg, 'pym' + tag)
-    pg.wait_for_function("__rc.calls.some(x=>x.n==='logIn'&&x.a.appUserID===%s)" % json.dumps(M.uid), timeout=8000)
-    if len(calls(pg, 'configure')) != 1: fail('8 다시 설정(configure)함: %s' % calls(pg, 'configure'))
+    pg.wait_for_timeout(1200)
+    if any(x['a'] and x['a'].get('appUserID') == M.uid for x in calls(pg)): fail('8 사지 않은 멤버가 들어오자마자 결제 쪽에 그 사람 id 를 보냄: %s' % calls(pg)[-3:])
     plan_tab(pg)
     if '인도자만 볼 수 있어요' not in pg.inner_text('#app'): fail('8 멤버에게 설정 → 플랜이 보임')
     open_pay(pg)
+    pg.wait_for_function("__rc.calls.some(x=>x.n==='logIn'&&x.a.appUserID===%s)" % json.dumps(M.uid), timeout=8000)
+    if len(calls(pg, 'configure')) != 1: fail('8 다시 설정(configure)함: %s' % calls(pg, 'configure'))
     s = pay_state(pg)
     if '인도자' not in s['block'] or any(not x['dis'] for x in s['btns']): fail('8 멤버가 살 수 있음: %s' % s)
     n0 = len(calls(pg, 'purchasePackage'))
     pg.evaluate("document.querySelectorAll('#pay [data-pay=\"buy\"]').forEach(b=>b.click())"); pg.wait_for_timeout(600)
     if len(calls(pg, 'purchasePackage')) != n0: fail('8 멤버의 누름으로 결제 창이 열림')
     c.close()
-    print('7 ok — 안드로이드: 구글 상품 id · Plus 로 올릴 때 옛 구독 넘김 · Play 구독 관리(sku) · 로그아웃 → logOut · 다른 사람 → logIn')
+    print('7 ok — 안드로이드: 다음 결제일 갱신 안내 · 구글 상품 id · Plus 로 올릴 때 옛 구독 넘김 · Play 구독 관리(sku) · 로그아웃 → logOut · 다른 사람 → 결제 화면에서 logIn')
 
     # ---- 8 다른 팀원의 스토어 구독으로 쓰는 팀: 인도자라도 못 바꾼다
     db("update teams set plan='pro', plan_source='iap', plan_until=now()+interval '30 days', iap_user_id=$2, billing_user_id=$2 where id=$1", [TEAM, M.uid])
@@ -431,6 +454,15 @@ def run():
     if s['team']['payer'] != M.uid: fail('8 payerId 가 산 사람이 아님: %s' % s['team'])
     c.close()
     print('8 ok — 인도자가 아니면 못 산다(설정 → 플랜도 안 보임) · 다른 팀원의 스토어 구독 팀은 그 사람만')
+
+    # ---- 9 구독을 산 사람(서버가 아는 payerId)은 앱을 켤 때부터 붙는다 — 끊긴 거래·갱신을 SDK 가 이어 받게
+    c, pg = native('ios')
+    login(pg, 'pym' + tag)
+    pg.wait_for_function("__rc.calls.some(x=>x.n==='configure')", timeout=8000)
+    cf = calls(pg, 'configure')
+    if len(cf) != 1 or cf[0]['a'].get('appUserID') != M.uid: fail('9 구독한 사람인데 켤 때 그 사람 id 로 설정하지 않음: %s' % cf)
+    c.close()
+    print('9 ok — 스토어 구독을 산 사람은 앱을 켤 때부터 결제 쪽에 붙음')
 
     real = [e for e in errs if 'ERR_' not in e]
     if real: fail('페이지 오류: %s' % real[:5])

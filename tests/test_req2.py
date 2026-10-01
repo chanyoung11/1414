@@ -13,6 +13,7 @@ LEADER = ('lead' + tag, 'secret1', '하은'); DRUM = ('mem' + tag, 'secret1', '�
 def run_ocr(pg, idx=0, wait=90000):
   pg.wait_for_selector('.chordbar [data-act="ocr"]', timeout=20000)
   pg.locator('.chordbar [data-act="ocr"]').first.click(); pg.wait_for_timeout(700)
+  if pg.locator('#aiConsOk').count(): pg.click('#aiConsOk'); pg.wait_for_timeout(500)   # AI 악보 인식 동의 (처음 한 번)
   go = pg.locator('#ocrGo')
   if go.count(): go.click(); pg.wait_for_timeout(500)
   pg.wait_for_function("((i)=>{const it=CONTI.S.services[0].items[i];const p=it&&(it.pieces||[])[0];return p&&p.ocr&&p.ocr!=='pending'})(%d)" % idx, timeout=wait)

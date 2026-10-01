@@ -57,6 +57,7 @@ def run():
 
     # 3. 확인 창
     L.click('.chordbar [data-act="ocr"]'); L.wait_for_timeout(1200)
+    if L.locator('#aiConsOk').count(): L.click('#aiConsOk'); L.wait_for_timeout(1200)   # AI 악보 인식 동의 (처음 한 번)
     md = L.locator('#modal').inner_text()
     if '코드 인식' not in md or '이번 달 남은 곡' not in md: fail('확인 창이 안 뜸: ' + md[:140])
     if '다음부터 묻지 않기' not in md: fail('"다음부터 묻지 않기"가 없음')

@@ -14,6 +14,7 @@ H = {'x-conti': '1'}
 def run_ocr(pg, wait=90000):
   pg.wait_for_selector('.chordbar [data-act="ocr"]', timeout=20000)
   pg.locator('.chordbar [data-act="ocr"]').first.click(); pg.wait_for_timeout(700)
+  if pg.locator('#aiConsOk').count(): pg.click('#aiConsOk'); pg.wait_for_timeout(500)   # AI 악보 인식 동의 (처음 한 번)
   go = pg.locator('#ocrGo')
   if go.count(): go.click(); pg.wait_for_timeout(500)
   pg.wait_for_function("(()=>{const p=(CONTI.S.services[0].items[0].pieces||[])[0];return p&&p.ocr&&p.ocr!=='pending'})()", timeout=wait)

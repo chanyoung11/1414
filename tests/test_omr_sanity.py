@@ -288,6 +288,7 @@ def add_item(pg, sheet):
 def build(pg, idx):
   here = pg.evaluate('location.hash')
   pg.evaluate("window.__T=[];clearInterval(window.__TI);window.__TI=setInterval(()=>{const t=document.querySelector('#toast');if(t&&t.classList.contains('show')&&window.__T[window.__T.length-1]!==t.textContent)window.__T.push(t.textContent)},50)")
+  pg.evaluate("()=>{if(!CONTI.aiOk())CONTI.savePrefs({aiOk:new Date().toISOString()})}")   # AI 악보 인식 동의 (처음 한 번)
   pg.evaluate("(i)=>{const s=CONTI.S.services[0],it=s.items[i];it.score=null;return CONTI.rebuildScore(s,it,it.pieces[0])}", idx)
   pg.wait_for_timeout(300)
   out = pg.evaluate("(i)=>{const s=CONTI.S.services[0].items[i].score;return {toasts:window.__T,score:s?{n:s.measures.length,time:s.time,title:s.title,lines:s.lines,failed:s.failed}:null}}", idx)

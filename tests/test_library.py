@@ -15,6 +15,7 @@ L = ('ll' + tag, 'secret1', '하은')
 def run_ocr(pg, wait=90000):
   pg.wait_for_selector('.chordbar [data-act="ocr"]', timeout=20000)
   pg.locator('.chordbar [data-act="ocr"]').first.click(); pg.wait_for_timeout(700)
+  if pg.locator('#aiConsOk').count(): pg.click('#aiConsOk'); pg.wait_for_timeout(500)   # AI 악보 인식 동의 (처음 한 번)
   go = pg.locator('#ocrGo')
   if go.count(): go.click(); pg.wait_for_timeout(500)
   pg.wait_for_function("(()=>{const p=(CONTI.S.services[0].items[0].pieces||[])[0];return p&&p.ocr&&p.ocr!=='pending'})()", timeout=wait)
@@ -46,8 +47,11 @@ def run():
         pa.fill('[data-f="item.title"]', '주 은혜임을'); pa.fill('[data-f="item.key"]', 'G'); pa.fill('[data-f="item.form"]', '1414 – AAB')
         pa.set_input_files('#pieceFile', [SHEET])
         run_ocr(pa, 60000)
-        pa.wait_for_timeout(5000)   # 라이브러리 push 디바운스(3초) + 업로드
-        srv = cA.request.get(URL + 'api/songs?team=' + team).json()
+        # 라이브러리 push 디바운스(3초) + 업로드. 5초를 그냥 기다리면 빠듯했다(인식이 끝난 뒤 악보 올리기·초안 → 3초 → 곡) — 20초까지 다시 본다
+        for _ in range(20):
+          pa.wait_for_timeout(1000)
+          srv = cA.request.get(URL + 'api/songs?team=' + team).json()
+          if srv['songs']: break
         if not srv['songs']: fail('서버에 곡이 없음')
         s0 = srv['songs'][0]
         if s0['title'] != '주 은혜임을': fail('제목이 다름: %s' % s0['title'])

@@ -446,6 +446,7 @@ def t_ai_switch(b, errs):
     pg.route('**/api/ocr', hold)
     pg.wait_for_selector('.chordbar [data-act="ocr"]', timeout=20000)
     pg.locator('.chordbar [data-act="ocr"]').first.click(); pg.wait_for_timeout(500)
+    if pg.locator('#aiConsOk').count(): pg.click('#aiConsOk'); pg.wait_for_timeout(500)   # AI 악보 인식 동의 (처음 한 번)
     if pg.locator('#ocrGo').count(): pg.click('#ocrGo')
     for _ in range(60):
         if held: break
@@ -488,7 +489,8 @@ def t_ai_switch(b, errs):
     pg.goto(URL + '#/edit/' + svc); pg.wait_for_selector('[data-act="score-make"]', timeout=15000)
     held.clear(); bodies.clear(); gate['open'] = False
     pg.route('**/api/score', hold)
-    pg.click('[data-act="score-make"]')
+    pg.click('[data-act="score-make"]'); pg.wait_for_timeout(400)
+    if pg.locator('#aiConsOk').count(): pg.click('#aiConsOk')   # AI 악보 인식 동의 (처음 한 번)
     for _ in range(60):
         if held: break
         pg.wait_for_timeout(250)
@@ -518,7 +520,8 @@ def t_ai_switch(b, errs):
     pg.goto(URL + '#/edit/' + svc); pg.wait_for_selector('[data-act="omr"]', timeout=15000)
     held.clear(); bodies.clear(); gate['open'] = False
     pg.route('**/api/omr', hold)
-    pg.click('[data-act="omr"]')
+    pg.click('[data-act="omr"]'); pg.wait_for_timeout(400)
+    if pg.locator('#aiConsOk').count(): pg.click('#aiConsOk')   # AI 악보 인식 동의 (처음 한 번)
     for _ in range(60):
         if held: break
         pg.wait_for_timeout(250)

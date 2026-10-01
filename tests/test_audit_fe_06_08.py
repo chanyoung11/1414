@@ -254,6 +254,7 @@ def run():
         L.evaluate("()=>CONTI.render()"); L.wait_for_selector('[data-act="score-make"]', timeout=8000)
         L.evaluate(HOLD); answers[:] = ['2']
         L.click('[data-act="score-make"]'); L.wait_for_timeout(600)
+        if L.locator('#aiConsOk').count(): L.click('#aiConsOk'); L.wait_for_timeout(600)   # AI 악보 인식 동의 (처음 한 번)
     # 1) 기다리는 동안 그 악보 화면을 열어 둔 경우 → 새 악보로 다시 그린다
     start_rebuild()
     # 앱 안에서 여는 길(「악보 N마디」 = go('score/…')) 그대로 — 주소가 한 글자라도 다르면 hashchange 가 나서 재현이 안 된다
