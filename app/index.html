@@ -496,7 +496,10 @@ html.dark .pill.role-pastor{color:#B4A7F5}
 .legal a[data-act]{text-decoration:underline;cursor:pointer}
 /* 홈 개정 알림 — '지금 할 일'(.todo)과 같은 모양이지만 그 목록·테스트와 섞이지 않게 따로 */
 .lnotice{margin-bottom:16px}.lnotice-card{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:var(--r-lg);background:var(--secondary);border:1px solid var(--border-2)}.lnotice-card b{display:block;font-size:13.5px}
-@media(max-width:560px){.lnotice-card{flex-wrap:wrap}.lnotice-card>.row{margin-left:auto}}
+.lnotice-card>.grow{min-width:0}
+/* 좁으면 글은 한 줄 전체(아이콘 옆 나머지)를 쓰고 단추는 아래 오른쪽 — .grow 의 flex-basis 0 때문에 줄바꿈이 안 되고 글 칸이 67px 로 눌렸다(팀 고르기 화면) */
+@media(max-width:560px){.lnotice-card{flex-wrap:wrap}.lnotice-card>.grow{flex:1 1 calc(100% - 52px)}.lnotice-card>.row{margin-left:auto}}
+.auth-card .lnotice-card{flex-wrap:wrap}.auth-card .lnotice-card>.grow{flex:1 1 calc(100% - 52px)}.auth-card .lnotice-card>.row{margin-left:auto}
 .bizline{margin-top:8px;font-size:11px;line-height:1.6;color:var(--faint-fg);text-align:center;word-break:keep-all}
 /* 조각을 가로로 나란히 (실사용 제보) */
 .sheet{display:flex;flex-wrap:wrap;align-items:flex-start;gap:10px}
