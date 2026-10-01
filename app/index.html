@@ -484,6 +484,20 @@ html.dark .pill.role-pastor{color:#B4A7F5}
 .legalfoot{margin-top:16px;font-size:12px;color:var(--faint-fg);display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
 .legalfoot button{color:inherit;text-decoration:underline}
 .legalfoot button:hover{color:var(--fg)}
+/* 개정 예정·개정안·이전 판 띠, 여섯 칸 국외 이전 표(폰에서는 칸 이름을 줄마다 붙인다), 변경 이력, 사업자 정보 한 줄 */
+.lnext{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;margin:0 0 18px;padding:10px 12px;border-radius:var(--r-md);background:var(--secondary);border:1px solid var(--border-2);font-size:13.5px;line-height:1.55}
+.lnext .grow{flex:1 1 220px}
+.ltab.wide{font-size:12.5px}
+.ltab.wide tbody th{white-space:normal;width:auto;min-width:100px}
+.ltab small{display:block;margin-top:2px;color:var(--muted-fg);font-weight:400;font-size:11.5px;word-break:break-all}
+@media(max-width:640px){.ltab.wide td[data-l]::before{content:attr(data-l);display:block;font-size:11.5px;font-weight:600;color:var(--muted-fg)}}
+.lhist li{margin:6px 0}.lhist .btn{margin-left:6px;vertical-align:baseline}
+.lhist .hint{margin-left:4px}
+.legal a[data-act]{text-decoration:underline;cursor:pointer}
+/* 홈 개정 알림 — '지금 할 일'(.todo)과 같은 모양이지만 그 목록·테스트와 섞이지 않게 따로 */
+.lnotice{margin-bottom:16px}.lnotice-card{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:var(--r-lg);background:var(--secondary);border:1px solid var(--border-2)}.lnotice-card b{display:block;font-size:13.5px}
+@media(max-width:560px){.lnotice-card{flex-wrap:wrap}.lnotice-card>.row{margin-left:auto}}
+.bizline{margin-top:8px;font-size:11px;line-height:1.6;color:var(--faint-fg);text-align:center;word-break:keep-all}
 /* 조각을 가로로 나란히 (실사용 제보) */
 .sheet{display:flex;flex-wrap:wrap;align-items:flex-start;gap:10px}
 .piece{position:relative}
@@ -1642,7 +1656,7 @@ function homeHTML(){
   const st=s.pubPending?(up?`<span class="badge neutral">올리는 중…</span>`:`<span class="badge warn">서버에 못 올림</span>`):s.published?(s.version>s.published.version?`<span class="badge warn">v${esc(s.published.version)} 발행 · 수정 중</span>`:`<span class="badge ok">v${esc(s.published.version)} 발행됨</span>`):`<span class="badge neutral">미발행</span>`;
   return `<div class="svcrow ${past?'past':''} ${pick?'picking':''} ${pick&&HOME.sel.includes(s.id)?'picked':''} rise d${Math.min(i,3)}" data-act="${pick?'pick-svc':'open-svc'}" data-id="${esc(s.id)}">${pick?`<span class="pickbox">${HOME.sel.includes(s.id)?ic('check'):''}</span>`:''}<div class="date"><b>${esc(d.md)}</b><span>${esc(d.w)}</span></div><div class="grow"><div class="t">${esc(svcName(s))}</div><div class="s"><span>${s.items.length}곡</span>${st}</div></div>
    ${pick?'':`<div class="row">${s.pubPending&&!up&&lead&&on?`<button class="btn sm pri" data-act="repub" data-id="${esc(s.id)}">${ic('send')}서버에 다시 올리기</button>`:''}${lead?`<button class="btn sm" data-act="edit-svc" data-id="${s.id}">${ic('pen')}편집</button>`:''}<button class="btn sm ${lead?'':'pri'}" data-act="view-svc" data-id="${s.id}">${ic('eye')}콘티</button>${lead?`<button class="icon sm ghost" data-act="del-svc" data-id="${s.id}" title="삭제">${ic('trash')}</button>`:''}</div>`}</div>`}).join('');
- const body=`${heroHTML()}
+ const body=`${legalNoticeHTML()}${heroHTML()}
     ${todoHTML()}
     <div class="metrics rise"><div class="metric"><div class="v">${S.services.length}</div><div class="l">전체 예배</div></div><div class="metric"><div class="v">${upcoming}</div><div class="l">다가오는 예배</div></div><div class="metric"><div class="v">${pubN}</div><div class="l">발행된 콘티</div></div></div>
     <div class="sect-hd rise d1"><div><h2>예배 목록</h2><p>${on?`${esc(S.team.name)} 팀 · 인도자가 발행하면 자동으로 내려와요`:S.team.id?`${esc(S.team.name)} 팀 · 지금은 서버에 연결되지 않았어요. 받아 둔 콘티로 열고, 고친 것은 다시 연결되면 팀에 올려요`:'이 기기에만 저장돼요. 팀에 보내려면 내보내기 파일을 카톡으로 보내세요'}</p></div>
@@ -2380,6 +2394,7 @@ async function wordLinkHTML(token){let d;
   <div class="err" id="wlErr"></div>
   <button class="btn pri" id="wlSend" style="width:100%;margin-top:14px">보내기</button>
   <p class="sub" style="text-align:center;margin-top:10px">보내면 이 링크는 닫혀요. 고치려면 인도자에게 새 링크를 받으세요.</p>
+  <p class="fine" id="wlPriv" style="text-align:center;margin-top:6px">적은 이름과 말씀(본문·제목·한 줄)은 그 팀 사람들에게 보이고, 팀이 지워지면 함께 지워져요 · <a href="#/legal/privacy" target="_blank" rel="noopener">개인정보처리방침</a></p>
  </div></div></div></div>`}
 function afterWordLink(token){
  const send=$('#wlSend');if(!send)return;   // 만료·사용된 링크는 안내만 보여준다
@@ -3151,7 +3166,7 @@ function agreeModal(){
  if(AGREE_SHOWN||!needsAgree())return;AGREE_SHOWN=true;
  const first=!(NET.user||{}).agreedVer;
  modal(`<b style="font-size:17px">${first?'약관에 동의해 주세요':'약관이 바뀌었어요'}</b>
-  <div class="hint" style="margin-top:6px">${first?'1414에 이용약관과 개인정보처리방침이 생겼어요. 계속 쓰시려면 한 번만 동의해 주세요.':'바뀐 내용을 확인하고 동의해 주세요.'}</div>
+  <div class="hint" style="margin-top:6px">${first?'1414에 이용약관과 개인정보처리방침이 생겼어요. 이용약관과 개인정보처리방침을 확인하고 동의해 주세요.':'바뀐 내용을 확인하고 동의해 주세요.'}</div>
   <div class="row" style="margin-top:12px;gap:8px"><button class="btn sm" data-act="legal" data-k="terms">이용약관</button><button class="btn sm" data-act="legal" data-k="privacy">개인정보처리방침</button></div>
   <label class="agree" style="margin-top:14px"><input type="checkbox" id="agChk"><span>이용약관과 개인정보처리방침에 동의합니다. <b>(필수)</b></span></label>
   <div class="err" id="agErr"></div>
@@ -3166,15 +3181,72 @@ function agreeModal(){
 const BIZ={name:'바디페인팅',ceo:'박찬영',regNo:'469-06-03606',
  addr:'충청남도 천안시 동남구 문암로 114 (안서동, 학구당원룸)',
  email:'chanyoung07119@gmail.com',tel:'010-2445-0711',
- mailOrder:'',                     // 통신판매업 신고번호 — 신고 뒤 채운다
+ mailOrder:'',                     // 통신판매업 신고번호 — 신고 뒤 채운다. 비어 있으면 줄을 숨긴다(지어내 넣지 않는다)
+ host:'Google LLC (Google Cloud)', // 호스팅 서비스 제공자 — 전자상거래법 제10조 표시 사항 (서버 Cloud Run 싱가포르)
  service:'1414',since:'2026-09-15'};
 // 결제를 붙이기 전까지 '결제 담당' 화면을 숨긴다. 결제가 없는데 이 말이 보이면
 // 앱 심사에서 외부 결제로 오해받는다. 서버의 billing_user_id 기록은 그대로 둔다
 const BILLING_UI=false;
 const TERMS_AT='2026-09-27';       // 이용약관만 — 제5조에 7일 Pro 체험과 자동 갱신 구독 안내(앱 결제)를 더했다 (아직 결제한 사람이 없어 다시 동의는 받지 않는다)
 const LEGAL_AT='2026-09-24';       // 문서에 적는 시행일(마지막 개정). 다시 동의를 받는 기준은 서버 LEGAL_VERSION 이라 따로 간다
-function legalHTML(kind){
- const K=kind==='terms'?'terms':kind==='delete'?'delete':'privacy';
+// 개정판(개인정보처리방침·이용약관 함께)이 시행되는 날. 이 값 하나만 바꾸면 된다.
+// 방침 9항이 '시행 7일 전 서비스 안에 알린다'고 약속했으므로, 이날의 7일 전까지 배포해 홈 알림(legalNoticeHTML)이 떠 있어야 한다.
+// 이날(한국 시각) 전: 지금 판(…V1)이 적용되고 위에 '개정 예정' 띠 · 개정안은 #/legal/privacy/next.
+// 이날부터: 개정판(…V2)이 저절로 지금 판이 되고, 옛 판은 '이전 판'(#/legal/privacy/prev)으로 남는다.
+// 다시 동의(서버 LEGAL_VERSION)는 받지 않는다 — 운영자 결정(공지만). 다음 개정 때는 V2 를 V1 자리로 옮기고 새 V2 를 쓴다
+const LEGAL_NEXT_AT='2026-10-09';
+const DELETE_AT='2026-10-01';      // 계정 삭제 안내를 마지막으로 고친 날 — 지금 동작을 적은 안내라 시행일 없이 바로 바뀐다
+// 한국 시각의 오늘 (서버·기기 시간대와 상관없이 KST 로 시행일을 가른다). 테스트는 window.CONTI_LEGAL_TODAY='YYYY-MM-DD' 로 날짜를 정해 본다
+const legalKst=ms=>new Date((ms==null?Date.now():ms)+9*3600e3).toISOString().slice(0,10);
+const legalToday=()=>{const o=window.CONTI_LEGAL_TODAY;return typeof o==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(o)?o:legalKst()};
+const legalNextLive=()=>legalToday()>=LEGAL_NEXT_AT;
+const isoAddDays=(iso,n)=>new Date(Date.parse(iso+'T00:00:00Z')+n*86400e3).toISOString().slice(0,10);
+const mdKo=iso=>`${+iso.slice(5,7)}월 ${+iso.slice(8,10)}일`;
+// 사업자 정보 한 줄 — 로그인 화면 아래와 설정 → 앱에 (전자상거래법 제10조: 상호·대표·주소·전화·이메일·사업자등록번호·호스팅 제공자)
+function bizLine(){return [BIZ.name,'대표 '+BIZ.ceo,'사업자등록번호 '+BIZ.regNo,BIZ.mailOrder?'통신판매업 신고 '+BIZ.mailOrder:'',
+ BIZ.addr,BIZ.tel,BIZ.email,'호스팅 서비스 제공자 '+BIZ.host].filter(Boolean).map(esc).join(' · ')}
+// 변경 이력. [시행일, 무엇이 바뀌었나, 그 판을 볼 수 있는 주소(v)]. 맨 위가 개정판
+const LEGAL_HIST={
+ privacy:[[LEGAL_NEXT_AT,'앱 구독 결제 확인 업체(RevenueCat) 추가 · 국외 이전 표에 받는 곳 연락처·나라·옮기는 방법·받는 곳의 보유 기간 추가 · 처리하는 정보와 보유 기간을 실제에 맞게 보완 · 파기 방법, 쿠키와 기기 저장소, 제3자 제공, 앱 접근 권한, 권리 행사 방법, 보호책임자·구제 기관 안내 추가','next'],
+  ['2026-09-24','서버·데이터베이스를 싱가포르로 옮김 · 파일 저장을 Cloudflare 로 바꿈 · 앱 푸시 알림 위탁 추가 (웹 게시 2026-09-25)','prev'],
+  ['2026-09-17','무료 플랜 광고 추가 (광고 식별자 수집, Google AdMob 위탁)'],
+  ['2026-09-15','제정']],
+ terms:[[LEGAL_NEXT_AT,'약관을 바꾸는 절차(제2조의2) · 구글·Apple 가입 · AI 결과 확인 안내 · 무료 체험·구독 갱신과 해지·프로모션 코드·유료 기간이 끝났을 때 · 청약철회와 환불(제5조의2) · 저작권 침해 신고 · 해로운 게시물 금지와 신고 · 탈퇴 때 메모 처리와 구독 해지 안내 · 책임의 한계 조정','next'],
+  ['2026-09-27','제5조에 7일 Pro 체험과 자동 갱신 구독(앱 결제) 안내 추가','prev'],
+  ['2026-09-17','제5조에 무료 플랜 광고 안내 추가'],
+  ['2026-09-15','제정']]};
+function legalHistHTML(k){const live=legalNextLive();
+ return `<ul class="lhist">${LEGAL_HIST[k].map(([d,what,v])=>{
+  const cur=live?v==='next':v==='prev';
+  const tag=cur?'<span class="hint">(지금 판)</span>':v==='next'?'<span class="hint">(시행 예정)</span>':'';
+  const btn=cur||!v?'':`<button class="btn sm ghost" data-act="legal" data-k="${k}" data-v="${v}">${v==='next'?'개정안 보기':'이 판 보기'}</button>`;
+  return `<li><b>${esc(d)}</b> ${tag} — ${esc(what)}${btn}</li>`}).join('')}</ul>
+  <p class="hint">${k==='privacy'?'2026-09-24 판':'2026-09-27 판'}보다 앞선 판이 필요하시면 ${esc(BIZ.email)}로 요청해 주세요.</p>`}
+// 지금 보는 판이 무엇인지 알리는 띠. 개정 예정(지금 판) · 개정안 · 이전 판 · 시행 뒤 30일 동안 '바뀌었습니다'
+function legalBanner(K,useNext,live){
+ const d=LEGAL_NEXT_AT,b=(v,label)=>`<button class="btn sm" data-act="legal" data-k="${K}"${v?` data-v="${v}"`:''}>${label}</button>`;
+ const chg=`<button class="btn sm" data-act="legal" data-k="changes">바뀌는 점</button>`;
+ if(!live&&!useNext)return `<div class="lnext" id="legalBanner" data-state="soon"><span class="grow"><b>개정 예정</b> · ${d}부터 바뀝니다</span><span class="row" style="gap:6px">${b('next','개정안 보기')}${chg}</span></div>`;
+ if(!live)return `<div class="lnext" id="legalBanner" data-state="draft"><span class="grow"><b>개정안</b> · ${d}부터 적용됩니다. 그 전까지는 지금 판이 적용됩니다</span><span class="row" style="gap:6px">${b('','지금 판 보기')}${chg}</span></div>`;
+ if(!useNext)return `<div class="lnext" id="legalBanner" data-state="prev"><span class="grow"><b>이전 판</b> · ${isoAddDays(d,-1)}까지 적용된 판입니다</span>${b('','지금 판 보기')}</div>`;
+ if(legalToday()<=isoAddDays(d,30))return `<div class="lnext" id="legalBanner" data-state="new"><span class="grow"><b>${d}부터 바뀌었습니다</b></span><span class="row" style="gap:6px">${chg}${b('prev','이전 판 보기')}</span></div>`;
+ return ''}
+// 약관·방침 개정 알림 (방침 9항 '시행 7일 전 서비스 안에 알린다'). 로그인한 사람의 홈(팀이 없으면 팀 고르기 화면) 맨 위에 한 장.
+// 닫거나 '바뀌는 점 보기'를 누르면 이 기기에서 그 계정에는 다시 안 뜨고, 그러지 않아도 시행일 7일 뒤에는 내린다.
+// 다음 개정 때는 LEGAL_NEXT_AT 만 바뀌어도 열쇠가 달라져 다시 뜬다. 저장소가 막힌 기기에서는 이번 실행 동안만 기억한다
+let LEGAL_NOTICE_OFF=false;
+const legalNoticeKey=()=>'conti-legal-notice:'+LEGAL_NEXT_AT+':'+((NET.user&&NET.user.id)||'');
+function legalNoticeOn(){return !!NET.user&&!LEGAL_NOTICE_OFF&&legalToday()<=isoAddDays(LEGAL_NEXT_AT,7)&&lsGet(legalNoticeKey())!=='1'}
+function legalNoticeOff(){LEGAL_NOTICE_OFF=true;try{localStorage.setItem(legalNoticeKey(),'1')}catch(e){}}
+function legalNoticeHTML(){if(!legalNoticeOn())return '';const live=legalNextLive();
+ return `<div class="lnotice rise" id="legalNotice"><div class="lnotice-card"><span class="icon sm">${ic('note')}</span>
+  <div class="grow"><b>개인정보처리방침·이용약관이 ${mdKo(LEGAL_NEXT_AT)}부터 ${live?'바뀌었어요':'바뀌어요'}</b><div class="hint">앱 구독 결제 확인 업체·보관 기간·청약철회(환불) 안내 등을 더 자세히 적었어요</div></div>
+  <span class="row" style="gap:6px"><button class="btn sm" data-act="legal-notice-off">닫기</button><button class="btn sm pri" data-act="legal-notice-go">바뀌는 점 보기</button></span></div></div>`}
+function legalHTML(kind,ver){
+ const K=['terms','delete','changes'].includes(kind)?kind:'privacy';
+ const live=legalNextLive();
+ // next=개정판, prev=옛 판, 그 밖은 오늘 적용되는 판
+ const useNext=ver==='next'?true:ver==='prev'?false:live;
  const bizRow=`<table class="ltab"><tbody>
   <tr><th>상호</th><td>${esc(BIZ.name)}</td></tr>
   <tr><th>대표자</th><td>${esc(BIZ.ceo)}</td></tr>
@@ -3183,8 +3255,10 @@ function legalHTML(kind){
   <tr><th>이메일</th><td><a href="mailto:${esc(BIZ.email)}">${esc(BIZ.email)}</a></td></tr>
   <tr><th>연락처</th><td>${esc(BIZ.tel)}</td></tr>
   ${BIZ.mailOrder?`<tr><th>통신판매업 신고번호</th><td>${esc(BIZ.mailOrder)}</td></tr>`:''}
+  <tr><th>호스팅 서비스 제공자</th><td>${esc(BIZ.host)}</td></tr>
  </tbody></table>`;
- const privacy=`
+ // ---- 지금 판 (방침 2026-09-24 시행) — LEGAL_NEXT_AT 전까지 적용, 그 뒤에는 '이전 판'. 고치지 않는다 ----
+ const privacyV1=`
   <p>${esc(BIZ.name)}(이하 "회사")는 찬양팀 콘티 서비스 <b>1414</b>(이하 "서비스")를 운영하며,
   이용자의 개인정보를 소중히 다룹니다. 이 방침은 회사가 어떤 정보를 왜 모으고, 얼마나 두고, 누구에게 맡기는지를 적은 것입니다.</p>
 
@@ -3268,7 +3342,8 @@ function legalHTML(kind){
   <p>내용이 바뀌면 시행 7일 전에 서비스 안에 알립니다. 이용자에게 불리한 중요한 변경은 30일 전에 알립니다.</p>
   <p class="lnote">시행일: ${esc(LEGAL_AT)}</p>`;
 
- const terms=`
+ // ---- 지금 판 (약관 2026-09-27 시행) — LEGAL_NEXT_AT 전까지 적용, 그 뒤에는 '이전 판'. 고치지 않는다 ----
+ const termsV1=`
   <h3>제1조 (목적)</h3>
   <p>이 약관은 ${esc(BIZ.name)}(이하 "회사")가 제공하는 찬양팀 콘티 서비스 <b>1414</b>(이하 "서비스")의
   이용 조건과 절차, 회사와 이용자의 권리·의무를 정합니다.</p>
@@ -3348,41 +3423,373 @@ function legalHTML(kind){
   ${bizRow}
   <p class="lnote">시행일: ${esc(TERMS_AT)}</p>`;
 
- // 계정 삭제 안내 — 스토어(구글·애플)가 요구하는 '로그인 없이 열리는 삭제 절차 페이지'
+ // ---- 개정판 (LEGAL_NEXT_AT 시행) — 시행 전에는 '개정안'(#/legal/privacy/next), 시행일부터 지금 판 ----
+ // 국외 이전 표: 개인정보 보호법 제28조의8 제2항 — 받는 곳 이름·연락처, 나라, 옮기는 때·방법, 항목, 목적, 받는 곳의 보유 기간.
+ // 연락처는 각 회사 개인정보처리방침에 적힌 문의처(2026-10-01 확인). Neon 은 Databricks 로 넘어가 neon.com 방침이 Databricks 방침으로 이어진다.
+ // Cloudflare R2 버킷(lets1414-files) 위치는 APAC — 나라가 아니라 지역만 정해진다. 서버 접속 기록은 Cloud Logging _Default 30일
+ const XCOL=['받는 곳(연락처)','나라','옮기는 때·방법','옮겨지는 항목','맡기는 일','받는 곳의 보유 기간'];
+ const XFER=[
+  ['Google LLC','googlekrsupport@google.com','싱가포르','서비스를 이용할 때 수시로','서비스 이용 중 생기는 정보 전부(서버 접속 기록 포함)','서비스 호스팅(Google Cloud Run)','탈퇴하거나 위탁 계약이 끝날 때까지 · 서버 접속 기록은 30일'],
+  ['Databricks, Inc. (Neon)','privacy@databricks.com','싱가포르','서비스를 이용할 때 수시로','계정·팀·콘티·메모·결제 기록 등 저장하는 정보','데이터베이스 운영(Neon)','탈퇴하거나 위탁 계약이 끝날 때까지 · 팀 자료는 팀 삭제 30일 뒤'],
+  ['Cloudflare, Inc.','privacyquestions@cloudflare.com','아시아·태평양 지역(Cloudflare 가 정한 데이터센터)','파일을 올리고 볼 때','올린 악보 사진·연습 녹음 파일','파일 저장(Cloudflare R2)','파일을 지우거나 위탁 계약이 끝날 때까지 · 팀 자료는 팀 삭제 30일 뒤'],
+  ['Google LLC · Apple Inc.','googlekrsupport@google.com · apple.com/kr/legal/privacy/contact','미국','알림을 보낼 때','알림 제목·내용, 기기 푸시 토큰','앱 푸시 알림 전달(FCM · APNs)','전달한 뒤 바로 폐기'],
+  ['Google LLC','googlekrsupport@google.com','미국','AI 기능(코드 인식·채보·악보 만들기)을 쓸 때','이용자가 올린 악보 이미지','악보 사진에서 코드·음표 읽기(Gemini, Cloud Vision)','요청을 처리한 뒤 폐기 · 구글이 오용을 막으려고 잠시 두는 기록은 구글 약관을 따름'],
+  ['RevenueCat, Inc.','compliance@revenuecat.com','미국','앱에 로그인해 쓰는 동안 수시로','1414 사용자 번호(무작위 값), 구독이 적용되는 팀 번호, 구매 상품·기간·구매/만료 일시, 스토어 영수증 정보, 접속 IP 주소·운영체제·앱 버전','앱 구독 결제 확인·관리(구독 상태 확인, 갱신·해지·환불을 팀 플랜에 반영)','위탁 계약이 끝날 때까지 · 계정을 지워도 RevenueCat 의 결제 기록은 남습니다(4항)'],
+  ['Google LLC','googlekrsupport@google.com','미국','앱 무료 플랜에서 광고가 보일 때','광고 식별자, 기기 정보, 광고를 본 기록','광고 보여주기(AdMob)','구글 개인정보처리방침을 따름'],
+ ];
+ const xferTab=`<table class="ltab wide" id="xferTab"><thead><tr>${XCOL.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>${XFER.map(([who,mail,land,when,what,job,keep])=>
+  `<tr><th>${esc(who)}<small>${esc(mail)}</small></th><td data-l="${XCOL[1]}">${esc(land)}</td><td data-l="${XCOL[2]}">${esc(when)} · 암호화된 통신(HTTPS)으로 전송</td><td data-l="${XCOL[3]}">${esc(what)}</td><td data-l="${XCOL[4]}">${esc(job)}</td><td data-l="${XCOL[5]}">${esc(keep)}</td></tr>`).join('')}</tbody></table>`;
+ const privacyV2=`
+  <p>${esc(BIZ.name)}(이하 "회사")는 찬양팀 콘티 서비스 <b>1414</b>(이하 "서비스")를 운영하며,
+  이용자의 개인정보를 소중히 다룹니다. 이 방침은 회사가 어떤 정보를 왜 모으고, 얼마나 두고, 누구에게 맡기는지를 적은 것입니다.</p>
+
+  <h3>1. 처리하는 정보</h3>
+  <p>서비스는 <b>주민등록번호를 받지 않습니다.</b> 처리하는 정보는 다음과 같습니다.</p>
+  <table class="ltab"><thead><tr><th>구분</th><th>항목</th><th>언제</th></tr></thead><tbody>
+   <tr><th>계정</th><td>아이디, 비밀번호(되돌릴 수 없는 형태로 저장), 이름, 가입일, 마지막 로그인 일시, 복구 코드(해시), 약관 동의 일시와 판</td><td>회원가입 시</td></tr>
+   <tr><th>구글·Apple 로그인</th><td>구글·Apple 고유 식별값, 이메일 주소(Apple 은 가린 주소일 수 있음), 구글·Apple 이 알려 준 이름(처음 이름으로 씀), Apple 로그인 연결을 끊을 때 쓰는 토큰(암호화해 저장). 이렇게 가입하면 아이디는 이메일 앞부분으로 자동으로 만듭니다</td><td>구글·Apple 로 가입·로그인하거나 계정을 연결할 때</td></tr>
+   <tr><th>팀 활동</th><td>팀 이름, 팀에서 쓰는 이름, 세션(악기), 역할, 콘티·악보·메모·말씀, 편성, 가능한 날짜와 그에 적은 메모, 마지막 접속 일시</td><td>서비스 이용 중</td></tr>
+   <tr><th>파일</th><td>올린 악보 사진, 연습 녹음</td><td>직접 올릴 때</td></tr>
+   <tr><th>말씀 링크</th><td>인도자가 보낸 말씀 링크로 목회자(회원이 아닐 수 있음)가 적은 이름, 말씀(본문·제목·한 줄)과 메모</td><td>링크로 말씀을 보낼 때</td></tr>
+   <tr><th>이용 기록</th><td>AI 인식 사용 횟수, 콘티를 읽은 표시, 개인 설정(무대 배치·조용한 시간·알림 종류)</td><td>서비스 이용 중</td></tr>
+   <tr><th>팀 관리 기록</th><td>초대, 팀원 빼기(뺀 사람 이름 포함), 인도자 넘기기, 플랜 변경을 누가 언제 했는지</td><td>팀을 관리할 때</td></tr>
+   <tr><th>결제</th><td>팀의 플랜·유료 기간과 받은 경로(구독·코드·체험), 구독한 사람, 결제 사건 번호, 프로모션 코드를 쓴 팀·사람·일시, 무료 체험을 받은 일시. 카드 번호 같은 결제 수단 정보는 받지 않습니다</td><td>앱에서 구독하거나 코드를 쓸 때, 팀을 처음 만들 때</td></tr>
+   <tr><th>알림</th><td>웹 푸시 구독 주소와 브라우저·기기 정보, 앱 푸시 토큰과 기기 종류(안드로이드·iOS)</td><td>알림을 켤 때</td></tr>
+   <tr><th>접속·보안</th><td>IP 주소, 로그인·가입·코드 입력 시도 횟수와 시각, 시도한 아이디, 서버 접속 기록(IP 주소·브라우저나 앱 정보·요청 시각)</td><td>접속할 때 자동으로</td></tr>
+   <tr><th>광고</th><td>회사 서버에는 저장하지 않습니다. 앱 속 구글 광고 도구가 광고 식별자(IDFA·광고 ID)·기기 정보·광고 노출 기록을 직접 모읍니다(6항)</td><td>앱 무료 플랜에서 광고가 보일 때</td></tr>
+  </tbody></table>
+  <p class="lnote">이름·세션·메모와 마지막 접속 일시(오늘·어제·N일 전)는 <b>같은 팀 사람들에게 보입니다.</b> 다만 "나만 보기"로 적은 메모는 본인에게만,
+  세션 메모는 그 세션 사람과 인도자에게만 보입니다. 콘티를 읽은 표시는 본인 화면에만 쓰입니다.</p>
+  <p class="hint">회사는 종교를 정보 항목으로 받지 않습니다. 다만 팀 이름·콘티·말씀처럼 이용자가 적은 내용으로 신앙이 드러날 수 있으며, 이 내용은 그 팀 사람들에게만 보입니다.</p>
+
+  <h3>2. 쓰는 목적</h3>
+  <ul>
+   <li>로그인과 본인 확인, 계정 보호(부정 로그인·대량 가입 막기)</li>
+   <li>콘티·악보·편성·메모를 팀원에게 보여 주고 기기 사이에 맞추기</li>
+   <li>콘티 발행·편성·일정 변경 알림 보내기</li>
+   <li>악보 사진에서 코드와 음표를 읽어 주기(AI 기능)</li>
+   <li>유료 플랜 구독 확인·갱신·해지·환불 반영, 무료 체험과 프로모션 코드 관리</li>
+   <li>오류 확인과 서비스 개선, 문의 답변</li>
+  </ul>
+  <p>무료 플랜에서는 광고를 보여 주고, 광고 사업자가 광고를 고르고 효과를 재는 데 광고 식별자를 씁니다.
+   <b>유료 플랜에서는 광고가 나오지 않습니다.</b> 회사는 어느 경우에도 개인정보를 팔지 않습니다.</p>
+
+  <h3>3. 맡기는 곳과 국외 이전</h3>
+  <p>서비스를 돌리기 위해 아래 회사에 처리를 맡깁니다. 서버와 데이터베이스가 <b>국외(싱가포르)</b>에 있고, 파일 저장·알림 전달·AI 인식·<b>앱 결제 확인</b>은
+  국외 회사가 맡아 정보가 국외로 옮겨져 저장·처리됩니다. 정보는 표에 적은 때에 <b>암호화된 통신(HTTPS)</b>으로 네트워크를 통해 옮깁니다.</p>
+  ${xferTab}
+  <p class="hint">웹(브라우저) 알림은 이용자 브라우저의 푸시 서비스(Google·Apple·Mozilla·Microsoft 등)를 거쳐 전달되며, 내용은 암호화되어 그 회사가 읽을 수 없습니다.
+   App Store·Google Play 는 이용자가 직접 결제하는 곳이라 맡기는 곳이 아니며, 그곳의 결제 정보는 각 회사의 방침에 따라 처리됩니다.</p>
+  <p>회사는 위 업체들과 맺은 이용 약관과 데이터 처리 약관에 따라, 각 업체가 이 방침과 같거나 그 이상의 수준으로 개인정보를 보호하도록 하고 있습니다.
+   처리를 맡긴 업체는 맡긴 일에만 정보를 씁니다. 광고(Google AdMob)에 쓰이는 광고 식별자와 광고 기록은 구글이 자체 개인정보처리방침에 따라 처리합니다.
+   AI 인식은 유료 API 로 쓰며, 구글은 그 조건에 따라 보낸 악보 사진을 자사 AI 개선(학습)에 쓰지 않습니다.</p>
+  <p class="lnote">이전을 원하지 않으시면 서비스를 이용하지 않거나, AI 기능(코드 인식·채보·악보 만들기)을 쓰지 않으실 수 있습니다.
+  다만 서버가 국외에 있어 서비스 이용 자체를 위한 이전을 거부하시면 서비스를 제공할 수 없습니다.</p>
+
+  <h3>4. 얼마나 두나</h3>
+  <ul>
+   <li><b>계정 정보</b> — 계정을 지우면 <b>바로</b> 지웁니다. 구글·Apple 로그인 정보도 함께 지우고, Apple 로그인 연결은 Apple 에 알려 끊습니다.</li>
+   <li><b>내가 쓴 메모</b> — 계정을 지우면 예배 메모와 '나만 보기' 메모는 모두 지웁니다. 곡에 붙인 고정 메모·녹음 메모 중 팀에 보이게 쓴 것은 팀 자료로 남고,
+    적은 사람 이름은 지워 '지워진 사용자'로 보입니다.</li>
+   <li><b>팀과 콘티·악보·말씀</b> — 팀을 지우면 <b>30일 뒤</b> 파일까지 완전히 지웁니다. 그 전에는 되돌릴 수 있습니다.</li>
+   <li><b>연습 녹음</b> — 올린 날부터 <b>90일</b>이 지나면 자동으로 지웁니다(보관 잠금을 풀면 그날부터 다시 90일). 지우기 7일 전에 인도자에게 알립니다.
+    보관으로 잠근 녹음은 직접 지우거나 팀을 지울 때까지 둡니다.</li>
+   <li><b>알림 기록</b> — 90일이 지나면 지웁니다.</li>
+   <li><b>로그인·가입 시도 기록</b>(IP 주소·시도한 아이디 포함) — <b>30일</b>이 지나면 지웁니다. 로그인에 성공하면 그 아이디의 실패 기록은 바로 지웁니다.</li>
+   <li><b>서버 접속 기록</b> — 30일이 지나면 Google Cloud 에서 자동으로 지워집니다.</li>
+   <li><b>팀 관리 기록</b> — 팀이 있는 동안 두고, 팀을 지우면 함께 지웁니다.</li>
+   <li><b>결제 기록</b> — 팀의 플랜과 유료 기간은 팀이 있는 동안 둡니다. 계정을 지우면 결제와 그 사람의 연결(구독한 사람·코드를 쓴 사람)을 끊습니다.
+    1414 서버는 스토어 영수증을 따로 보관하지 않으며, 앱 결제 기록은 애플·구글과 결제 확인 업체(RevenueCat)가 각자의 정책에 따라 보관합니다.</li>
+   <li>법령에서 따로 보관하라고 정한 경우에는 그 기간을 따릅니다.</li>
+  </ul>
+
+  <h3>5. 파기 절차와 방법</h3>
+  <ul>
+   <li>보유 기간이 끝나거나 삭제를 요청하면 지체 없이 지웁니다. 계정 삭제는 요청 즉시 처리하고, 기간이 정해진 정보는 매일 새벽 자동으로 정리합니다.</li>
+   <li>데이터베이스의 정보는 되살릴 수 없게 지우고, 파일 저장소의 사진·녹음도 함께 지웁니다. 지우지 못한 파일은 다음 날 다시 지웁니다.</li>
+   <li>데이터베이스 업체가 장애 복구를 위해 두는 기록에는 지운 정보가 잠시 남을 수 있으며, 업체가 정한 기간이 지나면 자동으로 사라집니다.
+    장애에 대비해 회사가 만든 백업 사본은 복구에만 쓰고, 만든 날부터 30일이 지나면 지웁니다.</li>
+  </ul>
+
+  <h3>6. 쿠키·기기 저장소와 맞춤형 광고</h3>
+  <ul>
+   <li><b>웹</b> — 로그인을 유지하려고 쿠키를 씁니다(최대 90일). 브라우저에서 쿠키를 막으면 로그인이 유지되지 않습니다.
+    빠르게 열고 인터넷이 끊겨도 쓰도록 콘티·악보·화면 설정을 기기 저장소(localStorage·IndexedDB)에 둡니다. 로그아웃하거나 브라우저의 사이트 데이터를 지우면 함께 지워집니다.
+    웹에서는 광고·분석 쿠키를 쓰지 않습니다.</li>
+   <li><b>앱</b> — 로그인 정보(최대 90일)와 콘티·악보를 기기 안에 둡니다. 로그아웃하거나 앱을 지우면 함께 지워집니다.</li>
+   <li><b>구글·Apple 로그인</b> — 그 방법으로 로그인할 때 구글·Apple 의 로그인 화면이 열리며, 그 회사가 자체 정책에 따라 쿠키를 쓸 수 있습니다.</li>
+   <li><b>곡에 붙인 YouTube 영상</b> — 재생하면 YouTube(Google)가 자체 정책에 따라 쿠키·기기 정보를 모을 수 있습니다.</li>
+   <li><b>앱 광고(무료 플랜)</b> — Google(AdMob)이 앱 안의 광고 도구로 광고 식별자, 기기 정보, 광고 노출·클릭 기록 같은 행태정보를 직접 모아
+    맞춤형 광고와 광고 효과 측정에 씁니다. 회사 서버에는 저장하지 않으며, 보유 기간은 구글 정책을 따릅니다. 유료 플랜에서는 광고가 나오지 않습니다.</li>
+  </ul>
+  <p class="hint">맞춤 광고 끄기 — 아이폰·아이패드: 앱이 처음 묻는 추적 허용 창에서 거부하거나, 나중에 <b>설정 › 개인정보 보호 및 보안 › 추적</b>에서 1414 를 끕니다.
+   안드로이드: <b>설정 › Google › 광고</b>에서 광고 ID 를 삭제하거나 맞춤 광고를 끕니다. 꺼도 서비스는 그대로 쓰실 수 있고, 광고가 이용자와 덜 맞을 뿐입니다.
+   유럽·영국에서는 처음 쓸 때 광고 동의를 따로 묻습니다.</p>
+
+  <h3>7. 제3자 제공</h3>
+  <p>회사는 이용자의 개인정보를 제3자에게 제공하지 않습니다. 다만 법률에 특별한 규정이 있거나 법령상 의무를 지키기 위해 불가피한 경우는 예외입니다.
+   광고와 곡에 붙인 YouTube 영상은 구글이 직접 정보를 모읍니다(6항). 같은 팀 사람에게 보이는 정보는 1항에 적었습니다.</p>
+
+  <h3>8. 앱 접근 권한</h3>
+  <p>반드시 필요한 권한은 없습니다. 아래는 모두 <b>선택 권한</b>이라, 허용하지 않아도 그 기능 말고는 그대로 쓰실 수 있습니다.</p>
+  <ul>
+   <li><b>알림</b> — 콘티 발행·편성·일정 알림을 받을 때</li>
+   <li><b>마이크</b> — 연습 녹음을 만들 때</li>
+   <li><b>카메라</b>(아이폰·아이패드) — 악보를 바로 찍어 넣을 때</li>
+   <li><b>사진</b>(아이폰·아이패드) — 악보 사진을 고르거나, 만든 악보 이미지를 사진 보관함에 저장할 때</li>
+   <li><b>추적 허용</b>(아이폰·아이패드) — 무료 플랜에서 맞춤 광고를 보여 줄 때</li>
+  </ul>
+  <p class="hint">안드로이드는 카메라·사진을 시스템 선택 창으로 열어 따로 권한을 받지 않습니다. 허용한 권한은 휴대폰 설정의 1414 앱 항목에서 언제든 끌 수 있습니다.</p>
+
+  <h3>9. 이용자의 권리</h3>
+  <p>언제든 다음을 하실 수 있습니다.</p>
+  <ul>
+   <li><b>보기·고치기</b> — 설정에서 이름·세션을 고칠 수 있습니다.</li>
+   <li><b>가져가기</b> — 홈의 "내보내기"로 콘티·악보를 파일로 받을 수 있습니다.</li>
+   <li><b>지우기</b> — 설정 → 계정 → 계정 삭제. 되돌릴 수 없습니다. 로그인 없이 보는 안내: lets1414.com/#/legal/delete</li>
+   <li><b>알림 끄기</b> — 설정 → 알림에서 종류별로 끄거나 기기에서 완전히 끌 수 있습니다.</li>
+   <li><b>처리 정지·동의 철회</b> — 아래 연락처로 요청하실 수 있습니다. 서비스에 꼭 필요한 정보의 처리를 멈추면 서비스를 제공할 수 없어 계정을 지우게 될 수 있습니다.</li>
+  </ul>
+  <p>앱에서 할 수 없는 요구는 아래 이메일로 보내 주시면 본인 확인 뒤 <b>10일 안에</b> 처리합니다. 법정대리인이나 위임을 받은 대리인을 통해서도 요구할 수 있으며,
+   이때는 위임장을 함께 보내 주세요. 요구를 거절하거나 일부만 들어줄 때는 그 이유와 이의를 제기하는 방법을 알려 드립니다.</p>
+
+  <h3>10. 안전하게 지키려고 하는 일</h3>
+  <ul>
+   <li>비밀번호는 <b>되돌릴 수 없는 형태(scrypt)</b>로 저장합니다. 회사도 원래 비밀번호를 알 수 없습니다.</li>
+   <li>모든 통신은 HTTPS로 암호화합니다.</li>
+   <li>악보·녹음 파일은 <b>비공개</b>로 저장하고, 권한이 확인된 사람에게만 한 시간짜리 임시 주소로 내보냅니다.</li>
+   <li>다른 팀의 자료에는 접근할 수 없도록 요청마다 팀 소속과 역할을 확인합니다.</li>
+   <li>비밀번호를 바꾸면 기존 로그인은 모두 끊깁니다.</li>
+  </ul>
+
+  <h3>11. 만 14세 미만</h3>
+  <p>회사는 만 14세 미만 아동의 가입을 받지 않습니다. 만 14세 미만임이 확인되면 계정을 지웁니다.</p>
+
+  <h3>12. 개인정보 보호책임자</h3>
+  <p>개인정보 보호책임자는 <b>대표자 ${esc(BIZ.ceo)}</b>입니다. 개인정보에 관한 문의·불만·피해 구제는 아래로 연락해 주세요.</p>
+  ${bizRow}
+  <p>개인정보 침해에 대한 상담이나 구제가 필요하면 아래 기관에도 문의하실 수 있습니다.</p>
+  <ul>
+   <li>개인정보분쟁조정위원회 — 1833-6972 (www.kopico.go.kr)</li>
+   <li>개인정보침해신고센터 — 118 (privacy.kisa.or.kr)</li>
+   <li>대검찰청 — 1301 (www.spo.go.kr)</li>
+   <li>경찰청 — 182 (ecrm.police.go.kr)</li>
+  </ul>
+
+  <h3>13. 방침이 바뀌면</h3>
+  <p>내용이 바뀌면 시행 7일 전에 서비스 안(홈 화면 알림과 이 페이지)에 알립니다. 이용자에게 불리한 중요한 변경은 30일 전에 알립니다.
+   바뀌기 전의 판은 아래 변경 이력에서 볼 수 있습니다.</p>
+
+  <h3>14. 변경 이력</h3>
+  ${legalHistHTML('privacy')}
+  <p class="lnote">시행일: ${esc(LEGAL_NEXT_AT)}</p>`;
+
+ const termsV2=`
+  <h3>제1조 (목적)</h3>
+  <p>이 약관은 ${esc(BIZ.name)}(이하 "회사")가 제공하는 찬양팀 콘티 서비스 <b>1414</b>(이하 "서비스")의
+  이용 조건과 절차, 회사와 이용자의 권리·의무를 정합니다.</p>
+
+  <h3>제2조 (용어)</h3>
+  <ul>
+   <li><b>이용자</b> — 서비스에 가입해 이용하는 사람</li>
+   <li><b>팀</b> — 콘티를 함께 쓰는 모임</li>
+   <li><b>인도자</b> — 팀을 만들고 콘티를 발행하는 사람</li>
+   <li><b>콘티</b> — 예배 곡 순서와 악보·메모를 묶은 것</li>
+   <li><b>유료 플랜</b> — 팀 단위로 적용되는 Pro·Pro Plus 플랜</li>
+  </ul>
+
+  <h3>제2조의2 (약관의 게시와 변경)</h3>
+  <ul>
+   <li>회사는 이 약관을 로그인 화면과 설정에서 언제든 볼 수 있게 둡니다.</li>
+   <li>약관을 바꿀 때는 바뀌는 내용과 시행일을 <b>시행 7일 전부터</b> 서비스 안(홈 화면 알림과 이 페이지)에 알립니다. 이용자에게 불리한 변경은 <b>30일 전부터</b> 알립니다.</li>
+   <li>바뀐 약관에 동의하지 않으면 시행일 전까지 계정을 지워 이용 계약을 끝낼 수 있습니다. 알린 시행일 뒤에도 계속 쓰시면 바뀐 약관에 동의한 것으로 봅니다.</li>
+   <li>바뀌기 전의 약관은 아래 변경 이력에서 볼 수 있습니다.</li>
+  </ul>
+
+  <h3>제3조 (가입과 계정)</h3>
+  <ul>
+   <li>아이디와 비밀번호를 정하거나, 구글·Apple 계정으로 가입합니다. 만 14세 미만은 가입할 수 없습니다.</li>
+   <li>계정은 본인만 쓸 수 있으며, 남에게 빌려주거나 팔 수 없습니다.</li>
+   <li>비밀번호와 연결한 구글·Apple 계정의 관리 책임은 이용자에게 있습니다. 도용이 의심되면 바로 알려 주세요.</li>
+  </ul>
+
+  <h3>제4조 (서비스 내용)</h3>
+  <p>콘티 작성·발행, 악보 보관, 편성·일정 관리, 연습·무대 화면, 연습 녹음, 곡 코드(다른 팀에 곡을 나누는 코드),
+  AI 악보 인식(코드 인식·채보·악보 만들기), 인쇄·내보내기, 알림을 제공합니다.
+  회사는 서비스 내용을 개선하거나 바꿀 수 있으며, 중요한 변경은 미리 알립니다.</p>
+  <p><b>AI 결과는 틀리거나 빠진 부분이 있을 수 있습니다.</b> 연주하거나 나눠 주기 전에 원래 악보와 맞춰 확인해 주세요.</p>
+
+  <h3>제5조 (요금)</h3>
+  <p>서비스는 <b>무료 플랜</b>과 <b>유료 플랜</b>으로 나뉩니다. 각 플랜에서 쓸 수 있는 범위(팀원 수, AI 인식 횟수 등)와 요금은
+   앱 안 <b>설정 → 플랜</b>에서 볼 수 있습니다.</p>
+  <p><b>무료 플랜에는 광고가 나옵니다.</b> 유료 플랜에서는 광고가 나오지 않습니다.</p>
+  <p><b>무료 체험</b> — 무료 체험을 받은 적 없는 계정으로 팀을 만들면 그 팀은 <b>7일 동안 Pro 플랜을 무료로 체험</b>합니다(계정당 한 번).
+   체험이 끝나면 무료 플랜으로 돌아가며, 자동으로 결제되지 않습니다.</p>
+  <p><b>구독</b> — 유료 플랜 결제는 애플 App Store·구글 Play를 통한 <b>인앱결제</b>로만 이루어지며, 요금은 구매한 사람의 스토어 계정으로 청구됩니다.
+   유료 플랜은 <b>1개월 또는 1년 단위로 자동 갱신되는 구독</b>입니다.
+   App Store 구독은 현재 기간이 끝나기 <b>24시간 전까지 해지하지 않으면</b> 같은 요금으로 자동 갱신되고, 기간이 끝나기 전 24시간 안에 다음 기간 요금이 청구됩니다.
+   Google Play 구독은 <b>다음 결제일 전까지 해지하지 않으면</b> 결제일에 같은 요금으로 다음 기간 요금이 청구됩니다.</p>
+  <p><b>해지</b> — 스토어의 구독 관리(아이폰: 설정 › Apple 계정 › 구독, 안드로이드: Google Play › 결제 및 정기 결제 › 정기 결제)에서 언제든 할 수 있습니다.
+   해지하면 다음 갱신만 멈추고, 이미 결제한 기간이 끝날 때까지 유료 기능을 그대로 쓰실 수 있습니다.
+   기간 중에 해지해도 이미 결제한 기간의 요금은 자동으로 돌아가지 않습니다(환불은 제5조의2).</p>
+  <p>구독은 팀 단위로 적용되어 팀원 모두가 같은 플랜을 쓰며, 한 사람의 구독은 한 팀에만 적용됩니다.
+   체험이나 코드로 받은 기간이 남은 팀이 구독하면 그 남은 기간은 없어지고 구독 기간이 바로 적용됩니다.</p>
+  <p><b>프로모션 코드</b> — 회사가 나눠 준 코드는 팀 인도자가 넣을 수 있고, 같은 코드는 한 팀에 한 번만 쓸 수 있습니다.
+   받은 기간은 남은 유료 기간 뒤에 이어 붙습니다. 스토어 구독으로 유료인 팀에는 쓸 수 없습니다.</p>
+  <p><b>유료 기간이 끝나면</b> — 구독이 끝나거나 환불되거나 체험·코드 기간이 끝나면 무료 플랜으로 돌아갑니다.
+   올린 자료는 지우지 않지만, 무료 플랜 한도를 넘는 새 추가와 유료 전용 기능은 쓸 수 없고 광고가 나옵니다.</p>
+  <p>요금이나 플랜 내용을 바꿀 때는 <b>시행 30일 전</b>에 알리고, 이미 이용 중인 기능이 갑자기 막히지 않도록 합니다.</p>
+
+  <h3>제5조의2 (청약철회와 환불)</h3>
+  <ol>
+   <li>유료 플랜을 결제한 이용자는 결제일부터 <b>7일 안에</b> 청약을 철회할 수 있습니다.</li>
+   <li>결제한 뒤 유료 기능을 쓰기 시작했다면 「전자상거래 등에서의 소비자보호에 관한 법률」에 따라 철회가 제한될 수 있습니다.
+    결제한 뒤 유료 기능을 쓰지 않았다면 철회가 제한되지 않습니다.</li>
+   <li>서비스가 표시·광고한 내용과 다르거나 계약 내용과 다르게 제공되었다면, 쓸 수 있게 된 날부터 3개월 안,
+    그 사실을 안 날 또는 알 수 있었던 날부터 30일 안에 철회할 수 있습니다.</li>
+   <li>환불은 먼저 결제한 스토어에 요청해 주세요(App Store: reportaproblem.apple.com, Google Play: play.google.com 의 주문 내역).
+    스토어에서 환불받지 못했는데 위 1~3에 해당하면 ${esc(BIZ.email)}로 알려 주세요. 회사가 확인한 뒤 돌려 드립니다.</li>
+   <li>청약을 철회하거나 환불되면 그 유료 기간은 끝나고 무료 플랜으로 돌아갑니다.</li>
+  </ol>
+
+  <h3>제6조 (이용자가 올린 것)</h3>
+  <ul>
+   <li>악보·녹음·메모의 <b>권리는 올린 이용자에게 있습니다.</b> 회사는 서비스를 제공하는 데 필요한 범위에서만
+       저장·표시·전송합니다.</li>
+   <li>회사는 이용자가 올린 것을 <b>다른 목적으로 쓰거나 남에게 제공하지 않습니다.</b></li>
+   <li><b>저작권 주의</b> — 악보와 음원은 대부분 저작권이 있습니다. 이용자는 올릴 권한이 있는 자료만 올려야 하며,
+       그로 인한 책임은 올린 이용자에게 있습니다. 권리자의 요청이 있으면 회사는 해당 자료를 지울 수 있습니다.</li>
+   <li><b>권리 침해 신고</b> — 서비스에 올라온 자료가 자기 권리를 침해한다고 생각하시는 분은 그 자료와 권리를 소명하는 내용을 적어
+       수령인(대표 ${esc(BIZ.ceo)}, ${esc(BIZ.email)})에게 알려 주세요. 회사는 저작권법 제103조에 따라 그 자료의 전송을 바로 중단하고,
+       요청한 분과 올린 이용자에게 알립니다. 올린 이용자는 정당한 권리가 있음을 소명해 다시 전송해 달라고 요청할 수 있습니다.</li>
+  </ul>
+
+  <h3>제7조 (하지 말아야 할 것)</h3>
+  <ul>
+   <li>남의 계정을 쓰거나 서비스를 부정하게 이용하는 것</li>
+   <li>서버에 과도한 부하를 주거나 자동화된 방법으로 대량 요청하는 것</li>
+   <li>권한 없는 자료를 올리거나, 남의 권리를 침해하는 것</li>
+   <li>음란물, 폭력·혐오 표현, 특정인을 괴롭히거나 모욕하는 내용을 올리거나 공유하는 것</li>
+   <li>서비스를 복제·변조하거나 역분석하는 것</li>
+  </ul>
+
+  <h3>제8조 (이용 제한)</h3>
+  <p>제7조를 어기거나 법령을 위반한 경우 회사는 사전 통지 후 이용을 제한할 수 있습니다.
+  다만 긴급한 경우에는 먼저 조치하고 알릴 수 있습니다.</p>
+  <p>제7조에 어긋나는 게시물이나 이용을 보시면 ${esc(BIZ.email)}로 알려 주세요. 확인한 뒤 지우거나 이용을 제한합니다.</p>
+
+  <h3>제9조 (탈퇴)</h3>
+  <p>설정에서 언제든 계정을 지울 수 있습니다. 지우면 계정과 예배 메모, '나만 보기'로 쓴 메모가 <b>되돌릴 수 없이</b> 사라집니다.
+  곡에 붙인 고정 메모·녹음 메모 중 팀에 보이게 쓴 것은 팀 자료로 남고, 적은 사람 이름은 지워집니다.
+  내가 유일한 인도자인 팀에 활동 중인 팀원이 있으면 먼저 다른 사람을 인도자로 지정하거나 팀을 지워야 합니다.
+  자세한 내용은 <a data-act="legal" data-k="delete">계정 삭제 안내</a>에 있습니다.</p>
+  <p><b>구독 중이라면</b> — 앱에서 유료 플랜을 구독 중이면 계정이나 팀을 지워도 App Store·Google Play 구독은 자동으로 해지되지 않습니다.
+  지우기 전에 스토어의 구독 관리(아이폰: 설정 › Apple 계정 › 구독, 안드로이드: Google Play › 결제 및 정기 결제 › 정기 결제)에서 해지해 주세요.
+  해지하지 않으면 스토어가 요금을 계속 청구하며, 그 결제는 지운 계정·팀에 반영되지 않습니다.</p>
+
+  <h3>제10조 (책임의 한계)</h3>
+  <ul>
+   <li>회사는 서비스를 안정적으로 제공하려 노력하지만, 천재지변이나 기간통신사업자의 통신 장애처럼 <b>회사의 고의 또는 과실 없이</b>
+       어찌할 수 없는 사유로 인한 중단에는 책임을 지지 않습니다.</li>
+   <li>이용자가 올린 자료의 내용과 그에 따른 분쟁은 <b>올린 이용자의 책임</b>입니다.</li>
+   <li>무료로 제공되는 서비스에 대해서는 회사의 고의 또는 중대한 과실이 없는 한 손해를 배상하지 않습니다.</li>
+   <li>중요한 자료는 "내보내기"로 따로 보관해 두시길 권합니다.</li>
+  </ul>
+
+  <h3>제11조 (분쟁)</h3>
+  <p>이 약관은 대한민국 법을 따릅니다. 분쟁이 생기면 먼저 협의하고, 해결되지 않으면
+  민사소송법에 따른 관할 법원에서 다룹니다.</p>
+
+  <h3>제12조 (문의)</h3>
+  ${bizRow}
+
+  <h3>변경 이력</h3>
+  ${legalHistHTML('terms')}
+  <p class="lnote">시행일: ${esc(LEGAL_NEXT_AT)}</p>`;
+
+ // 계정 삭제 안내 — 스토어(구글·애플)가 요구하는 '로그인 없이 열리는 삭제 절차 페이지'. 지금 동작을 적은 안내라 판을 나누지 않는다
+ // (api /auth/delete: 아이디 + 비밀번호 또는 구글·Apple 재로그인 · 나 혼자인 팀은 바로 · 내가 인도자이고 나머지가 모두 비활성인 팀은 30일 예약 ·
+ //  활동 중인 팀원이 있는 팀의 유일한 인도자면 막힘 · teams.iap_user_id 는 on delete set null)
  const del=`<h2>계정 삭제</h2>
-  <p>1414 계정과 그 계정에 딸린 데이터는 <b>앱 안에서 직접</b> 지울 수 있습니다. 별도 요청이나 심사 없이 즉시 처리됩니다.</p>
+  <p>1414 계정과 그 계정에 딸린 데이터는 <b>앱 안에서 직접</b> 지울 수 있습니다. 별도 요청이나 심사 없이 즉시 처리됩니다(일부 팀은 30일 뒤 지워집니다).</p>
+  <h3>구독 중이라면 먼저 해지하세요</h3>
+  <p>앱에서 유료 플랜을 구독 중이면, 계정을 지워도 App Store·Google Play 구독은 <b>자동으로 해지되지 않습니다.</b>
+  해지하지 않으면 스토어가 요금을 계속 청구하고, 그 결제는 지운 계정에 반영되지 않습니다. 지우기 전에 해지해 주세요.</p>
+  <ul>
+   <li>아이폰·아이패드 — 설정 › Apple 계정 › 구독 (apps.apple.com/account/subscriptions)</li>
+   <li>안드로이드 — Google Play › 결제 및 정기 결제 › 정기 결제 (play.google.com/store/account/subscriptions)</li>
+  </ul>
   <h3>앱에서 지우기</h3>
   <ol>
    <li>1414 앱(또는 lets1414.com)에 로그인합니다.</li>
    <li><b>더보기 → 설정 → 계정</b>으로 갑니다.</li>
-   <li><b>계정 삭제</b>를 누르고, 아이디와 비밀번호를 한 번 더 입력해 확인합니다.</li>
+   <li><b>계정 삭제</b>를 누르고 아이디를 적은 뒤, 비밀번호로 한 번 더 확인합니다. 비밀번호 없이 구글·Apple 로만 가입했다면 그 계정으로 한 번 더 로그인합니다
+    (Apple 로만 가입한 계정은 웹이나 아이폰에서 지워 주세요).</li>
   </ol>
-  <p class="lnote">내가 인도자인 팀이 있으면 먼저 다른 사람을 인도자로 지정하거나 팀을 지워야 합니다. 팀원들의 콘티가 사라지지 않게 하기 위해서입니다.</p>
+  <p class="lnote">내가 유일한 인도자인 팀에 활동 중인 팀원이 있으면 먼저 다른 사람을 인도자로 지정하거나 팀을 지워야 합니다. 팀원들의 콘티가 사라지지 않게 하기 위해서입니다.</p>
   <h3>지워지는 것</h3>
   <ul>
-   <li>계정(아이디·이름·비밀번호)과 로그인 정보</li>
-   <li>내가 쓴 메모·개인 설정·푸시 알림 토큰</li>
-   <li>내가 만든 팀과 그 팀의 콘티·악보·일정 (내가 유일한 인도자였다면)</li>
+   <li>계정(아이디·이름·비밀번호)과 로그인 정보, 연결한 구글·Apple 로그인 (Apple 로그인 연결도 끊습니다)</li>
+   <li>예배 메모, '나만 보기'로 쓴 메모, 개인 설정, 푸시 알림 토큰</li>
+   <li>나 혼자만 있는 팀 — 콘티·악보·일정과 파일까지 바로 지웁니다</li>
+   <li>내가 인도자이고 다른 팀원이 모두 비활성인 팀 — 삭제가 예약되어 30일 뒤 파일까지 지웁니다</li>
   </ul>
   <h3>남는 것</h3>
   <ul>
-   <li>다른 사람이 인도자인 팀에 내가 올린 악보·콘티 — 팀의 자료라 팀에 남습니다. 내 이름은 지워진 사용자로 표시됩니다.</li>
-   <li>결제 영수증 등 법령상 보관해야 하는 기록 — 전자상거래법에 따라 5년</li>
+   <li>다른 팀원이 있는 팀에 내가 올린 콘티·악보·곡·연습 녹음 — 팀의 자료라 팀에 남습니다. 누가 올리고 고쳤는지 기록은 지웁니다.</li>
+   <li>곡에 붙인 고정 메모·녹음 메모 중 팀에 보이게 쓴 것 — 팀 자료로 남고, 적은 사람 이름은 지워 '지워진 사용자'로 보입니다.</li>
+   <li>팀 관리 기록(초대·팀원 빼기 등)에 적힌 이름 — 그 팀이 있는 동안 남습니다.</li>
+   <li>결제 기록 — 앱 결제 기록은 애플·구글과 결제 확인 업체(RevenueCat)가 각자의 정책에 따라 보관합니다. 1414 서버는 계정을 지우면 결제와 사람의 연결을 끊습니다.</li>
   </ul>
   <h3>로그인할 수 없다면</h3>
   <p>비밀번호를 잊었거나 앱을 지운 경우, <b>${esc(BIZ.email)}</b>로 가입한 아이디를 적어 보내 주세요. 본인 확인 뒤 <b>7일 안에</b> 지워 드립니다.</p>
   ${bizRow}
-  <p class="lnote">시행일: ${esc(LEGAL_AT)}</p>`;
+  <p class="lnote">마지막으로 고친 날: ${esc(DELETE_AT)}</p>`;
 
- const body=`<div class="legal">
+ // 바뀌는 점 — 홈 알림의 '바뀌는 점 보기'와 띠의 '바뀌는 점'이 여기로 온다
+ const nv=live?'지금 판 보기':'개정안 보기';
+ const changes=`<h2>바뀌는 점</h2>
+  <p>개인정보처리방침과 이용약관이 <b>${esc(LEGAL_NEXT_AT.slice(0,4))}년 ${mdKo(LEGAL_NEXT_AT)}</b>부터 ${live?'바뀌었습니다.':'바뀝니다. 그 전까지는 지금 판이 적용됩니다.'}</p>
+  <h3>개인정보처리방침</h3>
+  <ul>
+   <li>앱에서 구독할 때 결제를 확인하는 업체(RevenueCat, 미국)를 맡기는 곳에 더했습니다.</li>
+   <li>국외로 옮기는 정보마다 받는 곳 연락처·나라·옮기는 방법·받는 곳의 보유 기간을 적었습니다. 파일 저장소 위치(아시아·태평양)도 적었습니다.</li>
+   <li>처리하는 정보를 빠짐없이 적었습니다(구글·Apple 로그인, 접속·보안 기록, 이용 기록, 팀 관리 기록, 결제, 말씀 링크).</li>
+   <li>보유 기간을 실제에 맞게 적었습니다(연습 녹음 90일, 로그인·가입 시도 기록 30일, 서버 접속 기록 30일, 계정을 지울 때 메모 처리, 결제 기록).</li>
+   <li>파기 방법, 쿠키·기기 저장소와 맞춤형 광고, 제3자 제공, 앱 접근 권한, 권리 행사 방법(10일 안 처리·대리인), 보호책임자와 구제 기관 안내를 더했습니다.</li>
+  </ul>
+  <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="legal" data-k="privacy" data-v="next">개인정보처리방침 ${nv}</button></div>
+  <h3>이용약관</h3>
+  <ul>
+   <li>약관을 바꾸는 절차(제2조의2)를 더했습니다.</li>
+   <li>구글·Apple 로 가입하는 방법과 연습 녹음·곡 코드·AI 악보 인식을 서비스 내용에 넣고, AI 결과는 원래 악보와 맞춰 확인해 달라는 안내를 더했습니다.</li>
+   <li>무료 체험 조건, 구독 갱신(App Store·Google Play 차이)과 해지, 프로모션 코드, 유료 기간이 끝났을 때의 규칙을 적었습니다.</li>
+   <li>청약철회와 환불(제5조의2)을 새로 두었습니다.</li>
+   <li>저작권 침해 신고 절차, 해로운 게시물 금지와 신고 창구를 더했습니다.</li>
+   <li>탈퇴할 때 메모가 어떻게 되는지와, 구독은 스토어에서 따로 해지해야 한다는 안내를 더했습니다.</li>
+   <li>회사가 책임지지 않는 범위를 '회사의 고의 또는 과실 없이 어찌할 수 없는 사유'로 좁혔습니다.</li>
+  </ul>
+  <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="legal" data-k="terms" data-v="next">이용약관 ${nv}</button></div>
+  ${live?'':`<p class="lnote">바뀐 이용약관에 동의하지 않으시면 ${esc(LEGAL_NEXT_AT)} 전까지 계정을 지워 이용을 끝낼 수 있습니다(설정 → 계정 → 계정 삭제).
+   시행일 뒤에도 계속 쓰시면 바뀐 약관에 동의한 것으로 봅니다.</p>`}
+  <h3>변경 이력 — 개인정보처리방침</h3>
+  ${legalHistHTML('privacy')}
+  <h3>변경 이력 — 이용약관</h3>
+  ${legalHistHTML('terms')}`;
+
+ const isDoc=K==='privacy'||K==='terms';
+ const doc=K==='privacy'?(useNext?privacyV2:privacyV1):K==='terms'?(useNext?termsV2:termsV1):K==='delete'?del:changes;
+ const at=!isDoc?'':useNext?LEGAL_NEXT_AT:K==='privacy'?LEGAL_AT:TERMS_AT;
+ const body=`<div class="legal" data-doc="${K}" data-at="${at}">
    <div class="seg" style="margin-bottom:18px">
     <button class="${K==='privacy'?'on':''}" data-act="legal" data-k="privacy">개인정보처리방침</button>
     <button class="${K==='terms'?'on':''}" data-act="legal" data-k="terms">이용약관</button>
     <button class="${K==='delete'?'on':''}" data-act="legal" data-k="delete">계정 삭제</button></div>
-   ${K==='privacy'?privacy:K==='delete'?del:terms}
+   ${isDoc?legalBanner(K,useNext,live):''}
+   ${doc}
    <div class="row" style="margin-top:28px"><button class="btn" data-act="legal-back">${ic('back')}돌아가기</button></div>
   </div>`;
- const title=K==='privacy'?'개인정보처리방침':K==='delete'?'계정 삭제':'이용약관';
+ const title={privacy:'개인정보처리방침',terms:'이용약관',delete:'계정 삭제',changes:'바뀌는 점'}[K]+(isDoc&&useNext&&!live?' (개정안)':isDoc&&!useNext&&live?' (이전 판)':'');
  if(!NET.user||!S.team.id)return `<div class="shell"><div class="main">
    <header class="hd"><div class="ttl"><h1>${title}</h1><span class="date">1414</span></div></header>
    <main class="w-read">${body}</main></div></div>`;
@@ -3840,7 +4247,7 @@ function settingsHTML(){
    <div class="row" style="margin-top:8px"><span class="hint grow">이 기기에 저장된 악보를 지우고 서버에서 새로 받아요</span><button class="btn sm" id="sRefetch">${ic('import')}다시 불러오기</button></div></div>`:''}
   <div class="card"><b>약관 · 개인정보</b>
    <div class="row" style="margin-top:8px;gap:8px"><button class="btn sm" data-act="legal" data-k="terms">이용약관</button><button class="btn sm" data-act="legal" data-k="privacy">개인정보처리방침</button></div>
-   <div class="hint" style="margin-top:8px">${esc(BIZ.name)} · 대표 ${esc(BIZ.ceo)} · 사업자등록번호 ${esc(BIZ.regNo)}<br>${esc(BIZ.email)}</div></div>
+   <div class="hint" id="sBiz" style="margin-top:8px;line-height:1.6">${bizLine()}</div></div>
   <div class="card"><b>이 기기</b>
    <div class="row" style="margin-top:8px"><span class="hint grow">${on?'받아 둔 콘티·악보·메모를 지웁니다. 계정은 그대로예요':'모든 데이터를 지웁니다'}</span><button class="btn ghost danger" id="sReset">${on?'기기 데이터 지우기':'전체 초기화'}</button></div>
    ${on?`<div class="hr"></div><div class="row"><span class="hint grow">이 기기에서 로그아웃해요</span><button class="btn" id="sLogout">${ic('logout')}로그아웃</button></div>`:''}</div>`;
@@ -4826,8 +5233,9 @@ function loginHTML(){const m=GATE.mode;if(m==='recover')return recoverHTML();ret
  <button class="btn pri wide" data-act="lg-submit">${m==='login'?'로그인':'가입하고 시작'}</button>
  <div id="socialBox" class="socialbox"></div>
  ${route().name==='join'?`<p class="fine">초대 링크로 오셨네요. 로그인하면 팀 가입으로 이어집니다.</p>`:''}${m==='login'?`<p class="fine"><a href="#" data-act="lg-mode" data-m="recover">비밀번호를 잊었어요</a></p>`:''}
- <div class="legalfoot"><button data-act="legal" data-k="terms">이용약관</button><button data-act="legal" data-k="privacy">개인정보처리방침</button></div></div>`)}
-function gateHTML(){const u=NET.user||{};return authShell(`<div class="auth-card"><div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div><h1>${esc(u.name||u.username)}님, 반가워요</h1><p class="sub">아직 팀이 없어요. 초대 링크로 들어가거나 새 팀을 만드세요.</p>
+ <div class="legalfoot"><button data-act="legal" data-k="terms">이용약관</button><button data-act="legal" data-k="privacy">개인정보처리방침</button></div>
+ <div class="bizline" id="bizLine">${bizLine()}</div></div>`)}
+function gateHTML(){const u=NET.user||{};return authShell(`<div class="auth-card"><div class="mlogo"><div class="logostack sm">${logoSymbol(40)}${logoWordmark(34)}</div></div><h1>${esc(u.name||u.username)}님, 반가워요</h1><p class="sub">아직 팀이 없어요. 초대 링크로 들어가거나 새 팀을 만드세요.</p>${legalNoticeHTML()}
  <div class="lbl">초대 링크로 가입</div><div class="row"><input class="field" id="gtLink" placeholder="인도자가 보낸 링크 또는 코드"><button class="btn" data-act="join-go">열기</button></div><div class="err" id="gtErr"></div>
  ${isAdminUI()?`<button class="btn wide" data-act="admin" style="margin-top:14px">운영자 화면 (무료 코드 · 팀 플랜)</button>`:''}</div>
  ${teamCreateCard(u)}`)}
@@ -7551,7 +7959,7 @@ async function render(){
  if(!/^(edit|view|play)$/.test(r.name))svcOnHash='';
  // §4.6 목회자 링크: 로그인 없이 여는 페이지
  // 약관·방침은 로그인 없이 볼 수 있다
- if(r.name==='legal'){app.innerHTML=legalHTML(r.a||'privacy');restoreScroll();return}
+ if(r.name==='legal'){app.innerHTML=legalHTML(r.a||'privacy',r.b);restoreScroll();return}   // #/legal/privacy/next = 개정안, /prev = 이전 판
  if(r.name==='word-link'&&r.a){app.innerHTML='<div class="empty" style="margin:40px auto;max-width:420px"><b>여는 중…</b></div>';const h=await wordLinkHTML(r.a);if(stale())return;app.innerHTML=h;afterWordLink(r.a);return}
  if(online()){
   if(!NET.user){app.innerHTML=loginHTML();afterGate();return}
@@ -8554,6 +8962,7 @@ function appLinkRoute(u){
 // 애드몹 앱·광고 단위 id. 애드몹에서 만든 값으로 바꾼다.
 // 비워 두면 광고를 아예 시도하지 않는다 (지금이 그 상태)
 // reward: 보상형 광고 단위 id (무료 코드 인식 한도를 다 쓴 뒤 광고 보고 1곡). 비어 있으면 광고 보고 인식 버튼·안내가 아예 없다.
+// ⚠ reward 를 채우면 서버가 광고 보상 기록(ad_reward_grants: 사람·팀·날짜·광고 단위)을 저장한다 — 개인정보처리방침(privacyV2) 1항 '광고' 줄('회사 서버에는 저장하지 않습니다')을 먼저 고친다
 //   애드몹에서 보상형 광고 단위를 만들고, 그 단위의 '서버 측 확인' URL 에 https://lets1414.com/api/ads/ssv 를 넣고,
 //   서버 환경변수 ADMOB_REWARD_UNITS 에 같은 단위 id 를 적은 뒤에 채운다 (서버가 모르는 단위의 보상은 거절한다)
 // test: true 면 구글 시험 광고를 부른다 (진짜 노출·클릭이 생기지 않는다 — 개발 중 진짜 광고를 여러 번 보면 무효 트래픽 경고를 받는다).
@@ -8576,6 +8985,7 @@ const ADS={
 //  · 폰 세로 연습(.ws.pv)에서는 자리가 아래 미디어 독 안이라 접혀 있으면 안 보이고(폭 0 자리에 push → availableWidth=0),
 //    미디어 없는 곡은 독째 숨는다 → 독 밖 자리로 (재생 단추와는 떨어지게 — 광고 배치라 운영자가 정한다)
 // client·slot 이 비어 있어도 아무것도 하지 않는다
+// ⚠ on 을 켜면 개인정보처리방침(privacyV2) 6항의 '웹에서는 광고·분석 쿠키를 쓰지 않습니다'가 거짓이 된다 — 켜기 전에 방침을 고치고 7일 전 알린다
 const WEBADS={on:false,client:'ca-pub-5011605715320185',slot:'3461379578'};
 let WEBAD_LOADED=false;
 // 애드센스는 승인된 주소에서만 부른다. 로컬·미리보기에서 부르면 오류가 나고,
@@ -10908,7 +11318,9 @@ document.addEventListener('click',async e=>{
    p.span=(+p.span>1?+p.span:1)%3+1;if(p.span===1)delete p.span;   // 전체 → ½ → ⅓ → 전체
    touch(sv);save();syncLib(it);render();break}
   case 'crop-piece':{const s2=svcById(r.a);const it2=curItem(s2);const p2=it2&&it2.pieces.find(x=>x.id===el.dataset.id);if(p2)cropPieceModal(s2,it2,p2);break}
-  case 'legal':go('legal/'+(el.dataset.k||'privacy'));break;
+  case 'legal':go('legal/'+(el.dataset.k||'privacy')+(el.dataset.v?'/'+el.dataset.v:''));break;
+  case 'legal-notice-off':legalNoticeOff();render();break;   // 홈의 약관 개정 알림 닫기
+  case 'legal-notice-go':legalNoticeOff();go('legal/changes');break;
   case 'legal-back':{if(history.length>1)history.back();else go(NET.user&&S.team.id?'settings':'home');break}
   case 'edzoom':{const s2=svcById(r.a);if(s2)setEdZoom(+el.dataset.d,s2);break}
   case 'split-piece':{const sv=svcById(r.a);const it=sv&&curItem(sv);const p=it&&it.pieces.find(x=>x.id===el.dataset.id);if(!p)break;
@@ -11041,7 +11453,7 @@ let lp=null;document.addEventListener('pointerdown',e=>{if(route().name!=='play'
  if(!online()){REPROBE.n=0;scheduleReprobe()}   // 켜는 동안 건너뛴 다시 묻기가 간격만 늘려 놨다 — 5초부터 다시
  setInterval(()=>{if(NET.server===null&&!document.hidden)recheckServer()},20000);
  probeOmr();startNotiPoll();nativeSetup();
- window.CONTI={REWARD,rewardAvailable,rewardSheet,pullUsage,ADSTATE,modal,closeModal,ADS,WEBADS,AD_HOSTS,setZoom,P,pl:()=>PL,STG,stageOpen,stageExit,adsAllowed,webAdsAllowed,MET,PIANO,metOpen,metStart,metStop,metSet,pianoOpen,HOME,PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,scoreLayout,skewAngle,deskew,pageRects,joinFragments,sameTitle,rebuildScore,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go,PLANQ,planCls,trialLeft,IAP,iapOn,upgradeModal,payWho,isAdminUI,ADM,adminPull,ytOriginParam,ytEmbedSrc,YT,josa,josaRo,fitPlay,paintOvBar,doPrint,saveFile,appBack,rehAddModal,HALF,mdock,pvOn};
+ window.CONTI={legal:{kst:legalKst,today:legalToday,live:legalNextLive,next:LEGAL_NEXT_AT,noticeOn:legalNoticeOn},REWARD,rewardAvailable,rewardSheet,pullUsage,ADSTATE,modal,closeModal,ADS,WEBADS,AD_HOSTS,setZoom,P,pl:()=>PL,STG,stageOpen,stageExit,adsAllowed,webAdsAllowed,MET,PIANO,metOpen,metStart,metStop,metSet,pianoOpen,HOME,PREFS,pullPrefs,savePrefs,quietOf,pushState,STG,stageOpen,pgCompose,pgBestFit,pgLayout,pgPieces,PRT,PG,pubOrDraft,fixedNotesOf,arrOfItem,LIB,pullSongs,pushSongs,refreshFromArr,ovKeys,applyToArr,revertToArr,matchSong,addToServiceSheet,TM,pullTeam,SC,scoreToMusicXML,transposeScore,badMeasuresOf,mergeScoreParts,scoreBands,scoreLayout,skewAngle,deskew,pageRects,joinFragments,sameTitle,rebuildScore,S,save,render,parseForm,detectGaps,autoCut,IDB,NET,SYNC,transposeChord,chordOffset,parseChord,detectSystems,loadImg,importImage,importJSON,scrubIds,scope:()=>CUR_SCOPE,NOTI,pullNoti,refreshNoti,todoCards,SCH,pullSchedule,route,go,PLANQ,planCls,trialLeft,IAP,iapOn,upgradeModal,payWho,isAdminUI,ADM,adminPull,ytOriginParam,ytEmbedSrc,YT,josa,josaRo,fitPlay,paintOvBar,doPrint,saveFile,appBack,rehAddModal,HALF,mdock,pvOn};
 })();
 })();
 </script>

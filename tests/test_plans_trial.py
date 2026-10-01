@@ -213,8 +213,8 @@ def ui():
     if pg.locator('.todo [data-act="trial-plan"]').count(): fail('한 번 누른 체험 알림이 또 뜸')
     print('5 ok — 홈 체험 알림: 한도 검사가 꺼져 있으면 없음 · 켜져 있고 이틀 남으면 한 번 · 누르면 플랜 탭')
 
-    # 약관 제5조에 체험 한 줄
-    pg.goto(URL + '#/legal/terms'); pg.wait_for_selector('.legal', timeout=8000)
+    # 약관 제5조에 체험 한 줄 — 2026-09-27 판을 본다 (2026-10-09 개정판이 시행된 뒤에는 '이전 판'으로 남는다: #/legal/terms/prev)
+    pg.goto(URL + '#/legal/terms/prev'); pg.wait_for_selector('.legal', timeout=8000)
     lg = pg.locator('.legal').inner_text()
     if '7일 동안 Pro 플랜을 무료로 체험' not in lg or '자동으로 결제되지 않습니다' not in lg: fail('약관에 체험 안내가 없음')
     if '시행일: 2026-09-27' not in lg: fail('약관 시행일이 안 바뀜')
